@@ -35,16 +35,6 @@ export default {
       password: ''
     }
   },
-  methods: {
-    handleLogin() {
-      console.log('Login:', this.username, this.password)
-      // Aquí va tu lógica de login
-    },
-    handleGoogleLogin() {
-      console.log('Google login')
-      // Aquí va tu lógica de login con Google
-    }
-  }
 }
 </script>
 
