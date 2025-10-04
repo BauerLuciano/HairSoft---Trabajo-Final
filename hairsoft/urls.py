@@ -16,8 +16,19 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.shortcuts import redirect
+
+# Importar vistas desde la app usuarios
+from usuarios import views as usuarios_views
 
 urlpatterns = [
+    path('', lambda request: redirect('listado_turnos')),  # raíz redirige al listado de usuarios
+    path('usuarios/', include('usuarios.urls')),
     path('admin/', admin.site.urls),
-    path('api/', include('usuarios.urls')),  # <--- esto es clave
+
+    # URLs de turnos
+    path('turnos/', usuarios_views.listado_turnos, name='listado_turnos'),
+    path('turnos/nuevo/', usuarios_views.crear_turno, name='crear_turno'),
+    path('turnos/editar/<int:pk>/', usuarios_views.editar_turno, name='editar_turno'),
+    path('turnos/eliminar/<int:pk>/', usuarios_views.eliminar_turno, name='eliminar_turno'),
 ]

@@ -40,6 +40,9 @@ INSTALLED_APPS = [
     'usuarios',
     'rest_framework',
     'corsheaders',
+    'dal',
+    'dal_select2',
+    'widget_tweaks',
 ]
 
 MIDDLEWARE = [
@@ -76,12 +79,18 @@ WSGI_APPLICATION = 'hairsoft.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# settings.py
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'hairsoft_db',   # el nombre de tu base de datos
+        'USER': 'admin',          # tu usuario
+        'PASSWORD': 'admin',      # tu contraseña
+        'HOST': 'localhost',      # si PostgreSQL está en tu máquina
+        'PORT': '5433',           # el puerto que instalaste
     }
 }
+
 
 
 # Password validation
