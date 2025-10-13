@@ -2,7 +2,7 @@
   <div class="form-container">
     <div class="form-card usuarios-card">
       <h1 class="form-title">Listado de Usuarios</h1>
-      
+
       <!-- Barra de acciones -->
       <div class="actions-bar">
         <div class="search-wrapper">
@@ -13,33 +13,25 @@
           <input
             type="text"
             class="input-field search-input"
-            placeholder="Buscar por nombre o email..."
+            placeholder="Buscar por nombre o correo..."
             v-model="searchTerm"
           />
         </div>
-        
+
         <div class="filter-wrapper">
           <svg class="filter-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
           </svg>
-          <select 
-            class="input-field filter-select"
-            v-model="filterRole"
-          >
+          <select class="input-field filter-select" v-model="filterRole">
             <option value="todos">Todos los roles</option>
-            <option value="Admin">Admin</option>
-            <option value="Moderador">Moderador</option>
-            <option value="Usuario">Usuario</option>
+            <option value="ADMIN">Administrador</option>
+            <option value="REC">Recepcionista</option>
+            <option value="PEL">Peluquero</option>
+            <option value="CLI">Cliente</option>
           </select>
         </div>
 
         <button class="submit-button btn-nuevo" @click="irCrearUsuario">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-            <circle cx="9" cy="7" r="4"></circle>
-            <line x1="19" y1="8" x2="19" y2="14"></line>
-            <line x1="22" y1="11" x2="16" y2="11"></line>
-          </svg>
           Nuevo Usuario
         </button>
       </div>
@@ -51,7 +43,7 @@
             <tr>
               <th>ID</th>
               <th>Nombre</th>
-              <th>Email</th>
+              <th>Correo</th>
               <th>Rol</th>
               <th>Estado</th>
               <th>Acciones</th>
@@ -60,52 +52,33 @@
           <tbody>
             <tr v-for="usuario in usuariosFiltrados" :key="usuario.id">
               <td>{{ usuario.id }}</td>
-              <td>{{ usuario.nombre }}</td>
-              <td>{{ usuario.email }}</td>
+              <td>{{ usuario.nombre }} {{ usuario.apellido }}</td>
+              <td>{{ usuario.correo || usuario.email || '-' }}</td>
               <td>
-                <span :class="['badge', `badge-${usuario.rol.toLowerCase()}`]">
+                <span :class="['badge', `badge-${(usuario.rol || '').toLowerCase()}`]">
                   {{ usuario.rol }}
                 </span>
               </td>
               <td>
-                <span :class="['estado', usuario.estado.toLowerCase()]">
-                  {{ usuario.estado }}
+                <span :class="['estado', (usuario.estado || '').toLowerCase()]">
+                  {{ usuario.estado || '—' }}
                 </span>
               </td>
               <td>
                 <div class="action-buttons">
-                  <button 
-                    class="btn-action editar"
-                    @click="handleEditar(usuario.id)"
-                    title="Editar"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                    </svg>
-                  </button>
-                  <button 
-                    class="btn-action eliminar"
-                    @click="handleEliminar(usuario.id)"
-                    title="Eliminar"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="3 6 5 6 21 6"></polyline>
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                    </svg>
-                  </button>
+                  <button class="btn-action editar" @click="handleEditar(usuario.id)">✏️</button>
+                  <button class="btn-action eliminar" @click="handleEliminar(usuario.id)">🗑️</button>
                 </div>
               </td>
             </tr>
           </tbody>
         </table>
-        
+
         <div v-if="usuariosFiltrados.length === 0" class="no-results">
           <p>No se encontraron usuarios</p>
         </div>
       </div>
 
-      <!-- Footer con info -->
       <div class="table-footer">
         <p>Mostrando {{ usuariosFiltrados.length }} de {{ usuarios.length }} usuarios</p>
       </div>
@@ -114,52 +87,68 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
-import { useRouter } from 'vue-router'; // Si usás Vue Router
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import axios from 'axios';
 
 const router = useRouter();
-
-// Estado reactivo
+const usuarios = ref([]);
 const searchTerm = ref('');
 const filterRole = ref('todos');
 
-// Datos de ejemplo
-const usuarios = ref([
-  { id: 1, nombre: 'Juan Pérez', email: 'juan@example.com', rol: 'Admin', estado: 'Activo' },
-  { id: 2, nombre: 'María García', email: 'maria@example.com', rol: 'Usuario', estado: 'Activo' },
-  { id: 3, nombre: 'Carlos López', email: 'carlos@example.com', rol: 'Moderador', estado: 'Inactivo' },
-  { id: 4, nombre: 'Ana Martínez', email: 'ana@example.com', rol: 'Usuario', estado: 'Activo' },
-  { id: 5, nombre: 'Pedro Sánchez', email: 'pedro@example.com', rol: 'Admin', estado: 'Activo' },
-]);
+const API_BASE = 'http://127.0.0.1:8000'; // si cambiás el puerto, actualizá acá
 
-// Computed para filtrado
+// Traer usuarios desde backend (res.data es un array según tu API)
+const fetchUsuarios = async () => {
+  try {
+    const res = await axios.get(`${API_BASE}/usuarios/api/usuarios/`, {
+      params: {
+        q: searchTerm.value || undefined,
+        rol: filterRole.value === 'todos' ? undefined : filterRole.value
+      }
+    });
+    // Respuesta: array directo
+    usuarios.value = Array.isArray(res.data) ? res.data : (res.data.usuarios || res.data.results || []);
+  } catch (err) {
+    console.error('Error al traer usuarios:', err);
+    // No queremos romper la app: dejamos usuarios como está
+  }
+};
+
+// computed: filtra por búsqueda y rol
 const usuariosFiltrados = computed(() => {
+  const q = (searchTerm.value || '').toLowerCase().trim();
   return usuarios.value.filter(u => {
-    const matchSearch = u.nombre.toLowerCase().includes(searchTerm.value.toLowerCase()) ||
-                        u.email.toLowerCase().includes(searchTerm.value.toLowerCase());
-    const matchRole = filterRole.value === 'todos' || u.rol === filterRole.value;
-    return matchSearch && matchRole;
+    const nombreCompleto = `${u.nombre || ''} ${u.apellido || ''}`.toLowerCase();
+    const correo = (u.correo || u.email || '').toString().toLowerCase();
+    const matchQ = !q || nombreCompleto.includes(q) || correo.includes(q);
+    const matchRol = filterRole.value === 'todos' || (u.rol || '') === filterRole.value;
+    return matchQ && matchRol;
   });
 });
 
-// Métodos
-const irCrearUsuario = () => {
-  router.push('/usuarios/crear'); // Ajustá la ruta según tu app
-};
-
-const handleEditar = (id) => {
-  router.push(`/usuarios/editar/${id}`); // O usá un modal
-};
-
-const handleEliminar = (id) => {
-  if (confirm('¿Estás seguro de eliminar este usuario?')) {
+const irCrearUsuario = () => router.push('/usuarios/crear');
+const handleEditar = (id) => router.push(`/usuarios/editar/${id}`);
+const handleEliminar = async (id) => {
+  if (!confirm('¿Estás seguro de eliminar este usuario?')) return;
+  try {
+    await axios.delete(`${API_BASE}/usuarios/api/usuarios/${id}/`);
     usuarios.value = usuarios.value.filter(u => u.id !== id);
+  } catch (err) {
+    console.error('Error al eliminar:', err);
+    alert('No se pudo eliminar el usuario.');
   }
 };
+
+onMounted(fetchUsuarios);
+watch([searchTerm, filterRole], () => {
+  // llamamos sin spamear demasiado: pequeña debounce simple opcional
+  fetchUsuarios();
+});
 </script>
 
 <style scoped>
-/* === BASE STYLES (colores de tu formulario.css) === */
+/* ==== RESTAURADO: estilos completos (tu CSS original adaptado) ==== */
 * {
   margin: 0;
   padding: 0;
@@ -215,7 +204,7 @@ const handleEliminar = (id) => {
               inset 0 1px 0 rgba(255, 255, 255, 0.1);
   padding: 48px;
   width: 100%;
-  max-width: 500px;
+  max-width: 1200px;
   position: relative;
   overflow: hidden;
   z-index: 10;
@@ -245,19 +234,9 @@ const handleEliminar = (id) => {
   100% { transform: translateX(100%); }
 }
 
-.usuarios-card {
-  max-width: 1200px;
-}
-
 @keyframes cardFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .form-title {
@@ -268,310 +247,78 @@ const handleEliminar = (id) => {
   background: linear-gradient(135deg, #ffffff 0%, #a0a0a0 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  background-clip: text;
   line-height: 1.2;
   letter-spacing: -1px;
 }
 
 .input-field {
   width: 100%;
-  padding: 15px 18px;
-  font-size: 15px;
-  border: 1.5px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.05);
-  color: #ffffff;
-  font-weight: 500;
+  padding: 12px 14px;
+  font-size: 14px;
+  border: 1.5px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  color: #fff;
   outline: none;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.input-field:focus {
-  border-color: rgba(0, 153, 255, 0.6);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px rgba(0, 153, 255, 0.2),
-              inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  transform: translateY(-2px);
-}
-
-.input-field::placeholder {
-  color: rgba(255, 255, 255, 0.3);
-}
-
-.submit-button {
-  width: auto;
-  padding: 16px 32px;
-  font-size: 16px;
-  font-weight: 700;
-  color: white;
-  background: linear-gradient(135deg, #0099ff 0%, #8a2be2 100%);
-  border: none;
-  border-radius: 16px;
-  cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 8px 32px rgba(0, 153, 255, 0.4),
-              inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  position: relative;
-  overflow: hidden;
-  letter-spacing: 0.5px;
-}
-
-.submit-button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  transition: left 0.5s;
-}
-
-.submit-button:hover::before {
-  left: 100%;
-}
-
-.submit-button:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 12px 48px rgba(0, 153, 255, 0.6),
-              0 0 60px rgba(138, 43, 226, 0.4);
-}
-
-.submit-button:active {
-  transform: translateY(-1px);
-}
-
-/* === ESTILOS ESPECÍFICOS DE LISTADO === */
 .actions-bar {
   display: flex;
-  gap: 15px;
-  margin-bottom: 25px;
+  gap: 12px;
+  margin-bottom: 20px;
+  align-items: center;
   flex-wrap: wrap;
-  align-items: center;
 }
 
-.search-wrapper {
-  flex: 1;
-  min-width: 250px;
-  position: relative;
-}
+.search-wrapper { flex: 1; min-width: 220px; position: relative; }
+.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: rgba(255,255,255,0.45); pointer-events: none; }
+.search-input { padding-left: 42px; }
 
-.search-icon {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: rgba(255, 255, 255, 0.5);
-  pointer-events: none;
-}
+.filter-wrapper { min-width: 180px; position: relative; }
+.filter-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: rgba(255,255,255,0.45); pointer-events: none; }
+.filter-select { padding-left: 42px; }
 
-.search-input {
-  padding-left: 48px;
-}
-
-.filter-wrapper {
-  position: relative;
-  min-width: 180px;
-}
-
-.filter-icon {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: rgba(255, 255, 255, 0.5);
-  pointer-events: none;
-}
-
-.filter-select {
-  padding-left: 48px;
-  cursor: pointer;
-}
-
-.btn-nuevo {
-  white-space: nowrap;
-}
-
-/* === TABLA === */
-.table-wrapper {
-  overflow-x: auto;
-  border-radius: 16px;
-  background: rgba(10, 10, 10, 0.4);
-}
-
-.usuarios-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  background: rgba(20, 20, 20, 0.6);
-  backdrop-filter: blur(10px);
-}
-
-.usuarios-table th,
-.usuarios-table td {
-  padding: 16px;
-  text-align: left;
-  color: #ffffff;
-  font-size: 15px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.usuarios-table th {
-  background: rgba(0, 0, 0, 0.4);
-  font-weight: 600;
-  text-transform: uppercase;
-  font-size: 13px;
-  letter-spacing: 0.5px;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.usuarios-table tbody tr {
-  transition: all 0.3s ease;
-}
-
-.usuarios-table tbody tr:hover {
-  background: rgba(0, 153, 255, 0.08);
-  transform: scale(1.01);
-}
-
-.usuarios-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-/* === BADGES Y ESTADOS === */
-.badge {
-  display: inline-block;
-  padding: 4px 12px;
+.submit-button {
+  padding: 12px 20px;
   border-radius: 12px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.badge-admin {
-  background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
-  color: white;
-}
-
-.badge-moderador {
-  background: linear-gradient(135deg, #4ecdc4, #44a08d);
-  color: white;
-}
-
-.badge-usuario {
-  background: linear-gradient(135deg, #a8e6cf, #56ab91);
-  color: #1a1a1a;
-}
-
-.estado {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.estado.activo {
-  background: rgba(46, 213, 115, 0.2);
-  color: #2ed573;
-  border: 1px solid #2ed573;
-}
-
-.estado.inactivo {
-  background: rgba(255, 71, 87, 0.2);
-  color: #ff4757;
-  border: 1px solid #ff4757;
-}
-
-/* === BOTONES DE ACCIÓN === */
-.action-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.btn-action {
-  padding: 8px;
+  background: linear-gradient(135deg,#0099ff 0%,#8a2be2 100%);
+  color: #fff;
   border: none;
-  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-.btn-action.editar {
-  background: linear-gradient(135deg, #0099ff, #00d4ff);
-  color: white;
-}
+/* tabla */
+.table-wrapper { overflow-x: auto; border-radius: 12px; background: rgba(10,10,10,0.35); padding: 8px; }
+.usuarios-table { width: 100%; border-collapse: collapse; min-width: 800px; }
+.usuarios-table th, .usuarios-table td { padding: 12px 14px; text-align: left; color: #fff; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.usuarios-table th { background: rgba(0,0,0,0.35); text-transform: uppercase; font-size: 12px; letter-spacing: 0.6px; }
+.usuarios-table tbody tr:hover { background: rgba(0,153,255,0.04); transform: translateY(-1px); }
 
-.btn-action.editar:hover {
-  transform: translateY(-2px) scale(1.05);
-  box-shadow: 0 8px 20px rgba(0, 153, 255, 0.4);
-}
+/* badges y estados */
+.badge { display:inline-block; padding: 4px 10px; border-radius: 12px; font-weight:700; font-size: 13px; }
+.badge-admin { background: linear-gradient(135deg,#ff6b6b,#ee5a6f); color:#fff; }
+.badge-rec { background: linear-gradient(135deg,#ffd166,#f6a609); color:#1a1a1a; }
+.badge-pel { background: linear-gradient(135deg,#4ecdc4,#44a08d); color:#fff; }
+.badge-cli { background: linear-gradient(135deg,#a8e6cf,#56ab91); color:#1a1a1a; }
 
-.btn-action.eliminar {
-  background: linear-gradient(135deg, #ff4757, #ff6348);
-  color: white;
-}
+.estado { display:inline-block; padding: 4px 10px; border-radius: 12px; font-weight:700; font-size: 13px; }
+.estado.pending { background: rgba(255,193,7,0.12); color:#ffc107; border:1px solid rgba(255,193,7,0.18); }
+.estado.activo { background: rgba(40,199,111,0.12); color:#28c76f; border:1px solid rgba(40,199,111,0.18); }
+.estado.inactivo { background: rgba(255,71,87,0.12); color:#ff4757; border:1px solid rgba(255,71,87,0.18); }
 
-.btn-action.eliminar:hover {
-  transform: translateY(-2px) scale(1.05);
-  box-shadow: 0 8px 20px rgba(255, 71, 87, 0.4);
-}
+.action-buttons { display:flex; gap:8px; }
+.btn-action { padding:8px; border-radius:8px; border:none; cursor:pointer; }
+.btn-action.editar { background: linear-gradient(135deg,#0099ff,#00d4ff); color:#fff; }
+.btn-action.eliminar { background: linear-gradient(135deg,#ff4757,#ff6348); color:#fff; }
 
-/* === NO RESULTS === */
-.no-results {
-  padding: 40px;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 16px;
-}
+.no-results { padding: 24px; text-align:center; color: rgba(255,255,255,0.6); }
 
-/* === FOOTER === */
-.table-footer {
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  text-align: center;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
-}
+.table-footer { margin-top:16px; text-align:center; color: rgba(255,255,255,0.6); }
 
-/* === RESPONSIVE === */
+/* responsive */
 @media (max-width: 768px) {
-  .form-card {
-    padding: 25px;
-  }
-
-  .form-title {
-    font-size: 24px;
-  }
-
-  .actions-bar {
-    flex-direction: column;
-  }
-
-  .search-wrapper,
-  .filter-wrapper {
-    width: 100%;
-  }
-
-  .usuarios-table {
-    font-size: 13px;
-  }
-
-  .usuarios-table th,
-  .usuarios-table td {
-    padding: 10px 8px;
-  }
-
-  .badge,
-  .estado {
-    font-size: 11px;
-    padding: 3px 8px;
-  }
+  .form-card { padding: 22px; }
+  .usuarios-table { font-size: 13px; min-width: 600px; }
+  .search-wrapper, .filter-wrapper { width: 100%; }
 }
 </style>

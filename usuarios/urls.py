@@ -2,6 +2,7 @@
 from django.urls import path
 from . import views
 from . import api_views
+from .api_views import UsuarioListAPIView
 
 urlpatterns = [
     # Usuarios
@@ -21,5 +22,7 @@ urlpatterns = [
     path('api/servicios/', api_views.ServicioListAPIView.as_view(), name='api-servicios'),
     path('api/turnos/', api_views.TurnoListAPIView.as_view(), name='api-turnos'),
     path('api/peluqueros/', api_views.PeluqueroListAPIView.as_view(), name='api-peluqueros'),
-    path('api/clientes/', api_views.ClienteListAPIView.as_view(), name='api-clientes'),
+    path('api/usuarios/', api_views.UsuarioListAPIView.as_view(), name='api-usuarios'),
+
 ]
+

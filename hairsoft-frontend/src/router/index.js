@@ -5,10 +5,10 @@ import RegistrarUsuario from '../views/RegistrarUsuario.vue'
 import ListadoUsuarios from '../views/ListadoUsuarios.vue'
 
 const routes = [
+  // Ruta principal (home)
   {
     path: '/',
-    name: 'RegistrarTurno',
-    component: RegistrarTurno
+    redirect: '/usuarios'  // redirige automáticamente al listado
   },
   {
     path: '/login',
@@ -16,14 +16,19 @@ const routes = [
     component: Login
   },
   {
+    path: '/usuarios',
+    name: 'Usuarios',
+    component: ListadoUsuarios
+  },
+  {
     path: '/usuarios/crear',
     name: 'RegistrarUsuario',
     component: RegistrarUsuario
   },
   {
-    path: '/usuarios',
-    name: 'ListadoUsuarios',
-    component: ListadoUsuarios
+    path: '/turnos/registrar',
+    name: 'RegistrarTurno',
+    component: RegistrarTurno
   }
 ]
 

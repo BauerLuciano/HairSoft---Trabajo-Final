@@ -10,7 +10,7 @@ class ServicioListAPIView(generics.ListAPIView):
     serializer_class = ServicioSerializer
     permission_classes = [AllowAny]
 
-# Turnos (listar y crear)
+# Turnos
 class TurnoListAPIView(generics.ListCreateAPIView):
     queryset = Turno.objects.all()
     serializer_class = TurnoSerializer
@@ -22,14 +22,18 @@ class PeluqueroListAPIView(generics.ListAPIView):
     serializer_class = UsuarioSerializer
     permission_classes = [AllowAny]
 
-# Clientes (con búsqueda opcional)
-class ClienteListAPIView(generics.ListAPIView):
+# TODOS los usuarios (con filtro opcional)
+class UsuarioListAPIView(generics.ListAPIView):
+    queryset = Usuario.objects.all()
     serializer_class = UsuarioSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        queryset = Usuario.objects.filter(rol='CLI')
+        queryset = Usuario.objects.all()
         q = self.request.GET.get('q')
+        rol = self.request.GET.get('rol')
+        if rol:
+            queryset = queryset.filter(rol=rol)
         if q:
             queryset = queryset.filter(nombre__icontains=q) | queryset.filter(apellido__icontains=q)
         return queryset
