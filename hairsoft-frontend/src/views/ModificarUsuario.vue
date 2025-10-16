@@ -2,11 +2,11 @@
   <div class="user-form">
     <div class="form-card">
       <div class="form-header">
-        <h1>Registrar Usuario</h1>
-        <p>Completa los datos del usuario</p>
+        <h1>Modificar Usuario</h1>
+        <p>Edita los datos del usuario</p>
       </div>
 
-      <form @submit.prevent="crearUsuario" class="form">
+      <form @submit.prevent="actualizarUsuario" class="form">
         <div class="form-grid">
           <!-- Nombre -->
           <div class="input-group">
@@ -16,11 +16,7 @@
               type="text" 
               placeholder="Ingrese el nombre" 
               required 
-              @input="validarNombre"
-              @blur="mostrarErrorNombre"
             />
-            <div class="error-message" v-if="errores.nombre">{{ errores.nombre }}</div>
-            <div class="input-decoration"></div>
           </div>
 
           <!-- Apellido -->
@@ -31,11 +27,7 @@
               type="text" 
               placeholder="Ingrese el apellido" 
               required 
-              @input="validarApellido"
-              @blur="mostrarErrorApellido"
             />
-            <div class="error-message" v-if="errores.apellido">{{ errores.apellido }}</div>
-            <div class="input-decoration"></div>
           </div>
 
           <!-- DNI -->
@@ -46,12 +38,8 @@
               type="text" 
               placeholder="Ingrese el DNI" 
               required 
-              @input="validarDNI"
-              @blur="mostrarErrorDNI"
               maxlength="8"
             />
-            <div class="error-message" v-if="errores.dni">{{ errores.dni }}</div>
-            <div class="input-decoration"></div>
           </div>
 
           <!-- Teléfono -->
@@ -61,12 +49,8 @@
               v-model="form.telefono" 
               type="text" 
               placeholder="Ingrese el teléfono" 
-              @input="validarTelefono"
-              @blur="mostrarErrorTelefono"
               maxlength="15"
             />
-            <div class="error-message" v-if="errores.telefono">{{ errores.telefono }}</div>
-            <div class="input-decoration"></div>
           </div>
 
           <!-- Correo -->
@@ -77,26 +61,27 @@
               type="email" 
               placeholder="Ingrese el correo electrónico" 
               required 
-              @input="validarCorreo"
-              @blur="mostrarErrorCorreo"
             />
-            <div class="error-message" v-if="errores.correo">{{ errores.correo }}</div>
-            <div class="input-decoration"></div>
           </div>
 
-          <!-- Contraseña -->
+          <!-- Contraseña actual -->
           <div class="input-group">
-            <label>Contraseña <span class="required">*</span></label>
+            <label>Contraseña actual</label>
             <input 
-              v-model="form.contrasena" 
+              v-model="form.contrasena_actual" 
               type="password" 
-              placeholder="Ingrese la contraseña" 
-              required 
-              @input="validarContrasena"
-              @blur="mostrarErrorContrasena"
+              placeholder="Ingrese la contraseña actual (solo si cambia contraseña)" 
             />
-            <div class="error-message" v-if="errores.contrasena">{{ errores.contrasena }}</div>
-            <div class="input-decoration"></div>
+          </div>
+
+          <!-- Nueva contraseña -->
+          <div class="input-group">
+            <label>Nueva Contraseña</label>
+            <input 
+              v-model="form.nueva_contrasena" 
+              type="password" 
+              placeholder="Ingrese nueva contraseña (opcional)" 
+            />
           </div>
 
           <!-- Rol -->
@@ -104,7 +89,7 @@
             <label>Rol <span class="required">*</span></label>
             <select v-model="form.rol" required>
               <option value="">Seleccionar rol</option>
-              <option value="ADMIN">Administrador</option>
+              <option value="ADMINISTRADOR">Administrador</option>
               <option value="RECEPCIONISTA">Recepcionista</option>
               <option value="PELUQUERO">Peluquero</option>
               <option value="CLIENTE">Cliente</option>
@@ -113,8 +98,11 @@
           </div>
 
           <div class="full-width">
+            <div class="error-message" v-if="errorMessage">
+              {{ errorMessage }}
+            </div>
             <button type="submit" class="submit-btn">
-              <span class="btn-text">Guardar Usuario</span>
+              <span class="btn-text">Actualizar Usuario</span>
               <span class="btn-icon">→</span>
             </button>
           </div>
@@ -125,238 +113,182 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
 
 const router = useRouter()
+const route = useRoute()
 const API_BASE = 'http://127.0.0.1:8000'
 
+const usuarioId = ref(route.params.id)
 const form = ref({
   nombre: '',
   apellido: '',
   dni: '',
   telefono: '',
   correo: '',
-  contrasena: '',
+  contrasena_actual: '',
+  nueva_contrasena: '',
   rol: ''
 })
+const errorMessage = ref('')
 
-const usuarios = ref([])
-const errores = reactive({
-  nombre: '',
-  apellido: '',
-  dni: '',
-  telefono: '',
-  correo: '',
-  contrasena: ''
-})
-
-// Expresiones regulares para validación
-const regexSoloLetras = /^[A-Za-zÁáÉéÍíÓóÚúÑñ\s]+$/
-const regexSoloNumeros = /^\d+$/
-const regexEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const regexAlfanumerico = /^[A-Za-z0-9]+$/
-
-// Funciones de validación
-const validarNombre = () => {
-  if (!regexSoloLetras.test(form.value.nombre) && form.value.nombre !== '') {
-    errores.nombre = 'El nombre solo puede contener letras y espacios'
-  } else {
-    errores.nombre = ''
-  }
-}
-
-const validarApellido = () => {
-  if (!regexSoloLetras.test(form.value.apellido) && form.value.apellido !== '') {
-    errores.apellido = 'El apellido solo puede contener letras y espacios'
-  } else {
-    errores.apellido = ''
-  }
-}
-
-const validarDNI = () => {
-  form.value.dni = form.value.dni.replace(/\D/g, '')
-  
-  if (form.value.dni.length !== 8 && form.value.dni !== '') {
-    errores.dni = 'El DNI debe tener 8 dígitos'
-  } else {
-    errores.dni = ''
-  }
-}
-
-const validarTelefono = () => {
-  form.value.telefono = form.value.telefono.replace(/\D/g, '')
-  
-  if (form.value.telefono.length < 8 && form.value.telefono !== '') {
-    errores.telefono = 'El teléfono debe tener al menos 8 dígitos'
-  } else {
-    errores.telefono = ''
-  }
-}
-
-const validarCorreo = () => {
-  if (!regexEmail.test(form.value.correo) && form.value.correo !== '') {
-    errores.correo = 'Ingrese un correo electrónico válido'
-  } else {
-    errores.correo = ''
-  }
-}
-
-const validarContrasena = () => {
-  if (!regexAlfanumerico.test(form.value.contrasena) && form.value.contrasena !== '') {
-    errores.contrasena = 'La contraseña solo puede contener letras y números'
-  } else if (form.value.contrasena.length < 6 && form.value.contrasena !== '') {
-    errores.contrasena = 'La contraseña debe tener al menos 6 caracteres'
-  } else {
-    errores.contrasena = ''
-  }
-}
-
-// Mostrar errores al salir del campo
-const mostrarErrorNombre = () => {
-  if (!regexSoloLetras.test(form.value.nombre) && form.value.nombre !== '') {
-    errores.nombre = 'El nombre solo puede contener letras y espacios'
-  }
-}
-
-const mostrarErrorApellido = () => {
-  if (!regexSoloLetras.test(form.value.apellido) && form.value.apellido !== '') {
-    errores.apellido = 'El apellido solo puede contener letras y espacios'
-  }
-}
-
-const mostrarErrorDNI = () => {
-  if (form.value.dni.length !== 8 && form.value.dni !== '') {
-    errores.dni = 'El DNI debe tener 8 dígitos'
-  }
-}
-
-const mostrarErrorTelefono = () => {
-  if (form.value.telefono.length < 8 && form.value.telefono !== '') {
-    errores.telefono = 'El teléfono debe tener al menos 8 dígitos'
-  }
-}
-
-const mostrarErrorCorreo = () => {
-  if (!regexEmail.test(form.value.correo) && form.value.correo !== '') {
-    errores.correo = 'Ingrese un correo electrónico válido'
-  }
-}
-
-const mostrarErrorContrasena = () => {
-  if (!regexAlfanumerico.test(form.value.contrasena) && form.value.contrasena !== '') {
-    errores.contrasena = 'La contraseña solo puede contener letras y números'
-  } else if (form.value.contrasena.length < 6 && form.value.contrasena !== '') {
-    errores.contrasena = 'La contraseña debe tener al menos 6 caracteres'
-  }
-}
-
-// Validación general antes de enviar
-const validarFormulario = () => {
-  let valido = true
-  
-  Object.keys(errores).forEach(key => { errores[key] = '' })
-  
-  if (!regexSoloLetras.test(form.value.nombre)) {
-    errores.nombre = 'El nombre es requerido y solo puede contener letras'
-    valido = false
-  }
-  
-  if (!regexSoloLetras.test(form.value.apellido)) {
-    errores.apellido = 'El apellido es requerido y solo puede contener letras'
-    valido = false
-  }
-  
-  if (!regexSoloNumeros.test(form.value.dni) || form.value.dni.length !== 8) {
-    errores.dni = 'El DNI es requerido y debe tener 8 dígitos'
-    valido = false
-  }
-  
-  if (form.value.telefono && (!regexSoloNumeros.test(form.value.telefono) || form.value.telefono.length < 8)) {
-    errores.telefono = 'El teléfono debe contener solo números y tener al menos 8 dígitos'
-    valido = false
-  }
-  
-  if (!regexEmail.test(form.value.correo)) {
-    errores.correo = 'Ingrese un correo electrónico válido'
-    valido = false
-  }
-  
-  if (!regexAlfanumerico.test(form.value.contrasena) || form.value.contrasena.length < 6) {
-    errores.contrasena = 'La contraseña debe tener al menos 6 caracteres alfanuméricos'
-    valido = false
-  }
-  
-  return valido
-}
-
-onMounted(async () => {
-  await cargarUsuarios()
-})
-
-const cargarUsuarios = async () => {
+// Cargar datos del usuario
+const cargarUsuario = async () => {
   try {
+    console.log('🔄 Cargando usuario ID:', usuarioId.value)
     const res = await axios.get(`${API_BASE}/usuarios/api/usuarios/`)
-    usuarios.value = res.data
-  } catch (error) {
-    console.error('Error al cargar usuarios:', error)
-  }
-}
-
-const crearUsuario = async () => {
-  if (!validarFormulario()) {
-    alert('❌ Por favor corrige los errores en el formulario')
-    return
-  }
-
-  if (form.value.rol === 'ADMIN') {
-    await cargarUsuarios()
+    const todosLosUsuarios = res.data
     
-    const administradoresExistentes = usuarios.value.filter(usuario => {
-      const rol = usuario.rol ? usuario.rol.toString().toUpperCase() : ''
-      return rol === 'ADMIN' || rol === 'ADMINISTRADOR'
-    })
-
-    if (administradoresExistentes.length > 0) {
-      alert(`❌ Ya existen ${administradoresExistentes.length} administrador(es) en el sistema. No se puede crear otro.`)
+    const usuario = todosLosUsuarios.find(u => u.id == usuarioId.value)
+    
+    if (!usuario) {
+      console.error('❌ Usuario no encontrado para ID:', usuarioId.value)
+      errorMessage.value = 'Usuario no encontrado'
+      router.push('/usuarios')
       return
     }
+    
+    console.log('✅ Usuario encontrado:', usuario)
+    
+    // Mapear roles abreviados de la API a los valores completos del modelo
+    const rolMap = {
+      'ADMIN': 'ADMINISTRADOR',
+      'REC': 'RECEPCIONISTA',
+      'PEL': 'PELUQUERO',
+      'CLI': 'CLIENTE'
+    }
+    const rolFinal = usuario.rol ? rolMap[usuario.rol.toUpperCase()] || 'CLIENTE' : 'CLIENTE'
+    
+    // Cargar datos
+    form.value.nombre = usuario.nombre || ''
+    form.value.apellido = usuario.apellido || ''
+    form.value.dni = usuario.dni || ''
+    form.value.telefono = usuario.telefono || ''
+    form.value.correo = usuario.correo || ''
+    form.value.contrasena_actual = ''
+    form.value.nueva_contrasena = ''
+    form.value.rol = rolFinal
+    
+    console.log('🎯 Rol asignado al form:', form.value.rol)
+  } catch (error) {
+    console.error('❌ Error al cargar usuario:', error)
+    console.error('📊 Status:', error.response?.status)
+    console.error('📝 Data:', JSON.stringify(error.response?.data, null, 2))
+    errorMessage.value = 'Error al cargar los datos del usuario: ' + (error.response?.data?.detail || error.message)
   }
+}
 
+// Verificar si ya existe un administrador
+const checkExistingAdmin = async () => {
+  if (form.value.rol !== 'ADMINISTRADOR') return true // No hay restricción si no es ADMINISTRADOR
   try {
+    console.log('🔍 Verificando si ya existe un administrador...')
+    const res = await axios.get(`${API_BASE}/usuarios/api/usuarios/`)
+    const usuarios = res.data
+    const adminExists = usuarios.some(u => u.rol === 'ADMIN' && u.id !== parseInt(usuarioId.value))
+    console.log('¿Existe administrador?', adminExists)
+    return !adminExists
+  } catch (err) {
+    console.error('❌ Error al verificar administradores:', err)
+    console.error('📝 Data:', JSON.stringify(err.response?.data, null, 2))
+    errorMessage.value = 'Error al verificar administradores'
+    return false
+  }
+}
+
+// Validar formulario antes de enviar
+const validarFormulario = () => {
+  if (!form.value.nombre || !form.value.apellido || !form.value.dni || !form.value.correo || !form.value.rol) {
+    errorMessage.value = 'Complete todos los campos obligatorios'
+    return false
+  }
+  
+  if (form.value.dni.length !== 8) {
+    errorMessage.value = 'El DNI debe tener 8 dígitos'
+    return false
+  }
+  
+  if (form.value.nueva_contrasena && !form.value.contrasena_actual) {
+    errorMessage.value = 'Para cambiar la contraseña, debe ingresar la contraseña actual'
+    return false
+  }
+  
+  return true
+}
+
+// Actualizar usuario
+const actualizarUsuario = async () => {
+  if (!validarFormulario()) {
+    return
+  }
+  
+  // Verificar si se puede asignar el rol ADMINISTRADOR
+  const canAssignAdmin = await checkExistingAdmin()
+  if (!canAssignAdmin) {
+    errorMessage.value = 'Solo puede existir un administrador. Por favor, elija otro rol.'
+    return
+  }
+  
+  try {
+    console.log('🔄 Actualizando usuario ID:', usuarioId.value)
+    
+    // Preparar payload
     const payload = {
       nombre: form.value.nombre,
       apellido: form.value.apellido,
       dni: form.value.dni,
       telefono: form.value.telefono || '',
       correo: form.value.correo,
-      contrasena: form.value.contrasena,
-      rol: form.value.rol,
-      estado: 'ACTIVO'
+      rol: form.value.rol
     }
-
-    await axios.post(`${API_BASE}/usuarios/api/usuarios/crear/`, payload)
-    alert('✅ Usuario registrado con éxito')
-    router.push('/usuarios')
     
+    // Agregar contraseñas solo si se está cambiando
+    if (form.value.nueva_contrasena && form.value.contrasena_actual) {
+      payload.contrasena = form.value.nueva_contrasena
+      payload.contrasena_actual = form.value.contrasena_actual
+    }
+    
+    console.log('📦 Payload:', JSON.stringify(payload, null, 2))
+    
+    // Probar con POST (según la vista editar_usuario)
+    const response = await axios.post(`${API_BASE}/usuarios/api/usuarios/editar/${usuarioId.value}/`, payload)
+    
+    console.log('✅ Respuesta del servidor:', JSON.stringify(response.data, null, 2))
+    alert('✅ Usuario actualizado con éxito')
+    router.push('/usuarios')
   } catch (err) {
-    console.error('Error:', err)
+    console.error('❌ Error completo:', err)
+    console.error('📊 Status:', err.response?.status)
+    console.error('📝 Data:', JSON.stringify(err.response?.data, null, 2))
     
     if (err.response?.status === 400) {
-      const errors = err.response.data.errors
-      if (errors.correo) {
-        alert('❌ El correo ya está registrado.')
+      const errors = err.response.data.errors || err.response.data
+      let errorMsg = 'Error en los datos: '
+      if (errors.rol) {
+        errorMsg += `Rol - ${errors.rol.join(' ')}`
+      } else if (errors.contrasena) {
+        errorMsg += `Contraseña - ${errors.contrasena.join(' ')}`
+      } else if (errors.contrasena_actual) {
+        errorMsg += `Contraseña actual - ${errors.contrasena_actual.join(' ')}`
       } else if (errors.dni) {
-        alert('❌ El DNI ya está registrado.')
+        errorMsg += `DNI - ${errors.dni.join(' ')}`
+      } else if (errors.correo) {
+        errorMsg += `Correo - ${errors.correo.join(' ')}`
       } else {
-        alert('❌ Datos inválidos.')
+        errorMsg += JSON.stringify(errors, null, 2)
       }
+      errorMessage.value = errorMsg
     } else {
-      alert('❌ Error: ' + (err.response?.data?.message || err.message))
+      errorMessage.value = 'No se pudo actualizar el usuario: ' + (err.response?.data?.detail || err.message)
     }
   }
 }
+
+onMounted(() => {
+  cargarUsuario()
+})
 </script>
 
 <style scoped>
@@ -405,7 +337,6 @@ const crearUsuario = async () => {
   font-weight: 800;
   color: #ffffff;
   margin-bottom: 12px;
-  letter-spacing: -0.5px;
 }
 
 .form-header p {
@@ -443,7 +374,6 @@ label {
   font-weight: 700;
 }
 
-/* SOLO aplicamos !important a las propiedades críticas */
 input, select {
   width: 100%;
   padding: 16px 20px;
@@ -513,6 +443,14 @@ select option {
   background: #1f2937 !important;
   color: #ffffff !important;
   padding: 12px;
+}
+
+.error-message {
+  color: #ef4444;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: center;
+  margin-bottom: 15px;
 }
 
 .submit-btn {
@@ -639,6 +577,10 @@ body.light-mode .submit-btn {
 
 body.light-mode .submit-btn:hover {
   background: #333333;
+}
+
+body.light-mode .error-message {
+  color: #dc2626;
 }
 
 /* Responsive */

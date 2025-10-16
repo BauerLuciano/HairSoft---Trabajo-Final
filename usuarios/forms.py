@@ -4,9 +4,7 @@ from django.utils import timezone
 from .models import Turno, Usuario, Servicio
 from datetime import datetime, timedelta
 
-
 class TurnoForm(forms.ModelForm):
-    # Campo de servicios como checkboxes
     servicios = forms.ModelMultipleChoiceField(
         queryset=Servicio.objects.all(),
         widget=forms.CheckboxSelectMultiple,
@@ -19,16 +17,11 @@ class TurnoForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        # Limitar fechas de hoy hasta 7 días
         hoy = timezone.localdate()
         limite = hoy + timedelta(days=7)
         self.fields['fecha'].widget.attrs['min'] = hoy.isoformat()
         self.fields['fecha'].widget.attrs['max'] = limite.isoformat()
-        
-        # Mostrar solo peluqueros en el campo peluquero
-        self.fields['peluquero'].queryset = Usuario.objects.filter(rol='PEL')
-
+        self.fields['peluquero'].queryset = Usuario.objects.filter(rol='PELUQUERO')
 
     def clean(self):
         cleaned_data = super().clean()
@@ -39,15 +32,10 @@ class TurnoForm(forms.ModelForm):
         hoy = timezone.localdate()
         ahora = timezone.localtime().time()
 
-        # Fecha no puede ser en el pasado
         if fecha and fecha < hoy:
             self.add_error("fecha", "La fecha no puede ser en el pasado.")
-
-        # Si la fecha es hoy, la hora debe ser futura
         if fecha == hoy and hora and hora <= ahora:
             self.add_error("hora", "La hora debe ser mayor a la actual.")
-
-        # Validar que el peluquero no tenga dos turnos a la vez
         if fecha and hora and peluquero:
             conflicto = Turno.objects.filter(fecha=fecha, hora=hora, peluquero=peluquero)
             if self.instance.pk:
@@ -57,24 +45,31 @@ class TurnoForm(forms.ModelForm):
 
         return cleaned_data
 
-
 class UsuarioForm(forms.ModelForm):
+    contrasena = forms.CharField(required=False, widget=forms.PasswordInput)
+    contrasena_actual = forms.CharField(required=False, widget=forms.PasswordInput)
+
     class Meta:
         model = Usuario
-        fields = ['nombre', 'apellido', 'dni', 'contrasena', 'telefono', 'correo', 'rol']
+        fields = ['nombre', 'apellido', 'dni', 'contrasena', 'telefono', 'correo', 'rol', 'contrasena_actual']
 
     def clean_rol(self):
         rol = self.cleaned_data['rol']
-        if rol == "ADMIN" and Usuario.objects.filter(rol="ADMIN").exists():
+        if rol == "ADMINISTRADOR" and Usuario.objects.filter(rol="ADMINISTRADOR").exclude(pk=self.instance.pk).exists():
             raise forms.ValidationError("Ya existe un administrador. No puede haber más de uno.")
         return rol
 
-def crear_turno(request):
-    if request.method == 'POST':
-        form = TurnoForm(request.POST)
-        if form.is_valid():
-            form.save()
-            return redirect('listado_turnos')
-    else:
-        form = TurnoForm()
-    return render(request, 'usuarios/registrar_turno.html', {'form': form})
+    def clean(self):
+        cleaned_data = super().clean()
+        contrasena = cleaned_data.get('contrasena')
+        contrasena_actual = cleaned_data.get('contrasena_actual')
+
+        # Si es un usuario nuevo, la contraseña es obligatoria
+        if not self.instance.pk and not contrasena:
+            raise forms.ValidationError({"contrasena": "La contraseña es obligatoria al crear un usuario."})
+
+        # Si se proporciona una nueva contraseña, validar contrasena_actual
+        if contrasena and not contrasena_actual:
+            raise forms.ValidationError({"contrasena_actual": "Debe proporcionar la contraseña actual para cambiar la contraseña."})
+
+        return cleaned_data

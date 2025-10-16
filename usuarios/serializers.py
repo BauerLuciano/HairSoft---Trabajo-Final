@@ -4,8 +4,7 @@ from .models import Usuario, Turno, Servicio
 class UsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuario
-        fields = '__all__'
-
+        fields = ['id', 'nombre', 'apellido', 'dni', 'telefono', 'correo', 'contrasena', 'rol', 'estado', 'fecha_creacion']
 
 class ServicioSerializer(serializers.ModelSerializer):
     class Meta:

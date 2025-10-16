@@ -22,13 +22,13 @@ from django.shortcuts import redirect
 from usuarios import views as usuarios_views
 
 urlpatterns = [
-    path('', lambda request: redirect('listado_turnos')),  # raíz redirige al listado de usuarios
+    path('', lambda request: redirect('/usuarios/api/usuarios/')),  # raíz redirige al listado de usuarios
     path('usuarios/', include('usuarios.urls')),
     path('admin/', admin.site.urls),
 
     # URLs de turnos
-    path('turnos/', usuarios_views.listado_turnos, name='listado_turnos'),
-    path('turnos/nuevo/', usuarios_views.crear_turno, name='crear_turno'),
-    path('turnos/editar/<int:pk>/', usuarios_views.editar_turno, name='editar_turno'),
-    path('turnos/eliminar/<int:pk>/', usuarios_views.eliminar_turno, name='eliminar_turno'),
+    #path('turnos/', usuarios_views.listado_turnos, name='listado_turnos'),
+    #path('turnos/nuevo/', usuarios_views.crear_turno, name='crear_turno'),
+    #path('turnos/editar/<int:pk>/', usuarios_views.editar_turno, name='editar_turno'),
+    #path('turnos/eliminar/<int:pk>/', usuarios_views.eliminar_turno, name='eliminar_turno'),
 ]
