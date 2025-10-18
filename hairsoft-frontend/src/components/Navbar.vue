@@ -3,7 +3,7 @@
     <!-- Logo / Nombre -->
     <div class="navbar-left">
       <div class="logo-container">
-        <img src="@/assets/logo.jpg" alt="HairSoft Logo" class="logo" />
+        <img :src="logo" alt="HairSoft Logo" class="logo" />
         <div class="logo-glow"></div>
       </div>
       <span class="brand-name">HairSoft</span>
@@ -48,7 +48,7 @@
       <!-- Usuario -->
       <div class="user-info">
         <div class="user-avatar-container">
-          <img src="@/assets/usuario.png" alt="Usuario" class="user-img" />
+          <img :src="usuarioImg" alt="Usuario" class="user-img" />
           <span class="user-status" :class="{ online: usuario.online }"></span>
         </div>
         <span class="user-name">{{ usuario.nombre }}</span>
@@ -60,6 +60,8 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
+import logo from '@/assets/logo.jpg';
+import usuarioImg from '@/assets/usuario.png';
 
 const router = useRouter();
 
@@ -69,7 +71,8 @@ const modulos = [
   { name: 'Servicios', path: '/servicios' },
   { name: 'Productos', path: '/productos' },
   { name: 'Ventas', path: '/ventas' },
-  { name: 'Proveedores', path: '/proveedores' }
+  { name: 'Proveedores', path: '/proveedores' },
+  { name: 'Categorías', path: '/categorias' }
 ];
 
 const usuario = ref({
@@ -101,6 +104,7 @@ onMounted(() => {
   }
 });
 </script>
+
 
 <style scoped>
 /* Navbar principal - SIEMPRE OSCURO (no cambia con el tema) */

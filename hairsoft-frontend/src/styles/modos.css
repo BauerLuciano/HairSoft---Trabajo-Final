@@ -1,0 +1,49 @@
+/*Contiene el modo claro (y se puede extender a 
+modo oscuro si querés alternar con un toggle).*/
+
+/* styles/modos.css */
+
+/* 🌞 Modo claro */
+body.light-mode .list-card {
+  background: #ffffff;
+  border: 2px solid #000000;
+}
+
+body.light-mode .list-card::before {
+  background: linear-gradient(90deg, #000000, #333333, #000000);
+}
+
+body.light-mode .header-content h1 {
+  color: #000000;
+}
+
+body.light-mode .header-content p {
+  color: #666666;
+}
+
+body.light-mode .filter-group label {
+  color: #374151;
+}
+
+body.light-mode .filter-input,
+body.light-mode .filter-select {
+  background: #565656;
+  border: 2px solid #d1d5db;
+  color: #000000;
+}
+
+body.light-mode .table-container {
+  border-color: #d1d5db;
+  background: #f8fafc;
+}
+
+body.light-mode .users-table th {
+  background: #e5e7eb;
+  color: #1f2937;
+  border-bottom-color: #d1d5db;
+}
+
+body.light-mode .users-table td {
+  color: #374151;
+  border-bottom-color: #e5e7eb;
+}

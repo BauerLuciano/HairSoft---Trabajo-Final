@@ -89,6 +89,9 @@ DATABASES = {
         'PASSWORD': 'admin',      # tu contraseña
         'HOST': 'localhost',      # si PostgreSQL está en tu máquina
         'PORT': '5433',           # el puerto que instalaste
+        'OPTIONS': {
+            'options': '-c search_path=public'
+        }
     }
 }
 

@@ -11,77 +11,43 @@
           <!-- Nombre -->
           <div class="input-group">
             <label>Nombre <span class="required">*</span></label>
-            <input 
-              v-model="form.nombre" 
-              type="text" 
-              placeholder="Ingrese el nombre" 
-              required 
-            />
+            <input v-model="form.nombre" type="text" placeholder="Ingrese el nombre" required />
           </div>
 
           <!-- Apellido -->
           <div class="input-group">
             <label>Apellido <span class="required">*</span></label>
-            <input 
-              v-model="form.apellido" 
-              type="text" 
-              placeholder="Ingrese el apellido" 
-              required 
-            />
+            <input v-model="form.apellido" type="text" placeholder="Ingrese el apellido" required />
           </div>
 
           <!-- DNI -->
           <div class="input-group">
             <label>DNI <span class="required">*</span></label>
-            <input 
-              v-model="form.dni" 
-              type="text" 
-              placeholder="Ingrese el DNI" 
-              required 
-              maxlength="8"
-            />
+            <input v-model="form.dni" type="text" placeholder="Ingrese el DNI" required maxlength="8" />
           </div>
 
           <!-- Teléfono -->
           <div class="input-group">
             <label>Teléfono</label>
-            <input 
-              v-model="form.telefono" 
-              type="text" 
-              placeholder="Ingrese el teléfono" 
-              maxlength="15"
-            />
+            <input v-model="form.telefono" type="text" placeholder="Ingrese el teléfono" maxlength="15" />
           </div>
 
           <!-- Correo -->
           <div class="input-group">
             <label>Correo <span class="required">*</span></label>
-            <input 
-              v-model="form.correo" 
-              type="email" 
-              placeholder="Ingrese el correo electrónico" 
-              required 
-            />
+            <input v-model="form.correo" type="email" placeholder="Ingrese el correo electrónico" required />
           </div>
 
           <!-- Contraseña actual -->
           <div class="input-group">
             <label>Contraseña actual</label>
-            <input 
-              v-model="form.contrasena_actual" 
-              type="password" 
-              placeholder="Ingrese la contraseña actual (solo si cambia contraseña)" 
-            />
+            <input v-model="form.contrasena_actual" type="password" placeholder="Ingrese la contraseña actual (solo si cambia contraseña)" />
           </div>
 
           <!-- Nueva contraseña -->
           <div class="input-group">
             <label>Nueva Contraseña</label>
-            <input 
-              v-model="form.nueva_contrasena" 
-              type="password" 
-              placeholder="Ingrese nueva contraseña (opcional)" 
-            />
+            <input v-model="form.nueva_contrasena" type="password" placeholder="Ingrese nueva contraseña (opcional)" />
           </div>
 
           <!-- Rol -->
@@ -98,9 +64,7 @@
           </div>
 
           <div class="full-width">
-            <div class="error-message" v-if="errorMessage">
-              {{ errorMessage }}
-            </div>
+            <div class="error-message" v-if="errorMessage">{{ errorMessage }}</div>
             <button type="submit" class="submit-btn">
               <span class="btn-text">Actualizar Usuario</span>
               <span class="btn-icon">→</span>
@@ -130,38 +94,27 @@ const form = ref({
   correo: '',
   contrasena_actual: '',
   nueva_contrasena: '',
-  rol: ''
+  rol: '',
+  estado: 'ACTIVO'
 })
 const errorMessage = ref('')
 
 // Cargar datos del usuario
 const cargarUsuario = async () => {
   try {
-    console.log('🔄 Cargando usuario ID:', usuarioId.value)
     const res = await axios.get(`${API_BASE}/usuarios/api/usuarios/`)
     const todosLosUsuarios = res.data
-    
     const usuario = todosLosUsuarios.find(u => u.id == usuarioId.value)
-    
     if (!usuario) {
-      console.error('❌ Usuario no encontrado para ID:', usuarioId.value)
       errorMessage.value = 'Usuario no encontrado'
       router.push('/usuarios')
       return
     }
-    
-    console.log('✅ Usuario encontrado:', usuario)
-    
-    // Mapear roles abreviados de la API a los valores completos del modelo
-    const rolMap = {
-      'ADMIN': 'ADMINISTRADOR',
-      'REC': 'RECEPCIONISTA',
-      'PEL': 'PELUQUERO',
-      'CLI': 'CLIENTE'
-    }
+
+    // Mapear roles
+    const rolMap = { 'ADMIN': 'ADMINISTRADOR', 'REC': 'RECEPCIONISTA', 'PEL': 'PELUQUERO', 'CLI': 'CLIENTE' }
     const rolFinal = usuario.rol ? rolMap[usuario.rol.toUpperCase()] || 'CLIENTE' : 'CLIENTE'
-    
-    // Cargar datos
+
     form.value.nombre = usuario.nombre || ''
     form.value.apellido = usuario.apellido || ''
     form.value.dni = usuario.dni || ''
@@ -170,126 +123,94 @@ const cargarUsuario = async () => {
     form.value.contrasena_actual = ''
     form.value.nueva_contrasena = ''
     form.value.rol = rolFinal
-    
-    console.log('🎯 Rol asignado al form:', form.value.rol)
+    form.value.estado = usuario.estado || 'ACTIVO'
   } catch (error) {
-    console.error('❌ Error al cargar usuario:', error)
-    console.error('📊 Status:', error.response?.status)
-    console.error('📝 Data:', JSON.stringify(error.response?.data, null, 2))
-    errorMessage.value = 'Error al cargar los datos del usuario: ' + (error.response?.data?.detail || error.message)
+    errorMessage.value = 'Error al cargar los datos del usuario'
+    console.error(error)
   }
 }
 
 // Verificar si ya existe un administrador
 const checkExistingAdmin = async () => {
-  if (form.value.rol !== 'ADMINISTRADOR') return true // No hay restricción si no es ADMINISTRADOR
+  if (form.value.rol !== 'ADMINISTRADOR') return true
   try {
-    console.log('🔍 Verificando si ya existe un administrador...')
     const res = await axios.get(`${API_BASE}/usuarios/api/usuarios/`)
     const usuarios = res.data
     const adminExists = usuarios.some(u => u.rol === 'ADMIN' && u.id !== parseInt(usuarioId.value))
-    console.log('¿Existe administrador?', adminExists)
     return !adminExists
   } catch (err) {
-    console.error('❌ Error al verificar administradores:', err)
-    console.error('📝 Data:', JSON.stringify(err.response?.data, null, 2))
     errorMessage.value = 'Error al verificar administradores'
+    console.error(err)
     return false
   }
 }
 
-// Validar formulario antes de enviar
+// Validar formulario
 const validarFormulario = () => {
   if (!form.value.nombre || !form.value.apellido || !form.value.dni || !form.value.correo || !form.value.rol) {
     errorMessage.value = 'Complete todos los campos obligatorios'
     return false
   }
-  
   if (form.value.dni.length !== 8) {
     errorMessage.value = 'El DNI debe tener 8 dígitos'
     return false
   }
-  
   if (form.value.nueva_contrasena && !form.value.contrasena_actual) {
     errorMessage.value = 'Para cambiar la contraseña, debe ingresar la contraseña actual'
     return false
   }
-  
   return true
 }
 
 // Actualizar usuario
 const actualizarUsuario = async () => {
-  if (!validarFormulario()) {
-    return
-  }
-  
-  // Verificar si se puede asignar el rol ADMINISTRADOR
+  if (!validarFormulario()) return
+
   const canAssignAdmin = await checkExistingAdmin()
   if (!canAssignAdmin) {
     errorMessage.value = 'Solo puede existir un administrador. Por favor, elija otro rol.'
     return
   }
-  
+
   try {
-    console.log('🔄 Actualizando usuario ID:', usuarioId.value)
-    
-    // Preparar payload
     const payload = {
       nombre: form.value.nombre,
       apellido: form.value.apellido,
       dni: form.value.dni,
       telefono: form.value.telefono || '',
       correo: form.value.correo,
-      rol: form.value.rol
+      rol: form.value.rol,
+      estado: form.value.estado || 'ACTIVO',
+      contrasena: form.value.nueva_contrasena || '' // siempre se envía
     }
-    
-    // Agregar contraseñas solo si se está cambiando
+
     if (form.value.nueva_contrasena && form.value.contrasena_actual) {
-      payload.contrasena = form.value.nueva_contrasena
       payload.contrasena_actual = form.value.contrasena_actual
     }
-    
-    console.log('📦 Payload:', JSON.stringify(payload, null, 2))
-    
-    // Probar con POST (según la vista editar_usuario)
-    const response = await axios.post(`${API_BASE}/usuarios/api/usuarios/editar/${usuarioId.value}/`, payload)
-    
-    console.log('✅ Respuesta del servidor:', JSON.stringify(response.data, null, 2))
-    alert('✅ Usuario actualizado con éxito')
+
+    await axios.post(`${API_BASE}/usuarios/api/usuarios/editar/${usuarioId.value}/`, payload)
+    alert('Usuario actualizado con éxito')
     router.push('/usuarios')
   } catch (err) {
-    console.error('❌ Error completo:', err)
-    console.error('📊 Status:', err.response?.status)
-    console.error('📝 Data:', JSON.stringify(err.response?.data, null, 2))
-    
     if (err.response?.status === 400) {
       const errors = err.response.data.errors || err.response.data
-      let errorMsg = 'Error en los datos: '
-      if (errors.rol) {
-        errorMsg += `Rol - ${errors.rol.join(' ')}`
-      } else if (errors.contrasena) {
-        errorMsg += `Contraseña - ${errors.contrasena.join(' ')}`
-      } else if (errors.contrasena_actual) {
-        errorMsg += `Contraseña actual - ${errors.contrasena_actual.join(' ')}`
-      } else if (errors.dni) {
-        errorMsg += `DNI - ${errors.dni.join(' ')}`
-      } else if (errors.correo) {
-        errorMsg += `Correo - ${errors.correo.join(' ')}`
-      } else {
-        errorMsg += JSON.stringify(errors, null, 2)
-      }
-      errorMessage.value = errorMsg
+      let msg = 'Error en los datos: '
+      if (errors.rol) msg += `Rol - ${errors.rol.join(' ')} `
+      if (errors.contrasena) msg += `Contraseña - ${errors.contrasena.join(' ')} `
+      if (errors.contrasena_actual) msg += `Contraseña actual - ${errors.contrasena_actual.join(' ')} `
+      if (errors.dni) msg += `DNI - ${errors.dni.join(' ')} `
+      if (errors.correo) msg += `Correo - ${errors.correo.join(' ')} `
+      errorMessage.value = msg
     } else {
-      errorMessage.value = 'No se pudo actualizar el usuario: ' + (err.response?.data?.detail || err.message)
+      errorMessage.value = 'No se pudo actualizar el usuario'
     }
+    console.error(err)
   }
 }
 
-onMounted(() => {
-  cargarUsuario()
-})
+onMounted(() => cargarUsuario())
 </script>
+
 
 <style scoped>
 .user-form {
