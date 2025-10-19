@@ -108,3 +108,19 @@ class Turno(models.Model):
     class Meta:
         db_table = "turnos"
         ordering = ['fecha', 'hora']
+
+# ===============================
+# ROLES
+# ===============================
+# roles/models.py
+from django.db import models
+
+class Rol(models.Model):
+    nombre = models.CharField(max_length=50, unique=True)
+    descripcion = models.TextField(blank=True, null=True)
+    activo = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.nombre
+    class Meta:
+        db_table = "roles"

@@ -1,10 +1,11 @@
 # usuarios/views.py
-from django.shortcuts import get_object_or_404
+from django.shortcuts import render, redirect, get_object_or_404
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 from django.views import View
 from django.contrib.auth.hashers import make_password
+from .models import Rol
 import json
 
 # Modelos y formularios
@@ -479,5 +480,86 @@ def eliminar_categoria_producto(request, pk):
     try:
         cat.delete()
         return JsonResponse({'status': 'ok', 'message': 'Categoría eliminada'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+# ================================
+# Roles
+# ================================
+@csrf_exempt
+def listado_roles(request):
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+    roles = Rol.objects.all().order_by('nombre')
+    data = [
+        {
+            'id': r.id,
+            'nombre': r.nombre,
+            'descripcion': r.descripcion or '',
+            'activo': r.activo
+        } for r in roles
+    ]
+    return JsonResponse(data, safe=False)
+
+
+@csrf_exempt
+def crear_rol(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        nombre = data.get('nombre', '').strip()
+        descripcion = data.get('descripcion', '').strip()
+
+        if not nombre:
+            return JsonResponse({'status': 'error', 'message': 'El nombre del rol es obligatorio'}, status=400)
+
+        if Rol.objects.filter(nombre__iexact=nombre).exists():
+            return JsonResponse({'status': 'error', 'message': 'Ya existe un rol con ese nombre'}, status=400)
+
+        rol = Rol.objects.create(nombre=nombre, descripcion=descripcion)
+        return JsonResponse({'status': 'ok', 'id': rol.id})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@csrf_exempt
+def editar_rol(request, pk):
+    rol = get_object_or_404(Rol, pk=pk)
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        nombre = data.get('nombre', '').strip()
+        descripcion = data.get('descripcion', '').strip()
+        activo = data.get('activo', True)
+
+        if nombre:
+            if Rol.objects.filter(nombre__iexact=nombre).exclude(pk=pk).exists():
+                return JsonResponse({'status': 'error', 'message': 'Otro rol con ese nombre ya existe'}, status=400)
+            rol.nombre = nombre
+
+        rol.descripcion = descripcion
+        rol.activo = activo
+        rol.save()
+
+        return JsonResponse({'status': 'ok', 'id': rol.id})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@csrf_exempt
+def eliminar_rol(request, pk):
+    rol = get_object_or_404(Rol, pk=pk)
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+
+    try:
+        rol.delete()
+        return JsonResponse({'status': 'ok', 'message': 'Rol eliminado correctamente'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)

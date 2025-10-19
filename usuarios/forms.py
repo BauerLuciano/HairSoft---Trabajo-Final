@@ -35,3 +35,5 @@ class UsuarioForm(forms.ModelForm):
                 self.add_error('contrasena_actual', 'Debe proporcionar la contraseña actual para cambiar la contraseña.')
 
         return cleaned_data
+    
+

@@ -38,5 +38,5 @@ export default {
 }
 </script>
 
-<!-- Asegúrate de que la ruta apunta a src/styles/login.css -->
+<!-- Ruta!-->
 <style src="../styles/login.css"></style>

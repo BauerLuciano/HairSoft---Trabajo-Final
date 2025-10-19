@@ -72,7 +72,8 @@ const modulos = [
   { name: 'Productos', path: '/productos' },
   { name: 'Ventas', path: '/ventas' },
   { name: 'Proveedores', path: '/proveedores' },
-  { name: 'Categorías', path: '/categorias' }
+  { name: 'Categorías', path: '/categorias' },
+  { name: 'Roles', path: '/roles' }
 ];
 
 const usuario = ref({

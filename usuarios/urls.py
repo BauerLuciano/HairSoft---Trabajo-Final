@@ -63,4 +63,13 @@ path('api/categorias/productos/crear/', views.crear_categoria_producto, name='cr
 path('api/categorias/productos/editar/<int:pk>/', views.editar_categoria_producto, name='editar_categoria_producto'),
 path('api/categorias/productos/eliminar/<int:pk>/', views.eliminar_categoria_producto, name='eliminar_categoria_producto'),
 
+# ==============================
+# Rutas para Roles
+# ==============================
+path('api/roles/', views.listado_roles, name='listado_roles'),
+path('api/roles/crear/', views.crear_rol, name='crear_rol'),
+path('api/roles/editar/<int:pk>/', views.editar_rol, name='editar_rol'),
+path('api/roles/eliminar/<int:pk>/', views.eliminar_rol, name='eliminar_rol'),
+
+
 ]

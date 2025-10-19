@@ -24,7 +24,18 @@ const routes = [
   // Categorías
   { path: '/categorias', name: 'ListadoCategorias', component: () => import('@/views/categorias/ListadoCategorias.vue') },
   { path: '/categorias/crear', name: 'RegistrarCategoria', component: () => import('@/views/categorias/RegistrarCategoria.vue') },
-  { path: '/categorias/modificar/:id', name: 'ModificarCategoria', component: () => import('@/views/categorias/RegistrarCategoria.vue'), props: true }
+  { path: '/categorias/modificar/:id', name: 'ModificarCategoria', component: () => import('@/views/categorias/RegistrarCategoria.vue'), props: true }, 
+
+  // ================================
+  // Roles
+  // ================================
+  { path: '/roles', name: 'ListadoRoles', component: () => import('@/views/roles/ListadoRoles.vue') },
+  { path: '/roles/crear', name: 'RegistrarRol', component: () => import('@/views/roles/RegistrarRol.vue') },
+  { path: '/roles/modificar/:id', name: 'ModificarRol', component: () => import('@/views/roles/RegistrarRol.vue'), props: true },
+
+
+
+
 ]
 
 const router = createRouter({
