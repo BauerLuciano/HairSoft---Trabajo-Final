@@ -7,29 +7,21 @@ from datetime import timedelta
 # USUARIOS
 # ===============================
 class Usuario(models.Model):
-    ROLES = [
-        ('ADMINISTRADOR', 'Administrador'),
-        ('RECEPCIONISTA', 'Recepcionista'),
-        ('PELUQUERO', 'Peluquero'),
-        ('CLIENTE', 'Cliente'),
-    ]
-
     nombre = models.CharField(max_length=50)
     apellido = models.CharField(max_length=50)
     dni = models.CharField(max_length=20, unique=True)
     contrasena = models.CharField(max_length=128)
     telefono = models.CharField(max_length=20, blank=True, null=True)
     correo = models.EmailField(unique=True)
-    rol = models.CharField(max_length=20, choices=ROLES)
+    rol = models.ForeignKey('Rol', on_delete=models.SET_NULL, null=True)  # 🔹 Cambiado a FK
     estado = models.CharField(max_length=15, default='ACTIVO')
     fecha_creacion = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.nombre} {self.apellido} ({self.rol})"
+        return f"{self.nombre} {self.apellido} ({self.rol.nombre if self.rol else 'Sin rol'})"
 
     class Meta:
         db_table = "usuarios"
-
 
 # ===============================
 # CATEGORÍAS

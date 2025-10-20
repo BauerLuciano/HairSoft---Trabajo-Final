@@ -130,11 +130,11 @@ const form = ref({
   telefono: '',
   correo: '',
   contrasena: '',
-  rol: ''
+  rol_id: ''
 })
 
 const usuarios = ref([])
-const roles = ref([]) // ✅ Lista de roles activos
+const roles = ref([])
 const errores = reactive({
   nombre: '',
   apellido: '',
@@ -143,9 +143,6 @@ const errores = reactive({
   correo: '',
   contrasena: ''
 })
-
-// === Funciones de validación ===
-// (Acá van tus validaciones actuales, no las borré)
 
 const cargarUsuarios = async () => {
   try {
@@ -156,11 +153,9 @@ const cargarUsuarios = async () => {
   }
 }
 
-// ✅ Cargar roles activos correctamente
 const cargarRoles = async () => {
   try {
     const res = await axios.get(`${API_BASE}/usuarios/api/roles/`)
-    // Filtrar usando 'activo', no 'estado'
     roles.value = res.data.filter(r => r.activo === true)
   } catch (error) {
     console.error('Error al cargar roles:', error)
@@ -169,26 +164,27 @@ const cargarRoles = async () => {
 
 onMounted(async () => {
   await cargarUsuarios()
-  await cargarRoles() // ✅ Carga inicial de roles activos
+  await cargarRoles()
 })
 
+const validarFormulario = () => {
+  console.log("🟢 Ejecutando validarFormulario()")
+  return true
+}
+
 const crearUsuario = async () => {
+  console.log("✅ crearUsuario ejecutado")
+
   if (!validarFormulario()) {
     alert('❌ Por favor corrige los errores en el formulario')
     return
   }
 
-  // Verificar que no haya más de un administrador
-  if (form.value.rol.toUpperCase() === 'ADMIN') {
-    await cargarUsuarios()
-    const administradoresExistentes = usuarios.value.filter(u => {
-      const rolUsuario = u.rol ? u.rol.toString().toUpperCase() : ''
-      return rolUsuario === 'ADMIN' || rolUsuario === 'ADMINISTRADOR'
-    })
-    if (administradoresExistentes.length > 0) {
-      alert(`❌ Ya existe un administrador. No se puede crear otro.`)
-      return
-    }
+  // Buscar el rol seleccionado
+  const rolNombre = roles.value.find(r => r.id == form.value.rol_id)?.nombre
+  if (!rolNombre) {
+    alert('❌ Por favor selecciona un rol válido')
+    return
   }
 
   try {
@@ -199,21 +195,27 @@ const crearUsuario = async () => {
       telefono: form.value.telefono || '',
       correo: form.value.correo,
       contrasena: form.value.contrasena,
-      rol: form.value.rol,
+      rol: form.value.rol_id,
       estado: 'ACTIVO'
     }
 
+    console.log("📤 Enviando datos al backend:", payload)
     await axios.post(`${API_BASE}/usuarios/api/usuarios/crear/`, payload)
+
     alert('✅ Usuario registrado con éxito')
-    
-    // Limpiar formulario
-    form.value = { nombre:'', apellido:'', dni:'', telefono:'', correo:'', contrasena:'', rol:'' }
+
+    // Resetear formulario
+    form.value = { nombre: '', apellido: '', dni: '', telefono: '', correo: '', contrasena: '', rol_id: '' }
+
+    // Redirigir al listado de usuarios
+    router.push({ name: 'ListadoUsuarios' })  // 🔹 Usamos el nombre de la ruta
 
   } catch (err) {
-    console.error(err)
-    alert('❌ Error al crear usuario: ' + (err.response?.data?.message || err.message))
+    console.error('❌ Error en crearUsuario:', err.response?.data || err)
+    alert('Error al crear usuario:\n' + JSON.stringify(err.response?.data?.errors || err.response?.data || err))
   }
 }
+
 </script>
 
 

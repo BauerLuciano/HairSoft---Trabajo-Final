@@ -1,76 +1,49 @@
 <template>
   <div class="list-container">
     <div class="list-card">
+      <!-- Header -->
       <div class="list-header">
         <div class="header-content">
-          <h1>Lista de Usuarios Registrados</h1>
-          <p>Gestión completa de usuarios del sistema</p>
+          <h1>Usuarios Registrados</h1>
+          <p>Gestión de usuarios del sistema</p>
         </div>
-        <button @click="irARegistrar" class="register-button">
-          <span class="btn-text">➕ Registrar Usuario</span>
-        </button>
+        <button @click="irARegistrar" class="register-button">➕ Registrar Usuario</button>
       </div>
 
-      <!-- Filtros Mejorados -->
+      <!-- Filtros -->
       <div class="filters-container">
         <div class="filters-grid">
-          <!-- Búsqueda general -->
           <div class="filter-group">
             <label>Buscar</label>
-            <div class="input-with-icon">
-              <input 
-                v-model="filtros.busqueda" 
-                type="text" 
-                placeholder="Nombre o DNI..." 
-                class="filter-input" 
-              />
-              <span class="input-icon">🔍</span>
-            </div>
+            <input v-model="filtros.busqueda" placeholder="Nombre o DNI..." class="filter-input"/>
           </div>
 
-          <!-- Filtro por rol -->
           <div class="filter-group">
             <label>Rol</label>
             <select v-model="filtros.rol" class="filter-select">
-              <option value="">Todos los roles</option>
-              <option value="ADMIN">Administrador</option>
-              <option value="REC">Recepcionista</option>
-              <option value="PEL">Peluquero</option>
-              <option value="CLI">Cliente</option>
+              <option value="">Todos</option>
+              <option v-for="rol in roles" :key="rol.id" :value="rol.id">{{ rol.nombre }}</option>
             </select>
           </div>
 
-          <!-- Filtro por fecha desde -->
           <div class="filter-group">
             <label>Fecha desde</label>
-            <input 
-              v-model="filtros.fechaDesde" 
-              type="date" 
-              class="filter-input" 
-            />
+            <input type="date" v-model="filtros.fechaDesde" class="filter-input"/>
           </div>
 
-          <!-- Filtro por fecha hasta -->
           <div class="filter-group">
             <label>Fecha hasta</label>
-            <input 
-              v-model="filtros.fechaHasta" 
-              type="date" 
-              class="filter-input" 
-            />
+            <input type="date" v-model="filtros.fechaHasta" class="filter-input"/>
           </div>
 
-          <!-- Botón limpiar filtros DEBAJO de las fechas -->
           <div class="filter-group">
             <label>&nbsp;</label>
-            <button @click="limpiarFiltros" class="clear-filters-btn">
-              🗑️ Limpiar Filtros
-            </button>
+            <button @click="limpiarFiltros" class="clear-filters-btn">🗑️ Limpiar filtros</button>
           </div>
         </div>
       </div>
 
-      <!-- Tabla Mejorada -->
+      <!-- Tabla -->
       <div class="table-container">
         <table class="users-table">
           <thead>
@@ -87,214 +60,110 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="usuario in usuariosPaginados" :key="usuario.id" class="table-row">
-              <td class="user-name">{{ usuario.nombre || '–' }}</td>
+            <tr v-for="usuario in usuariosPaginados" :key="usuario.id">
+              <td>{{ usuario.nombre || '–' }}</td>
               <td>{{ usuario.apellido || '–' }}</td>
-              <td class="user-dni">{{ usuario.dni || '–' }}</td>
-              <td class="user-phone">{{ usuario.telefono || 'No registrado' }}</td>
-              <td class="user-email">{{ usuario.correo || '–' }}</td>
+              <td>{{ usuario.dni || '–' }}</td>
+              <td>{{ usuario.telefono || 'No registrado' }}</td>
+              <td>{{ usuario.correo || '–' }}</td>
+              <td><span class="role-badge">{{ usuario.rol_nombre || 'Sin rol' }}</span></td>
+              <td><span :class="usuario.estado.toLowerCase()">{{ usuario.estado }}</span></td>
+              <td>{{ formatFecha(usuario.fecha_creacion) }}</td>
               <td>
-                <span class="role-badge" :class="getRoleClass(usuario.rol)">
-                  {{ getRoleDisplayName(usuario.rol) }}
-                </span>
-              </td>
-              <td>
-                <span class="status-badge" :class="getStatusClass(usuario.estado)">
-                  {{ getStatusDisplayName(usuario.estado) }}
-                </span>
-              </td>
-              <td class="fecha-registro">
-                {{ formatFecha(usuario.fecha_creacion || usuario.created_at || usuario.fecha_registro) }}
-              </td>
-              <td>
-                <div class="action-buttons">
-                  <button @click="editarUsuario(usuario)" class="action-button edit">
-                    <span class="btn-icon">✏️</span>
-                    Editar
-                  </button>
-                  <button @click="eliminarUsuario(usuario)" class="action-button delete">
-                    <span class="btn-icon">🗑️</span>
-                    Eliminar
-                  </button>
-                </div>
+                <button @click="editarUsuario(usuario)">✏️</button>
+                <button @click="eliminarUsuario(usuario)">🗑️</button>
               </td>
             </tr>
           </tbody>
         </table>
-        
-        <!-- Mensaje cuando no hay resultados -->
-        <div v-if="usuariosPaginados.length === 0" class="no-results">
-          <p>No se encontraron usuarios con los filtros aplicados</p>
-          <button @click="limpiarFiltros" class="clear-filters-btn">
-            Limpiar filtros
-          </button>
-        </div>
-      </div>
 
-      <!-- Información de resultados DEBAJO de la tabla -->
-      <div class="results-info">
-        <p>Mostrando {{ usuariosPaginados.length }} de {{ usuariosFiltrados.length }} usuarios</p>
+        <div v-if="usuariosPaginados.length === 0" class="no-results">
+          <p>No se encontraron usuarios</p>
+        </div>
       </div>
 
       <!-- Paginación -->
       <div class="pagination">
-        <button @click="paginaAnterior" :disabled="pagina === 1" class="pagination-btn">
-          <span class="btn-icon">←</span> Anterior
-        </button>
-        <span class="pagination-info">Página {{ pagina }} de {{ totalPaginas }}</span>
-        <button @click="paginaSiguiente" :disabled="pagina === totalPaginas" class="pagination-btn">
-          Siguiente <span class="btn-icon">→</span>
-        </button>
+        <button @click="paginaAnterior" :disabled="pagina === 1">← Anterior</button>
+        <span>Página {{ pagina }} de {{ totalPaginas }}</span>
+        <button @click="paginaSiguiente" :disabled="pagina === totalPaginas">Siguiente →</button>
       </div>
+
     </div>
   </div>
 </template>
 
-
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 
 const router = useRouter()
-const route = useRoute()
 const API_BASE = 'http://127.0.0.1:8000'
 
-// Lista de usuarios
 const usuarios = ref([])
+const roles = ref([])
+const filtros = ref({ busqueda: '', rol: '', fechaDesde: '', fechaHasta: '' })
 
-// Filtros
-const filtros = ref({
-  busqueda: '',
-  rol: '',
-  fechaDesde: '',
-  fechaHasta: ''
-})
-
-// Paginación
 const pagina = ref(1)
 const itemsPorPagina = 8
 
-// Cargar usuarios desde el backend
 const cargarUsuarios = async () => {
   try {
-    const params = new URLSearchParams()
-    if (filtros.value.busqueda) params.append('q', filtros.value.busqueda)
-    if (filtros.value.rol) params.append('rol', filtros.value.rol)
-
-    // Evitar caching
-    params.append('_', new Date().getTime())
-
-    const res = await axios.get(`${API_BASE}/usuarios/api/usuarios/`, { params })
+    const res = await axios.get(`${API_BASE}/usuarios/api/usuarios/`)
     usuarios.value = res.data
-    console.log('Usuarios cargados:', usuarios.value)
   } catch (err) {
     console.error('Error al cargar usuarios:', err)
     alert('No se pudo cargar la lista de usuarios')
   }
 }
 
-// Recargar cuando cambie la ruta
-watch(
-  () => route.path,
-  (newPath) => {
-    if (newPath === '/usuarios') cargarUsuarios()
-  },
-  { immediate: true }
-)
-
-// Recargar cuando cambian los filtros
-watch(
-  filtros,
-  () => {
-    pagina.value = 1
-    cargarUsuarios()
-  },
-  { deep: true }
-)
-
-// Filtrado por fecha
-const filtrarPorFecha = (usuario) => {
-  if (!filtros.value.fechaDesde && !filtros.value.fechaHasta) return true
-  if (!usuario.fecha_creacion) return true
-
-  const fechaUsuario = new Date(usuario.fecha_creacion)
-
-  if (filtros.value.fechaDesde) {
-    const desde = new Date(filtros.value.fechaDesde)
-    if (fechaUsuario < desde) return false
+const cargarRoles = async () => {
+  try {
+    const res = await axios.get(`${API_BASE}/usuarios/api/roles/`)
+    roles.value = res.data.filter(r => r.activo)
+  } catch (err) {
+    console.error('Error al cargar roles:', err)
   }
+}
 
+onMounted(async () => {
+  await cargarUsuarios()
+  await cargarRoles()
+})
+
+// Filtros
+const filtrarPorFecha = (usuario) => {
+  const fecha = usuario.fecha_creacion ? new Date(usuario.fecha_creacion) : null
+  if (!fecha) return true
+  if (filtros.value.fechaDesde && fecha < new Date(filtros.value.fechaDesde)) return false
   if (filtros.value.fechaHasta) {
     const hasta = new Date(filtros.value.fechaHasta)
     hasta.setDate(hasta.getDate() + 1)
-    if (fechaUsuario >= hasta) return false
+    if (fecha >= hasta) return false
   }
-
   return true
 }
 
-// Usuarios filtrados
 const usuariosFiltrados = computed(() => {
-  let filtered = usuarios.value
-
-  // Filtro por búsqueda (nombre o DNI)
-  if (filtros.value.busqueda) {
-    const term = filtros.value.busqueda.toLowerCase()
-    filtered = filtered.filter(u =>
-      (u.nombre?.toLowerCase().includes(term)) ||
-      (u.dni?.toLowerCase().includes(term))
-    )
-  }
-
-  // Filtro por rol
-  if (filtros.value.rol) {
-    filtered = filtered.filter(u => (u.rol?.toUpperCase() || '') === filtros.value.rol)
-  }
-
-  // Filtro por fecha
-  filtered = filtered.filter(filtrarPorFecha)
-
-  console.log('Usuarios filtrados:', filtered)
-  return filtered
+  return usuarios.value.filter(u => {
+    const busca = filtros.value.busqueda.toLowerCase()
+    const matchBusqueda = !busca || u.nombre.toLowerCase().includes(busca) || u.dni.toLowerCase().includes(busca)
+    const matchRol = !filtros.value.rol || (u.rol && u.rol.id == filtros.value.rol)
+    const matchFecha = filtrarPorFecha(u)
+    return matchBusqueda && matchRol && matchFecha
+  })
 })
 
-// Paginación
 const totalPaginas = computed(() => Math.ceil(usuariosFiltrados.value.length / itemsPorPagina))
 const usuariosPaginados = computed(() => {
   const inicio = (pagina.value - 1) * itemsPorPagina
-  const fin = inicio + itemsPorPagina
-  const paginados = usuariosFiltrados.value.slice(inicio, fin)
-  console.log('Usuarios paginados:', paginados)
-  return paginados
+  return usuariosFiltrados.value.slice(inicio, inicio + itemsPorPagina)
 })
 
+// Paginación
 const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
-
-// Funciones auxiliares
-const getRoleDisplayName = (rol) => {
-  const roles = { 'ADMIN': 'Administrador', 'REC': 'Recepcionista', 'PEL': 'Peluquero', 'CLI': 'Cliente' }
-  return roles[rol?.toUpperCase()] || rol || 'Sin rol'
-}
-
-// **Esta función faltaba**
-const getRoleClass = (rol) => {
-  switch ((rol || '').toUpperCase()) {
-    case 'ADMIN': return 'role-admin'
-    case 'REC':   return 'role-rec'
-    case 'PEL':   return 'role-pel'
-    case 'CLI':   return 'role-cli'
-    default:      return ''
-  }
-}
-
-const getStatusDisplayName = (estado) => {
-  const estados = { 'ACTIVO': 'Activo', 'INACTIVO': 'Inactivo' }
-  return estados[estado?.toUpperCase()] || 'Activo'
-}
-
-const getStatusClass = (estado) => (estado?.toLowerCase() === 'activo' ? 'activo' : 'inactivo')
 
 // Acciones
 const irARegistrar = () => router.push('/usuarios/crear')
@@ -303,7 +172,7 @@ const eliminarUsuario = async (usuario) => {
   if (!confirm(`¿Desactivar al usuario ${usuario.nombre}?`)) return
   try {
     await axios.post(`${API_BASE}/usuarios/api/usuarios/eliminar/${usuario.id}/`)
-    usuarios.value = usuarios.value.map(u => u.id === usuario.id ? { ...u, estado: 'INACTIVO' } : u)
+    usuario.estado = 'INACTIVO'
     alert('Usuario desactivado con éxito')
   } catch (err) {
     console.error(err)
@@ -311,25 +180,17 @@ const eliminarUsuario = async (usuario) => {
   }
 }
 
-// Limpiar filtros
 const limpiarFiltros = () => {
   filtros.value = { busqueda: '', rol: '', fechaDesde: '', fechaHasta: '' }
   pagina.value = 1
 }
 
-// Mostrar fecha bonita
-const formatFecha = (fecha) => {
-  if (!fecha) return '–'
-  const d = new Date(fecha)
-  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString()
-}
+const formatFecha = (fecha) => fecha ? new Date(fecha).toLocaleString() : '–'
 
-// Montaje inicial
-onMounted(() => {
-  cargarUsuarios()
-})
-
+// Recargar página si cambian los filtros
+watch(filtros, () => pagina.value = 1, { deep: true })
 </script>
+
 
 <style scoped>
 /* Tarjeta principal */

@@ -22,6 +22,7 @@ from .forms import UsuarioForm
 # ================================
 # Funciones Auxiliares
 # ================================
+
 def get_rol_abreviado(rol_largo):
     """Mapea los roles largos del modelo a los códigos cortos esperados por el frontend."""
     if not rol_largo:
@@ -47,7 +48,8 @@ def listado_usuarios(request):
         return JsonResponse({'error': 'Método no permitido'}, status=405)
 
     q = request.GET.get('q', '').strip()
-    usuarios = Usuario.objects.all()
+    usuarios = Usuario.objects.select_related('rol').all()
+    
     if q:
         usuarios = usuarios.filter(
             Q(nombre__icontains=q) |
@@ -62,15 +64,16 @@ def listado_usuarios(request):
             'apellido': u.apellido or '',
             'dni': u.dni or '',
             'telefono': u.telefono or '',
-            'rol': get_rol_abreviado(u.rol),
+            'rol_id': u.rol.id if u.rol else None,
+            'rol_nombre': u.rol.nombre if u.rol else None,  # <--- importante
             'correo': u.correo or '',
             'estado': (u.estado or 'ACTIVO').upper(),
             'fecha_creacion': u.fecha_creacion.isoformat() if u.fecha_creacion else ''
         } for u in usuarios
     ]
 
-    return JsonResponse(data, safe=False)
 
+    return JsonResponse(data, safe=False)
 
 @csrf_exempt
 def crear_usuario(request):
@@ -82,15 +85,28 @@ def crear_usuario(request):
     except json.JSONDecodeError:
         return JsonResponse({'status': 'error', 'message': 'JSON inválido'}, status=400)
 
-    if 'contrasena' in data:
-        data['contrasena'] = make_password(data['contrasena'])
+    # 🔹 Obtener el ID del rol (acepta 'rol' o 'rol_id')
+    rol_id = data.get('rol') or data.get('rol_id')
+    data['rol'] = rol_id if rol_id else None
 
+    # 🔹 Encriptar la contraseña si viene
+    if 'contrasena' in data and data['contrasena']:
+        data['contrasena'] = make_password(data['contrasena'])
+    else:
+        data.pop('contrasena', None)
+
+    # 🔹 Crear el form
     form = UsuarioForm(data)
     if form.is_valid():
-        usuario = form.save()
-        return JsonResponse({'status': 'ok', 'id': usuario.id})
-    return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
-
+        try:
+            usuario = form.save()
+            return JsonResponse({'status': 'ok', 'id': usuario.id})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': f'Error al guardar el usuario: {str(e)}'}, status=500)
+    
+    # 🔹 Devolver errores claros
+    errores = {k: v for k, v in form.errors.items()}
+    return JsonResponse({'status': 'error', 'errors': errores}, status=400)
 
 @csrf_exempt
 def editar_usuario(request, pk):
