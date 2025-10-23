@@ -40,6 +40,7 @@
             <tr>
               <th>Nombre del Rol</th>
               <th>Descripción</th>
+              <th>Permisos</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
@@ -49,8 +50,14 @@
               <td>{{ rol.nombre || '–' }}</td>
               <td>{{ rol.descripcion || '–' }}</td>
               <td>
-                <span class="status-badge activo">
-                  Activo
+                <span v-if="rol.permisos && rol.permisos.length">
+                  {{ rol.permisos.map(p => p.nombre).join(', ') }}
+                </span>
+                <span v-else>–</span>
+              </td>
+              <td>
+                <span :class="['status-badge', getStatusClass(rol.activo)]">
+                  {{ getStatusDisplayName(rol.activo) }}
                 </span>
               </td>
               <td>
@@ -90,16 +97,11 @@ import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
 
 const router = useRouter()
-const route = useRoute() // <--- usamos useRoute para query.reload
+const route = useRoute()
 const API_BASE = 'http://127.0.0.1:8000'
 
-// Lista de roles
 const roles = ref([])
-
-// Filtros
 const filtros = ref({ busqueda: '' })
-
-// Paginación
 const pagina = ref(1)
 const itemsPorPagina = 8
 
@@ -151,22 +153,15 @@ const eliminarRol = async (rol) => {
 // Limpiar filtros
 const limpiarFiltros = () => { filtros.value = { busqueda: '' }; pagina.value = 1 }
 
-// Mostrar estado bonito
-const getStatusDisplayName = (estado) => (estado?.toUpperCase() === 'ACTIVO' ? 'Activo' : 'Inactivo')
-const getStatusClass = (estado) => (estado?.toUpperCase() === 'ACTIVO' ? 'activo' : 'inactivo')
+// Mostrar estado correctamente
+const getStatusDisplayName = (estado) => (estado ? 'Activo' : 'Inactivo')
+const getStatusClass = (estado) => (estado ? 'activo' : 'inactivo')
 
-// Watch para recargar roles al cambiar filtros
+// Watchers
 watch(filtros, () => { pagina.value = 1; cargarRoles() }, { deep: true })
+watch(() => route.query.reload, () => { cargarRoles() })
 
-// Watch para recargar roles cuando se crea un rol y se agrega query.reload
-watch(() => route.query.reload, () => {
-  cargarRoles()
-})
-
-// Montaje inicial
-onMounted(() => {
-  cargarRoles()
-})
+onMounted(() => { cargarRoles() })
 </script>
 
 <style scoped>

@@ -1,0 +1,32 @@
+[
+  {
+    "model": "usuarios.permiso",
+    "pk": 1,
+    "fields": {
+      "nombre": "Crear Usuario",
+      "codigo": "CREAR_USUARIO",
+      "descripcion": "Permite crear nuevos usuarios",
+      "activo": true
+    }
+  },
+  {
+    "model": "usuarios.permiso",
+    "pk": 2,
+    "fields": {
+      "nombre": "Editar Usuario",
+      "codigo": "EDITAR_USUARIO",
+      "descripcion": "Permite editar datos de usuarios",
+      "activo": true
+    }
+  },
+  {
+    "model": "usuarios.permiso",
+    "pk": 3,
+    "fields": {
+      "nombre": "Eliminar Usuario",
+      "codigo": "ELIMINAR_USUARIO",
+      "descripcion": "Permite eliminar usuarios",
+      "activo": true
+    }
+  }
+]

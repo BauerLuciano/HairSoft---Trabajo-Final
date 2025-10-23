@@ -6,7 +6,7 @@
         <p>Completa los datos del usuario</p>
       </div>
 
-      <form @submit.prevent="crearUsuario" class="form-grid">
+      <form @submit.prevent="crearUsuario" class="form-grid" autocomplete="off">
         <!-- Nombre -->
         <div class="input-group">
           <label>Nombre <span class="required">*</span></label>
@@ -72,6 +72,7 @@
             type="email" 
             placeholder="Ingrese el correo electrónico" 
             required 
+            autocomplete="off"
             @input="validarCorreo"
             @blur="mostrarErrorCorreo"
           />
@@ -86,6 +87,7 @@
             type="password" 
             placeholder="Ingrese la contraseña" 
             required 
+            autocomplete="new-password"
             @input="validarContrasena"
             @blur="mostrarErrorContrasena"
           />
@@ -117,13 +119,13 @@
 
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
-import { useRouter } from 'vue-router'
 import axios from 'axios'
 
-const router = useRouter()
+const emit = defineEmits(['usuario-registrado']) // <-- agregar aquí
+
 const API_BASE = 'http://127.0.0.1:8000'
 
-const form = ref({
+const form = reactive({
   nombre: '',
   apellido: '',
   dni: '',
@@ -133,8 +135,8 @@ const form = ref({
   rol_id: ''
 })
 
-const usuarios = ref([])
-const roles = ref([])
+const usuarios = ref([])       // listado de usuarios para refrescar (opcional local)
+const roles = ref([])          // roles disponibles
 const errores = reactive({
   nombre: '',
   apellido: '',
@@ -144,6 +146,7 @@ const errores = reactive({
   contrasena: ''
 })
 
+// 🔹 Cargar usuarios existentes (sólo para checks internos, dejalo si lo usás)
 const cargarUsuarios = async () => {
   try {
     const res = await axios.get(`${API_BASE}/usuarios/api/usuarios/`)
@@ -153,6 +156,7 @@ const cargarUsuarios = async () => {
   }
 }
 
+// 🔹 Cargar roles activos
 const cargarRoles = async () => {
   try {
     const res = await axios.get(`${API_BASE}/usuarios/api/roles/`)
@@ -167,11 +171,24 @@ onMounted(async () => {
   await cargarRoles()
 })
 
+// 🔹 Validación de formulario (sin tocar tu lógica interna)
 const validarFormulario = () => {
   console.log("🟢 Ejecutando validarFormulario()")
   return true
 }
 
+// 🔹 Función para resetear formulario
+const resetForm = () => {
+  form.nombre = ''
+  form.apellido = ''
+  form.dni = ''
+  form.telefono = ''
+  form.correo = ''
+  form.contrasena = ''
+  form.rol_id = ''
+}
+
+// 🔹 Crear usuario
 const crearUsuario = async () => {
   console.log("✅ crearUsuario ejecutado")
 
@@ -180,42 +197,51 @@ const crearUsuario = async () => {
     return
   }
 
-  // Buscar el rol seleccionado
-  const rolNombre = roles.value.find(r => r.id == form.value.rol_id)?.nombre
-  if (!rolNombre) {
+  const rolSeleccionado = roles.value.find(r => r.id == form.rol_id)
+  if (!rolSeleccionado) {
     alert('❌ Por favor selecciona un rol válido')
     return
   }
 
+  // 🔹 Verificar si ya existe un administrador activo
+  if (rolSeleccionado.nombre.toLowerCase() === 'administrador') {
+    const hayAdminActivo = usuarios.value.some(u => u.rol_nombre?.toLowerCase() === 'administrador' && u.estado === 'ACTIVO')
+    if (hayAdminActivo) {
+      alert('❌ Ya existe un usuario Administrador activo. No se puede crear otro.')
+      return
+    }
+  }
+
   try {
     const payload = {
-      nombre: form.value.nombre,
-      apellido: form.value.apellido,
-      dni: form.value.dni,
-      telefono: form.value.telefono || '',
-      correo: form.value.correo,
-      contrasena: form.value.contrasena,
-      rol: form.value.rol_id,
+      nombre: form.nombre,
+      apellido: form.apellido,
+      dni: form.dni,
+      telefono: form.telefono || '',
+      correo: form.correo,
+      contrasena: form.contrasena,
+      rol: form.rol_id,
       estado: 'ACTIVO'
     }
 
     console.log("📤 Enviando datos al backend:", payload)
-    await axios.post(`${API_BASE}/usuarios/api/usuarios/crear/`, payload)
+    const res = await axios.post(`${API_BASE}/usuarios/api/usuarios/crear/`, payload)
 
     alert('✅ Usuario registrado con éxito')
 
-    // Resetear formulario
-    form.value = { nombre: '', apellido: '', dni: '', telefono: '', correo: '', contrasena: '', rol_id: '' }
+    // 🔹 Limpiar formulario
+    resetForm()
 
-    // Redirigir al listado de usuarios
-    router.push({ name: 'ListadoUsuarios' })  // 🔹 Usamos el nombre de la ruta
+    // 🔹 EMITIR evento PARA QUE EL PADRE REFRESQUE LA LISTA Y CIERRE EL MODAL
+    emit('usuario-registrado', res.data) // <--- ESTA LÍNEA es la clave
 
+    // NOTA: no llamamos cargarUsuarios() del hijo para no duplicar acciones.
+    // El padre (ListadoUsuarios.vue) ya tiene el handler refrescarUsuarios que recarga y cierra modal.
   } catch (err) {
     console.error('❌ Error en crearUsuario:', err.response?.data || err)
     alert('Error al crear usuario:\n' + JSON.stringify(err.response?.data?.errors || err.response?.data || err))
   }
 }
-
 </script>
 
 
