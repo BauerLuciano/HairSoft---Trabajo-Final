@@ -123,23 +123,30 @@ def crear_usuario(request):
     errores = {k: v for k, v in form.errors.items()}
     return JsonResponse({'status': 'error', 'errors': errores}, status=400)
 
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+
 @csrf_exempt
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_auth(request):
     """Maneja la autenticación por sesión y devuelve el rol."""
-    # 💡 DRF maneja el request.data
-    correo = request.data.get('username') # Asumo que Vue envía 'username'
-    contrasena = request.data.get('password') # Asumo que Vue envía 'password'
-
-    # 1. Autenticar (asumiendo que tu backend de auth permite correo como username)
+    print("🚨 LOGIN ENDPOINT HIT")
+    print(f"📝 Method: {request.method}")
+    print(f"📦 Data: {request.data}")
+    print(f"👤 User: {request.user}")
+    print(f"🔐 Authenticated: {request.user.is_authenticated}")
+    
+    correo = request.data.get('username')
+    contrasena = request.data.get('password')
+    
     user = authenticate(request, username=correo, password=contrasena)
+    print(f"🔍 User authenticated: {user}")
 
     if user is not None:
-        # 2. Iniciar sesión (CRÍTICO: Esto hace que request.user funcione para me_api_view)
-        login(request, user) 
+        login(request, user)
+        print(f"✅ Login successful - User ID: {user.id}")
         
-        # 3. Respuesta con el Rol
         user_rol = getattr(user, 'rol', None)
         rol_nombre = user_rol.nombre.upper() if user_rol else 'SIN_ROL'
         
@@ -147,13 +154,14 @@ def login_auth(request):
             'status': 'ok',
             'message': 'Login exitoso',
             'user_id': user.id,
-            'rol': rol_nombre # 🚨 CRÍTICO: Vue usará este rol para decidir a dónde ir
+            'rol': rol_nombre
         }
         return Response(response_data, status=status.HTTP_200_OK)
     else:
+        print("❌ Login failed - Invalid credentials")
         return Response(
             {'status': 'error', 'message': 'Credenciales inválidas'}, 
-            status=status.HTTP_401_UNAUTHORIZED # 401 Unauthorized
+            status=status.HTTP_401_UNAUTHORIZED
         )
 
 @csrf_exempt
@@ -505,6 +513,10 @@ def listado_turnos(request):
         print(f"Error en listado_turnos: {str(e)}")
         return JsonResponse({'error': f'Error interno del servidor: {str(e)}'}, status=500)
 
+
+# ================================
+# usuarios/views.py
+# ================================
 @csrf_exempt
 def crear_turno(request):
     if request.method != 'POST':
@@ -512,124 +524,101 @@ def crear_turno(request):
 
     try:
         data = json.loads(request.body)
-        
-        # 1. 🚨 OBTENCIÓN Y VALIDACIÓN DEL CLIENTE (USUARIO LOGUEADO) 🚨
-        # Asume que el cliente está logueado y request.user es la instancia de Usuario.
+
+        # 1️⃣ Usuario logueado
         if not request.user.is_authenticated:
-             return JsonResponse({'status': 'error', 'message': "Debe iniciar sesión para reservar."}, status=401)
-        
+            return JsonResponse({'status': 'error', 'message': "Debe iniciar sesión para reservar."}, status=401)
         cliente = request.user
-        
-        # 2. OBTENCIÓN DE DATOS DEL FORMULARIO WEB
+
+        # 2️⃣ Datos del formulario
         peluquero_id = data.get('peluquero_id')
         servicios_ids = data.get('servicios_ids', [])
         fecha = data.get('fecha')
         hora = data.get('hora')
-        
-        # 🚨 Tipo de pago obligatorio y limitado a SENA_50 o TOTAL
-        tipo_pago_seleccionado = data.get('tipo_pago') 
-        
+        tipo_pago_seleccionado = data.get('tipo_pago')  # SENA_50 o TOTAL
+
         if tipo_pago_seleccionado not in ['SENA_50', 'TOTAL']:
             return JsonResponse({'status': 'error', 'message': "Debe seleccionar una opción de pago válida (Seña o Total)."}, status=400)
 
-        # Campos fijos para reservas WEB
-        canal = 'WEB'
-        medio_pago = 'MERCADO_PAGO'
-        estado = 'RESERVADO' # Estado inicial pendiente de la confirmación de MP
-
-        # 3. VALIDACIÓN DE DATOS REQUERIDOS
         if not all([peluquero_id, servicios_ids, fecha, hora]):
             return JsonResponse({'status': 'error', 'message': "Faltan datos requeridos (peluquero, servicios, fecha y hora)"}, status=400)
 
-        # 4. OBTENER OBJETOS Y VALIDAR EXISTENCIA
+        # 3️⃣ Obtener peluquero y servicios
         try:
             peluquero = Usuario.objects.get(pk=peluquero_id)
             servicios = Servicio.objects.filter(pk__in=servicios_ids)
         except Usuario.DoesNotExist:
             return JsonResponse({'status': 'error', 'message': "Peluquero no encontrado"}, status=400)
-        except Servicio.DoesNotExist:
-            return JsonResponse({'status': 'error', 'message': "Algunos servicios no fueron encontrados"}, status=400)
-        
+
         if not servicios.exists():
             return JsonResponse({'status': 'error', 'message': "No se encontraron los servicios especificados"}, status=400)
 
-        # 5. VALIDACIÓN DE FECHA, HORA Y DISPONIBILIDAD
+        # 4️⃣ Validar fecha y hora
         try:
             fecha_obj = datetime.strptime(fecha, "%Y-%m-%d").date()
             hora_obj = datetime.strptime(hora, "%H:%M").time()
         except ValueError:
             return JsonResponse({'status': 'error', 'message': "Formato de fecha u hora inválido"}, status=400)
 
-        hoy = timezone.now().date()
-        if fecha_obj < hoy:
+        if fecha_obj < timezone.now().date():
             return JsonResponse({'status': 'error', 'message': "No se pueden agendar turnos en fechas pasadas"}, status=400)
 
-        # Validación de disponibilidad: Chequea si otro turno ya existe en esa hora y con ese peluquero
+        # Validación disponibilidad
         if Turno.objects.filter(
-            fecha=fecha_obj, 
-            hora=hora_obj, 
+            fecha=fecha_obj,
+            hora=hora_obj,
             peluquero=peluquero,
             estado__in=['RESERVADO', 'CONFIRMADO']
-        ).exists(): 
-            return JsonResponse({
-                'status': 'error',
-                'message': 'El peluquero no está disponible en la fecha y hora solicitada.'
-            }, status=400)
-            
-        # 6. CÁLCULO DE MONTOS Y PAGO REQUERIDO
-        monto_total = sum(float(servicio.precio) for servicio in servicios)
-        
+        ).exists():
+            return JsonResponse({'status': 'error', 'message': 'El peluquero no está disponible en la fecha y hora solicitada.'}, status=400)
+
+        # 5️⃣ Calcular montos
+        monto_total = sum(float(s.precio) for s in servicios)
         if tipo_pago_seleccionado == 'TOTAL':
             monto_pago_a_enviar_mp = monto_total
-            monto_seña_a_guardar = monto_total # Al pagar total, guardamos el total en seña/total
-        else: # SENA_50
-            monto_seña = monto_total * 0.5
-            monto_pago_a_enviar_mp = monto_seña
-            monto_seña_a_guardar = monto_seña # La seña normal
+            monto_seña_a_guardar = monto_total
+        else:
+            monto_pago_a_enviar_mp = monto_total * 0.5
+            monto_seña_a_guardar = monto_pago_a_enviar_mp
 
-        # 7. CREAR TURNO EN LA BASE DE DATOS (Estado RESERVADO)
+        # 6️⃣ Crear turno
         turno = Turno.objects.create(
             cliente=cliente,
             peluquero=peluquero,
             fecha=fecha_obj,
             hora=hora_obj,
-            canal=canal,
-            tipo_pago=tipo_pago_seleccionado, 
-            medio_pago=medio_pago,
-            monto_seña=monto_seña_a_guardar, 
+            canal='WEB',
+            tipo_pago=tipo_pago_seleccionado,
+            medio_pago='MERCADO_PAGO',
+            monto_seña=monto_seña_a_guardar,
             monto_total=monto_total,
-            estado=estado
+            estado='RESERVADO'
         )
         turno.servicios.set(servicios)
-        
+
         print(f"✅ Turno creado temporalmente: {turno.id} - Procesando MP")
 
-        # 8. PROCESAR MERCADO PAGO
-        from .mercadopago_service import MercadoPagoService # Importa tu servicio de MP
-        
+        # 7️⃣ Preparar datos para Mercado Pago (SDK)
         mp_service = MercadoPagoService()
         es_pago_total = (tipo_pago_seleccionado == 'TOTAL')
-        
+
         turno_data = {
             'turno_id': turno.id,
-            'monto_pago': float(monto_pago_a_enviar_mp), # El monto que MP debe cobrar
+            'monto_pago': float(monto_pago_a_enviar_mp),
             'cliente_nombre': f"{cliente.nombre} {cliente.apellido}",
-            'cliente_correo': cliente.correo, # 🚨 Corregido para usar .correo
+            'cliente_correo': "test_user_6205179917708892357@testuser.com",  # sandbox
             'peluquero_nombre': f"{peluquero.nombre} {peluquero.apellido}",
             'es_pago_total': es_pago_total
         }
-        
-        resultado_mp = mp_service.crear_preferencia_seña(turno_data) 
-        
-        # 9. MANEJO DE RESPUESTA DE MP
+
+        resultado_mp = mp_service.crear_preferencia_seña(turno_data)
+
         if resultado_mp['success']:
-            init_point = resultado_mp.get('sandbox_init_point') or resultado_mp['init_point']
-            
-            # Éxito en MP - Devolver datos para redirección o depuración en Vue
+            init_point = resultado_mp.get('init_point')
             return JsonResponse({
-                'status': 'ok', 
+                'status': 'ok',
                 'turno_id': turno.id,
-                'message': 'Turno pre-reservado. Redirigiendo a pago',
+                'message': 'Turno pre-reservado. Redirigiendo a pago sandbox',
                 'procesar_pago': True,
                 'mp_data': {
                     'init_point': init_point,
@@ -637,23 +626,22 @@ def crear_turno(request):
                 }
             })
         else:
-            # Error en MP - Cancelar el turno para liberar el horario
-            turno.estado = 'CANCELADO_ERROR_MP' 
+            turno.estado = 'CANCELADO_ERROR_MP'
             turno.save()
-            
             error_msg = resultado_mp.get('error', 'Error desconocido al generar el enlace de pago.')
-            
             return JsonResponse({
                 'status': 'error',
                 'message': f'Error al generar pago con Mercado Pago: {error_msg}. El turno fue cancelado.',
                 'turno_id': turno.id
             }, status=400)
-            
+
     except json.JSONDecodeError:
         return JsonResponse({'status': 'error', 'message': "Error en el formato JSON"}, status=400)
     except Exception as e:
         print(f"❌ Error interno al crear turno: {e}")
         return JsonResponse({'status': 'error', 'message': f"Error interno del servidor: {str(e)}"}, status=500)
+
+
     
 @csrf_exempt
 def verificar_disponibilidad(request):

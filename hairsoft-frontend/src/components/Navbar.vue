@@ -66,6 +66,7 @@ import usuarioImg from '@/assets/usuario.png';
 const router = useRouter();
 
 const modulos = [
+  { name: 'Dashboard', path: '/dashboard' },
   { name: 'Usuarios', path: '/usuarios' },
   { name: 'Turnos', path: '/turnos' },
   { name: 'Servicios', path: '/servicios' },
@@ -73,7 +74,7 @@ const modulos = [
   { name: 'Ventas', path: '/ventas' },
   { name: 'Proveedores', path: '/proveedores' },
   { name: 'Categorías', path: '/categorias' },
-  { name: 'Roles', path: '/roles' }
+  { name: 'Roles', path: '/roles' },
 ];
 
 const usuario = ref({
@@ -108,17 +109,23 @@ onMounted(() => {
 
 
 <style scoped>
-/* Navbar principal - SIEMPRE OSCURO (no cambia con el tema) */
+/* Colores Clave del Tema Dorado/Oro */
+/* Usamos #FFD700 (Oro) y #D4AF37 (Dorado/Cobre) como acentos */
+
+/* Navbar principal - SIEMPRE OSCURO (coherencia con el diseño del dashboard) */
 .navbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0rem 3rem;
+  /* Fondo oscuro con ligera transparencia */
   background: linear-gradient(135deg, rgba(10, 10, 15, 0.95) 0%, rgba(20, 20, 30, 0.95) 100%);
   backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 2px solid rgba(0, 153, 255, 0.2);
+  /* CAMBIO CLAVE: Borde Inferior Dorado */
+  border-bottom: 2px solid rgba(212, 175, 55, 0.3);
   color: #ffffff;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 80px rgba(0, 153, 255, 0.1);
+  /* CAMBIO CLAVE: Sombra de Neón Dorada */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 80px rgba(212, 175, 55, 0.1);
   position: sticky;
   top: 0;
   z-index: 1000;
@@ -126,6 +133,7 @@ onMounted(() => {
   height: 80px;
 }
 
+/* Efecto Shimmer (línea que pasa) */
 .navbar::before {
   content: '';
   position: absolute;
@@ -133,9 +141,10 @@ onMounted(() => {
   left: 0;
   right: 0;
   height: 100%;
+  /* CAMBIO CLAVE: Shimmer Dorado */
   background: linear-gradient(90deg, 
     transparent 0%, 
-    rgba(0, 153, 255, 0.05) 50%, 
+    rgba(212, 175, 55, 0.08) 50%, 
     transparent 100%);
   pointer-events: none;
   animation: shimmer 3s infinite;
@@ -169,16 +178,18 @@ onMounted(() => {
   max-width: 100%;
   border-radius: 14px;
   object-fit: cover;
-  box-shadow: 0 4px 20px rgba(0, 153, 255, 0.5);
+  /* CAMBIO CLAVE: Sombra y Borde Dorado del Logo */
+  box-shadow: 0 4px 20px rgba(212, 175, 55, 0.5);
   transition: all 0.3s ease;
   position: relative;
   z-index: 2;
-  border: 2px solid rgba(0, 153, 255, 0.3);
+  border: 2px solid rgba(212, 175, 55, 0.3);
 }
 
 .logo-container:hover .logo {
   transform: scale(1.05) rotate(5deg);
-  box-shadow: 0 6px 28px rgba(0, 153, 255, 0.7);
+  /* CAMBIO CLAVE: Sombra más intensa al hover */
+  box-shadow: 0 6px 28px rgba(212, 175, 55, 0.7);
 }
 
 .logo-glow {
@@ -186,7 +197,8 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   border-radius: 14px;
-  background: radial-gradient(circle, rgba(0, 153, 255, 0.4) 0%, transparent 70%);
+  /* CAMBIO CLAVE: Glow Dorado */
+  background: radial-gradient(circle, rgba(212, 175, 55, 0.4) 0%, transparent 70%);
   filter: blur(10px);
   animation: pulse 2s ease-in-out infinite;
 }
@@ -199,12 +211,14 @@ onMounted(() => {
 .brand-name {
   font-size: 1.9rem;
   font-weight: 900;
-  background: linear-gradient(135deg, #00d4ff 0%, #0099ff 50%, #7b2cbf 100%);
+  /* CAMBIO CLAVE: Degradado de Texto Dorado/Cobre */
+  background: linear-gradient(135deg, #FFD700 0%, #D4AF37 50%, #B8941F 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   letter-spacing: 1px;
-  text-shadow: 0 0 30px rgba(0, 153, 255, 0.5);
+  /* CAMBIO CLAVE: Sombra de Texto Dorada */
+  text-shadow: 0 0 30px rgba(212, 175, 55, 0.5);
   position: relative;
 }
 
@@ -243,7 +257,8 @@ onMounted(() => {
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, rgba(0, 153, 255, 0.2) 0%, rgba(123, 44, 191, 0.2) 100%);
+  /* CAMBIO CLAVE: Efecto de Hover Dorado/Cobre */
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(184, 148, 31, 0.2) 100%);
   opacity: 0;
   transition: opacity 0.3s ease;
   border-radius: 14px;
@@ -254,15 +269,20 @@ onMounted(() => {
 }
 
 .nav-link:hover {
-  color: #00d4ff;
+  /* CAMBIO CLAVE: Color de Texto al Hover */
+  color: #FFD700;
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0, 153, 255, 0.3);
+  /* CAMBIO CLAVE: Sombra de Hover Dorada */
+  box-shadow: 0 4px 16px rgba(212, 175, 55, 0.3);
 }
 
 .nav-link.router-link-active {
-  background: linear-gradient(135deg, rgba(0, 153, 255, 0.25) 0%, rgba(123, 44, 191, 0.25) 100%);
-  color: #00d4ff;
-  box-shadow: 0 0 20px rgba(0, 153, 255, 0.4);
+  /* CAMBIO CLAVE: Fondo Activo Dorado/Cobre */
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.25) 0%, rgba(184, 148, 31, 0.25) 100%);
+  /* CAMBIO CLAVE: Color de Texto Activo */
+  color: #FFD700;
+  /* CAMBIO CLAVE: Sombra Activa Dorada */
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.4);
 }
 
 /* Usuario y tema */
@@ -273,7 +293,7 @@ onMounted(() => {
   z-index: 2;
 }
 
-/* ESTILOS DEL SWITCH DE TEMA */
+/* ESTILOS DEL SWITCH DE TEMA: Se mantienen para el modo oscuro/claro */
 .theme-toggle {
   display: flex;
   align-items: center;
@@ -415,8 +435,10 @@ onMounted(() => {
 
 .user-info:hover {
   background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(0, 153, 255, 0.3);
-  box-shadow: 0 4px 16px rgba(0, 153, 255, 0.2);
+  /* CAMBIO CLAVE: Borde de Hover Dorado */
+  border-color: rgba(212, 175, 55, 0.3);
+  /* CAMBIO CLAVE: Sombra de Hover Dorada */
+  box-shadow: 0 4px 16px rgba(212, 175, 55, 0.2);
 }
 
 .user-avatar-container {
@@ -431,14 +453,17 @@ onMounted(() => {
   width: 42px;
   border-radius: 50%;
   object-fit: cover;
-  box-shadow: 0 2px 12px rgba(0, 153, 255, 0.4);
-  border: 2px solid rgba(0, 153, 255, 0.5);
+  /* CAMBIO CLAVE: Sombra de Avatar Dorada */
+  box-shadow: 0 2px 12px rgba(212, 175, 55, 0.4);
+  /* CAMBIO CLAVE: Borde de Avatar Dorado */
+  border: 2px solid rgba(212, 175, 55, 0.5);
   transition: all 0.3s ease;
 }
 
 .user-info:hover .user-img {
   transform: scale(1.05);
-  box-shadow: 0 4px 16px rgba(0, 153, 255, 0.6);
+  /* CAMBIO CLAVE: Sombra de Hover de Avatar Dorada */
+  box-shadow: 0 4px 16px rgba(212, 175, 55, 0.6);
 }
 
 .user-status {
@@ -454,6 +479,7 @@ onMounted(() => {
 }
 
 .user-status.online {
+  /* Mantenemos el verde para el estado online, es un color estándar de UX */
   background-color: #00ff88;
   box-shadow: 0 0 12px rgba(0, 255, 136, 0.6);
   animation: statusPulse 2s ease-in-out infinite;
@@ -471,14 +497,58 @@ onMounted(() => {
   letter-spacing: 0.3px;
 }
 
-/* Responsive */
+/* -------------------- */
+/* AJUSTES RESPONSIVE   */
+/* -------------------- */
+
 @media (max-width: 968px) {
   .navbar {
+    /* Ajusta el padding lateral para pantallas medianas */
     padding: 1rem 1.5rem;
+  }
+  
+  .nav-links {
+    /* Reduce el espacio entre links */
+    gap: 0.25rem;
+  }
+
+  .nav-link {
+    /* Reduce el padding de los links de navegación */
+    padding: 8px 12px;
   }
 
   .brand-name {
+    /* Reduce el tamaño del nombre de marca */
     font-size: 1.5rem;
+  }
+
+  /* Puede que en pantallas medianas los links sean demasiados, considera ocultar algunos o hacerlos wrap */
+  /* Si necesitas que el menú se colapse: */
+  /* .nav-links { display: none; } */
+  /* y usar un botón de hamburguesa. */
+}
+
+@media (max-width: 650px) {
+  .navbar {
+    /* Permite que el contenido se ajuste si no cabe */
+    flex-wrap: wrap; 
+    /* El navbar será más alto si hay wrap */
+    height: auto; 
+    min-height: 80px;
+    /* Ajusta el padding para móviles */
+    padding: 0.75rem 1rem;
+  }
+  
+  .navbar-left {
+    /* Ocupa el ancho completo si hay wrap para centrar mejor */
+    flex-grow: 1;
+  }
+
+  .nav-links {
+    /* Ocultamos los links de navegación para móviles si no hay espacio */
+    display: none; 
+    /* O si quieres que aparezcan debajo: */
+    /* width: 100%; justify-content: space-around; margin-top: 0.5rem; */
   }
 }
 
@@ -488,11 +558,30 @@ onMounted(() => {
   }
 
   .user-name {
+    /* Ocultamos el nombre de usuario para ahorrar espacio */
     display: none;
+  }
+  
+  .user-info {
+    /* Reduce el padding del contenedor de usuario */
+    padding: 6px 12px;
+  }
+
+  .user-img {
+    /* Reduce el tamaño del avatar */
+    height: 36px;
+    width: 36px;
   }
 
   .brand-name {
+    /* Reduce aún más el tamaño de la marca */
     font-size: 1.3rem;
+  }
+  
+  .logo-container {
+    /* Reduce el tamaño del logo contenedor */
+    height: 50px;
+    width: 50px;
   }
 }
 </style>

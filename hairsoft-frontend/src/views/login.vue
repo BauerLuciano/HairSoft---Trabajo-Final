@@ -1,111 +1,77 @@
 <template>
-  <div class="login-container">
-    <div class="login-card">
-      <div class="logo-container">
-        <img src="https://i.gifer.com/37Eo.gif" alt="HairSoft Logo" class="logo">
-      </div>
-
-      <h1 class="login-title">HairSoft</h1>
-      <p class="login-subtitle">Ingresa a tu cuenta!</p>
-
-      <div v-if="mensajeError" class="error-message">
-        {{ mensajeError }}
-      </div>
-
-      <form class="login-form" @submit.prevent="handleLogin">
-        <div class="input-group">
-          <input type="text" v-model.trim="username" required class="input-field" placeholder="Correo electrónico">
-        </div>
-
-        <div class="input-group">
-          <input type="password" v-model="password" required class="input-field" placeholder="Contraseña">
-        </div>
-
-        <router-link to="/recuperar-password" class="forgot-password">¿Olvidaste tu contraseña?</router-link>
-
-        <button type="submit" class="login-button">Iniciar Sesión</button>
-      </form>
-    </div>
+  <div style="padding: 20px;">
+    <h1>HairSoft Login</h1>
+    <div v-if="mensajeError" style="color: red;">{{ mensajeError }}</div>
+    <input v-model="username" placeholder="Email" style="display: block; margin: 10px 0; padding: 5px;">
+    <input v-model="password" type="password" placeholder="Password" style="display: block; margin: 10px 0; padding: 5px;">
+    <button @click="handleLogin" style="padding: 10px 20px;">Login</button>
   </div>
 </template>
 
 <script>
-import axios from 'axios';
-
 export default {
-    name: 'Login',
-    data() {
-        return {
-            username: '', // Correo/Usuario
-            password: '', // Contraseña
-            mensajeError: ''
-        }
-    },
-    methods: {
-        async handleLogin() {
-            this.mensajeError = '';
-            
-            if (!this.username || !this.password) {
-                this.mensajeError = "Por favor, ingresa tu correo y contraseña.";
-                return;
-            }
-
-            try {
-                const response = await axios.post("http://localhost:8000/usuarios/api/auth/login/", {
-                    username: this.username,
-                    password: this.password
-                });
-
-                const data = response.data;
-
-                if (data.status === 'ok') {
-                    // 1. Guardar datos en LocalStorage
-                    localStorage.setItem('user_id', data.user_id);
-                    localStorage.setItem('user_rol', data.rol);
-                    
-                    // 2. 🛑 CORRECCIÓN CLAVE: Redirección con rutas existentes
-                    const rol = data.rol;
-                    
-                    if (rol === 'CLIENTE') {
-                        // Ruta real del cliente (crear turno web)
-                        this.$router.push('/turnos/crear-web'); 
-                        
-                    } else if (rol === 'ADMINISTRADOR') {
-                        // Ruta real de administración (Listado de Usuarios)
-                        this.$router.push('/usuarios'); 
-                        
-                    } else if (rol === 'PELUQUERO') {
-                        // Ruta real de Peluquero (Listado de Turnos)
-                        this.$router.push('/turnos');
-                        
-                    } else {
-                        // Rol desconocido o SIN_ROL
-                        this.$router.push('/login'); 
-                    }
-                    
-                    // Si usas Vuex/Pinia, aquí llamarías a cargarUsuarioLogueado()
-                } else {
-                    this.mensajeError = data.message || "Error al iniciar sesión.";
-                }
-            } catch (error) {
-                console.error("Error de login:", error.response);
-                
-                // Manejo de errores 401 Unauthorized
-                if (error.response && error.response.status === 401) {
-                    this.mensajeError = "Credenciales incorrectas. Vuelve a intentarlo.";
-                } else {
-                    this.mensajeError = "Error de conexión o problema en el servidor.";
-                }
-            }
-        }
+  data() {
+    return {
+      username: '',
+      password: '',
+      mensajeError: ''
     }
+  },
+  methods: {
+    async handleLogin() {
+      try {
+        console.log("🔐 Intentando login...");
+        const response = await fetch("http://localhost:8000/usuarios/api/auth/login/", {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            username: this.username,
+            password: this.password
+          }),
+          credentials: 'include'
+        });
+        
+        const data = await response.json();
+        console.log("📦 Respuesta:", data);
+        
+        if (data.status === 'ok') {
+          localStorage.setItem('user_id', data.user_id);
+          localStorage.setItem('user_rol', data.rol);
+          console.log("✅ Login exitoso! Rol: " + data.rol);
+          
+          // 🚨 REDIRECCIÓN SEGÚN ROL
+          const rol = data.rol;
+          if (rol === 'CLIENTE') {
+            console.log("🎯 Redirigiendo a crear turno web...");
+            this.$router.push('/turnos/crear-web');
+          } else if (rol === 'ADMINISTRADOR') {
+            console.log("🎯 Redirigiendo a usuarios...");
+            this.$router.push('/usuarios');
+          } else if (rol === 'PELUQUERO') {
+            console.log("🎯 Redirigiendo a turnos...");
+            this.$router.push('/turnos');
+          } else {
+            console.log("❌ Rol desconocido:", rol);
+            this.mensajeError = "Rol no reconocido: " + rol;
+          }
+          
+        } else {
+          this.mensajeError = data.message || "Error en login";
+        }
+      } catch (error) {
+        console.error("💥 Error:", error);
+        this.mensajeError = "Error de conexión";
+      }
+    }
+  }
 }
 </script>
 
 <style src="../styles/login.css"></style>
 
 <style>
-/* Estilo simple para el mensaje de error */
 .error-message {
     color: #cc0000;
     background-color: #ffe0e0;

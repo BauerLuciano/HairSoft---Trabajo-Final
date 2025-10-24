@@ -155,7 +155,6 @@ import axios from 'axios';
 export default {
   data() {
     return {
-      // 🚨 Restauramos la convención a 'peluquero'
       form: {
         peluquero: null, 
         servicios_ids: [],
@@ -163,9 +162,7 @@ export default {
         fecha: "",
         tipo_pago: null,
       },
-      // Simulación de usuario logueado (debe ser cargado por cargarUsuarioLogueado)
       usuario: { id: null, nombre: 'Cargando', apellido: '...', dni: 'Cargando', telefono: '' }, 
-      
       peluqueros: [],
       servicios: [],
       fechaSeleccionada: null,
@@ -178,7 +175,6 @@ export default {
   },
   computed: {
     formularioValido() {
-      // 🚨 Usamos 'form.peluquero'
       return this.form.peluquero && 
              this.form.servicios_ids.length > 0 &&
              this.fechaSeleccionada && 
@@ -186,44 +182,41 @@ export default {
              this.form.tipo_pago;
     },
     diasDelMes() {
-        // Lógica del calendario se mantiene
-        const year = this.mesActual.getFullYear();
-        const month = this.mesActual.getMonth();
-        const primerDia = new Date(year, month, 1);
-        const ultimoDia = new Date(year, month + 1, 0);
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-        
-        const dias = [];
-        
-        const primerDiaSemana = primerDia.getDay() === 0 ? 6 : primerDia.getDay() - 1;
-        for (let i = primerDiaSemana; i > 0; i--) {
-            const fecha = new Date(year, month, -i + 1);
-            dias.push({
-                numero: fecha.getDate(),
-                fecha: this.formatoFecha(fecha),
-                disponible: false,
-                pasado: true
-            });
-        }
-        
-        for (let dia = 1; dia <= ultimoDia.getDate(); dia++) {
-            const fecha = new Date(year, month, dia);
-            const fechaStr = this.formatoFecha(fecha);
-            const disponible = this.estaDiaDisponible(fecha);
-            const pasado = fecha < hoy;
-            const hoyDia = this.esMismoDia(fecha, hoy);
-            
-            dias.push({
-                numero: dia,
-                fecha: fechaStr,
-                disponible,
-                pasado,
-                hoy: hoyDia
-            });
-        }
-        
-        return dias;
+      const year = this.mesActual.getFullYear();
+      const month = this.mesActual.getMonth();
+      const primerDia = new Date(year, month, 1);
+      const ultimoDia = new Date(year, month + 1, 0);
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      
+      const dias = [];
+      const primerDiaSemana = primerDia.getDay() === 0 ? 6 : primerDia.getDay() - 1;
+      for (let i = primerDiaSemana; i > 0; i--) {
+          const fecha = new Date(year, month, -i + 1);
+          dias.push({
+              numero: fecha.getDate(),
+              fecha: this.formatoFecha(fecha),
+              disponible: false,
+              pasado: true
+          });
+      }
+      
+      for (let dia = 1; dia <= ultimoDia.getDate(); dia++) {
+          const fecha = new Date(year, month, dia);
+          const fechaStr = this.formatoFecha(fecha);
+          const disponible = this.estaDiaDisponible(fecha);
+          const pasado = fecha < hoy;
+          const hoyDia = this.esMismoDia(fecha, hoy);
+          
+          dias.push({
+              numero: dia,
+              fecha: fechaStr,
+              disponible,
+              pasado,
+              hoy: hoyDia
+          });
+      }
+      return dias;
     },
     mesActualTexto() {
       return this.mesActual.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
@@ -240,23 +233,21 @@ export default {
     },
 
     async cargarUsuarioLogueado() {
-       try {
-         // Intenta obtener los datos del usuario logueado. Si Django usa sesiones, esta URL debe funcionar
-         const res = await axios.get("http://localhost:8000/usuarios/api/me/"); 
-         this.usuario = res.data; 
-       } catch (err) {
-         console.error("Error al cargar usuario logueado. Asegúrate de estar autenticado.", err);
-       }
+      try {
+        const res = await axios.get("http://localhost:8000/usuarios/api/me/"); 
+        this.usuario = res.data; 
+      } catch (err) {
+        console.error("Error al cargar usuario logueado. Asegúrate de estar autenticado.", err);
+      }
     },
     
     async cargarPeluqueros() {
       try {
         const res = await axios.get("http://localhost:8000/usuarios/api/peluqueros/");
-        // El problema aquí no es el método, sino la inconsistencia de variables. 
         this.peluqueros = res.data;
       } catch (err) {
-        console.error("❌ Error al cargar peluqueros (Verifica la URL en Django):", err.response ? err.response.data : err.message);
-        this.mensaje = "Error al cargar la lista de peluqueros. Revisa la consola.";
+        console.error("❌ Error al cargar peluqueros:", err.response ? err.response.data : err.message);
+        this.mensaje = "Error al cargar la lista de peluqueros.";
         this.peluqueros = [];
       }
     },
@@ -280,43 +271,34 @@ export default {
     },
     
     montoAPagarAhora() {
-        const total = parseFloat(this.calcularTotal());
-        if (this.form.tipo_pago === 'TOTAL') {
-            return total.toFixed(2);
-        }
-        if (this.form.tipo_pago === 'SENA_50') {
-            return (total * 0.5).toFixed(2);
-        }
-        return '0.00';
+      const total = parseFloat(this.calcularTotal());
+      if (this.form.tipo_pago === 'TOTAL') return total.toFixed(2);
+      if (this.form.tipo_pago === 'SENA_50') return (total * 0.5).toFixed(2);
+      return '0.00';
     },
 
     toggleServicio(servicio) {
-        const index = this.form.servicios_ids.indexOf(servicio.id);
-        if (index === -1) {
-          this.form.servicios_ids.push(servicio.id);
-        } else {
-          this.form.servicios_ids.splice(index, 1);
-        }
+      const index = this.form.servicios_ids.indexOf(servicio.id);
+      if (index === -1) this.form.servicios_ids.push(servicio.id);
+      else this.form.servicios_ids.splice(index, 1);
     },
 
-    getServicioNombre(servicioId) {
-        const servicio = this.servicios.find(s => s.id === servicioId);
-        return servicio ? servicio.nombre : '';
+    getServicioNombre(id) {
+      const s = this.servicios.find(x => x.id === id);
+      return s ? s.nombre : '';
     },
 
-    getServicioPrecio(servicioId) {
-        const servicio = this.servicios.find(s => s.id === servicioId);
-        return servicio ? servicio.precio : 0;
+    getServicioPrecio(id) {
+      const s = this.servicios.find(x => x.id === id);
+      return s ? s.precio : 0;
     },
 
     calcularTotal() {
-        return this.form.servicios_ids.reduce((total, servicioId) => {
-          return total + parseFloat(this.getServicioPrecio(servicioId) || 0); 
-        }, 0).toFixed(2);
+      return this.form.servicios_ids.reduce((total, id) => total + parseFloat(this.getServicioPrecio(id) || 0), 0).toFixed(2);
     },
 
     calcularSena() {
-        return (this.calcularTotal() * 0.5).toFixed(2);
+      return (this.calcularTotal() * 0.5).toFixed(2);
     },
     
     mesAnterior() {
@@ -348,19 +330,17 @@ export default {
       return fecha.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
     },
 
-    esMismoDia(fecha1, fecha2) {
-      return fecha1.toDateString() === fecha2.toDateString();
+    esMismoDia(f1, f2) {
+      return f1.toDateString() === f2.toDateString();
     },
 
     estaDiaDisponible(fecha) {
       if (fecha.getDay() === 0 || fecha.getDay() === 6) return false; 
-      
       const hoy = new Date();
       hoy.setHours(0, 0, 0, 0);
-      const fechaComparar = new Date(fecha);
-      fechaComparar.setHours(0, 0, 0, 0);
-      
-      return fechaComparar >= hoy;
+      const comparar = new Date(fecha);
+      comparar.setHours(0, 0, 0, 0);
+      return comparar >= hoy;
     },
 
     generarHorariosDisponibles() {
@@ -370,8 +350,8 @@ export default {
         { inicio: 15, fin: 20 }
       ];
 
-      bloques.forEach(bloque => {
-        for (let h = bloque.inicio; h < bloque.fin; h++) {
+      bloques.forEach(b => {
+        for (let h = b.inicio; h < b.fin; h++) {
           for (let m = 0; m < 60; m += 30) {
             const hora = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
             const disponible = this.estaHorarioDisponible(hora);
@@ -379,27 +359,22 @@ export default {
           }
         }
       });
-
       this.horariosDisponibles = horariosBase;
     },
 
     estaHorarioDisponible(horario) {
-      // 🚨 Usamos 'form.peluquero'
       if (!this.fechaSeleccionada || !this.form.peluquero) return false;
-
       const turnoOcupado = this.turnosOcupados.find(t => 
         t.fecha === this.fechaSeleccionada && 
         t.hora === horario && 
         t.peluquero == this.form.peluquero
       );
-      
       return !turnoOcupado;
     },
 
     getPeluqueroNombre() {
-      // 🚨 Usamos 'form.peluquero'
-      const peluquero = this.peluqueros.find(p => p.id == this.form.peluquero); 
-      return peluquero ? `${peluquero.nombre} ${peluquero.apellido}` : '';
+      const p = this.peluqueros.find(p => p.id == this.form.peluquero); 
+      return p ? `${p.nombre} ${p.apellido}` : '';
     },
 
     limpiarSelecciones() {
@@ -424,39 +399,43 @@ export default {
       this.mensaje = "Reservando turno y generando link de pago con Mercado Pago...";
 
       const payload = {
-        // 🚨 CRUCIAL: Renombramos 'peluquero' a 'peluquero_id' en el payload para el backend.
         peluquero_id: this.form.peluquero, 
         servicios_ids: this.form.servicios_ids,
         fecha: this.fechaSeleccionada,
         hora: this.form.hora,
         canal: 'WEB',
-        tipo_pago: this.form.tipo_pago, // SENA_50 o TOTAL
+        tipo_pago: this.form.tipo_pago,
       };
 
       try {
         const res = await axios.post("http://localhost:8000/usuarios/api/turnos/crear/", payload);
-
         const data = res.data;
         this.cargando = false;
         this.mensaje = "";
 
-        if (data.status === 'ok' && data.procesar_pago && data.mp_data && data.mp_data.init_point) {
-            this.mensaje = "Turno pre-reservado. Redirigiendo a Mercado Pago para abonar...";
-            this.iniciarPagoMercadoPago(data.mp_data.init_point);
+        if (data.status === 'ok' && data.procesar_pago && data.mp_data?.init_point) {
+          this.mensaje = "Turno pre-reservado. Redirigiendo a Mercado Pago...";
+          this.iniciarPagoMercadoPago(data.mp_data.init_point);
         } else {
-            this.mensaje = `Error: ${data.message || "Error al reservar el turno."}`;
+          this.mensaje = `Error: ${data.message || "Error al reservar el turno."}`;
         }
       } catch (err) {
         console.error("Error de red/servidor:", err);
         this.cargando = false;
-        
-        const errorMsg = err.response?.data?.message || err.message || "Error de conexión con el servidor.";
-        this.mensaje = `Error de reserva: ${errorMsg}`;
+        const msg = err.response?.data?.message || err.message || "Error de conexión con el servidor.";
+        this.mensaje = `Error de reserva: ${msg}`;
       }
     },
 
     iniciarPagoMercadoPago(initPointUrl) {
-      window.location.href = initPointUrl; 
+      console.log("🔗 Redirigiendo a Mercado Pago:", initPointUrl);
+      if (!initPointUrl || !initPointUrl.includes('mercadopago.com')) {
+        console.error("❌ URL inválida:", initPointUrl);
+        this.mensaje = "Error: Enlace de pago no válido.";
+        return;
+      }
+      // 🔥 Redirige en nueva pestaña (seguro para localhost)
+      window.open(initPointUrl, '_blank');
     }
   },
 
@@ -465,6 +444,7 @@ export default {
   }
 };
 </script>
+
 
 <style scoped>
 /* Estilos necesarios para las opciones de pago y presentación */

@@ -34,8 +34,8 @@ const routes = [
   { path: '/roles/crear', name: 'RegistrarRol', component: () => import('@/views/roles/RegistrarRol.vue') },
   { path: '/roles/modificar/:id', name: 'ModificarRol', component: () => import('@/views/roles/RegistrarRol.vue'), props: true },
 
-
-
+  // Dashboard
+  { path: '/dashboard', name: 'Dashboard', component: () => import('@/views/Dashboard.vue') }
 
 ]
 

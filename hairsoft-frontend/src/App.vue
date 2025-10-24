@@ -29,12 +29,12 @@ body {
   min-height: 100vh;
 }
 
-.app-content {
+/*.app-content {
   margin-top: 60px;
   padding: 1rem;
   transition: all 0.4s ease;
   min-height: calc(100vh - 80px);
-}
+} */
 
 /* MODO CLARO - FONDO BLANCO EN TODO */
 body.light-mode {

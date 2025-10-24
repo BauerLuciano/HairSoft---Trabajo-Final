@@ -32,11 +32,8 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware', 
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    
-    # 🛑 ESTA LÍNEA DEBE SEGUIR COMENTADA/ELIMINADA
-    #'django.middleware.csrf.CsrfViewMiddleware',
-    
+    'usuarios.middleware.DisableCSRFMiddleware',  # Deshabilitar CSRF
+    'django.middleware.common.CommonMiddleware',   
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -105,29 +102,66 @@ USE_TZ = True
 STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-
 # ================================
 # CONFIGURACIÓN CORS / CSRF (FINAL)
 # ================================
 
-CORS_ALLOW_ALL_ORIGINS = False 
+# 🚨 CONFIGURACIÓN CORS EXTREMA 🚨
+CORS_ALLOW_ALL_ORIGINS = True  # Permitir todos los orígenes en desarrollo
+CORS_ALLOW_CREDENTIALS = True  # Permitir cookies
+
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
 ]
-CORS_ALLOW_CREDENTIALS = True 
+
+# 🚨 CONFIGURACIÓN CSRF EXTREMA 🚨
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
-    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5173", 
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
 ]
 
-# 🛑 SOLUCIÓN CRÍTICA PARA EL 403 EN LOCALHOST (HTTP) 🛑
-# Forzar a Django a no requerir HTTPS para las cookies en desarrollo.
+# Deshabilitar CSRF completamente en desarrollo
+CSRF_USE_SESSIONS = False
 CSRF_COOKIE_SECURE = False
-SESSION_COOKIE_SECURE = False
-CSRF_COOKIE_HTTPONLY = False 
-SESSION_COOKIE_HTTPONLY = True 
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = 'Lax'
 
+# Configuración de sesión
+SESSION_COOKIE_SECURE = False
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+
+# Headers permitidos para CORS
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# Métodos permitidos para CORS
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
 
 # --------------------------------
 
@@ -143,13 +177,39 @@ AUTH_USER_MODEL = 'usuarios.Usuario' # Correctamente definido
 # ================================
 
 MERCADO_PAGO = {
-    'ACCESS_TOKEN': 'TEST-108294043041566-102218-55b41e3807beeb1a23eadd5aebc04ab3-801234268',
-    'PUBLIC_KEY': 'TEST-81162340-88c1-4a97-ae51-e4ce9565e582',
+    # ✅ Access Token de producción dentro de cuenta de prueba
+    'ACCESS_TOKEN': 'APP_USR-7404896415144376-102322-584184e7db9ca5b628be4d7e21763ae3-2943677918',
+    
+    # ✅ Public Key (para frontend si necesitas Bricks / Checkout)
+    'PUBLIC_KEY': 'APP_USR-4e145215-f26e-4c2d-8be7-a557300a9154',
+    
+    # URLs de retorno luego del pago
     'BACK_URLS': {
-        'success': 'http://localhost:8000/usuarios/api/mercadopago/pago-exitoso/',
-        'failure': 'http://localhost:8000/usuarios/api/mercadopago/pago-error/',
-        'pending': 'http://localhost:8000/usuarios/api/mercadopago/pago-pendiente/'
+        'success': 'http://localhost:5173/pago-exitoso',
+        'failure': 'http://localhost:5173/pago-error',
+        'pending': 'http://localhost:5173/pago-pendiente'
     },
+    
+    # Auto return si el pago se aprueba
     'AUTO_RETURN': 'approved',
-    'BINARY_MODE': False
+    
+    # Binary mode True = solo aprobado o rechazado
+    'BINARY_MODE': True,
+    
+    # Opcional: si querés habilitar sandbox explícitamente (aunque SDK detecta init_point)
+    'SANDBOX': True
+}
+
+
+# ================================
+# CONFIGURACIÓN REST FRAMEWORK
+# ================================
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',
+    ]
 }
