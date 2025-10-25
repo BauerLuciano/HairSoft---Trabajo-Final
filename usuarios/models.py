@@ -217,3 +217,29 @@ class Turno(models.Model):
     class Meta:
         db_table = "turnos"
         ordering = ['fecha', 'hora']
+
+# ===============================
+# PROVEEDORES
+# ===============================
+
+# AGREGAR ESTO ANTES DEL MODELO Proveedor
+ESTADOS = [
+    ('ACTIVO', 'Activo'),
+    ('INACTIVO', 'Inactivo'),
+]
+
+class Proveedor(models.Model):
+    nombre = models.CharField(max_length=200)
+    contacto = models.CharField(max_length=100, blank=True, null=True)
+    telefono = models.CharField(max_length=20)
+    email = models.EmailField(blank=True, null=True)
+    direccion = models.TextField(blank=True, null=True)
+    productos_que_ofrece = models.TextField(blank=True, null=True)  # Hacer opcional
+    estado = models.CharField(max_length=10, choices=ESTADOS, default='ACTIVO')
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    
+    # NUEVO: Relación muchos a muchos con categorías
+    categorias = models.ManyToManyField('CategoriaProducto', blank=True)
+    
+    # NUEVO: Campo para productos específicos
+    productos_especificos = models.TextField(blank=True, null=True)

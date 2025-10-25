@@ -93,4 +93,10 @@ urlpatterns = [
     path('api/mercadopago/pago-exitoso/', views.pago_exitoso, name='mp_pago_exitoso'),
     path('api/mercadopago/pago-error/', views.pago_error, name='mp_pago_error'),
     path('api/mercadopago/pago-pendiente/', views.pago_pendiente, name='mp_pago_pendiente'),
+
+    # ================================
+    # Proveedores
+    # ================================
+    path('api/proveedores/', views.ProveedorListCreateView.as_view(), name='proveedores-list'),
+    path('api/proveedores/<int:pk>/', views.ProveedorRetrieveUpdateDestroyView.as_view(), name='proveedores-detail'),
 ]

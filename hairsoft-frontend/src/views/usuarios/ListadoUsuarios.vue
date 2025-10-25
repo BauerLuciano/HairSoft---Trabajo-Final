@@ -296,20 +296,23 @@ watch(filtros, () => {
   pagina.value = 1
 }, { deep: true })
 </script>
-
 <style scoped>
 /* Tarjeta principal */
 .list-card {
-  background: rgba(23, 23, 23, 0.8);
+  /* Cambio clave: Usar variable para fondo de tarjeta (bg-secondary) */
+  background: var(--bg-secondary);
+  color: var(--text-primary); /* Para que el texto interno cambie */
+  
   border-radius: 24px;
   padding: 40px;
   width: 100%;
   max-width: 1600px;
-  box-shadow: 0 25px 50px rgba(0,0,0,0.5),
-              0 0 0 1px rgba(255,255,255,0.05) inset;
+  /* Cambio clave: Usar variable para sombra (shadow-color) y borde sutil (border-color) */
+  box-shadow: 0 25px 50px var(--shadow-color),
+              0 0 0 1px var(--border-color) inset;
   position: relative;
   overflow: hidden;
-  transition: opacity 0.3s ease, filter 0.3s ease;
+  transition: all 0.4s ease; /* Transición para que el cambio de tema se vea suave */
 }
 
 .list-card::before {
@@ -317,7 +320,11 @@ watch(filtros, () => {
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 3px;
-  background: linear-gradient(90deg, #6b7280, #9ca3af, #6b7280);
+  /* Cambio clave: Usar variable para el acento del degradado */
+  background: linear-gradient(90deg, 
+              var(--text-secondary), 
+              var(--accent-color), 
+              var(--text-secondary));
   border-radius: 24px 24px 0 0;
 }
 
@@ -334,18 +341,21 @@ watch(filtros, () => {
   display: flex;
   align-items: center;
   gap: 4px;
+  color: white; /* Mantenemos blanco para contraste en gradientes */
 }
 .action-button.edit {
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  color: white;
+  /* Usamos colores fijos para gradientes de acción (azul/verde) */
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8); 
+  /* Sugerencia: Añade hover con var(--accent-shadow) si usas el botón de Header.vue */
 }
 .action-button.delete {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  color: white;
+  /* Usamos colores fijos para gradientes de peligro (rojo) */
+  background: linear-gradient(135deg, #ef4444, #dc2626); 
 }
 
 /* 🔹 Efecto de oscurecimiento elegante cuando se abre el modal */
 .overlay-activo {
+  /* Mantenemos la opacidad y el blur, pero no afectamos los colores */
   opacity: 0.4;
   filter: blur(3px);
   pointer-events: none;
@@ -358,7 +368,9 @@ watch(filtros, () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.75);
+  /* Cambio clave: Usar el fondo principal con transparencia para el overlay */
+  background: var(--bg-primary); 
+  opacity: 0.9;
   backdrop-filter: blur(8px);
   display: flex;
   justify-content: center;
@@ -368,12 +380,8 @@ watch(filtros, () => {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* 🔹 Contenedor del formulario - MÁS COMPACTO */
@@ -384,22 +392,20 @@ watch(filtros, () => {
   max-width: 60vw;
   overflow-y: auto;
   border-radius: 16px;
-  background: rgba(23, 23, 23, 0.98);
-  box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-  border: 1px solid rgba(255,255,255,0.1);
+  
+  /* Cambio clave: Usar fondo secundario para el modal */
+  background: var(--bg-secondary); 
+  /* Cambio clave: Usar variables de tema para sombra y borde */
+  box-shadow: 0 20px 40px var(--shadow-color);
+  border: 1px solid var(--border-color);
+  
   padding: 0;
   margin: 20px;
 }
 
 @keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* 🔹 Botón de cerrar BIEN PEGADO AL BORDE - COMPACTO */
@@ -407,7 +413,8 @@ watch(filtros, () => {
   position: absolute;
   top: 8px;
   right: 8px;
-  background: linear-gradient(135deg, #ef4444, #dc2626);
+  /* Mantenemos el rojo fijo para indicar "cerrar" o "peligro" */
+  background: linear-gradient(135deg, #ef4444, #dc2626); 
   border: none;
   border-radius: 10px;
   width: 32px;
@@ -430,7 +437,9 @@ watch(filtros, () => {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  /* Usamos el color de texto primario con transparencia para el brillo (funciona en ambos modos) */
+  background: linear-gradient(90deg, transparent, var(--text-primary), transparent);
+  opacity: 0.2;
   transition: left 0.5s ease;
 }
 
@@ -440,32 +449,10 @@ watch(filtros, () => {
   background: linear-gradient(135deg, #dc2626, #b91c1c);
 }
 
-.modal-close:hover::before {
-  left: 100%;
-}
-
-.modal-close:active {
-  transform: scale(0.9) rotate(90deg);
-}
-
-.modal-close svg {
-  width: 14px;
-  height: 14px;
-  transition: transform 0.3s ease;
-}
-
-.modal-close:hover svg {
-  transform: scale(1.2);
-}
-
-/* Efecto de pulso sutil en el botón */
+/* Animaciones no necesitan cambios */
 @keyframes subtlePulse {
-  0%, 100% {
-    box-shadow: 0 3px 8px rgba(239, 68, 68, 0.4);
-  }
-  50% {
-    box-shadow: 0 3px 12px rgba(239, 68, 68, 0.6);
-  }
+  0%, 100% { box-shadow: 0 3px 8px rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 3px 12px rgba(239, 68, 68, 0.6); }
 }
 
 .modal-close {
@@ -477,5 +464,6 @@ watch(filtros, () => {
   margin: 0;
   padding: 20px;
   border-radius: 16px;
+  /* IMPORTANTE: Si .form-container tiene fondo, DEBE usar var(--bg-secondary) o var(--bg-primary) */
 }
 </style>

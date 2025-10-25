@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
-  { path: '/', redirect: '/usuarios' },
+  { path: '/', redirect: '/login' },
   
   // Auth - login está directamente en views/
   { path: '/login', name: 'Login', component: () => import('@/views/login.vue') },
@@ -35,7 +35,23 @@ const routes = [
   { path: '/roles/modificar/:id', name: 'ModificarRol', component: () => import('@/views/roles/RegistrarRol.vue'), props: true },
 
   // Dashboard
-  { path: '/dashboard', name: 'Dashboard', component: () => import('@/views/Dashboard.vue') }
+  { path: '/dashboard', name: 'Dashboard', component: () => import('@/views/Dashboard.vue') },
+
+   // ================================
+  // Productos
+  // ================================ 
+  { path: '/productos', name: 'ListadoProductos', component: () => import('@/views/productos/ListadoProductos.vue') },
+  { path: '/productos/crear', name: 'RegistrarProducto', component: () => import('@/views/productos/RegistrarProducto.vue') },
+  { path: '/productos/modificar/:id', name: 'ModificarProducto', component: () => import('@/views/productos/ModificarProducto.vue'), props: true },
+
+
+   // ================================
+  // Proveedores
+  // ================================
+
+  { path: '/proveedores', name: 'ListadoProveedores', component: () => import('@/views/proveedores/ListadoProveedores.vue') },
+  { path: '/proveedores/crear', name: 'RegistrarProveedor', component: () => import('@/views/proveedores/RegistrarProveedor.vue') },
+  { path: '/proveedores/modificar/:id', name: 'ModificarProveedor', component: () => import('@/views/proveedores/ModificarProveedor.vue'), props: true }
 
 ]
 

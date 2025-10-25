@@ -9,14 +9,17 @@ from django.contrib.auth import authenticate, login
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response 
-from rest_framework import status
+from rest_framework import status, generics  # ← AGREGAR generics AQUÍ
 from datetime import datetime, timedelta
 from django.utils import timezone
 from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno
 from .mercadopago_service import MercadoPagoService
 import json
 import requests
-
+from .serializers import LoginSerializer
+from django.contrib.auth.hashers import check_password
+from .models import Proveedor  # AGREGAR ESTA IMPORTACIÓN
+from .serializers import ProveedorSerializer  # Y esta también
 
 # Modelos y formularios
 from .models import (
@@ -126,44 +129,63 @@ def crear_usuario(request):
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
-@csrf_exempt
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_auth(request):
-    """Maneja la autenticación por sesión y devuelve el rol."""
+    """Maneja la autenticación manual del usuario (usando campo 'contrasena') y devuelve el rol."""
     print("🚨 LOGIN ENDPOINT HIT")
-    print(f"📝 Method: {request.method}")
-    print(f"📦 Data: {request.data}")
-    print(f"👤 User: {request.user}")
-    print(f"🔐 Authenticated: {request.user.is_authenticated}")
     
-    correo = request.data.get('username')
-    contrasena = request.data.get('password')
+    # 1. SERIALIZACIÓN y VALIDACIÓN DE ENTRADA (Usando el LoginSerializer)
+    serializer = LoginSerializer(data=request.data)
     
-    user = authenticate(request, username=correo, password=contrasena)
-    print(f"🔍 User authenticated: {user}")
+    if not serializer.is_valid():
+        print("❌ Validación de datos fallida")
+        # Devuelve un error 400 con los detalles de los campos faltantes
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    if user is not None:
-        login(request, user)
-        print(f"✅ Login successful - User ID: {user.id}")
+    validated_data = serializer.validated_data
+    correo = validated_data.get('username')
+    contrasena_ingresada = validated_data.get('password')
+    
+    print(f"📦 Data Validada - Correo: {correo}")
+
+    # 2. AUTENTICACIÓN MANUAL
+    try:
+        # A. Buscar al usuario por correo
+        user = Usuario.objects.get(correo=correo)
         
-        user_rol = getattr(user, 'rol', None)
-        rol_nombre = user_rol.nombre.upper() if user_rol else 'SIN_ROL'
+        # B. Verificar la contraseña hasheada contra la ingresada
+        # check_password(contraseña_plana, hash_almacenado_en_BD)
+        if user and check_password(contrasena_ingresada, user.contrasena):
+            
+            # C. Contraseña válida: Iniciar sesión de Django
+            login(request, user) 
+            print(f"✅ Login successful - User ID: {user.id}")
+            
+            # 3. Respuesta Exitosa
+            user_rol = getattr(user, 'rol', None)
+            rol_nombre = user_rol.nombre.upper() if user_rol else 'SIN_ROL'
+            
+            response_data = {
+                'status': 'ok',
+                'message': 'Login exitoso',
+                'user_id': user.id,
+                'rol': rol_nombre
+            }
+            return Response(response_data, status=status.HTTP_200_OK)
         
-        response_data = {
-            'status': 'ok',
-            'message': 'Login exitoso',
-            'user_id': user.id,
-            'rol': rol_nombre
-        }
-        return Response(response_data, status=status.HTTP_200_OK)
-    else:
-        print("❌ Login failed - Invalid credentials")
+        else:
+            # Contraseña incorrecta
+            raise Usuario.DoesNotExist # Forzar el manejo unificado del error 401
+
+    except Usuario.DoesNotExist:
+        # Usuario no encontrado O contraseña incorrecta
+        print("❌ Login failed - Credenciales inválidas")
         return Response(
-            {'status': 'error', 'message': 'Credenciales inválidas'}, 
+            {'status': 'error', 'message': 'Credenciales inválidas. Usuario no registrado o contraseña incorrecta.'}, 
             status=status.HTTP_401_UNAUTHORIZED
         )
-
+    
 @csrf_exempt
 def editar_usuario(request, pk):
     usuario = get_object_or_404(Usuario, pk=pk)
@@ -1339,3 +1361,36 @@ def me_api_view(request):
         'correo': user.correo, 
         'rol': rol_nombre
     }, status=status.HTTP_200_OK)
+
+
+
+
+# D:\Facultad\Trabajo final\HairSoft\usuarios\views.py
+
+class ProveedorListCreateView(generics.ListCreateAPIView):
+    # Esto mantiene tu regla de listar TODOS (activos e inactivos) para la trazabilidad
+    queryset = Proveedor.objects.all()
+    serializer_class = ProveedorSerializer
+
+    # ✅ CORRECCIÓN: Sobreescribimos perform_create para forzar el estado ACTIVO
+    def perform_create(self, serializer):
+        """
+        Asegura que el proveedor se cree siempre con el estado 'ACTIVO',
+        ya que no tiene lógica que nazca inactivo.
+        """
+        # Guardamos el objeto, estableciendo explícitamente el campo 'estado'
+        serializer.save(estado='ACTIVO')
+
+
+class ProveedorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Proveedor.objects.all()
+    serializer_class = ProveedorSerializer
+    
+    # Esta lógica para el "borrado suave" (trazabilidad) está PERFECTA
+    def perform_destroy(self, instance):
+        """
+        Cambia el estado a 'INACTIVO' en lugar de eliminar el registro 
+        físicamente de la base de datos.
+        """
+        instance.estado = 'INACTIVO'
+        instance.save()
