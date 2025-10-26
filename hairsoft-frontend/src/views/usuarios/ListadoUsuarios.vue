@@ -138,7 +138,7 @@ const roles = ref([])
 const filtros = ref({ busqueda: '', rol: '', fechaDesde: '', fechaHasta: '' })
 
 const pagina = ref(1)
-const itemsPorPagina = 8
+const itemsPorPagina = 7
 const mostrarRegistrar = ref(false)
 const mostrarEditar = ref(false)
 const usuarioEditando = ref(null)

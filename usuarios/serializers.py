@@ -1,6 +1,6 @@
 # usuarios/serializers.py
 from rest_framework import serializers
-from .models import Usuario, Turno, Servicio, CategoriaServicio, CategoriaProducto, Permiso, Rol, Proveedor
+from .models import Usuario, Turno, Servicio, CategoriaServicio, CategoriaProducto, Permiso, Rol, Proveedor, Producto
 # ----------------------------------------------------------------------
 # SERIALIZADOR DE LOGIN (Añadir esta nueva clase)
 # ----------------------------------------------------------------------
@@ -128,3 +128,23 @@ class ProveedorSerializer(serializers.ModelSerializer):
         if categorias_data is not None:
             instance.categorias.set(categorias_data)
         return instance
+    
+    
+# PRODUCTOS!!!!!!!!
+class ProductoSerializer(serializers.ModelSerializer):
+    categoria_nombre = serializers.CharField(source='categoria.nombre', read_only=True)
+    proveedores = serializers.PrimaryKeyRelatedField(many=True, queryset=Proveedor.objects.all())
+    
+    class Meta:
+        model = Producto
+        fields = [
+            'id', 'nombre', 'codigo', 'descripcion', 'precio', 
+            'stock_actual', 'categoria', 'proveedores',
+            'categoria_nombre'
+        ]
+
+    def create(self, validated_data):
+        proveedores_data = validated_data.pop('proveedores', [])
+        producto = Producto.objects.create(**validated_data)
+        producto.proveedores.set(proveedores_data)
+        return producto

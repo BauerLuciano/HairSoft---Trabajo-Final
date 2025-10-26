@@ -102,7 +102,7 @@ class Usuario(models.Model):
         db_table = "usuarios"
 
 # ===============================
-# SERVICIOS Y PRODUCTOS
+# SERVICIOS
 # ===============================
 class Servicio(models.Model):
     nombre = models.CharField(max_length=100)
@@ -117,13 +117,47 @@ class Servicio(models.Model):
     class Meta:
         db_table = "servicios"
 
+# ===============================
+# PROVEEDORES
+# ===============================
+
+# AGREGAR ESTO ANTES DEL MODELO Proveedor
+ESTADOS = [
+    ('ACTIVO', 'Activo'),
+    ('INACTIVO', 'Inactivo'),
+]
+
+class Proveedor(models.Model):
+    nombre = models.CharField(max_length=200)
+    contacto = models.CharField(max_length=100, blank=True, null=True)
+    telefono = models.CharField(max_length=20)
+    email = models.EmailField(blank=True, null=True)
+    direccion = models.TextField(blank=True, null=True)
+    productos_que_ofrece = models.TextField(blank=True, null=True)  # Hacer opcional
+    estado = models.CharField(max_length=10, choices=ESTADOS, default='ACTIVO')
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    
+    # NUEVO: Relación muchos a muchos con categorías
+    categorias = models.ManyToManyField('CategoriaProducto', blank=True)
+    
+    # NUEVO: Campo para productos específicos
+    productos_especificos = models.TextField(blank=True, null=True)
+
+
+# ===============================
+# PRODUCTOS
+# ===============================
 
 class Producto(models.Model):
     nombre = models.CharField(max_length=100)
+    codigo = models.CharField(max_length=50, blank=True, null=True)  # Agregar este campo
+    descripcion = models.TextField(blank=True, null=True)  # Agregar este campo
     precio = models.DecimalField(max_digits=8, decimal_places=2)
-    stock = models.PositiveIntegerField(default=0)
-    # 🛑 CORRECCIÓN: Referencia a la clase CategoriaProducto (ya definida arriba)
+    stock_actual = models.PositiveIntegerField(default=0)  # Cambiar de 'stock' a 'stock_actual'
     categoria = models.ForeignKey(CategoriaProducto, on_delete=models.CASCADE, null=True, blank=True)
+    
+    # 🆕 AGREGAR RELACIÓN CON PROVEEDOR
+    proveedores = models.ManyToManyField(Proveedor, blank=True)
 
     def __str__(self):
         return self.nombre
@@ -218,28 +252,3 @@ class Turno(models.Model):
         db_table = "turnos"
         ordering = ['fecha', 'hora']
 
-# ===============================
-# PROVEEDORES
-# ===============================
-
-# AGREGAR ESTO ANTES DEL MODELO Proveedor
-ESTADOS = [
-    ('ACTIVO', 'Activo'),
-    ('INACTIVO', 'Inactivo'),
-]
-
-class Proveedor(models.Model):
-    nombre = models.CharField(max_length=200)
-    contacto = models.CharField(max_length=100, blank=True, null=True)
-    telefono = models.CharField(max_length=20)
-    email = models.EmailField(blank=True, null=True)
-    direccion = models.TextField(blank=True, null=True)
-    productos_que_ofrece = models.TextField(blank=True, null=True)  # Hacer opcional
-    estado = models.CharField(max_length=10, choices=ESTADOS, default='ACTIVO')
-    fecha_creacion = models.DateTimeField(auto_now_add=True)
-    
-    # NUEVO: Relación muchos a muchos con categorías
-    categorias = models.ManyToManyField('CategoriaProducto', blank=True)
-    
-    # NUEVO: Campo para productos específicos
-    productos_especificos = models.TextField(blank=True, null=True)

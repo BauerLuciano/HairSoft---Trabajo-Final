@@ -41,6 +41,27 @@ export default {
           localStorage.setItem('user_rol', data.rol);
           console.log("✅ Login exitoso! Rol: " + data.rol);
           
+          // 🆕 OBTENER DATOS COMPLETOS DEL USUARIO
+          try {
+            const userResponse = await fetch(`http://localhost:8000/usuarios/api/usuarios/${data.user_id}/`);
+            const userData = await userResponse.json();
+            
+            localStorage.setItem('user_nombre', userData.nombre);
+            localStorage.setItem('user_apellido', userData.apellido);
+            
+            console.log("✅ Datos usuario guardados:", userData);
+          } catch (userError) {
+            console.error("❌ Error obteniendo datos usuario:", userError);
+            // 🆕 TEMPORAL: Usar email como nombre si falla
+            const userEmail = this.username;
+            const userName = userEmail.split('@')[0];
+            localStorage.setItem('user_nombre', userName);
+            localStorage.setItem('user_apellido', '');
+          }
+          
+          // 🆕 DISPARAR EVENTO PARA ACTUALIZAR HEADER
+          window.dispatchEvent(new Event('usuarioLogueado'));
+          
           // 🚨 REDIRECCIÓN SEGÚN ROL
           const rol = data.rol;
           if (rol === 'CLIENTE') {

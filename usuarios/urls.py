@@ -1,18 +1,22 @@
 # usuarios/urls.py
 
 from django.urls import path
-from . import views # 🛑 CORRECCIÓN: 'vie' cambiado a 'views'
+from . import views
 
 urlpatterns = [
-
     # ==============================
     # Autenticación y Perfil
     # ==============================
-    # NUEVA RUTA DE LOGIN (CRÍTICA)
     path('api/auth/login/', views.login_auth, name='api_login'), 
     
     # Perfil del usuario logueado (CRÍTICA para Vue)
     path('api/me/', views.me_api_view, name='me_api_view'), 
+    
+    # 🆕 AGREGÁ ESTA LÍNEA - Mismo endpoint que usa tu frontend
+    path('api/usuario_actual/', views.me_api_view, name='usuario_actual'),
+
+    # Agregá esto en urlpatterns:
+    path('usuarios/api/me/', views.me_api_view, name='me_api_view_alias'),
     
     # ================================
     # Usuarios
@@ -45,7 +49,7 @@ urlpatterns = [
     # Productos
     # ================================
     path('api/categorias/productos/', views.listado_categorias_productos, name='listado_categorias_productos'),
-    path('api/productos/', views.listado_productos, name='listado_productos'),
+    path('api/productos/', views.productos_api, name='productos_api'),
 
     # ================================
     # Turnos
@@ -99,4 +103,9 @@ urlpatterns = [
     # ================================
     path('api/proveedores/', views.ProveedorListCreateView.as_view(), name='proveedores-list'),
     path('api/proveedores/<int:pk>/', views.ProveedorRetrieveUpdateDestroyView.as_view(), name='proveedores-detail'),
+
+    # ================================
+    # Para ver el usuario logueado
+    # ================================
+    path('api/usuarios/<int:user_id>/', views.obtener_usuario_por_id, name='obtener_usuario_por_id')
 ]

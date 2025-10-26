@@ -29,15 +29,6 @@
           </div>
 
           <div class="filter-group">
-            <label>Estado</label>
-            <select v-model="filtros.estado" class="filter-select">
-              <option value="">Todos</option>
-              <option value="ACTIVO">Activo</option>
-              <option value="INACTIVO">Inactivo</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
             <label>Stock bajo</label>
             <select v-model="filtros.stockBajo" class="filter-select">
               <option value="">Todos</option>
@@ -63,38 +54,46 @@
               <th>Categoría</th>
               <th>Precio</th>
               <th>Stock</th>
-              <th>Proveedor</th>
-              <th>Estado</th>
-              <th>Fecha Registro</th>
+              <th>Proveedores</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="producto in productosPaginados" :key="producto.id" :class="{'stock-bajo-row': producto.stock_actual <= 10}">
+            <tr v-for="producto in productosPaginados" :key="producto.id" 
+                :class="{'stock-bajo-row': producto.stock_actual <= 10}">
               <td>{{ producto.codigo || '–' }}</td>
               <td>{{ producto.nombre || '–' }}</td>
               <td class="descripcion-cell">{{ producto.descripcion || 'Sin descripción' }}</td>
-              <td>{{ producto.categoria_nombre || '–' }}</td>
+              <td>{{ getCategoriaNombre(producto.categoria) }}</td>
               <td>${{ producto.precio ? producto.precio.toLocaleString() : '0' }}</td>
               <td>
-                <span :class="{'stock-bajo': producto.stock_actual <= 10, 'stock-critico': producto.stock_actual <= 5}">
+                <span :class="{
+                  'stock-bajo': producto.stock_actual <= 10, 
+                  'stock-critico': producto.stock_actual <= 5
+                }">
                   {{ producto.stock_actual || 0 }}
                   <span v-if="producto.stock_actual <= 10" class="alerta-icon">⚠️</span>
                 </span>
               </td>
-              <td>{{ producto.proveedor_nombre || 'Sin proveedor' }}</td>
-              <td><span :class="producto.estado.toLowerCase()">{{ producto.estado }}</span></td>
-              <td>{{ formatFecha(producto.fecha_creacion) }}</td>
               <td>
-                <button @click="editarProducto(producto)" class="action-button edit">✏️</button>
-                <button @click="eliminarProducto(producto)" class="action-button delete">🗑️</button>
+                <span v-if="getProveedoresNombres(producto).length > 0">
+                  {{ getProveedoresNombres(producto).join(', ') }}
+                </span>
+                <span v-else class="sin-proveedor">Sin proveedor</span>
+              </td>
+              <td>
+                <div class="action-buttons">
+                  <button @click="editarProducto(producto)" class="action-button edit">✏️</button>
+                  <button @click="eliminarProducto(producto)" class="action-button delete">🗑️</button>
+                </div>
               </td>
             </tr>
           </tbody>
         </table>
 
         <div v-if="productosPaginados.length === 0" class="no-results">
-          <p>No se encontraron productos</p>
+          <p v-if="productos.length === 0">No hay productos registrados</p>
+          <p v-else>No se encontraron productos con los filtros aplicados</p>
         </div>
       </div>
 
@@ -124,13 +123,22 @@
           </svg>
         </button>
         
-        <RegistrarProducto @producto-registrado="refrescarProductos"/>
+        <RegistrarProducto 
+          @producto-registrado="productoRegistrado"
+          @cancelar="cerrarModal"
+        />
       </div>
     </div>
 
     <!-- Modal Editar Producto -->
     <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
       <div class="modal-content">
+        <button class="modal-close" @click="cerrarModalEditar" title="Cerrar formulario">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
         <ModificarProducto 
           :producto-id="productoEditando?.id" 
           @producto-actualizado="productoActualizado"
@@ -155,7 +163,6 @@ const proveedores = ref([])
 const filtros = ref({ 
   busqueda: '', 
   categoria: '', 
-  estado: '', 
   stockBajo: '' 
 })
 
@@ -168,25 +175,23 @@ const productoEditando = ref(null)
 // Cargar productos desde backend
 const cargarProductos = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/productos/api/productos/`)
-    // Ordenar por fecha (más reciente primero)
-    productos.value = res.data.sort((a, b) => {
-      const fechaA = new Date(a.fecha_creacion || 0)
-      const fechaB = new Date(b.fecha_creacion || 0)
-      return fechaB - fechaA
-    })
+    console.log('🔄 Cargando productos...')
+    const res = await axios.get(`${API_BASE}/usuarios/api/productos/`)
+    console.log('✅ Productos cargados:', res.data)
+    
+    // Ordenar por ID (más reciente primero)
+    productos.value = res.data.sort((a, b) => b.id - a.id)
   } catch (err) {
-    console.error('Error al cargar productos:', err)
+    console.error('❌ Error al cargar productos:', err)
     alert('No se pudo cargar la lista de productos')
   }
 }
 
-// Cargar categorías de PRODUCTOS (no de servicios)
+// Cargar categorías
 const cargarCategorias = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/categorias/api/categorias/`)
-    // Filtrar solo categorías de productos
-    categorias.value = res.data.filter(c => c.tipo === 'PRODUCTO' && c.activo)
+    const res = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`)
+    categorias.value = res.data
   } catch (err) {
     console.error('Error al cargar categorías:', err)
   }
@@ -195,17 +200,34 @@ const cargarCategorias = async () => {
 // Cargar proveedores
 const cargarProveedores = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/proveedores/api/proveedores/`)
-    proveedores.value = res.data.filter(p => p.estado === 'ACTIVO')
+    const res = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
+    proveedores.value = res.data
   } catch (err) {
     console.error('Error al cargar proveedores:', err)
   }
 }
 
+// Helper para obtener nombre de categoría
+const getCategoriaNombre = (categoriaId) => {
+  if (!categoriaId) return '–'
+  const categoria = categorias.value.find(c => c.id === categoriaId)
+  return categoria ? categoria.nombre : '–'
+}
+
+// Helper para obtener nombres de proveedores
+const getProveedoresNombres = (producto) => {
+  if (!producto.proveedores || !Array.isArray(producto.proveedores)) return []
+  
+  return producto.proveedores.map(provId => {
+    const proveedor = proveedores.value.find(p => p.id === provId)
+    return proveedor ? proveedor.nombre : null
+  }).filter(Boolean)
+}
+
 onMounted(async () => {
-  await cargarProductos()
   await cargarCategorias()
   await cargarProveedores()
+  await cargarProductos()
 })
 
 // Filtrar productos
@@ -215,18 +237,14 @@ const productosFiltrados = computed(() => {
     const matchBusqueda = !busca || 
       (p.nombre?.toLowerCase().includes(busca) || 
        p.codigo?.toLowerCase().includes(busca))
-    const matchCategoria = !filtros.value.categoria || (p.categoria_id && p.categoria_id == filtros.value.categoria)
-    const matchEstado = !filtros.value.estado || p.estado === filtros.value.estado
+    
+    const matchCategoria = !filtros.value.categoria || p.categoria == filtros.value.categoria
     const matchStockBajo = !filtros.value.stockBajo || p.stock_actual <= 10
     
-    return matchBusqueda && matchCategoria && matchEstado && matchStockBajo
+    return matchBusqueda && matchCategoria && matchStockBajo
   })
   
-  // Ordenar por estado: ACTIVOS primero, INACTIVOS al final
-  return filtrados.sort((a, b) => {
-    if (a.estado === b.estado) return 0
-    return a.estado === 'ACTIVO' ? -1 : 1
-  })
+  return filtrados
 })
 
 // Contar productos con stock bajo
@@ -260,6 +278,14 @@ const editarProducto = (producto) => {
   mostrarEditar.value = true
 }
 
+// Cuando se registra un nuevo producto
+const productoRegistrado = async (nuevoProducto) => {
+  console.log('🔄 Recargando productos después de registro...')
+  await cargarProductos() // Recargar la lista completa
+  cerrarModal()
+  pagina.value = 1 // Ir a la primera página
+}
+
 // Cuando se actualiza el producto
 const productoActualizado = async () => {
   await cargarProductos()
@@ -267,44 +293,31 @@ const productoActualizado = async () => {
 }
 
 const eliminarProducto = async (producto) => {
-  if (!confirm(`¿Desactivar el producto ${producto.nombre}?`)) return
+  if (!confirm(`¿Está seguro de eliminar el producto "${producto.nombre}"?`)) return
   try {
-    await axios.post(`${API_BASE}/productos/api/productos/eliminar/${producto.id}/`)
-    producto.estado = 'INACTIVO'
-    
-    await nextTick()
-    alert('Producto desactivado con éxito')
+    await axios.delete(`${API_BASE}/usuarios/api/productos/${producto.id}/`)
+    await cargarProductos() // Recargar la lista
+    alert('Producto eliminado con éxito')
   } catch (err) {
     console.error(err)
-    alert('No se pudo desactivar el producto')
+    alert('No se pudo eliminar el producto')
   }
 }
 
 // Limpiar filtros
 const limpiarFiltros = () => {
-  filtros.value = { busqueda: '', categoria: '', estado: '', stockBajo: '' }
+  filtros.value = { busqueda: '', categoria: '', stockBajo: '' }
   pagina.value = 1
 }
 
-// Formato de fecha
-const formatFecha = (fecha) => fecha ? new Date(fecha).toLocaleString() : '–'
-
 // Cerrar modales
-const cerrarModal = () => mostrarRegistrar.value = false
+const cerrarModal = () => {
+  mostrarRegistrar.value = false
+}
 
 const cerrarModalEditar = () => {
   mostrarEditar.value = false
   productoEditando.value = null
-}
-
-// Refrescar productos 
-const refrescarProductos = async (nuevoProducto = null) => {
-  if (nuevoProducto) {
-    await cargarProductos()
-    pagina.value = 1
-    await nextTick()
-  }
-  mostrarRegistrar.value = false
 }
 
 // Resetear página al cambiar filtros
@@ -314,13 +327,19 @@ watch(filtros, () => {
 </script>
 
 <style scoped>
-/* Tarjeta principal */
+.list-container {
+  padding: 20px;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+}
+
 .list-card {
   background: rgba(23, 23, 23, 0.8);
   border-radius: 24px;
   padding: 40px;
   width: 100%;
   max-width: 1800px;
+  margin: 0 auto;
   box-shadow: 0 25px 50px rgba(0,0,0,0.5),
               0 0 0 1px rgba(255,255,255,0.05) inset;
   position: relative;
@@ -337,7 +356,140 @@ watch(filtros, () => {
   border-radius: 24px 24px 0 0;
 }
 
-/* Celdas específicas para productos */
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.header-content h1 {
+  color: white;
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.header-content p {
+  color: #9ca3af;
+  margin: 5px 0 0 0;
+  font-size: 1rem;
+}
+
+.register-button {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+}
+
+.register-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
+}
+
+.filters-container {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  align-items: end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter-group label {
+  color: #e5e7eb;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.filter-input, .filter-select {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: white;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.filter-input:focus, .filter-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.filter-input::placeholder {
+  color: #9ca3af;
+}
+
+.clear-filters-btn {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+}
+
+.clear-filters-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.table-container {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.users-table th {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(30, 58, 138, 0.2));
+  color: #e5e7eb;
+  padding: 16px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.users-table td {
+  padding: 14px 12px;
+  color: #d1d5db;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.9rem;
+}
+
+.users-table tr:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .descripcion-cell {
   max-width: 200px;
   overflow: hidden;
@@ -345,7 +497,6 @@ watch(filtros, () => {
   white-space: nowrap;
 }
 
-/* Indicadores de stock */
 .stock-bajo {
   color: #f59e0b;
   font-weight: bold;
@@ -371,24 +522,19 @@ watch(filtros, () => {
   font-size: 12px;
 }
 
-.alerta-stock {
-  color: #f59e0b;
-  font-weight: bold;
-  margin-left: 15px;
-  background: rgba(245, 158, 11, 0.1);
-  padding: 4px 8px;
-  border-radius: 6px;
+.sin-proveedor {
+  color: #6b7280;
+  font-style: italic;
 }
 
-/* Botones de acción */
-.action-buttons { 
-  display: flex; 
-  gap: 6px; 
-  flex-wrap: wrap; 
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
 }
 
 .action-button {
-  padding: 6px 12px;
+  padding: 8px 12px;
   border: none;
   border-radius: 8px;
   font-size: 0.8rem;
@@ -410,31 +556,73 @@ watch(filtros, () => {
   color: white;
 }
 
-/* Estados */
-.activo {
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.1);
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-weight: 600;
+.action-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.inactivo {
-  color: #6b7280;
-  background: rgba(107, 114, 128, 0.1);
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-weight: 600;
+.no-results {
+  text-align: center;
+  padding: 40px;
+  color: #9ca3af;
+  font-style: italic;
 }
 
-/* Efecto de oscurecimiento elegante cuando se abre el modal */
+.usuarios-count {
+  color: #9ca3af;
+  text-align: center;
+  margin: 20px 0;
+  font-size: 0.9rem;
+}
+
+.alerta-stock {
+  color: #f59e0b;
+  font-weight: bold;
+  margin-left: 15px;
+  background: rgba(245, 158, 11, 0.1);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  margin-top: 30px;
+}
+
+.pagination button {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e5e7eb;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.pagination button:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #3b82f6;
+}
+
+.pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination span {
+  color: #d1d5db;
+  font-weight: 500;
+}
+
 .overlay-activo {
   opacity: 0.4;
   filter: blur(3px);
   pointer-events: none;
 }
 
-/* Modal overlay - fondo oscuro semitransparente */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -459,7 +647,6 @@ watch(filtros, () => {
   }
 }
 
-/* Contenedor del formulario */
 .modal-content {
   position: relative;
   animation: slideUp 0.3s ease;
@@ -485,7 +672,6 @@ watch(filtros, () => {
   }
 }
 
-/* Botón de cerrar */
 .modal-close {
   position: absolute;
   top: 8px;
@@ -541,7 +727,6 @@ watch(filtros, () => {
   transform: scale(1.2);
 }
 
-/* Efecto de pulso sutil en el botón */
 @keyframes subtlePulse {
   0%, 100% {
     box-shadow: 0 3px 8px rgba(239, 68, 68, 0.4);
@@ -555,14 +740,12 @@ watch(filtros, () => {
   animation: subtlePulse 3s infinite;
 }
 
-/* Asegurar que el formulario interno se adapte */
 .modal-content ::v-deep .form-container {
   margin: 0;
   padding: 20px;
   border-radius: 16px;
 }
 
-/* Responsive */
 @media (max-width: 1400px) {
   .modal-content {
     max-width: 85vw;
@@ -577,6 +760,25 @@ watch(filtros, () => {
   
   .list-card {
     padding: 20px;
+  }
+  
+  .filters-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .list-header {
+    flex-direction: column;
+    gap: 20px;
+    text-align: center;
+  }
+  
+  .users-table {
+    font-size: 0.8rem;
+  }
+  
+  .users-table th,
+  .users-table td {
+    padding: 8px 6px;
   }
 }
 </style>

@@ -19,7 +19,7 @@ import requests
 from .serializers import LoginSerializer
 from django.contrib.auth.hashers import check_password
 from .models import Proveedor  # AGREGAR ESTA IMPORTACIÓN
-from .serializers import ProveedorSerializer  # Y esta también
+from .serializers import ProveedorSerializer, ProductoSerializer  # Y esta también
 
 # Modelos y formularios
 from .models import (
@@ -132,15 +132,10 @@ from django.utils.decorators import method_decorator
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_auth(request):
-    """Maneja la autenticación manual del usuario (usando campo 'contrasena') y devuelve el rol."""
     print("🚨 LOGIN ENDPOINT HIT")
-    
-    # 1. SERIALIZACIÓN y VALIDACIÓN DE ENTRADA (Usando el LoginSerializer)
     serializer = LoginSerializer(data=request.data)
     
     if not serializer.is_valid():
-        print("❌ Validación de datos fallida")
-        # Devuelve un error 400 con los detalles de los campos faltantes
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     validated_data = serializer.validated_data
@@ -149,43 +144,37 @@ def login_auth(request):
     
     print(f"📦 Data Validada - Correo: {correo}")
 
-    # 2. AUTENTICACIÓN MANUAL
     try:
-        # A. Buscar al usuario por correo
         user = Usuario.objects.get(correo=correo)
         
-        # B. Verificar la contraseña hasheada contra la ingresada
-        # check_password(contraseña_plana, hash_almacenado_en_BD)
         if user and check_password(contrasena_ingresada, user.contrasena):
+            # 🔧 FIX: indicar backend manualmente
+            from django.contrib.auth import get_backends, login
+            backend = get_backends()[0]
+            user.backend = f"{backend.__module__}.{backend.__class__.__name__}"
+            login(request, user)
             
-            # C. Contraseña válida: Iniciar sesión de Django
-            login(request, user) 
             print(f"✅ Login successful - User ID: {user.id}")
             
-            # 3. Respuesta Exitosa
             user_rol = getattr(user, 'rol', None)
             rol_nombre = user_rol.nombre.upper() if user_rol else 'SIN_ROL'
             
-            response_data = {
+            return Response({
                 'status': 'ok',
                 'message': 'Login exitoso',
                 'user_id': user.id,
                 'rol': rol_nombre
-            }
-            return Response(response_data, status=status.HTTP_200_OK)
-        
+            }, status=status.HTTP_200_OK)
         else:
-            # Contraseña incorrecta
-            raise Usuario.DoesNotExist # Forzar el manejo unificado del error 401
+            raise Usuario.DoesNotExist
 
     except Usuario.DoesNotExist:
-        # Usuario no encontrado O contraseña incorrecta
         print("❌ Login failed - Credenciales inválidas")
         return Response(
             {'status': 'error', 'message': 'Credenciales inválidas. Usuario no registrado o contraseña incorrecta.'}, 
             status=status.HTTP_401_UNAUTHORIZED
         )
-    
+
 @csrf_exempt
 def editar_usuario(request, pk):
     usuario = get_object_or_404(Usuario, pk=pk)
@@ -384,6 +373,22 @@ def listado_productos(request):
         } for p in productos
     ]
     return JsonResponse(data, safe=False)
+
+@api_view(['GET', 'POST'])
+def productos_api(request):
+    if request.method == 'GET':
+        productos = Producto.objects.all()
+        serializer = ProductoSerializer(productos, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = ProductoSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 
 
 # ================================
@@ -1331,39 +1336,36 @@ def pago_pendiente(request):
         'turno_id': external_reference
     })
 
-# VISTA QUE CARGA EL USUARIO LOGUEADO EN VUE (SOLUCIONA EL 404 si la URL apunta aquí)
 @api_view(['GET'])
-@permission_classes([IsAuthenticated]) 
+@permission_classes([AllowAny])
 def me_api_view(request):
-    """Devuelve los datos del usuario logueado para Vue."""
-    user = request.user
-
-    if not user.is_authenticated:
-        # El decorador IsAuthenticated ya maneja esto, pero es buen chequeo.
-        return Response({"detail": "No autenticado."}, status=status.HTTP_401_UNAUTHORIZED)
+    from .models import Usuario
     
-    # Obtener el nombre del rol de la instancia de Rol
-    user_rol = getattr(user, 'rol', None)
-    rol_nombre = user_rol.nombre.upper() if user_rol else 'SIN_ROL'
+    # 🆕 OBTENER USUARIO DEL localStorage VIA HEADERS
+    user_id = request.headers.get('User-Id')
+    user_rol = request.headers.get('User-Rol')
     
-    # 💡 CRÍTICO: Aquí validamos, si no es CLIENTE, lo sacamos del formulario de reserva.
-    # Pero si lo quieres dejar pasar para otros módulos, solo quita este IF y devuelve todos los datos:
-    # if rol_nombre != 'CLIENTE':
-    #     return Response({"detail": "Acceso restringido a clientes para esta función."}, status=status.HTTP_403_FORBIDDEN)
+    print(f"🔍 Headers recibidos - User-ID: {user_id}, User-Rol: {user_rol}")
     
-    # 💡 Devuelve los datos usando los NOMBRES DE CAMPOS REALES (nombre, apellido, correo, etc.)
+    if user_id:
+        try:
+            user = Usuario.objects.get(id=int(user_id))
+            print(f"✅ Usuario encontrado: {user.nombre} {user.apellido}")
+            
+            return Response({
+                'nombre': user.nombre,
+                'apellido': user.apellido,
+                'rol': user_rol or (user.rol.nombre if user.rol else 'Usuario')
+            })
+        except Usuario.DoesNotExist:
+            print("❌ Usuario no encontrado en BD")
+    
+    print("❌ No hay usuario autenticado")
     return Response({
-        'id': user.id,
-        'nombre': getattr(user, 'nombre', ''), # <-- Usar 'nombre' de tu modelo Usuario
-        'apellido': getattr(user, 'apellido', ''), # <-- Usar 'apellido' de tu modelo Usuario
-        'dni': getattr(user, 'dni', None),
-        'telefono': getattr(user, 'telefono', None),
-        'correo': user.correo, 
-        'rol': rol_nombre
-    }, status=status.HTTP_200_OK)
-
-
-
+        'nombre': 'Invitado',
+        'apellido': '',
+        'rol': 'Invitado'
+    })
 
 # D:\Facultad\Trabajo final\HairSoft\usuarios\views.py
 
@@ -1394,3 +1396,20 @@ class ProveedorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
         """
         instance.estado = 'INACTIVO'
         instance.save()
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def obtener_usuario_por_id(request, user_id):
+    """Obtiene un usuario específico por ID"""
+    try:
+        user = Usuario.objects.get(id=user_id)
+        return Response({
+            'id': user.id,
+            'nombre': user.nombre,
+            'apellido': user.apellido,
+            'correo': user.correo,
+            'rol': user.rol.nombre if user.rol else 'Sin rol'
+        })
+    except Usuario.DoesNotExist:
+        return Response({'error': 'Usuario no encontrado'}, status=404)

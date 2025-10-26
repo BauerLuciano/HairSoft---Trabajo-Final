@@ -12,31 +12,14 @@
       </div>
 
       <div class="header-actions">
-        <!-- Botón de notificaciones -->
-        <button class="action-btn notification-btn">
-          <i class="ri-notification-3-line"></i>
-          <span class="notification-badge">3</span>
-        </button>
-
-        <!-- Toggle de tema con animación -->
-        <button @click="toggleTheme" class="action-btn theme-toggle">
-          <div class="theme-icon-wrapper">
-            <i class="ri-sun-line sun-icon" :class="{ active: isLightMode }"></i>
-            <i class="ri-moon-line moon-icon" :class="{ active: !isLightMode }"></i>
-          </div>
-        </button>
-
         <!-- Perfil de usuario mejorado -->
         <div class="user-profile">
           <div class="user-info">
             <span class="user-name">{{ usuario.nombre }}</span>
-            <span class="user-role">Administrador</span>
+            <span class="user-role">{{ usuario.rol }}</span>
           </div>
           <div class="user-avatar">
             <img :src="usuarioImg" alt="Usuario" class="avatar-img" />
-            <div class="status-indicator" :class="{ online: usuario.online }">
-              <span class="status-pulse"></span>
-            </div>
           </div>
         </div>
       </div>
@@ -50,42 +33,53 @@ import axios from 'axios';
 import usuarioImg from '@/assets/usuario.png';
 
 // Lógica de Usuario
-const usuario = ref({ nombre: '', online: true });
-const cargarUsuarioActual = async () => {
-    try {
-        const response = await axios.get('/api/usuario_actual/');
-        usuario.value.nombre = `${response.data.nombre} ${response.data.apellido}`;
-    } catch (error) {
-        usuario.value.nombre = 'Usuario Desconocido';
-    }
+const usuario = ref({ 
+  nombre: 'Cargando...', 
+  rol: 'Cargando...'
+});
+
+const cargarUsuarioActual = () => {
+  const user_nombre = localStorage.getItem('user_nombre');
+  const user_apellido = localStorage.getItem('user_apellido'); 
+  const user_rol = localStorage.getItem('user_rol');
+  
+  if (user_nombre && user_apellido) {
+    usuario.value.nombre = `${user_nombre} ${user_apellido}`;
+    usuario.value.rol = formatearRol(user_rol);
+  } else {
+    usuario.value.nombre = "Invitado";
+    usuario.value.rol = "Invitado";
+  }
 };
 
-// Lógica de Tema
-const isLightMode = ref(false);
+// Función para formatear el rol
+const formatearRol = (rol) => {
+  const roles = {
+    'ADMINISTRADOR': 'Administrador',
+    'CLIENTE': 'Cliente', 
+    'PELUQUERO': 'Peluquero',
+    'RECEPCIONISTA': 'Recepcionista'
+  };
+  return roles[rol] || rol;
+};
 
-const toggleTheme = () => {
-    isLightMode.value = !isLightMode.value;
-    if (isLightMode.value) {
-        document.documentElement.classList.add('light-mode');
-        localStorage.setItem('theme', 'light');
-    } else {
-        document.documentElement.classList.remove('light-mode');
-        localStorage.setItem('theme', 'dark');
-    }
+// 🆕 ESCUCHAR EVENTOS PARA ACTUALIZAR AUTOMÁTICAMENTE
+const configurarEventos = () => {
+  // Escuchar evento personalizado del login
+  window.addEventListener('usuarioLogueado', cargarUsuarioActual);
+  
+  // Escuchar cambios en localStorage desde otras pestañas
+  window.addEventListener('storage', cargarUsuarioActual);
 };
 
 onMounted(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'light') {
-        isLightMode.value = true;
-        document.documentElement.classList.add('light-mode');
-    }
-    cargarUsuarioActual();
+  cargarUsuarioActual();
+  configurarEventos();
 });
 </script>
 
 <style scoped>
-/* Header Principal */
+/* (MANTENÉ TODOS TUS ESTILOS ORIGINALES IGUAL) */
 .app-header {
   position: sticky;
   top: 0;
@@ -108,7 +102,6 @@ onMounted(() => {
   height: 70px;
 }
 
-/* Sección de Marca */
 .brand-section {
   display: flex;
   align-items: center;
@@ -160,109 +153,12 @@ onMounted(() => {
   opacity: 0.8;
 }
 
-/* Acciones del Header */
 .header-actions {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-/* Botones de Acción */
-.action-btn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  color: var(--text-primary);
-}
-
-.action-btn:hover {
-  background: var(--hover-bg);
-  border-color: var(--accent-color);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.action-btn i {
-  font-size: 20px;
-}
-
-/* Notificaciones */
-.notification-btn {
-  position: relative;
-}
-
-.notification-badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  background: linear-gradient(135deg, #ff6b6b, #ff4757);
-  color: white;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 10px;
-  min-width: 18px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(255, 71, 87, 0.4);
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-}
-
-/* Toggle de Tema */
-.theme-toggle {
-  overflow: hidden;
-}
-
-.theme-icon-wrapper {
-  position: relative;
-  width: 20px;
-  height: 20px;
-}
-
-.sun-icon,
-.moon-icon {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.sun-icon {
-  opacity: 0;
-  transform: rotate(-90deg) scale(0);
-}
-
-.sun-icon.active {
-  opacity: 1;
-  transform: rotate(0deg) scale(1);
-}
-
-.moon-icon {
-  opacity: 1;
-  transform: rotate(0deg) scale(1);
-}
-
-.moon-icon.active {
-  opacity: 0;
-  transform: rotate(90deg) scale(0);
-}
-
-/* Perfil de Usuario */
 .user-profile {
   display: flex;
   align-items: center;
@@ -322,48 +218,6 @@ onMounted(() => {
   transform: scale(1.05);
 }
 
-.status-indicator {
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
-  width: 12px;
-  height: 12px;
-  background: #6c757d;
-  border-radius: 50%;
-  border: 2px solid var(--bg-secondary);
-  transition: all 0.3s ease;
-}
-
-.status-indicator.online {
-  background: #00ff88;
-  box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.3);
-}
-
-.status-pulse {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: #00ff88;
-  opacity: 0;
-  animation: pulse-ring 2s infinite;
-}
-
-.status-indicator.online .status-pulse {
-  opacity: 1;
-}
-
-@keyframes pulse-ring {
-  0% {
-    transform: scale(1);
-    opacity: 0.6;
-  }
-  100% {
-    transform: scale(2);
-    opacity: 0;
-  }
-}
-
 /* Responsive */
 @media (max-width: 768px) {
   .header-content {
@@ -383,26 +237,6 @@ onMounted(() => {
   }
 
   .app-subtitle {
-    display: none;
-  }
-}
-
-@media (max-width: 480px) {
-  .action-btn {
-    width: 40px;
-    height: 40px;
-  }
-
-  .logo-icon {
-    width: 42px;
-    height: 42px;
-  }
-
-  .logo-icon i {
-    font-size: 20px;
-  }
-
-  .notification-btn {
     display: none;
   }
 }
