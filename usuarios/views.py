@@ -3,23 +3,24 @@ from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 from django.views import View
+from django.db import transaction
 from django.contrib.auth.hashers import make_password
 # 🛑 CORRECCIÓN APLICADA: Importar authenticate y login
 from django.contrib.auth import authenticate, login 
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework import viewsets, status, generics 
+from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response 
-from rest_framework import status, generics  # ← AGREGAR generics AQUÍ
 from datetime import datetime, timedelta
 from django.utils import timezone
-from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno
+from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido
 from .mercadopago_service import MercadoPagoService
 import json
 import requests
-from .serializers import LoginSerializer
+from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer
 from django.contrib.auth.hashers import check_password
-from .models import Proveedor  # AGREGAR ESTA IMPORTACIÓN
-from .serializers import ProveedorSerializer, ProductoSerializer  # Y esta también
+from django.http import HttpResponse
+from .pdf_utils import generar_comprobante_venta
 
 # Modelos y formularios
 from .models import (
@@ -357,40 +358,46 @@ def eliminar_servicio(request, pk):
 # ================================
 # Productos
 # ================================
-@csrf_exempt
-def listado_productos(request):
-    if request.method != 'GET':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
+#@csrf_exempt
+#def listado_productos(request):
+#    if request.method != 'GET':
+#        return JsonResponse({'error': 'Método no permitido'}, status=405)
+#
+#    productos = Producto.objects.all()
+#    data = [
+#        {
+#            'id': p.id,
+#            'nombre': p.nombre,
+#            'precio': float(p.precio),
+#            'stock': p.stock,
+#            'categoria': p.categoria.nombre if p.categoria else None
+#        } for p in productos
+#    ]
+#    return JsonResponse(data, safe=False)
+#
 
-    productos = Producto.objects.all()
-    data = [
-        {
-            'id': p.id,
-            'nombre': p.nombre,
-            'precio': float(p.precio),
-            'stock': p.stock,
-            'categoria': p.categoria.nombre if p.categoria else None
-        } for p in productos
-    ]
-    return JsonResponse(data, safe=False)
-
-@api_view(['GET', 'POST'])
-def productos_api(request):
-    if request.method == 'GET':
-        productos = Producto.objects.all()
-        serializer = ProductoSerializer(productos, many=True)
-        return Response(serializer.data)
+class ProductoListCreateAPIView(generics.ListCreateAPIView):
+    # 1. Definimos la fuente de datos (tus 6 productos)
+    queryset = Producto.objects.select_related('categoria').all()  # Cargar la categoría relacionada
     
-    elif request.method == 'POST':
-        serializer = ProductoSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    # 2. Definimos quién los traduce (tu Serializer)
+    serializer_class = ProductoSerializer
 
-
-
-
+    # 3. Mantenemos la lógica de filtros que ya tenías
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Filtro por nombre (tu código original)
+        nombre = self.request.query_params.get('nombre')
+        if nombre:
+            queryset = queryset.filter(nombre__icontains=nombre)
+        
+        # Filtro por categoría (tu código original)
+        categoria_id = self.request.query_params.get('categoria')
+        if categoria_id:
+            queryset = queryset.filter(categoria_id=categoria_id)
+        
+        return queryset
 # ================================
 # Peluqueros
 # ================================
@@ -927,14 +934,14 @@ def listado_categorias_servicios(request):
     return JsonResponse(data, safe=False)
 
 
-@csrf_exempt
-def listado_categorias_productos(request):
-    if request.method != 'GET':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
-
-    categorias = CategoriaProducto.objects.all().order_by('nombre')
-    data = [{'id': c.id, 'nombre': c.nombre, 'descripcion': getattr(c, 'descripcion', '')} for c in categorias]
-    return JsonResponse(data, safe=False)
+class CategoriaProductoListAPIView(generics.ListAPIView):
+    # 1. Fuente de datos: Todas las categorías de productos
+    queryset = CategoriaProducto.objects.all().order_by('nombre')
+    
+    # 2. Traductor: Usa el Serializer (que ya revisamos)
+    # Asegúrate de que CategoriaProductoSerializer esté importado en views.py
+    # from .serializers import ..., CategoriaProductoSerializer
+    serializer_class = CategoriaProductoSerializer
 
 
 
@@ -1413,3 +1420,680 @@ def obtener_usuario_por_id(request, user_id):
         })
     except Usuario.DoesNotExist:
         return Response({'error': 'Usuario no encontrado'}, status=404)
+    
+# =================================
+# VENTAS
+# =================================
+
+class VentaViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    
+    queryset = Venta.objects.all()\
+        .select_related('cliente', 'usuario', 'medio_pago')\
+        .prefetch_related('detalles__producto', 'detalles__servicio')\
+        .order_by('-fecha')
+        
+    serializer_class = VentaSerializer
+
+    def list(self, request, *args, **kwargs):
+        print("🔍 VentaViewSet.list - INICIO")
+        
+        # Debug: ver qué hay en la base de datos
+        ventas_db = Venta.objects.all()
+        print(f"📊 Ventas en BD: {ventas_db.count()}")
+        for v in ventas_db:
+            print(f"  - Venta {v.id}: {v.fecha} - ${v.total} - {v.tipo}")
+        
+        queryset = self.filter_queryset(self.get_queryset())
+        print(f"🔍 QuerySet después de filtros: {queryset.count()}")
+        
+        try:
+            serializer = self.get_serializer(queryset, many=True)
+            print(f"✅ Serialización exitosa - {len(serializer.data)} ventas")
+            print(f"📦 Datos serializados: {serializer.data}")
+            return Response(serializer.data)
+        except Exception as e:
+            print(f"❌ ERROR en serialización: {str(e)}")
+            import traceback
+            print(f"🔍 Traceback: {traceback.format_exc()}")
+            return Response({"error": f"Error en serialización: {str(e)}"}, status=500)
+
+
+# En usuarios/views.py - Agregar después del VentaViewSet existente
+@csrf_exempt
+def obtener_venta_para_edicion(request, venta_id):
+    """Obtiene una venta específica con todos los datos para edición"""
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+    
+    try:
+        venta = Venta.objects\
+            .select_related('cliente', 'usuario', 'medio_pago')\
+            .prefetch_related('detalles__producto', 'detalles__servicio')\
+            .get(id=venta_id)
+        
+        # Serializar la venta
+        serializer = VentaSerializer(venta)
+        venta_data = serializer.data
+        
+        # ✅ CORRECCIÓN: Cargar TODOS los productos (no solo disponibles)
+        productos_todos = Producto.objects.all()
+        venta_data['productos_disponibles'] = ProductoSerializer(
+            productos_todos, 
+            many=True
+        ).data
+        
+        # ✅ CORRECCIÓN: Cargar métodos de pago
+        metodos_pago = MetodoPago.objects.filter(activo=True)
+        venta_data['metodos_pago'] = MetodoPagoSerializer(
+            metodos_pago, 
+            many=True
+        ).data
+        
+        # ✅ CORRECCIÓN: Cargar categorías
+        categorias = CategoriaProducto.objects.all()
+        venta_data['categorias'] = CategoriaProductoSerializer(
+            categorias,
+            many=True
+        ).data
+        
+        print(f"✅ Datos cargados - Productos: {len(productos_todos)}, Métodos pago: {len(metodos_pago)}, Categorías: {len(categorias)}")
+        
+        return JsonResponse(venta_data)
+        
+    except Venta.DoesNotExist:
+        return JsonResponse({'error': 'Venta no encontrada'}, status=404)
+    except Exception as e:
+        print(f"Error al obtener venta: {str(e)}")
+        return JsonResponse({'error': f'Error interno: {str(e)}'}, status=500)
+    
+@csrf_exempt
+def actualizar_venta(request, venta_id):
+    """Actualiza una venta existente con manejo correcto de stock"""
+    if request.method not in ['PUT', 'PATCH']:
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+    
+    try:
+        venta = Venta.objects.get(id=venta_id)
+        data = json.loads(request.body)
+        
+        print(f"🔄 Actualizando venta {venta_id} con datos:", data)
+        
+        with transaction.atomic():
+            # 1. RESTAURAR STOCK de todos los productos de la venta anterior
+            detalles_anteriores = venta.detalles.all()
+            for detalle in detalles_anteriores:
+                if detalle.producto:
+                    detalle.producto.stock_actual += detalle.cantidad
+                    detalle.producto.save()
+                    print(f"✅ Stock restaurado: {detalle.producto.nombre} +{detalle.cantidad} (Stock actual: {detalle.producto.stock_actual})")
+            
+            # 2. ELIMINAR detalles antiguos
+            detalles_anteriores.delete()
+            print("🗑️ Detalles antiguos eliminados")
+            
+            # 3. VALIDAR STOCK para los nuevos productos
+            detalles_data = data.get('detalles', [])
+            for detalle_data in detalles_data:
+                producto_id = detalle_data.get('producto')
+                cantidad = detalle_data.get('cantidad', 0)
+                
+                if producto_id and cantidad > 0:
+                    producto = Producto.objects.get(id=producto_id)
+                    if producto.stock_actual < cantidad:
+                        return JsonResponse({
+                            'error': f'Stock insuficiente para {producto.nombre}. Disponible: {producto.stock_actual}, Solicitado: {cantidad}'
+                        }, status=400)
+            
+            # 4. CREAR NUEVOS DETALLES y actualizar stock
+            total_venta = 0
+            nuevos_detalles = []
+            
+            for detalle_data in detalles_data:
+                producto_id = detalle_data.get('producto')
+                cantidad = detalle_data.get('cantidad', 0)
+                precio_unitario = detalle_data.get('precio_unitario', 0)
+                subtotal = cantidad * precio_unitario
+                total_venta += subtotal
+                
+                if producto_id and cantidad > 0:
+                    producto = Producto.objects.get(id=producto_id)
+                    # ACTUALIZAR STOCK - RESTAR la cantidad
+                    producto.stock_actual -= cantidad
+                    producto.save()
+                    print(f"📦 Stock actualizado: {producto.nombre} -{cantidad} (Nuevo stock: {producto.stock_actual})")
+                
+                # Crear detalle
+                detalle = DetalleVenta(
+                    venta=venta,
+                    producto_id=producto_id,
+                    cantidad=cantidad,
+                    precio_unitario=precio_unitario,
+                    subtotal=subtotal
+                )
+                nuevos_detalles.append(detalle)
+            
+            # Guardar todos los detalles nuevos
+            DetalleVenta.objects.bulk_create(nuevos_detalles)
+            
+            # 5. ACTUALIZAR VENTA
+            venta.total = total_venta
+            venta.medio_pago_id = data.get('medio_pago')
+            venta.save()
+            
+            print(f"✅ Venta {venta_id} actualizada exitosamente. Total: ${total_venta}")
+            print(f"💰 Medio de pago: {venta.medio_pago}")
+        
+        return JsonResponse({
+            'status': 'ok',
+            'message': '✅ Venta actualizada correctamente',
+            'venta_id': venta.id,
+            'total': float(venta.total)
+        })
+            
+    except Venta.DoesNotExist:
+        return JsonResponse({'error': 'Venta no encontrada'}, status=404)
+    except Producto.DoesNotExist as e:
+        return JsonResponse({'error': f'Producto no encontrado: {str(e)}'}, status=400)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'JSON inválido'}, status=400)
+    except Exception as e:
+        print(f"❌ Error al actualizar venta: {str(e)}")
+        import traceback
+        print(f"🔍 Traceback: {traceback.format_exc()}")
+        return JsonResponse({'error': f'Error interno: {str(e)}'}, status=500)
+
+@csrf_exempt
+def anular_venta(request, venta_id):
+    """Anula una venta (borrado lógico)"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+    
+    try:
+        venta = Venta.objects.get(id=venta_id)
+        
+        # Restaurar stock de productos
+        for detalle in venta.detalles.all():
+            if detalle.producto:
+                detalle.producto.stock_actual += detalle.cantidad
+                detalle.producto.save()
+        
+        # Marcar como anulada
+        venta.anulada = True
+        venta.save()
+        
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Venta anulada correctamente'
+        })
+        
+    except Venta.DoesNotExist:
+        return JsonResponse({'error': 'Venta no encontrada'}, status=404)
+    except Exception as e:
+        print(f"Error al anular venta: {str(e)}")
+        return JsonResponse({'error': f'Error interno: {str(e)}'}, status=500)
+# ================================
+# MÉTODOS DE PAGO (NUEVA VISTA)
+# ================================
+class MetodoPagoListAPIView(generics.ListAPIView):
+    queryset = MetodoPago.objects.filter(activo=True).order_by('nombre')
+    serializer_class = MetodoPagoSerializer
+
+
+
+#--------------
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def debug_ventas(request):
+    """Endpoint para debug de ventas"""
+    print("🔍 DEBUG VENTAS - Verificando base de datos")
+    
+    # 1. Contar ventas en la base de datos
+    total_ventas = Venta.objects.count()
+    print(f"📊 Total de ventas en BD: {total_ventas}")
+    
+    # 2. Obtener todas las ventas simples
+    ventas_simple = Venta.objects.all().order_by('-id')
+    print(f"📋 Ventas encontradas: {ventas_simple.count()}")
+    
+    ventas_data = []
+    for v in ventas_simple:
+        print(f"  - Venta {v.id}: {v.fecha} - ${v.total} - {v.tipo} - Anulada: {v.anulada}")
+        ventas_data.append({
+            'id': v.id,
+            'fecha': v.fecha.isoformat() if v.fecha else None,
+            'total': float(v.total) if v.total else 0,
+            'tipo': v.tipo,
+            'anulada': v.anulada,
+            'cliente_id': v.cliente_id,
+            'usuario_id': v.usuario_id,
+            'medio_pago_id': v.medio_pago_id
+        })
+    
+    # 3. Probar el serializer del ViewSet
+    from .serializers import VentaSerializer
+    try:
+        ventas_complejas = Venta.objects.all()\
+            .select_related('cliente', 'usuario', 'medio_pago')\
+            .prefetch_related('detalles__producto', 'detalles__servicio')\
+            .order_by('-fecha')
+        
+        serializer = VentaSerializer(ventas_complejas, many=True)
+        print(f"✅ Serializer funciona - {len(serializer.data)} ventas serializadas")
+    except Exception as e:
+        print(f"❌ Error en serializer: {e}")
+    
+    return Response({
+        'total_ventas': total_ventas,
+        'ventas_simple': ventas_data,
+        'mensaje': f'Hay {total_ventas} ventas en la base de datos'
+    })
+
+#-------Comprobante de pruebaaaaaa
+
+# En views.py - Agrega esta función
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def generar_comprobante_pdf(request, venta_id):
+    """Genera y descarga el comprobante PDF de una venta"""
+    try:
+        # Obtener la venta con todos los detalles
+        venta = Venta.objects\
+            .select_related('cliente', 'usuario', 'medio_pago')\
+            .prefetch_related('detalles__producto')\
+            .get(id=venta_id)
+        
+        # Obtener detalles de la venta
+        detalles = venta.detalles.all()
+        
+        # Preparar datos para el serializer (para obtener nombres)
+        from .serializers import VentaSerializer
+        venta_data = VentaSerializer(venta).data
+        
+        # Generar PDF
+        from .pdf_utils import generar_comprobante_venta
+        pdf_content = generar_comprobante_venta(venta_data, detalles)
+        
+        if pdf_content:
+            # Crear respuesta HTTP con el PDF
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="comprobante_venta_{venta_id}.pdf"'
+            return response
+        else:
+            return HttpResponse("Error generando el comprobante", status=500)
+            
+    except Venta.DoesNotExist:
+        return HttpResponse("Venta no encontrada", status=404)
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return HttpResponse(f"Error interno: {str(e)}", status=500)
+    
+
+
+def generar_comprobante_pdf(request, venta_id):
+    """
+    Vista para generar y descargar el comprobante PDF de una venta
+    """
+    try:
+        print(f"🔍 VISTA: Iniciando generación PDF para venta {venta_id}")
+        
+        # Obtener la venta y sus detalles
+        venta = get_object_or_404(Venta, id=venta_id)
+        detalles = DetalleVenta.objects.filter(venta=venta)
+        
+        print(f"✅ VISTA: Venta {venta.id} encontrada, {detalles.count()} detalles")
+        
+        # Generar el PDF
+        pdf_content = generar_comprobante_venta(venta, detalles)
+        
+        if pdf_content:
+            print("✅ VISTA: PDF generado, enviando respuesta")
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="comprobante_venta_{venta_id}.pdf"'
+            return response
+        else:
+            print("❌ VISTA: pdf_content es None")
+            return HttpResponse("Error al generar el PDF", status=500)
+            
+    except Exception as e:
+        print(f"❌ VISTA: Error: {str(e)}")
+        import traceback
+        print(f"❌ VISTA: Traceback: {traceback.format_exc()}")
+        return HttpResponse(f"Error: {str(e)}", status=500)
+
+#----para anular una venta
+# En usuarios/views.py - Agregar esta función
+@api_view(['POST'])
+def anular_venta(request, venta_id):
+    """
+    Anula una venta y devuelve el stock de los productos
+    """
+    try:
+        with transaction.atomic():
+            # Obtener la venta
+            venta = get_object_or_404(Venta, id=venta_id)
+            
+            # Verificar que no esté ya anulada
+            if venta.anulada:
+                return Response(
+                    {'error': 'Esta venta ya está anulada'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Obtener los detalles de la venta
+            detalles = DetalleVenta.objects.filter(venta=venta)
+            
+            # Devolver el stock de los productos
+            for detalle in detalles:
+                if detalle.producto:
+                    producto = detalle.producto
+                    producto.stock_actual += detalle.cantidad
+                    producto.save()
+            
+            # Marcar la venta como anulada
+            venta.anulada = True
+            venta.save()
+            
+            # Registrar en logs
+            print(f"✅ Venta #{venta_id} anulada. Stock devuelto.")
+            
+            return Response(
+                {'message': f'Venta #{venta_id} anulada exitosamente. Stock actualizado.'},
+                status=status.HTTP_200_OK
+            )
+            
+    except Exception as e:
+        print(f"❌ Error anulando venta: {str(e)}")
+        return Response(
+            {'error': 'Error interno al anular la venta'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+# ================================
+# PEDIDOS
+# ================================
+
+class PedidoListCreateAPIView(generics.ListCreateAPIView):
+    """Listar y crear pedidos - VERSIÓN DEBUG"""
+    queryset = Pedido.objects.all()\
+        .select_related('proveedor', 'usuario_creador')\
+        .prefetch_related('detalles__producto')\
+        .order_by('-fecha_pedido')
+    serializer_class = PedidoSerializer
+    permission_classes = [AllowAny]
+
+    def perform_create(self, serializer):
+        """DEBUG: Permitir que el serializer maneje el usuario_creador"""
+        try:
+            # Dejar que el serializer se encargue del usuario_creador
+            serializer.save()
+        except Exception as e:
+            print(f"❌ Error en perform_create: {e}")
+            # Forzar guardado sin usuario_creador
+            serializer.save()
+
+class PedidoRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
+    """Detalle, actualizar y eliminar pedidos"""
+    queryset = Pedido.objects.all()\
+        .select_related('proveedor', 'usuario_creador')\
+        .prefetch_related('detalles__producto')
+    serializer_class = PedidoSerializer
+    permission_classes = [IsAuthenticated]
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def buscar_pedidos(request):
+    """Buscar pedidos por diferentes criterios - VERSIÓN MEJORADA"""
+    try:
+        pedido_id = request.GET.get('id')
+        proveedor_id = request.GET.get('proveedor_id')
+        estado = request.GET.get('estado')
+        fecha_desde = request.GET.get('fecha_desde')
+        fecha_hasta = request.GET.get('fecha_hasta')
+
+        # ✅ MEJORA: Cargar más eficientemente los detalles
+        pedidos = Pedido.objects.all()\
+            .select_related('proveedor', 'usuario_creador')\
+            .prefetch_related('detalles__producto')\
+            .order_by('-fecha_pedido')
+
+        # Aplicar filtros
+        if pedido_id:
+            try:
+                pedidos = pedidos.filter(id=int(pedido_id))
+            except ValueError:
+                return Response({'error': 'ID de pedido inválido'}, status=400)
+                
+        if proveedor_id:
+            try:
+                pedidos = pedidos.filter(proveedor_id=int(proveedor_id))
+            except ValueError:
+                return Response({'error': 'ID de proveedor inválido'}, status=400)
+                
+        if estado:
+            # Validar que el estado sea uno de los permitidos
+            estados_permitidos = ['PENDIENTE', 'CONFIRMADO', 'ENTREGADO', 'CANCELADO', 'PARCIAL']
+            if estado.upper() in estados_permitidos:
+                pedidos = pedidos.filter(estado=estado.upper())
+            else:
+                return Response({'error': f'Estado inválido. Estados permitidos: {", ".join(estados_permitidos)}'}, status=400)
+                
+        if fecha_desde:
+            try:
+                fecha_d = datetime.strptime(fecha_desde, "%Y-%m-%d").date()
+                pedidos = pedidos.filter(fecha_pedido__date__gte=fecha_d)
+            except ValueError:
+                return Response({'error': 'Formato de fecha desde inválido. Use YYYY-MM-DD'}, status=400)
+                
+        if fecha_hasta:
+            try:
+                fecha_h = datetime.strptime(fecha_hasta, "%Y-%m-%d").date()
+                pedidos = pedidos.filter(fecha_pedido__date__lte=fecha_h)
+            except ValueError:
+                return Response({'error': 'Formato de fecha hasta inválido. Use YYYY-MM-DD'}, status=400)
+
+        print(f"🔍 Filtros aplicados - ID: {pedido_id}, Proveedor: {proveedor_id}, Estado: {estado}")
+        print(f"📅 Fechas - Desde: {fecha_desde}, Hasta: {fecha_hasta}")
+        print(f"📊 Resultados: {pedidos.count()} pedidos encontrados")
+
+        # ✅ DEBUG: Verificar que los detalles se carguen
+        if pedidos.exists():
+            primer_pedido = pedidos.first()
+            print(f"🔍 Primer pedido - ID: {primer_pedido.id}, Detalles count: {primer_pedido.detalles.count()}")
+            if primer_pedido.detalles.exists():
+                primer_detalle = primer_pedido.detalles.first()
+                print(f"🔍 Primer detalle - Producto: {primer_detalle.producto.nombre}, Cantidad: {primer_detalle.cantidad}")
+
+        serializer = PedidoBusquedaSerializer(pedidos, many=True)
+        
+        # ✅ DEBUG: Verificar datos serializados
+        if serializer.data and len(serializer.data) > 0:
+            print(f"✅ Datos serializados - Primer pedido detalles: {serializer.data[0].get('detalles', [])}")
+        
+        return Response(serializer.data)
+
+    except Exception as e:
+        print(f"❌ Error en buscar_pedidos: {e}")
+        import traceback
+        print(f"🔍 Traceback: {traceback.format_exc()}")
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def cancelar_pedido(request, pedido_id):
+    """Cancelar un pedido pendiente"""
+    try:
+        pedido = get_object_or_404(Pedido, id=pedido_id)
+        
+        if not pedido.puede_ser_cancelado():
+            return Response({
+                'error': 'No se puede cancelar el pedido. Solo se pueden cancelar pedidos en estado PENDIENTE.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        pedido.cancelar_pedido()
+        
+        return Response({
+            'message': 'Pedido cancelado exitosamente.',
+            'pedido_id': pedido.id,
+            'estado': pedido.estado
+        })
+
+    except Pedido.DoesNotExist:
+        return Response({'error': 'Pedido no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def recibir_pedido(request, pedido_id):
+    """Registrar recepción de un pedido"""
+    try:
+        pedido = get_object_or_404(Pedido, id=pedido_id)
+        
+        if not pedido.puede_ser_recibido():
+            return Response({
+                'error': 'No se puede recibir el pedido. Solo se pueden recibir pedidos en estado PENDIENTE o PARCIAL.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Usar el serializer especializado para recepción
+        serializer = PedidoRecepcionSerializer(
+            pedido, 
+            data=request.data, 
+            partial=True,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            serializer.save()
+            
+            return Response({
+                'message': 'Pedido recibido exitosamente.',
+                'pedido_id': pedido.id,
+                'estado': pedido.estado,
+                'fecha_recepcion': pedido.fecha_recepcion
+            })
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    except Pedido.DoesNotExist:
+        return Response({'error': 'Pedido no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def pedidos_pendientes_recepcion(request):
+    """Obtener lista de pedidos pendientes de recepción"""
+    try:
+        pedidos = Pedido.objects.filter(estado__in=['PENDIENTE', 'PARCIAL'])\
+            .select_related('proveedor', 'usuario_creador')\
+            .prefetch_related('detalles__producto')\
+            .order_by('fecha_pedido')
+
+        serializer = PedidoSerializer(pedidos, many=True)
+        return Response(serializer.data)
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def pedidos_para_cancelar(request):
+    """Obtener lista de pedidos que pueden ser cancelados"""
+    try:
+        pedidos = Pedido.objects.filter(estado='PENDIENTE')\
+            .select_related('proveedor', 'usuario_creador')\
+            .prefetch_related('detalles__producto')\
+            .order_by('fecha_pedido')
+
+        serializer = PedidoSerializer(pedidos, many=True)
+        return Response(serializer.data)
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def datos_crear_pedido(request):
+    """Obtener proveedores activos, productos y categorías para crear pedidos"""
+    try:
+        proveedores_activos = Proveedor.objects.filter(estado='ACTIVO')
+        productos = Producto.objects.all().select_related('categoria').prefetch_related('proveedores')
+        categorias = CategoriaProducto.objects.all().order_by('nombre')
+        
+        proveedores_data = ProveedorSerializer(proveedores_activos, many=True).data
+        productos_data = ProductoSerializer(productos, many=True).data
+        categorias_data = CategoriaProductoSerializer(categorias, many=True).data
+        
+        return Response({
+            'proveedores': proveedores_data,
+            'productos': productos_data,
+            'categorias': categorias_data  # ✅ NUEVO: Incluir categorías
+        })
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+#-----TEMPORAAAAAAAALLLLLL
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def debug_crear_pedido(request):
+    """Endpoint temporal para debug de creación de pedidos"""
+    try:
+        print("🔍 DEBUG: Datos recibidos:", request.data)
+        
+        # Verificar que hay un usuario disponible
+        usuario = Usuario.objects.filter(estado='ACTIVO').first()
+        if not usuario:
+            # Crear usuario temporal
+            rol = Rol.objects.filter(nombre__iexact='administrador').first()
+            if not rol:
+                rol = Rol.objects.create(nombre='Administrador', descripcion='Rol debug')
+            
+            usuario = Usuario.objects.create(
+                nombre='Debug', 
+                apellido='User',
+                dni='88888888',
+                correo='debug@temp.com',
+                contrasena='temp',
+                rol=rol,
+                estado='ACTIVO'
+            )
+        
+        # Crear pedido manualmente
+        from django.db import transaction
+        
+        with transaction.atomic():
+            pedido = Pedido.objects.create(
+                proveedor_id=request.data.get('proveedor'),
+                observaciones=request.data.get('observaciones', ''),
+                usuario_creador=usuario
+            )
+            
+            # Crear detalles
+            total = 0
+            for detalle in request.data.get('detalles', []):
+                detalle_obj = DetallePedido.objects.create(
+                    pedido=pedido,
+                    producto_id=detalle.get('producto'),
+                    cantidad=detalle.get('cantidad', 1),
+                    precio_unitario=detalle.get('precio_unitario', 0),
+                    subtotal=detalle.get('cantidad', 1) * detalle.get('precio_unitario', 0)
+                )
+                total += detalle_obj.subtotal
+            
+            pedido.total = total
+            pedido.save()
+        
+        return Response({
+            'status': 'ok',
+            'message': 'Pedido creado en modo debug',
+            'pedido_id': pedido.id
+        })
+        
+    except Exception as e:
+        print(f"❌ Error en debug_crear_pedido: {e}")
+        import traceback
+        print(f"🔍 Traceback: {traceback.format_exc()}")
+        return Response({'error': str(e)}, status=500)

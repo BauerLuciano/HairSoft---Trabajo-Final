@@ -15,9 +15,12 @@
     "axios": "^1.12.2",
     "bootstrap": "^5.3.8",
     "flatpickr": "^4.6.13",
+    "lucide-vue-next": "^0.552.0",
     "qrcode.vue": "^3.6.0",
+    "sweetalert2": "^11.26.3",
     "vue": "^3.5.22",
-    "vue-router": "^4.5.1"
+    "vue-router": "^4.5.1",
+    "vue3-select": "^0.1.2"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",

@@ -69,7 +69,8 @@ DATABASES = {
         'PORT': '5433', 
         'OPTIONS': {
             'options': '-c search_path=public'
-        }
+        },
+        'CONN_MAX_AGE': 0,  # Persistencia de conexiones
     }
 }
 
@@ -212,4 +213,21 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
     ]
+}
+
+# Desactivar logs del admin para evitar el error
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'null': {
+            'class': 'logging.NullHandler',
+        },
+    },
+    'loggers': {
+        'django.security.DisallowedHost': {
+            'handlers': ['null'],
+            'propagate': False,
+        },
+    },
 }

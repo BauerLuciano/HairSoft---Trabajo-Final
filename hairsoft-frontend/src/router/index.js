@@ -1,3 +1,4 @@
+
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
@@ -51,7 +52,23 @@ const routes = [
 
   { path: '/proveedores', name: 'ListadoProveedores', component: () => import('@/views/proveedores/ListadoProveedores.vue') },
   { path: '/proveedores/crear', name: 'RegistrarProveedor', component: () => import('@/views/proveedores/RegistrarProveedor.vue') },
-  { path: '/proveedores/modificar/:id', name: 'ModificarProveedor', component: () => import('@/views/proveedores/ModificarProveedor.vue'), props: true }
+  { path: '/proveedores/modificar/:id', name: 'ModificarProveedor', component: () => import('@/views/proveedores/ModificarProveedor.vue'), props: true },
+
+  // ================================
+  // Ventas
+  // ================================
+
+  { path: '/ventas', name: 'ListadoVentas', component: () => import('@/views/ventas/ListadoVentas.vue') },
+  { path: '/ventas/crear', name: 'RegistrarVenta', component: () => import('@/views/ventas/RegistrarVenta.vue') },
+  { path: '/ventas/modificar/:id', name: 'ModificarVenta', component: () => import('@/views/ventas/ModificarVenta.vue'), props: true },
+
+  // ================================
+  // PEDIDOS - NUEVAS RUTAS
+  // ================================
+  { path: '/pedidos', name: 'ListadoPedidos', component: () => import('@/views/pedidos/ListadoPedidos.vue') },
+  { path: '/pedidos/crear', name: 'RegistrarPedido', component: () => import('@/views/pedidos/RegistrarPedido.vue') },
+  { path: '/pedidos/modificar/:id', name: 'ModificarPedido', component: () => import('@/views/pedidos/ModificarPedido.vue'), props: true },
+  { path: '/pedidos/recibir/:id', name: 'RecibirPedido', component: () => import('@/views/pedidos/RecibirPedido.vue'), props: true }
 
 ]
 

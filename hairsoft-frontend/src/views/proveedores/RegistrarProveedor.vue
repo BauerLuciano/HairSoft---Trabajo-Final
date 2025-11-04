@@ -17,6 +17,17 @@
         />
       </div>
 
+      <!-- CUIT -->
+      <div class="input-group">
+        <label>CUIT</label>
+        <input 
+          v-model="proveedor.cuit"
+          type="text"
+          placeholder="Ingrese el CUIT del proveedor"
+          @input="filtrarCuit"
+        />
+      </div>
+
       <!-- Contacto -->
       <div class="input-group">
         <label>Persona de Contacto</label>
@@ -75,14 +86,30 @@
         </div>
       </div>
 
-      <!-- Productos Específicos -->
+      <!-- Productos que ofrece (Opcional) -->
       <div class="input-group full-width">
-        <label>Productos Específicos (Opcional)</label>
-        <textarea 
-          v-model="proveedor.productos_especificos" 
-          rows="3" 
-          placeholder="Lista de productos específicos que ofrece..."
-          class="form-textarea"
+        <label>Productos que ofrece (Opcional)</label>
+        <div class="productos-grid">
+          <label v-for="producto in productos" :key="producto.id" class="checkbox-label">
+            <input 
+              type="checkbox" 
+              :value="producto.id" 
+              v-model="proveedor.productos_seleccionados"
+              class="checkbox-input"
+            />
+            <span class="checkbox-custom"></span>
+            {{ producto.nombre }}
+          </label>
+        </div>
+      </div>
+
+      <!-- ✅ NUEVO CAMPO -->
+      <div class="input-group full-width">
+        <label>Productos específicos (opcional)</label>
+        <textarea
+          v-model="proveedor.productos_especificos"
+          placeholder="Ejemplo: tinturas, shampoos, máquinas, tijeras..."
+          rows="3"
         ></textarea>
       </div>
 
@@ -104,65 +131,84 @@ import { ref, reactive, onMounted } from 'vue'
 import axios from 'axios'
 
 const emit = defineEmits(['proveedor-registrado', 'cancelar'])
-
 const API_BASE = 'http://127.0.0.1:8000'
 
 const proveedor = reactive({
   nombre: '',
+  cuit: '',
   contacto: '',
   telefono: '',
   email: '',
   direccion: '',
   categorias_seleccionadas: [],
-  productos_especificos: ''
+  productos_seleccionados: [],
+  productos_especificos: '' // ✅ AGREGADO
 })
 
 const categorias = ref([])
+const productos = ref([])
 const cargando = ref(false)
 
-// Cargar categorías de tipo PRODUCTO
-// Cargar categorías de productos
+const filtrarCuit = (event) => {
+  event.target.value = event.target.value.replace(/[^0-9-]/g, '')
+  proveedor.cuit = event.target.value
+}
+
 const cargarCategorias = async () => {
   try {
-    // USAR ESTE ENDPOINT - el que existe en tus URLs
     const res = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`)
     categorias.value = res.data
   } catch (err) {
     console.error('Error al cargar categorías:', err)
-    // Si falla, dejamos el array vacío en lugar de hardcodear
     categorias.value = []
     alert('No se pudieron cargar las categorías. Intente nuevamente.')
   }
 }
 
+const cargarProductos = async () => {
+  try {
+    const res = await axios.get(`${API_BASE}/usuarios/api/productos/`)
+    productos.value = res.data
+  } catch (err) {
+    console.error('Error al cargar productos:', err)
+    productos.value = []
+  }
+}
+
+onMounted(() => {
+  cargarCategorias()
+  cargarProductos()
+})
+
 const registrarProveedor = async () => {
   if (!validarProveedor()) return
-  
+
   cargando.value = true
   try {
+    const categoriasIds = proveedor.categorias_seleccionadas.map(id => Number(id))
+
     const payload = {
       nombre: proveedor.nombre.trim(),
+      cuit: proveedor.cuit.trim(),
       contacto: proveedor.contacto.trim(),
       telefono: proveedor.telefono.trim(),
       email: proveedor.email.trim(),
       direccion: proveedor.direccion.trim(),
-      categorias: proveedor.categorias_seleccionadas,
-      productos_especificos: proveedor.productos_especificos.trim()
+      categorias: categoriasIds,
+      productos_especificos: proveedor.productos_especificos?.trim() || '' // ✅ CORRECTO
     }
+
+    console.log('Payload proveedor:', payload)
 
     const response = await axios.post(`${API_BASE}/usuarios/api/proveedores/`, payload)
     alert('✅ Proveedor registrado con éxito')
-    
+
     resetForm()
     emit('proveedor-registrado', response.data)
     
   } catch (err) {
-    console.error('Error al registrar proveedor:', err)
-    if (err.response?.status === 400 && err.response?.data?.nombre) {
-      alert('❌ Error: Ya existe un proveedor con ese nombre')
-    } else {
-      alert('❌ Error al registrar el proveedor: ' + (err.response?.data?.message || err.message))
-    }
+    console.error(err.response?.data)
+    alert('❌ Error al registrar el proveedor: ' + JSON.stringify(err.response?.data))
   } finally {
     cargando.value = false
   }
@@ -182,21 +228,19 @@ const validarProveedor = () => {
 
 const resetForm = () => {
   proveedor.nombre = ''
+  proveedor.cuit = ''
   proveedor.contacto = ''
   proveedor.telefono = ''
   proveedor.email = ''
   proveedor.direccion = ''
   proveedor.categorias_seleccionadas = []
-  proveedor.productos_especificos = ''
+  proveedor.productos_seleccionados = []
+  proveedor.productos_especificos = '' // ✅ LIMPIAR TAMBIÉN ESTE
 }
 
 const volver = () => {
   emit('cancelar')
 }
-
-onMounted(() => {
-  cargarCategorias()
-})
 </script>
 
 <style scoped>
@@ -207,9 +251,11 @@ onMounted(() => {
   background: rgba(23, 23, 23, 0.8);
   border: 2px solid #374151;
   border-radius: 20px;
-  padding: 50px;
+  padding: 30px 50px; /* reducido un poco para no empujar los botones */
   width: 100%;
   max-width: 950px;
+  max-height: 90vh; /* altura máxima con scroll */
+  overflow-y: auto;  /* scroll vertical si excede altura */
   box-shadow: 0 25px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
   backdrop-filter: blur(10px);
   position: relative;
@@ -290,8 +336,9 @@ input:focus, .form-textarea:focus {
   font-family: inherit;
 }
 
-/* Checkboxes para categorías */
-.categorias-grid {
+/* Checkboxes para categorías y productos */
+.categorias-grid,
+.productos-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
@@ -346,8 +393,8 @@ input:focus, .form-textarea:focus {
   display: flex;
   gap: 15px;
   justify-content: flex-end;
-  margin-top: 30px;
-  padding-top: 25px;
+  margin-top: 20px; /* reducido de 30px */
+  padding-top: 15px; /* reducido de 25px */
   border-top: 1px solid #374151;
 }
 
@@ -407,7 +454,8 @@ input:focus, .form-textarea:focus {
     font-size: 1rem; 
   }
   
-  .categorias-grid {
+  .categorias-grid,
+  .productos-grid {
     grid-template-columns: 1fr;
   }
   

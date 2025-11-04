@@ -68,28 +68,33 @@
               <th>Acciones</th>
             </tr>
           </thead>
-          <tbody>
-            <tr v-for="proveedor in proveedoresPaginados" :key="proveedor.id">
-              <td>{{ proveedor.nombre || '–' }}</td>
-              <td>{{ proveedor.contacto || '–' }}</td>
-              <td>{{ proveedor.telefono || 'No registrado' }}</td>
-              <td>{{ proveedor.email || '–' }}</td>
-              <td class="direccion-cell">{{ proveedor.direccion || '–' }}</td>
-              <td class="productos-cell">{{ proveedor.productos_que_ofrece || '–' }}</td>
-              <td>
-                <span v-if="proveedor.categorias_nombres && proveedor.categorias_nombres.length > 0" class="categoria-badge">
-                  {{ proveedor.categorias_nombres.join(', ') }}
-                </span>
-                <span v-else class="sin-categoria">–</span>
-              </td>
-              <td><span :class="proveedor.estado.toLowerCase()">{{ proveedor.estado }}</span></td>
-              <td>{{ formatFecha(proveedor.fecha_creacion) }}</td>
-              <td>
-                <button @click="editarProveedor(proveedor)" class="action-button edit">✏️</button>
-                <button @click="eliminarProveedor(proveedor)" class="action-button delete">🗑️</button>
-              </td>
-            </tr>
-          </tbody>
+            <tbody>
+              <tr v-for="proveedor in proveedoresPaginados" :key="proveedor.id">
+                <td>{{ proveedor.nombre || '–' }}</td>
+                <td>{{ proveedor.contacto || '–' }}</td>
+                <td>{{ proveedor.telefono || 'No registrado' }}</td>
+                <td>{{ proveedor.email || '–' }}</td>
+                <td class="direccion-cell">{{ proveedor.direccion || '–' }}</td>
+                <td class="productos-cell">
+                  <ul v-if="proveedor.productos && proveedor.productos.length > 0" class="productos-list">
+                    <li v-for="producto in proveedor.productos" :key="producto">{{ producto }}</li>
+                  </ul>
+                  <span v-else>–</span>
+                </td>
+                <td>
+                  <span v-if="proveedor.categorias_nombres && proveedor.categorias_nombres.length > 0" class="categoria-badge">
+                    {{ proveedor.categorias_nombres.join(', ') }}
+                  </span>
+                  <span v-else class="sin-categoria">–</span>
+                </td>
+                <td><span :class="proveedor.estado.toLowerCase()">{{ proveedor.estado }}</span></td>
+                <td>{{ formatFecha(proveedor.fecha_creacion) }}</td>
+                <td>
+                  <button @click="editarProveedor(proveedor)" class="action-button edit">✏️</button>
+                  <button @click="eliminarProveedor(proveedor)" class="action-button delete">🗑️</button>
+                </td>
+              </tr>
+            </tbody>
         </table>
 
         <div v-if="proveedoresPaginados.length === 0" class="no-results">
@@ -300,6 +305,7 @@ watch(filtros, () => {
   pagina.value = 1
 }, { deep: true })
 </script>
+
 <style scoped>
 /* Contenedor principal con margen para el navbar */
 .list-container {
@@ -447,6 +453,16 @@ watch(filtros, () => {
   padding: 40px;
   animation: fadeIn 0.3s ease;
 }
+.productos-list {
+  margin: 0;
+  padding-left: 18px;
+  list-style-type: disc;
+}
+
+.productos-cell ul li {
+  line-height: 1.4;
+}
+
 
 /* Responsive para el overlay */
 @media (max-width: 968px) {

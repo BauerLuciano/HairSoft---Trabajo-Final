@@ -31,18 +31,6 @@
       </ul>
     </div>
 
-    <!-- Footer del Sidebar (opcional) -->
-    <div class="sidebar-footer">
-      <div class="footer-card">
-        <div class="footer-icon">
-          <i class="ri-lightbulb-flash-line"></i>
-        </div>
-        <div class="footer-content">
-          <p class="footer-title">¿Necesitás ayuda?</p>
-          <p class="footer-text">Consultá nuestra guía</p>
-        </div>
-      </div>
-    </div>
   </nav>
 </template>
 
@@ -51,11 +39,12 @@ import logo from '@/assets/logo.jpg';
 
 const modulosConIcono = [
   { name: 'Dashboard', path: '/dashboard', icon: 'ri-dashboard-line' },
+  { name: 'Ventas', path: '/ventas', icon: 'ri-bar-chart-2-line' },
   { name: 'Usuarios', path: '/usuarios', icon: 'ri-team-line' },
   { name: 'Turnos', path: '/turnos', icon: 'ri-calendar-event-line' },
   { name: 'Servicios', path: '/servicios', icon: 'ri-scissors-line' },
   { name: 'Productos', path: '/productos', icon: 'ri-shopping-bag-line' },
-  { name: 'Ventas', path: '/ventas', icon: 'ri-bar-chart-2-line' },
+  { name: 'Pedidos', path: '/pedidos', icon: 'ri-shopping-cart-2-line' }, // ← Este sí existe
   { name: 'Proveedores', path: '/proveedores', icon: 'ri-truck-line' },
   { name: 'Categorías', path: '/categorias', icon: 'ri-list-settings-line' },
   { name: 'Roles', path: '/roles', icon: 'ri-shield-user-line' },

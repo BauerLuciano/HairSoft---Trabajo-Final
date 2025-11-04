@@ -1,0 +1,1215 @@
+<template>
+  <div class="list-container">
+    <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarEditar }">
+      <!-- Header -->
+      <div class="list-header">
+        <div class="header-content">
+          <h1>Ventas Registradas</h1>
+          <p>Gestión de ventas del sistema</p>
+        </div>
+        <!-- Botón para abrir modal de registrar venta -->
+        <button @click="mostrarRegistrar = true" class="register-button">➕ Registrar Venta</button>
+      </div>
+
+      <!-- Filtros -->
+      <div class="filters-container">
+        <div class="filters-grid">
+          <div class="filter-group">
+            <label>Buscar</label>
+            <input v-model="filtros.busqueda" placeholder="Cliente, Usuario o ID..." class="filter-input"/>
+          </div>
+
+          <div class="filter-group">
+            <label>Fecha desde</label>
+            <input type="date" v-model="filtros.fechaDesde" class="filter-input"/>
+          </div>
+
+          <div class="filter-group">
+            <label>Fecha hasta</label>
+            <input type="date" v-model="filtros.fechaHasta" class="filter-input"/>
+          </div>
+
+          <div class="filter-group">
+            <label>&nbsp;</label>
+            <button @click="limpiarFiltros" class="clear-filters-btn">🗑️ Limpiar filtros</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Estado de carga -->
+      <div v-if="cargando" class="loading-state">
+        <p>🔄 Cargando ventas...</p>
+      </div>
+
+      <!-- Tabla de ventas -->
+      <div v-else class="table-container">
+        <table class="users-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Cliente</th>
+              <th>Usuario</th>
+              <th>Fecha</th>
+              <th>Total</th>
+              <th>Método Pago</th>
+              <th>Tipo</th>
+              <th>Estado</th>
+              <th>Comprobante</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="venta in ventasPaginadas" :key="venta.id">
+              <td><strong>#{{ venta.id }}</strong></td>
+              <td>{{ venta.cliente_nombre || 'Venta Rápida' }}</td>
+              <td>{{ venta.usuario_nombre || '–' }}</td>
+              <td>{{ formatFecha(venta.fecha) }}</td>
+              <td><strong>${{ formatPrecio(venta.total) }}</strong></td>
+              <td>
+                <span class="badge-pago" :class="getClaseTipoPago(venta.medio_pago_tipo)">
+                  {{ venta.medio_pago_nombre || '–' }}
+                </span>
+              </td>
+              <td>
+                <span class="badge-tipo" :class="venta.tipo?.toLowerCase()">
+                  {{ venta.tipo || '–' }}
+                </span>
+              </td>
+              <td>
+                <span class="badge-estado" :class="{
+                  'estado-activa': !venta.anulada,
+                  'estado-anulada': venta.anulada
+                }">
+                  {{ venta.anulada ? '❌ ANULADA' : '✅ ACTIVA' }}
+                </span>
+              </td>
+              <td>
+                <button 
+                  @click="generarComprobantePDF(venta)" 
+                  class="btn-comprobante"
+                  :title="`Descargar comprobante PDF venta #${venta.id}`"
+                  :disabled="generandoPDF === venta.id || venta.anulada"
+                >
+                  {{ generandoPDF === venta.id ? '⏳' : '📄' }} 
+                  {{ generandoPDF === venta.id ? 'Generando...' : 'PDF' }}
+                </button>
+              </td>
+              <td class="action-buttons">
+                <button 
+                  @click="editarVenta(venta)" 
+                  class="action-button edit" 
+                  :disabled="venta.anulada"
+                  :title="venta.anulada ? 'No se puede editar venta anulada' : 'Editar venta'"
+                >
+                  ✏️
+                </button>
+                <button 
+                  @click="anularVenta(venta)" 
+                  class="action-button delete" 
+                  :disabled="venta.anulada"
+                  :title="venta.anulada ? 'Venta ya anulada' : 'Anular venta'"
+                >
+                  🗑️
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div v-if="ventasPaginadas.length === 0 && !cargando" class="no-results">
+          <p>📭 No se encontraron ventas</p>
+          <button @click="cargarVentas" class="btn-reintentar">🔄 Reintentar</button>
+        </div>
+      </div>
+
+      <!-- Mostrando cantidad -->
+      <div v-if="!cargando" class="usuarios-count">
+        <p>📊 Mostrando {{ ventasPaginadas.length }} de {{ ventasFiltradas.length }} ventas</p>
+        <p v-if="ventaRecienCreada" class="venta-reciente">
+          ✅ <strong>Venta #{{ ventaRecienCreada }}</strong> registrada exitosamente
+        </p>
+      </div>
+
+      <!-- Paginación -->
+      <div v-if="!cargando && ventasFiltradas.length > 0" class="pagination">
+        <button @click="paginaAnterior" :disabled="pagina === 1">← Anterior</button>
+        <span>Página {{ pagina }} de {{ totalPaginas }}</span>
+        <button @click="paginaSiguiente" :disabled="pagina === totalPaginas">Siguiente →</button>
+      </div>
+    </div>
+
+    <!-- Modal Registrar Venta -->
+    <div v-if="mostrarRegistrar" class="modal-overlay">
+      <div class="modal-content">
+        <button class="modal-close" @click="cerrarModal" title="Cerrar formulario">✖️</button>
+        <RegistrarVenta 
+          @venta-registrada="procesarVentaRegistrada" 
+          @venta-completada="cerrarModal"
+          @cancelar="cerrarModal"
+        />
+      </div>
+    </div>
+
+    <!-- Modal Editar Venta -->
+    <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
+      <div class="modal-content">
+        <ModificarVenta 
+          :venta-id="ventaEditando?.id" 
+          @venta-actualizada="ventaActualizada"
+          @cancelar="cerrarModalEditar"
+        />
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
+import axios from 'axios'
+import Swal from 'sweetalert2'
+import RegistrarVenta from './RegistrarVenta.vue'
+import ModificarVenta from './ModificarVenta.vue'
+
+const router = useRouter()
+const API_BASE = 'http://127.0.0.1:8000'
+
+const ventas = ref([])
+const filtros = ref({ busqueda: '', fechaDesde: '', fechaHasta: '' })
+const pagina = ref(1)
+const itemsPorPagina = 8
+const mostrarRegistrar = ref(false)
+const mostrarEditar = ref(false)
+const ventaEditando = ref(null)
+const cargando = ref(false)
+const ventaRecienCreada = ref(null)
+const generandoPDF = ref(null)
+
+// Cargar ventas del backend
+const cargarVentas = async () => {
+  cargando.value = true
+  try {
+    console.log('🔄 Cargando ventas desde:', `${API_BASE}/usuarios/api/ventas/`)
+    const res = await axios.get(`${API_BASE}/usuarios/api/ventas/`)
+    
+    if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+      ventas.value = res.data.sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+      console.log('✅ Ventas cargadas:', ventas.value.length)
+    } else {
+      console.log('📭 No hay ventas registradas')
+      ventas.value = []
+    }
+  } catch (err) {
+    console.error('❌ Error cargando ventas:', err.response || err)
+    Swal.fire({
+      icon: 'error',
+      title: 'Error al Cargar Ventas',
+      text: err.response?.data?.message || err.message,
+      confirmButtonText: 'Entendido'
+    })
+  } finally {
+    cargando.value = false
+  }
+}
+
+onMounted(() => {
+  cargarVentas()
+})
+
+const filtrarPorFecha = (venta) => {
+  const fecha = venta.fecha ? new Date(venta.fecha) : null
+  if (!fecha) return true
+  if (filtros.value.fechaDesde && fecha < new Date(filtros.value.fechaDesde)) return false
+  if (filtros.value.fechaHasta) {
+    const hasta = new Date(filtros.value.fechaHasta)
+    hasta.setDate(hasta.getDate() + 1)
+    if (fecha >= hasta) return false
+  }
+  return true
+}
+
+const ventasFiltradas = computed(() => {
+  const busca = filtros.value.busqueda.toLowerCase()
+  return ventas.value.filter(v => {
+    const matchBusqueda = !busca || 
+      (v.cliente_nombre?.toLowerCase().includes(busca) || 
+       v.usuario_nombre?.toLowerCase().includes(busca) ||
+       v.medio_pago_nombre?.toLowerCase().includes(busca) ||
+       v.id.toString().includes(busca))
+    const matchFecha = filtrarPorFecha(v)
+    return matchBusqueda && matchFecha
+  })
+})
+
+const totalPaginas = computed(() => Math.max(1, Math.ceil(ventasFiltradas.value.length / itemsPorPagina)))
+
+const ventasPaginadas = computed(() => {
+  const inicio = (pagina.value - 1) * itemsPorPagina
+  return ventasFiltradas.value.slice(inicio, inicio + itemsPorPagina)
+})
+
+const paginaAnterior = () => { 
+  if (pagina.value > 1) pagina.value-- 
+}
+
+const paginaSiguiente = () => { 
+  if (pagina.value < totalPaginas.value) pagina.value++ 
+}
+
+const editarVenta = (venta) => {
+  if (venta.anulada) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Venta Anulada',
+      text: 'No se puede editar una venta anulada',
+      confirmButtonText: 'Entendido'
+    })
+    return
+  }
+  ventaEditando.value = venta
+  mostrarEditar.value = true
+}
+
+const generarComprobantePDF = async (venta) => {
+  if (generandoPDF.value === venta.id || venta.anulada) return
+  
+  generandoPDF.value = venta.id
+  console.log(`📄 Generando comprobante PDF para venta #${venta.id}`)
+  
+  try {
+    Swal.fire({
+      title: 'Generando PDF...',
+      text: 'Por favor espere',
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading()
+      }
+    })
+    
+    const url = `${API_BASE}/usuarios/api/ventas/${venta.id}/comprobante-pdf/`
+    window.open(url, '_blank')
+    
+    Swal.close()
+    Swal.fire({
+      icon: 'success',
+      title: 'PDF Generado',
+      text: `Comprobante para venta #${venta.id} generado correctamente`,
+      timer: 2000,
+      showConfirmButton: false
+    })
+    
+  } catch (error) {
+    console.error('❌ Error generando PDF:', error)
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'No se pudo generar el comprobante PDF',
+      confirmButtonText: 'Entendido'
+    })
+  } finally {
+    generandoPDF.value = null
+  }
+}
+
+const anularVenta = async (venta) => {
+  if (venta.anulada) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Venta Ya Anulada',
+      text: 'Esta venta ya está anulada',
+      confirmButtonText: 'Entendido'
+    })
+    return
+  }
+  
+  const result = await Swal.fire({
+    title: '¿Anular Venta?',
+    html: `
+      <div style="text-align: left;">
+        <p><strong>Venta #${venta.id}</strong></p>
+        <p><strong>Cliente:</strong> ${venta.cliente_nombre || 'Venta Rápida'}</p>
+        <p><strong>Total:</strong> $${venta.total}</p>
+        <p><strong>Fecha:</strong> ${formatFecha(venta.fecha)}</p>
+        <hr style="margin: 15px 0;">
+        <p style="color: #e53e3e; font-weight: bold;">
+          ⚠️ Esta acción no se puede deshacer
+        </p>
+        <ul style="text-align: left; margin: 10px 0; padding-left: 20px;">
+          <li>Marcará la venta como ANULADA</li>
+          <li>Devolverá el stock de los productos</li>
+        </ul>
+      </div>
+    `,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#d33',
+    cancelButtonColor: '#3085d6',
+    confirmButtonText: 'Sí, anular venta',
+    cancelButtonText: 'Cancelar',
+    reverseButtons: true,
+    backdrop: true,
+    allowOutsideClick: false
+  })
+  
+  if (!result.isConfirmed) return
+  
+  try {
+    cargando.value = true
+    console.log(`🔄 Anulando venta #${venta.id}...`)
+    
+    Swal.fire({
+      title: 'Anulando Venta...',
+      text: 'Por favor espere',
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading()
+      }
+    })
+    
+    const response = await axios.post(`${API_BASE}/usuarios/api/ventas/${venta.id}/anular/`)
+    
+    if (response.status === 200) {
+      const ventaIndex = ventas.value.findIndex(v => v.id === venta.id)
+      if (ventaIndex !== -1) {
+        ventas.value[ventaIndex].anulada = true
+      }
+      
+      await cargarVentas()
+      
+      Swal.fire({
+        icon: 'success',
+        title: 'Venta Anulada',
+        text: `Venta #${venta.id} anulada correctamente. Stock actualizado.`,
+        timer: 3000,
+        showConfirmButton: false
+      })
+      
+      console.log(`✅ Venta #${venta.id} anulada exitosamente`)
+    }
+  } catch (err) {
+    console.error('❌ Error anulando venta:', err.response || err)
+    
+    let errorMessage = 'No se pudo anular la venta'
+    if (err.response?.data?.error) {
+      errorMessage = err.response.data.error
+    } else if (err.response?.status === 404) {
+      errorMessage = 'Venta no encontrada'
+    }
+    
+    Swal.fire({
+      icon: 'error',
+      title: 'Error al Anular',
+      text: errorMessage,
+      confirmButtonText: 'Entendido'
+    })
+  } finally {
+    cargando.value = false
+  }
+}
+
+const cerrarModal = () => {
+  mostrarRegistrar.value = false
+}
+
+const cerrarModalEditar = () => { 
+  mostrarEditar.value = false
+  ventaEditando.value = null 
+}
+
+const procesarVentaRegistrada = async (ventaData) => {
+  console.log('🎯 EVENTO RECIBIDO - Venta registrada:', ventaData)
+  
+  if (ventaData && ventaData.id) {
+    const nuevaVenta = {
+      ...ventaData,
+      cliente_nombre: 'Venta Rápida',
+      usuario_nombre: 'Sistema', 
+      medio_pago_nombre: 'Efectivo',
+      tipo: 'PRODUCTO',
+      anulada: false
+    }
+    
+    ventas.value.unshift(nuevaVenta)
+    
+    ventaRecienCreada.value = ventaData.id
+    setTimeout(() => {
+      ventaRecienCreada.value = null
+    }, 5000)
+    
+    console.log('✅ Venta agregada al listado - Modal sigue abierto')
+  }
+}
+
+const ventaActualizada = async () => {
+  await cargarVentas()
+  cerrarModalEditar()
+  Swal.fire({
+    icon: 'success',
+    title: 'Venta Actualizada',
+    text: 'La venta se ha actualizado correctamente',
+    timer: 2000,
+    showConfirmButton: false
+  })
+}
+
+const limpiarFiltros = () => {
+  filtros.value = { busqueda: '', fechaDesde: '', fechaHasta: '' }
+  pagina.value = 1
+}
+
+const formatFecha = (fecha) => {
+  if (!fecha) return '–'
+  return new Date(fecha).toLocaleDateString('es-ES', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+const formatPrecio = (precio) => {
+  if (!precio) return '0.00'
+  return parseFloat(precio).toFixed(2)
+}
+
+const getClaseTipoPago = (tipoPago) => {
+  const tipos = {
+    'EFECTIVO': 'efectivo',
+    'TARJETA': 'tarjeta',
+    'TRANSFERENCIA': 'transferencia',
+    'MERCADO_PAGO': 'mercadopago'
+  }
+  return tipos[tipoPago] || 'default'
+}
+</script>
+
+
+<style scoped>
+/* ========================================
+   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE
+   ======================================== */
+
+/* Tarjeta principal - Fondo oscuro elegante */
+.list-card {
+  background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
+  color: #e5e5e5;
+  border-radius: 24px;
+  padding: 40px;
+  width: 100%;
+  max-width: 1600px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6),
+              0 0 0 1px rgba(100, 100, 100, 0.15) inset;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.4s ease;
+}
+
+/* Borde superior azul acero */
+.list-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9);
+  border-radius: 24px 24px 0 0;
+}
+
+/* BADGES DE ESTADO */
+.badge-estado {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+  letter-spacing: 0.5px;
+}
+
+.estado-activa {
+  background: linear-gradient(135deg, #2d3748, #1a202c);
+  color: #10b981;
+  border: 2px solid #10b981;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+}
+
+.estado-anulada {
+  background: linear-gradient(135deg, #3d3d3d, #2a2a2a);
+  color: #ef4444;
+  border: 2px solid #ef4444;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+/* HEADER - Diseño masculino */
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 35px;
+  flex-wrap: wrap;
+  gap: 20px;
+  border-bottom: 2px solid rgba(14, 165, 233, 0.25);
+  padding-bottom: 25px;
+}
+
+.header-content h1 {
+  margin: 0;
+  font-size: 2.2rem;
+  background: linear-gradient(135deg, #ffffff, #0ea5e9);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.header-content p {
+  color: #9ca3af;
+  font-weight: 500;
+  margin-top: 8px;
+  letter-spacing: 0.5px;
+}
+
+.register-button {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: white;
+  border: none;
+  padding: 14px 28px;
+  border-radius: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.95rem;
+  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.register-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.register-button:hover::before {
+  left: 100%;
+}
+
+.register-button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px rgba(14, 165, 233, 0.5);
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+}
+
+/* FILTROS - Estilo industrial */
+.filters-container {
+  margin-bottom: 30px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(100, 100, 100, 0.2);
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 18px;
+  align-items: end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-group label {
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: #9ca3af;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+}
+
+.filter-input {
+  padding: 12px 14px;
+  border: 2px solid #374151;
+  border-radius: 10px;
+  background: #1a1a1a;
+  color: #e5e5e5;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.filter-input:focus {
+  outline: none;
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.15);
+  background: #252525;
+}
+
+.clear-filters-btn {
+  background: linear-gradient(135deg, #4b5563, #374151);
+  color: white;
+  border: none;
+  padding: 12px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.8px;
+}
+
+.clear-filters-btn:hover {
+  background: linear-gradient(135deg, #374151, #1f2937);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(75, 85, 99, 0.4);
+}
+
+/* ESTADOS DE CARGA */
+.loading-state {
+  text-align: center;
+  padding: 80px;
+  font-size: 1.3em;
+  color: #9ca3af;
+  font-weight: 600;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.no-results {
+  text-align: center;
+  padding: 80px;
+  color: #9ca3af;
+}
+
+.btn-reintentar {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: white;
+  border: none;
+  padding: 14px 28px;
+  border-radius: 12px;
+  cursor: pointer;
+  margin-top: 20px;
+  font-weight: 800;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-reintentar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.btn-reintentar:hover::before {
+  left: 100%;
+}
+
+.btn-reintentar:hover {
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(14, 165, 233, 0.5);
+}
+
+/* TABLA - Diseño profesional */
+.table-container {
+  overflow-x: auto;
+  margin-bottom: 25px;
+  border-radius: 16px;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #1a1a1a;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(100, 100, 100, 0.2);
+}
+
+.users-table th {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: white;
+  padding: 18px 14px;
+  text-align: left;
+  font-weight: 900;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 1.2px;
+}
+
+.users-table td {
+  padding: 14px;
+  border-bottom: 1px solid rgba(100, 100, 100, 0.12);
+  vertical-align: middle;
+  color: #d1d1d1;
+  font-weight: 500;
+}
+
+.users-table td strong {
+  color: #ffffff;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.users-table tr:hover {
+  background: rgba(14, 165, 233, 0.08);
+  transition: all 0.2s ease;
+}
+
+/* BOTONES DE ACCIÓN */
+.action-buttons { 
+  display: flex; 
+  gap: 8px; 
+  flex-wrap: wrap; 
+}
+
+.action-button {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: white;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.action-button.edit {
+  background: linear-gradient(135deg, #64748b, #475569);
+  border: 1px solid rgba(100, 116, 139, 0.4);
+}
+
+.action-button.edit:hover {
+  background: linear-gradient(135deg, #475569, #334155);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(100, 116, 139, 0.5);
+}
+
+.action-button.delete {
+  background: linear-gradient(135deg, #3d3d3d, #2a2a2a);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  color: #ef4444;
+}
+
+.action-button.delete:hover {
+  background: linear-gradient(135deg, #2a2a2a, #1a1a1a);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+  border-color: #ef4444;
+}
+
+.action-button.delete:disabled {
+  background: #2d2d2d;
+  color: #6b7280;
+  cursor: not-allowed;
+  transform: none;
+  border: 1px solid rgba(107, 114, 128, 0.3);
+  opacity: 0.5;
+}
+
+/* BOTÓN DE COMPROBANTE PDF */
+.btn-comprobante {
+  background: linear-gradient(135deg, #64748b, #475569);
+  color: white;
+  border: 1px solid rgba(100, 116, 139, 0.4);
+  padding: 10px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 800;
+  transition: all 0.3s ease;
+  min-width: 90px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-comprobante:hover:not(:disabled) {
+  background: linear-gradient(135deg, #475569, #334155);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(100, 116, 139, 0.5);
+}
+
+.btn-comprobante:disabled {
+  background: #2d2d2d;
+  color: #6b7280;
+  cursor: not-allowed;
+  opacity: 0.5;
+  border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+/* BADGES - Estilo outline minimalista */
+.badge-pago, .badge-tipo, .badge-anulada {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  display: inline-block;
+  letter-spacing: 0.8px;
+}
+
+.badge-pago.efectivo {
+  background: linear-gradient(135deg, #2d3748, #1a202c);
+  color: #10b981;
+  border: 2px solid #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.2);
+}
+
+.badge-pago.tarjeta {
+  background: linear-gradient(135deg, #2d3748, #1a202c);
+  color: #0ea5e9;
+  border: 2px solid #0ea5e9;
+  box-shadow: 0 0 8px rgba(14, 165, 233, 0.2);
+}
+
+.badge-pago.transferencia {
+  background: linear-gradient(135deg, #2d3748, #1a202c);
+  color: #8b5cf6;
+  border: 2px solid #8b5cf6;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.2);
+}
+
+.badge-pago.mercadopago {
+  background: linear-gradient(135deg, #2d3748, #1a202c);
+  color: #00b2ff;
+  border: 2px solid #00b2ff;
+  box-shadow: 0 0 8px rgba(0, 178, 255, 0.2);
+}
+
+.badge-pago.default {
+  background: #1a1a1a;
+  color: #9ca3af;
+  border: 1px solid rgba(156, 163, 175, 0.4);
+}
+
+.badge-tipo.producto {
+  background: linear-gradient(135deg, #2d3748, #1a202c);
+  color: #f59e0b;
+  border: 2px solid #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.2);
+}
+
+.badge-tipo.turno {
+  background: linear-gradient(135deg, #2d3748, #1a202c);
+  color: #ec4899;
+  border: 2px solid #ec4899;
+  box-shadow: 0 0 8px rgba(236, 72, 153, 0.2);
+}
+
+.badge-tipo.default {
+  background: #1a1a1a;
+  color: #9ca3af;
+  border: 1px solid rgba(156, 163, 175, 0.4);
+}
+
+.badge-anulada.anulada {
+  background: linear-gradient(135deg, #3d3d3d, #2a2a2a);
+  color: #ef4444;
+  border: 2px solid #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.2);
+}
+
+.badge-anulada:not(.anulada) {
+  background: linear-gradient(135deg, #2d3748, #1a202c);
+  color: #10b981;
+  border: 2px solid #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.2);
+}
+
+/* CONTADOR Y MENSAJES */
+.usuarios-count {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 25px 0;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 12px;
+  flex-wrap: wrap;
+  gap: 15px;
+  border: 1px solid rgba(100, 100, 100, 0.2);
+}
+
+.usuarios-count p {
+  color: #9ca3af;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+.venta-reciente {
+  background: linear-gradient(135deg, #2d3748, #1a202c);
+  color: #10b981;
+  border: 2px solid #10b981;
+  padding: 10px 18px;
+  border-radius: 20px;
+  margin-top: 0;
+  animation: fadeIn 0.5s ease;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* PAGINACIÓN */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  margin-top: 25px;
+}
+
+.pagination button {
+  background: linear-gradient(135deg, #475569, #334155);
+  color: white;
+  border: 1px solid rgba(71, 85, 105, 0.5);
+  padding: 12px 24px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 800;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.85rem;
+}
+
+.pagination button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #334155, #1e293b);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(71, 85, 105, 0.5);
+}
+
+.pagination button:disabled {
+  background: #2d2d2d;
+  color: #6b7280;
+  cursor: not-allowed;
+  transform: none;
+  border: 1px solid rgba(107, 114, 128, 0.3);
+  opacity: 0.5;
+}
+
+.pagination span {
+  color: #e5e5e5;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  font-size: 0.95rem;
+}
+
+/* OVERLAY Y MODALES */
+.overlay-activo {
+  opacity: 0.3;
+  filter: blur(5px);
+  pointer-events: none;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(12px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeInModal 0.3s ease;
+}
+
+@keyframes fadeInModal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  position: relative;
+  animation: slideUp 0.3s ease;
+  max-height: 85vh;
+  max-width: 90vw;
+  width: auto;
+  overflow-y: auto;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7),
+              0 0 0 1px rgba(14, 165, 233, 0.3);
+  border: 2px solid rgba(14, 165, 233, 0.2);
+  padding: 0;
+  margin: 20px;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.modal-close {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: linear-gradient(135deg, #2d3748, #1a202c);
+  border: 2px solid rgba(239, 68, 68, 0.6);
+  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #ef4444;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  transition: all 0.3s ease;
+  z-index: 1001;
+  font-weight: 900;
+  font-size: 1.2rem;
+}
+
+.modal-close:hover {
+  transform: scale(1.15) rotate(90deg);
+  box-shadow: 0 6px 25px rgba(239, 68, 68, 0.6);
+  background: linear-gradient(135deg, #1a202c, #0f0f0f);
+  border-color: #ef4444;
+}
+
+/* SCROLLBAR PERSONALIZADO */
+.modal-content::-webkit-scrollbar,
+.table-container::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.modal-content::-webkit-scrollbar-track,
+.table-container::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 6px;
+}
+
+.modal-content::-webkit-scrollbar-thumb,
+.table-container::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #475569, #334155);
+  border-radius: 6px;
+  border: 2px solid #1a1a1a;
+}
+
+.modal-content::-webkit-scrollbar-thumb:hover,
+.table-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+}
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+  .list-card {
+    padding: 25px;
+    border-radius: 20px;
+  }
+  
+  .list-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .header-content h1 {
+    font-size: 1.6rem;
+  }
+  
+  .filters-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .modal-content {
+    max-width: 95vw;
+    margin: 12px;
+    border-radius: 12px;
+  }
+  
+  .users-table {
+    font-size: 0.85rem;
+  }
+  
+  .users-table th {
+    font-size: 0.7rem;
+    padding: 14px 10px;
+  }
+  
+  .action-buttons {
+    flex-direction: column;
+    gap: 6px;
+  }
+  
+  .usuarios-count {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .pagination {
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .list-card {
+    padding: 18px;
+    border-radius: 16px;
+  }
+  
+  .header-content h1 {
+    font-size: 1.4rem;
+  }
+  
+  .users-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  
+  .btn-comprobante {
+    min-width: 70px;
+    padding: 8px 12px;
+    font-size: 0.7rem;
+  }
+  
+  .filter-input {
+    font-size: 0.9rem;
+  }
+  
+  .badge-pago, .badge-tipo, .badge-estado, .badge-anulada {
+    font-size: 0.65rem;
+    padding: 5px 10px;
+  }
+}
+</style>
