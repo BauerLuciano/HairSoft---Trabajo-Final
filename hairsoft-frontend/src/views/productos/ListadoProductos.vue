@@ -740,7 +740,7 @@ watch(filtros, () => {
   animation: subtlePulse 3s infinite;
 }
 
-.modal-content ::v-deep .form-container {
+.modal-content :deep(.form-container) {
   margin: 0;
   padding: 20px;
   border-radius: 16px;

@@ -9,17 +9,18 @@
             <span class="scissors-icon">✂️</span>
             PANEL DE GESTIÓN AVANZADA
           </h1>
-          <p class="subtitle">Análisis Estratégico de **Los Últimos Serán Los Primeros**</p>
+          <p class="subtitle">Análisis Estratégico en Tiempo Real</p>
         </div>
         
         <div class="period-buttons">
           <button
-            v-for="period in ['hoy', 'semana', 'mes']"
-            :key="period"
-            @click="selectedPeriod = period"
-            :class="['period-btn', { active: selectedPeriod === period }]"
+            v-for="period in periodOptions"
+            :key="period.value"
+            @click="changePeriod(period.value)"
+            :class="['period-btn', { active: selectedPeriod === period.value }]"
+            :disabled="loading"
           >
-            {{ period === 'hoy' ? 'HOY' : period === 'semana' ? 'SEMANA' : 'MES' }}
+            {{ period.label }}
           </button>
         </div>
       </div>
@@ -27,486 +28,1306 @@
 
     <div class="container">
       
-      <section class="section-kpis">
-        <h2 class="section-title">Resultados Clave del Período</h2>
-        <div class="kpi-grid">
-          <div class="kpi-card">
-            <div class="kpi-header">
-              <div class="kpi-icon kpi-icon-gold"><span>💰</span></div>
-              <div class="kpi-trend">
-                <span>📈</span>
-                <span class="trend-value">{{ currentKpis.crecimientoVentas }}%</span>
-              </div>
-            </div>
-            <p class="kpi-label">Ingresos Totales</p>
-            <p class="kpi-value">${{ (currentKpis.ventasDia / 1000).toFixed(1) }}K</p>
-            <p class="kpi-meta">Meta mensual: $150K</p>
-          </div>
-
-          <div class="kpi-card">
-            <div class="kpi-header">
-              <div class="kpi-icon kpi-icon-silver"><span>✂️</span></div>
-              <div class="kpi-badge">⚡</div>
-            </div>
-            <p class="kpi-label">Servicios Realizados</p>
-            <p class="kpi-value">{{ currentKpis.serviciosRealizados }}</p>
-            <p class="kpi-meta">Ticket promedio: ${{ currentKpis.ticketPromedio }}</p>
-          </div>
-
-          <div class="kpi-card">
-            <div class="kpi-header">
-              <div class="kpi-icon kpi-icon-new"><span>👤</span></div>
-              <div class="kpi-badge">🏆</div>
-            </div>
-            <p class="kpi-label">Clientes Nuevos</p>
-            <p class="kpi-value">{{ currentKpis.clientesNuevos }}</p>
-            <p class="kpi-meta">Total registrados: {{ currentKpis.usuarios }}</p>
-          </div>
-
-          <div class="kpi-card">
-            <div class="kpi-header">
-              <div class="kpi-icon kpi-icon-product"><span>🛍️</span></div>
-              <div class="kpi-badge">⭐</div>
-            </div>
-            <p class="kpi-label">Productos Vendidos</p>
-            <p class="kpi-value">{{ currentKpis.productosVendidos }}</p>
-            <p class="kpi-meta">Stock bajo: {{ stockProductos.length }} items</p>
-          </div>
-        </div>
-      </section>
-
-      <div v-if="stockProductos.length > 0" class="alert-box alert-warning">
-        <div class="alert-content">
-          <div class="alert-icon"><span>⚠️</span></div>
-          <div class="alert-body">
-            <h3 class="alert-title">
-              Alerta de Stock Crítico
-              <span class="alert-badge">{{ stockProductos.length }} productos</span>
-            </h3>
-            <div class="stock-grid">
-              <div v-for="(item, idx) in stockProductos" :key="idx" class="stock-item">
-                <div class="stock-header">
-                  <p class="stock-name">{{ item.producto }}</p>
-                  <span class="stock-icon">📦</span>
-                </div>
-                <div class="stock-info">
-                  <span class="stock-category">{{ item.categoria }}</span>
-                  <span class="stock-quantity">Stock: {{ item.stock }}</span>
-                </div>
-                <div class="stock-minimum">
-                  Mínimo: {{ item.minimo }} uds.
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <!-- Loading State -->
+      <div v-if="loading" class="loading-container">
+        <div class="loading-spinner"></div>
+        <p class="loading-text">Cargando datos del dashboard...</p>
       </div>
 
-      <section class="section-charts">
-        <h2 class="section-title">Rendimiento Detallado</h2>
-        <div class="charts-grid">
-          
-          <div class="chart-card">
-            <div class="chart-header">
-              <h3 class="chart-title">
-                <div class="chart-icon chart-icon-gold"><span>✂️</span></div>
-                Servicios Destacados
-              </h3>
-            </div>
-            <div class="servicios-list">
-              <div v-for="(servicio, idx) in serviciosMasSolicitados" :key="idx" class="servicio-item">
-                <div class="servicio-header">
-                  <p class="servicio-name">{{ servicio.nombre }}</p>
-                  <span :class="['servicio-trend', servicio.tendencia >= 0 ? 'trend-up' : 'trend-down']">
-                    {{ servicio.tendencia >= 0 ? '↑' : '↓' }} {{ Math.abs(servicio.tendencia) }}%
-                  </span>
-                </div>
-                <div class="servicio-stats">
-                  <span class="servicio-quantity">{{ servicio.cantidad }}</span>
-                  <span class="servicio-revenue">${{ (servicio.ingresos / 1000).toFixed(0) }}K</span>
+      <!-- Error State -->
+      <div v-else-if="error" class="error-container">
+        <div class="error-icon">⚠️</div>
+        <h3 class="error-title">Error al cargar datos</h3>
+        <p class="error-message">{{ error }}</p>
+        <button @click="fetchDashboardData" class="btn-retry">Reintentar</button>
+      </div>
+
+      <!-- Main Content -->
+      <div v-else>
+        <section class="section-kpis">
+          <h2 class="section-title">Resultados Clave del Período</h2>
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <div class="kpi-icon kpi-icon-gold"><span>💰</span></div>
+                <div class="kpi-trend" :class="getTrendClass(dashboardData.ventasTrend)">
+                  <span>{{ dashboardData.ventasTrend >= 0 ? '📈' : '📉' }}</span>
+                  <span class="trend-value">{{ Math.abs(dashboardData.ventasTrend) }}%</span>
                 </div>
               </div>
+              <p class="kpi-label">Ingresos Totales</p>
+              <p class="kpi-value">${{ formatCurrency(dashboardData.ingresosTotales) }}</p>
+              <p class="kpi-meta">Meta: ${{ formatCurrency(dashboardData.metaMensual) }}</p>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <div class="kpi-icon kpi-icon-silver"><span>✂️</span></div>
+                <div class="kpi-badge">⚡</div>
+              </div>
+              <p class="kpi-label">Servicios Realizados</p>
+              <p class="kpi-value">{{ dashboardData.serviciosRealizados }}</p>
+              <p class="kpi-meta">Ticket: ${{ formatCurrency(dashboardData.ticketPromedio) }}</p>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <div class="kpi-icon kpi-icon-new"><span>👤</span></div>
+                <div class="kpi-badge">🏆</div>
+              </div>
+              <p class="kpi-label">Clientes Nuevos</p>
+              <p class="kpi-value">{{ dashboardData.clientesNuevos }}</p>
+              <p class="kpi-meta">Total: {{ dashboardData.totalClientes }}</p>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-header">
+                <div class="kpi-icon kpi-icon-product"><span>🛍️</span></div>
+                <div class="kpi-badge">⭐</div>
+              </div>
+              <p class="kpi-label">Productos Vendidos</p>
+              <p class="kpi-value">{{ dashboardData.productosVendidos }}</p>
+              <p class="kpi-meta">Stock bajo: {{ dashboardData.stockBajoCount }} items</p>
             </div>
           </div>
+        </section>
 
-          <div class="chart-card">
-            <div class="chart-header">
-              <h3 class="chart-title">
-                <div class="chart-icon chart-icon-silver"><span>🏆</span></div>
-                Top Peluqueros
+        <!-- Stock Alert -->
+        <div v-if="dashboardData.stockBajo && dashboardData.stockBajo.length > 0" class="alert-box alert-warning">
+          <div class="alert-content">
+            <div class="alert-icon"><span>⚠️</span></div>
+            <div class="alert-body">
+              <h3 class="alert-title">
+                Alerta de Stock Crítico
+                <span class="alert-badge">{{ dashboardData.stockBajo.length }} productos</span>
               </h3>
-            </div>
-            <div class="peluqueros-list">
-              <div v-for="(peluquero, idx) in rendimientoPeluqueros" :key="idx" class="peluquero-item">
-                <div class="peluquero-info">
-                  <div class="peluquero-rank">{{ idx + 1 }}</div>
-                  <div class="peluquero-details">
-                    <p class="peluquero-name">{{ peluquero.nombre }}</p>
-                    <p class="peluquero-services">{{ peluquero.servicios }} servicios</p>
+              <div class="stock-grid">
+                <div v-for="(item, idx) in dashboardData.stockBajo" :key="idx" class="stock-item">
+                  <div class="stock-header">
+                    <p class="stock-name">{{ item.nombre }}</p>
+                    <span class="stock-icon">📦</span>
+                  </div>
+                  <div class="stock-info">
+                    <span class="stock-category">{{ item.categoria }}</span>
+                    <span class="stock-quantity">Stock: {{ item.stock_actual }}</span>
+                  </div>
+                  <div class="stock-minimum">
+                    Mínimo: {{ item.stock_minimo }} uds.
                   </div>
                 </div>
-                <div class="peluquero-revenue">
-                  <p class="revenue-amount">${{ (peluquero.ingresos / 1000).toFixed(0) }}K</p>
-                  <p class="revenue-label">INGRESOS</p>
-                </div>
               </div>
             </div>
           </div>
         </div>
-      </section>
 
-      <section class="section-products">
-        <div class="chart-card large-card">
-          <div class="chart-header">
-            <h3 class="chart-title">
-              <div class="chart-icon chart-icon-product"><span>📦</span></div>
-              Productos Más Vendidos
-            </h3>
-          </div>
-          <div class="products-grid">
-            <div v-for="(producto, idx) in productosTopVentas" :key="idx" class="product-card">
-              <div class="product-rank">{{ idx + 1 }}</div>
-              <p class="product-name">{{ producto.nombre }}</p>
-              <p class="product-units">{{ producto.ventas }} unidades</p>
-              <p class="product-revenue">${{ (producto.ingresos / 1000).toFixed(1) }}K</p>
+        <!-- Charts Section -->
+        <section class="section-charts">
+          <h2 class="section-title">Rendimiento Detallado</h2>
+          <div class="charts-grid">
+            
+            <!-- Servicios Destacados -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <h3 class="chart-title">
+                  <div class="chart-icon chart-icon-gold"><span>✂️</span></div>
+                  Servicios Destacados
+                </h3>
+              </div>
+              <div class="servicios-list">
+                <div v-for="(servicio, idx) in dashboardData.serviciosTop" :key="idx" class="servicio-item">
+                  <div class="servicio-header">
+                    <p class="servicio-name">{{ servicio.nombre }}</p>
+                    <span :class="['servicio-trend', servicio.tendencia >= 0 ? 'trend-up' : 'trend-down']">
+                      {{ servicio.tendencia >= 0 ? '↑' : '↓' }} {{ Math.abs(servicio.tendencia) }}%
+                    </span>
+                  </div>
+                  <div class="servicio-stats">
+                    <span class="servicio-quantity">{{ servicio.cantidad }} servicios</span>
+                    <span class="servicio-revenue">${{ formatCurrency(servicio.ingresos) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Top Peluqueros -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <h3 class="chart-title">
+                  <div class="chart-icon chart-icon-silver"><span>🏆</span></div>
+                  Top Peluqueros
+                </h3>
+              </div>
+              <div class="peluqueros-list">
+                <div v-for="(peluquero, idx) in dashboardData.topPeluqueros" :key="idx" class="peluquero-item">
+                  <div class="peluquero-info">
+                    <div class="peluquero-rank">{{ idx + 1 }}</div>
+                    <div class="peluquero-details">
+                      <p class="peluquero-name">{{ peluquero.nombre }}</p>
+                      <p class="peluquero-services">{{ peluquero.servicios_completados }} servicios</p>
+                    </div>
+                  </div>
+                  <div class="peluquero-revenue">
+                    <p class="revenue-amount">${{ formatCurrency(peluquero.ingresos_generados) }}</p>
+                    <p class="revenue-label">INGRESOS</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+
+        <!-- Productos Más Vendidos -->
+        <section class="section-products">
+          <div class="chart-card large-card">
+            <div class="chart-header">
+              <h3 class="chart-title">
+                <div class="chart-icon chart-icon-product"><span>📦</span></div>
+                Productos Más Vendidos
+              </h3>
+            </div>
+            <div class="products-grid">
+              <div v-for="(producto, idx) in dashboardData.productosTop" :key="idx" class="product-card">
+                <div class="product-rank">{{ idx + 1 }}</div>
+                <p class="product-name">{{ producto.nombre }}</p>
+                <p class="product-units">{{ producto.unidades_vendidas }} unidades</p>
+                <p class="product-revenue">${{ formatCurrency(producto.ingresos) }}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Estadísticas Simples -->
+        <section class="section-analytics">
+          <h2 class="section-title">Análisis Visual</h2>
+          <div class="analytics-grid">
+            
+            <!-- Ventas por Día -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <h3 class="chart-title">
+                  <div class="chart-icon chart-icon-gold"><span>📊</span></div>
+                  Ventas por Día (Últimos 7 días)
+                </h3>
+              </div>
+              <div class="simple-chart">
+                <div v-for="(venta, idx) in dashboardData.ventasPorDia" :key="idx" 
+                     class="bar-container">
+                  <div class="bar-label">{{ dashboardData.labelsDias[idx] }}</div>
+                  <div class="bar-track">
+                    <div class="bar-fill" 
+                         :style="{ height: getBarHeight(venta, dashboardData.ventasPorDia) + '%' }">
+                      <span class="bar-value">${{ formatCurrency(venta) }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Distribución de Servicios -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <h3 class="chart-title">
+                  <div class="chart-icon chart-icon-silver"><span>🥧</span></div>
+                  Distribución de Servicios
+                </h3>
+              </div>
+              <div class="pie-chart-simple">
+                <div v-for="(servicio, idx) in dashboardData.serviciosDistribucion" :key="idx" 
+                     class="pie-item">
+                  <div class="pie-color" :style="{ backgroundColor: getPieColor(idx) }"></div>
+                  <span class="pie-label">{{ servicio.servicio }}</span>
+                  <span class="pie-value">{{ servicio.cantidad }}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 
 export default {
   name: 'Dashboard',
   setup() {
+    // Estado reactivo
     const isLightModeReactive = ref(document.body.classList.contains('light-mode'));
-
-    const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            if (mutation.attributeName === 'class') {
-                isLightModeReactive.value = document.body.classList.contains('light-mode');
-            }
-        });
-    });
-
-    onMounted(() => {
-        observer.observe(document.body, { attributes: true });
-    });
-    
     const selectedPeriod = ref('semana');
-    const kpis = {
-        hoy: { usuarios: 247, ventasDia: 8500, crecimientoVentas: 12.5, serviciosRealizados: 156, clientesNuevos: 23, ticketPromedio: 2850, productosVendidos: 45 },
-        semana: { usuarios: 247, ventasDia: 52000, crecimientoVentas: 18.2, serviciosRealizados: 890, clientesNuevos: 67, ticketPromedio: 3100, productosVendidos: 234 },
-        mes: { usuarios: 247, ventasDia: 125000, crecimientoVentas: 15.8, serviciosRealizados: 3240, clientesNuevos: 234, ticketPromedio: 2950, productosVendidos: 892 }
-    };
-    const serviciosMasSolicitados = [
-        { nombre: 'Corte + Barba', cantidad: 145, ingresos: 435000, tendencia: 12 },
-        { nombre: 'Coloración', cantidad: 98, ingresos: 588000, tendencia: 8 },
-        { nombre: 'Tratamiento', cantidad: 87, ingresos: 348000, tendencia: -3 },
-        { nombre: 'Peinado', cantidad: 56, ingresos: 336000, tendencia: 15 },
-        { nombre: 'Alisado', cantidad: 42, ingresos: 378000, tendencia: 5 }
-    ];
-    const rendimientoPeluqueros = [
-        { nombre: 'Ana Martínez', servicios: 45, ingresos: 135000 },
-        { nombre: 'Carlos Ruiz', servicios: 38, ingresos: 114000 },
-        { nombre: 'Diego López', servicios: 42, ingresos: 126000 },
-        { nombre: 'María Sánchez', servicios: 36, ingresos: 108000 },
-        { nombre: 'Laura Gómez', servicios: 40, ingresos: 120000 }
-    ];
-    const stockProductos = [
-        { producto: 'Shampoo Kerastase', stock: 3, minimo: 10, categoria: 'Cuidado' },
-        { producto: 'Tinte Loreal 6.3', stock: 2, minimo: 8, categoria: 'Color' },
-        { producto: 'Cera Modeladora', stock: 4, minimo: 12, categoria: 'Styling' }
-    ];
-    const productosTopVentas = [
-        { nombre: 'Shampoo Kerastase', ventas: 45, ingresos: 112500 },
-        { nombre: 'Cera American Crew', ventas: 38, ingresos: 45600 },
-        { nombre: 'Acondicionador Pantene', ventas: 32, ingresos: 48000 },
-        { nombre: 'Tinte Loreal', ventas: 28, ingresos: 50400 },
-        { nombre: 'Spray Fijador', ventas: 25, ingresos: 22500 }
+    const loading = ref(true);
+    const error = ref(null);
+    const dashboardData = ref({
+      ingresosTotales: 0,
+      serviciosRealizados: 0,
+      clientesNuevos: 0,
+      productosVendidos: 0,
+      ticketPromedio: 0,
+      ventasTrend: 0,
+      metaMensual: 150000,
+      totalClientes: 0,
+      stockBajoCount: 0,
+      stockBajo: [],
+      serviciosTop: [],
+      topPeluqueros: [],
+      productosTop: [],
+      ventasPorDia: [],
+      serviciosDistribucion: [],
+      labelsDias: []
+    });
+
+    // Opciones de período
+    const periodOptions = [
+      { value: 'hoy', label: 'HOY' },
+      { value: 'semana', label: 'SEMANA' },
+      { value: 'mes', label: 'MES' }
     ];
 
-    const currentKpis = computed(() => kpis[selectedPeriod.value]);
+    // Observador para light mode
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'class') {
+          isLightModeReactive.value = document.body.classList.contains('light-mode');
+        }
+      });
+    });
+
+    // Formatear currency
+    const formatCurrency = (amount) => {
+      if (!amount && amount !== 0) return '0';
+      if (amount >= 1000) {
+        return (amount / 1000).toFixed(1) + 'K';
+      }
+      return amount.toString();
+    };
+
+    // Obtener clase de tendencia
+    const getTrendClass = (trend) => {
+      return trend >= 0 ? 'trend-up' : 'trend-down';
+    };
+
+    // Calcular altura de barras para el gráfico
+    const getBarHeight = (value, dataArray) => {
+      if (!dataArray || dataArray.length === 0) return 0;
+      const maxValue = Math.max(...dataArray);
+      return maxValue > 0 ? (value / maxValue) * 100 : 0;
+    };
+
+    // Colores para el gráfico de torta
+    const getPieColor = (index) => {
+      const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'];
+      return colors[index % colors.length];
+    };
+
+    // Fetch datos del dashboard - CORREGIDO
+    const fetchDashboardData = async () => {
+      loading.value = true;
+      error.value = null;
+      
+      try {
+        console.log(`🔄 Fetching dashboard data for period: ${selectedPeriod.value}`);
+        
+        const response = await fetch(`http://localhost:8000/usuarios/api/dashboard/?period=${selectedPeriod.value}`, {
+          mode: 'cors',
+          credentials: 'omit'
+        });
+        
+        console.log(`📊 Response status: ${response.status}`);
+        
+        if (!response.ok) {
+          throw new Error(`Error HTTP: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('✅ Dashboard data received successfully', data);
+        
+        // ✅ ASIGNAR DIRECTAMENTE los datos de la API
+        dashboardData.value = data;
+        
+      } catch (err) {
+        console.error('❌ Error fetching dashboard data:', err);
+        error.value = `Error de conexión: ${err.message}`;
+        
+        // ❌ ELIMINADO: No usar datos de ejemplo
+        // El dashboard mostrará el estado de error
+        
+      } finally {
+        // ✅ CLAVE: Desactivar loading siempre
+        loading.value = false;
+      }
+    };
+    
+    // Cambiar período
+    const changePeriod = (period) => {
+      selectedPeriod.value = period;
+      fetchDashboardData();
+    };
+
+    // Watchers
+    watch(selectedPeriod, fetchDashboardData);
+
+    // Lifecycle
+    onMounted(() => {
+      observer.observe(document.body, { attributes: true });
+      fetchDashboardData();
+    });
 
     return {
+      isLightModeReactive,
       selectedPeriod,
-      currentKpis,
-      serviciosMasSolicitados,
-      rendimientoPeluqueros,
-      stockProductos,
-      productosTopVentas,
-      isLightModeReactive 
+      periodOptions,
+      loading,
+      error,
+      dashboardData,
+      changePeriod,
+      formatCurrency,
+      getTrendClass,
+      getBarHeight,
+      getPieColor,
+      fetchDashboardData
     };
   }
 }
 </script>
 
 <style scoped>
-/*
- * 🌑 ESTILO PRINCIPAL (DARK MODE) OPTIMIZADO CON MEJOR CONTRASTE 🌑
- */
+/* ========================================
+   🔥 DASHBOARD BARBERÍA ELEGANTE
+   ======================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-
-/* --- PALETA DE COLORES (DARK MODE SOFISTICADO) --- */
-:root {
-    --color-bg-primary: #0A0E27; /* Fondo azul oscuro profundo */
-    --color-bg-secondary: #1A1F3A; /* Fondo de tarjetas (azul oscuro con mejor contraste) */
-    --color-bg-tertiary: #252B47; /* Fondo de listas/botones (azul intermedio más claro) */
-    --color-text-light: #FFFFFF; /* Texto principal (blanco puro) */
-    --color-text-muted: #A8B2D1; /* Texto secundario (azul grisáceo claro) */
-    --color-accent-gold: #FFD700; /* Dorado brillante */
-    --color-accent-gold-dark: #D4AF37; 
-    --color-border: #3D4563; /* Borde visible azul grisáceo */
-    --color-border-light: #505875; /* Borde más claro para elementos internos */
-    --color-alert: #FF9800; 
-    --color-alert-bg: #2A1F0F; /* Fondo de alerta oscuro y diferenciado */
-}
-
-/* Light Mode */
-.dashboard-container.light-mode {
-    --color-bg-primary: #F5F7FA;
-    --color-bg-secondary: #FFFFFF;
-    --color-bg-tertiary: #F0F3F7; 
-    --color-text-light: #2C3E50;
-    --color-text-muted: #7F8C8D;
-    --color-accent-gold: #D4AF37;
-    --color-accent-gold-dark: #A0802C;
-    --color-border: #E0E6EE;
-    --color-border-light: #F0F3F7;
-    --color-alert: #E67E22;
-    --color-alert-bg: #FFF8E1; 
-}
-
-/* --- BASE --- */
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
+/* CONTENEDOR PRINCIPAL */
 .dashboard-container {
   min-height: 100vh;
-  background: var(--color-bg-primary); 
-  font-family: 'Inter', sans-serif;
-  color: var(--color-text-light); 
-  transition: background 0.3s ease; 
+  background: linear-gradient(145deg, #0f0f0f, #1a1a1a);
+  color: #e5e5e5;
+  padding: 0;
 }
 
-.container { max-width: 1280px; margin: 0 auto; padding: 2.5rem 2rem; }
-
-/* --- HEADER --- */
+/* HEADER */
 .header {
-  background: var(--color-bg-secondary);
-  border-bottom: 2px solid var(--color-accent-gold);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5); 
+  background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
+  border-bottom: 4px solid #0ea5e9;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
+
 .header-content {
-  max-width: 1280px; margin: 0 auto; padding: 1.5rem 2rem; display: flex;
-  align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 2rem;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 30px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
 }
-.title-section { display: flex; flex-direction: column; }
+
+.title-section {
+  flex: 1;
+  min-width: 250px;
+}
+
 .main-title {
-  font-size: 2rem; font-weight: 800; color: var(--color-text-light); letter-spacing: 0.04em;
-  display: flex; align-items: center; gap: 0.75rem; text-transform: uppercase;
+  margin: 0;
+  font-size: 2.2rem;
+  background: linear-gradient(135deg, #ffffff, #0ea5e9);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 15px;
 }
-.scissors-icon { font-size: 1.8rem; color: var(--color-accent-gold); }
-.subtitle { color: var(--color-accent-gold); font-size: 0.9rem; margin-top: 0.4rem; font-weight: 500; letter-spacing: 0.1em; }
-.period-buttons { display: flex; gap: 0.5rem; }
+
+.scissors-icon {
+  font-size: 2rem;
+  filter: drop-shadow(0 0 10px rgba(14, 165, 233, 0.5));
+}
+
+.subtitle {
+  color: #9ca3af;
+  font-weight: 500;
+  margin: 8px 0 0 0;
+  letter-spacing: 0.8px;
+  font-size: 0.95rem;
+}
+
+.period-buttons {
+  display: flex;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 8px;
+  border-radius: 16px;
+  border: 1px solid rgba(100, 100, 100, 0.2);
+}
+
 .period-btn {
-  padding: 0.6rem 1.2rem; border-radius: 0.4rem; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; transition: all 0.2s ease-in-out;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-light);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  background: transparent;
+  color: #9ca3af;
+  border: 2px solid transparent;
+  padding: 12px 24px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.85rem;
+  transition: all 0.3s ease;
 }
+
+.period-btn:hover:not(:disabled) {
+  color: #0ea5e9;
+  background: rgba(14, 165, 233, 0.1);
+}
+
 .period-btn.active {
-  background: linear-gradient(to right, var(--color-accent-gold), var(--color-accent-gold-dark));
-  color: #FFFFFF; border-color: var(--color-accent-gold-dark); box-shadow: 0 5px 12px rgba(255, 215, 0, 0.3);
-}
-.period-btn:hover:not(.active) {
-  background: var(--color-border); border-color: var(--color-accent-gold); color: var(--color-text-light);
-}
-
-/* --- SECCIONES Y GRID --- */
-.section-title { 
-    font-size: 1.5rem; font-weight: 700; color: var(--color-accent-gold); margin-bottom: 1.5rem;
-    padding-bottom: 0.5rem; border-bottom: 1px solid var(--color-border);
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: white;
+  border-color: #0ea5e9;
+  box-shadow: 0 4px 15px rgba(14, 165, 233, 0.4);
 }
 
+.period-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* CONTAINER */
+.container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 40px;
+}
+
+/* LOADING STATE */
+.loading-container {
+  text-align: center;
+  padding: 100px 40px;
+}
+
+.loading-spinner {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 30px;
+  border: 4px solid rgba(14, 165, 233, 0.2);
+  border-top-color: #0ea5e9;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  color: #9ca3af;
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* ERROR STATE */
+.error-container {
+  text-align: center;
+  padding: 100px 40px;
+  background: rgba(239, 68, 68, 0.05);
+  border-radius: 24px;
+  border: 2px solid rgba(239, 68, 68, 0.3);
+}
+
+.error-icon {
+  font-size: 4rem;
+  margin-bottom: 20px;
+  filter: drop-shadow(0 0 20px rgba(239, 68, 68, 0.5));
+}
+
+.error-title {
+  color: #ef4444;
+  font-size: 1.8rem;
+  font-weight: 900;
+  margin-bottom: 15px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.error-message {
+  color: #9ca3af;
+  font-size: 1.1rem;
+  margin-bottom: 30px;
+}
+
+.btn-retry {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  border: none;
+  padding: 14px 32px;
+  border-radius: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.95rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+}
+
+.btn-retry:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px rgba(239, 68, 68, 0.6);
+}
+
+/* SECTIONS */
+.section-title {
+  font-size: 1.6rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 25px;
+  background: linear-gradient(135deg, #ffffff, #0ea5e9);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.section-kpis {
+  margin-bottom: 40px;
+}
+
+/* KPI CARDS */
 .kpi-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 3rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 25px;
 }
 
-.charts-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 3rem;
-}
-.products-grid {
-    display: flex; gap: 1rem; flex-wrap: wrap; justify-content: space-between;
-}
-
-/* --- KPI CARD & CHART CARD (¡CLAVE DEL CONTRASTE!) --- */
-.kpi-card, .chart-card {
-  background: var(--color-bg-secondary);
-  border-radius: 0.8rem; padding: 1.5rem;
-  border: 2px solid var(--color-border); 
-  box-shadow: 0 4px 15px rgba(61, 69, 99, 0.5), 0 0 20px rgba(255, 215, 0, 0.05); 
-  transition: all 0.2s ease-in-out;
+.kpi-card {
+  background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
+  border-radius: 20px;
+  padding: 30px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6),
+              0 0 0 1px rgba(100, 100, 100, 0.15) inset;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
 }
 
-.kpi-card:hover, .chart-card:hover { 
-    border-color: var(--color-accent-gold); 
-    transform: translateY(-3px); 
-    box-shadow: 0 8px 25px rgba(61, 69, 99, 0.7), 0 0 30px rgba(255, 215, 0, 0.2); 
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #0ea5e9, #0284c7);
 }
 
-.kpi-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
+.kpi-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 50px rgba(14, 165, 233, 0.3);
+}
 
-.kpi-icon { padding: 0.7rem; border-radius: 50%; box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1); font-size: 1.4rem; color: #FFFFFF; }
-.kpi-icon-gold { background: var(--color-accent-gold); }
-.kpi-icon-silver { background: #95A5A6; }
-.kpi-icon-new { background: #2ECC71; }
-.kpi-icon-product { background: #3498DB; }
+.kpi-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
 
-.kpi-label { color: var(--color-text-muted); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
-.kpi-value { font-size: 2.8rem; font-weight: 800; color: var(--color-text-light); margin-top: 0.4rem; }
-.kpi-meta { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.4rem; font-weight: 400; }
-.kpi-trend { color: #2ECC71; font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 0.2rem; }
-.trend-value { margin-left: 0.2rem; }
+.kpi-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+}
 
-/* --- ALERT BOX --- */
+.kpi-icon-gold {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.2));
+  border: 2px solid rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.2);
+}
+
+.kpi-icon-silver {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(2, 132, 199, 0.2));
+  border: 2px solid rgba(14, 165, 233, 0.4);
+  box-shadow: 0 0 20px rgba(14, 165, 233, 0.2);
+}
+
+.kpi-icon-new {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.2));
+  border: 2px solid rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+}
+
+.kpi-icon-product {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(124, 58, 237, 0.2));
+  border: 2px solid rgba(139, 92, 246, 0.4);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+}
+
+.kpi-trend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-weight: 800;
+  font-size: 0.8rem;
+}
+
+.trend-up {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.trend-down {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.kpi-badge {
+  font-size: 1.4rem;
+}
+
+.kpi-label {
+  color: #9ca3af;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+
+.kpi-value {
+  font-size: 2.4rem;
+  font-weight: 900;
+  color: #ffffff;
+  margin-bottom: 8px;
+  letter-spacing: -1px;
+}
+
+.kpi-meta {
+  color: #6b7280;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* ALERT BOX */
 .alert-box {
-  background: var(--color-alert-bg); 
-  border-left: 5px solid var(--color-alert);
-  border-radius: 0.8rem; padding: 1.5rem; margin-bottom: 3rem;
-  box-shadow: 0 4px 15px rgba(255, 152, 0, 0.4); 
-  border: 1px solid var(--color-alert);
+  background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
+  border-radius: 20px;
+  padding: 30px;
+  margin-bottom: 40px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  border: 2px solid rgba(245, 158, 11, 0.3);
 }
-.alert-content { display: flex; gap: 1.5rem; }
-.alert-icon { 
-    background: var(--color-alert); 
-    color: var(--color-bg-primary); 
-    padding: 0.8rem; border-radius: 50%; font-size: 1.2rem; align-self: flex-start; 
+
+.alert-warning::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #f59e0b, #d97706);
 }
-.alert-title { 
-    color: var(--color-alert); 
-    font-weight: 700; font-size: 1.15rem; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.04em; 
+
+.alert-content {
+  display: flex;
+  gap: 20px;
+}
+
+.alert-icon {
+  font-size: 2.5rem;
+  flex-shrink: 0;
+}
+
+.alert-body {
+  flex: 1;
+}
+
+.alert-title {
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: #f59e0b;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.alert-badge {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  border: 1px solid rgba(245, 158, 11, 0.4);
 }
 
 .stock-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 15px;
 }
+
 .stock-item {
-  background: var(--color-bg-tertiary); 
-  border-radius: 0.5rem; padding: 1rem;
-  border: 1.5px solid var(--color-border-light);
-  transition: all 0.2s ease-in-out;
-  box-shadow: 0 2px 6px rgba(255, 152, 0, 0.2);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 12px;
+  padding: 15px;
+  transition: all 0.3s ease;
 }
+
 .stock-item:hover {
-    background: color-mix(in srgb, var(--color-bg-tertiary), white 8%); 
-    border-color: var(--color-alert);
-    box-shadow: 0 4px 10px rgba(255, 152, 0, 0.3);
-}
-.stock-header { display: flex; justify-content: space-between; align-items: center; }
-.stock-name { font-weight: 700; color: var(--color-text-light); font-size: 0.9rem; }
-.stock-quantity { font-weight: 600; color: #FF6B6B; }
-
-/* --- CHART CARD & LISTS --- */
-.chart-header { margin-bottom: 1rem; }
-.chart-title { font-size: 1.1rem; font-weight: 700; color: var(--color-text-light); text-transform: uppercase; letter-spacing: 0.02em; display: flex; align-items: center; gap: 0.5rem; }
-.chart-icon { padding: 0.5rem; border-radius: 0.3rem; font-size: 1.2rem; color: #FFFFFF; }
-.chart-icon-gold { background: var(--color-accent-gold); }
-.chart-icon-silver { background: #95A5A6; }
-.chart-icon-product { background: #3498DB; }
-
-.servicios-list, .peluqueros-list { display: flex; flex-direction: column; gap: 0.6rem; }
-
-.servicio-item, .peluquero-item, .product-card {
-  background: var(--color-bg-tertiary);
-  border-radius: 0.5rem; padding: 1rem;
-  border: 1.5px solid var(--color-border-light);
-  transition: all 0.2s ease-in-out;
-  box-shadow: 0 2px 8px rgba(61, 69, 99, 0.3);
+  border-color: #f59e0b;
+  transform: translateX(5px);
 }
 
-.servicio-item:hover, .peluquero-item:hover, .product-card:hover { 
-    border-color: var(--color-accent-gold); 
-    background: color-mix(in srgb, var(--color-bg-tertiary), white 8%); 
-    box-shadow: 0 4px 12px rgba(255, 215, 0, 0.2);
+.stock-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
 }
 
-.servicio-header, .peluquero-info { display: flex; justify-content: space-between; align-items: center; }
-.servicio-stats { display: flex; justify-content: space-between; font-size: 0.85rem; margin-top: 0.5rem; }
+.stock-name {
+  font-weight: 800;
+  color: #ffffff;
+  font-size: 0.95rem;
+}
 
-.servicio-name, .peluquero-name { font-weight: 600; color: var(--color-text-light); }
-.servicio-revenue, .revenue-amount { color: var(--color-accent-gold); font-weight: 700; }
-.trend-up { color: #2ECC71; }
-.trend-down { color: #E74C3C; }
+.stock-icon {
+  font-size: 1.2rem;
+}
 
-.peluquero-rank { background: var(--color-accent-gold); color: #FFFFFF; padding: 0.4rem 0.6rem; border-radius: 0.3rem; font-weight: 700; font-size: 0.9rem; }
-.peluquero-info { align-items: flex-start; gap: 1rem; }
-.peluquero-details { flex-grow: 1; }
-.peluquero-services { color: var(--color-text-muted); font-size: 0.75rem; }
+.stock-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.stock-category {
+  color: #9ca3af;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stock-quantity {
+  color: #ef4444;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.stock-minimum {
+  color: #6b7280;
+  font-size: 0.8rem;
+}
+
+/* CHARTS SECTION */
+.section-charts {
+  margin-bottom: 40px;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 25px;
+}
+
+.chart-card {
+  background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
+  border-radius: 20px;
+  padding: 30px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6),
+              0 0 0 1px rgba(100, 100, 100, 0.15) inset;
+  position: relative;
+  overflow: hidden;
+}
+
+.chart-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #0ea5e9, #0284c7);
+}
+
+.large-card {
+  grid-column: 1 / -1;
+}
+
+.chart-header {
+  margin-bottom: 25px;
+}
+
+.chart-title {
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chart-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+}
+
+.chart-icon-gold {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.2));
+  border: 2px solid rgba(245, 158, 11, 0.4);
+}
+
+.chart-icon-silver {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(2, 132, 199, 0.2));
+  border: 2px solid rgba(14, 165, 233, 0.4);
+}
+
+.chart-icon-product {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(124, 58, 237, 0.2));
+  border: 2px solid rgba(139, 92, 246, 0.4);
+}
+
+/* SERVICIOS LIST */
+.servicios-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.servicio-item {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(100, 100, 100, 0.2);
+  border-radius: 12px;
+  padding: 18px;
+  transition: all 0.3s ease;
+}
+
+.servicio-item:hover {
+  border-color: #0ea5e9;
+  transform: translateX(5px);
+  background: rgba(14, 165, 233, 0.05);
+}
+
+.servicio-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.servicio-name {
+  font-weight: 800;
+  color: #ffffff;
+  font-size: 1rem;
+}
+
+.servicio-trend {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.servicio-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.servicio-quantity {
+  color: #9ca3af;
+  font-size: 0.85rem;
+}
+
+.servicio-revenue {
+  color: #10b981;
+  font-weight: 800;
+  font-size: 1.1rem;
+}
+
+/* PELUQUEROS LIST */
+.peluqueros-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.peluquero-item {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(100, 100, 100, 0.2);
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.3s ease;
+}
+
+.peluquero-item:hover {
+  border-color: #0ea5e9;
+  transform: translateX(5px);
+  background: rgba(14, 165, 233, 0.05);
+}
+
+.peluquero-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.peluquero-rank {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 1.2rem;
+  color: white;
+}
+
+.peluquero-name {
+  font-weight: 800;
+  color: #ffffff;
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+
+.peluquero-services {
+  color: #9ca3af;
+  font-size: 0.85rem;
+}
+
+.peluquero-revenue {
+  text-align: right;
+}
+
+.revenue-amount {
+  color: #10b981;
+  font-weight: 900;
+  font-size: 1.3rem;
+  margin-bottom: 4px;
+}
+
+.revenue-label {
+  color: #6b7280;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+/* PRODUCTS SECTION */
+.section-products {
+  margin-bottom: 40px;
+}
+
+.products-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 20px;
+}
 
 .product-card {
-  width: calc(20% - 10px); 
-  min-width: 150px;
-  background: var(--color-bg-tertiary);
-  border-radius: 0.6rem; padding: 1rem;
-  border: 1.5px solid var(--color-border-light);
-  box-shadow: 0 2px 8px rgba(61, 69, 99, 0.3);
-  transition: all 0.2s ease-in-out;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(100, 100, 100, 0.2);
+  border-radius: 12px;
+  padding: 20px;
   text-align: center;
+  position: relative;
+  transition: all 0.3s ease;
 }
 
-/* --- LIGHT MODE ADJUSTMENTS --- */
-.dashboard-container.light-mode .header {
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-  border-bottom-color: var(--color-accent-gold);
+.product-card:hover {
+  border-color: #8b5cf6;
+  transform: translateY(-5px);
+  background: rgba(139, 92, 246, 0.05);
 }
 
-.dashboard-container.light-mode .period-btn {
-  background: var(--color-bg-secondary);
-  color: var(--color-text-light);
-  border-color: var(--color-border);
+.product-rank {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 0.9rem;
+  color: white;
 }
 
-.dashboard-container.light-mode .kpi-card,
-.dashboard-container.light-mode .chart-card {
-  background: var(--color-bg-secondary);
-  box-shadow: 0 6px 15px rgba(44, 62, 80, 0.06);
+.product-name {
+  font-weight: 800;
+  color: #ffffff;
+  font-size: 1rem;
+  margin-bottom: 10px;
 }
 
-.dashboard-container.light-mode .servicio-item,
-.dashboard-container.light-mode .peluquero-item,
-.dashboard-container.light-mode .product-card {
-  background: var(--color-bg-tertiary);
+.product-units {
+  color: #9ca3af;
+  font-size: 0.85rem;
+  margin-bottom: 8px;
 }
 
-.dashboard-container.light-mode .alert-box {
-    box-shadow: 0 4px 15px rgba(230, 126, 34, 0.2);
-    background: var(--color-alert-bg); 
-    border-left: 5px solid var(--color-alert);
-}
-.dashboard-container.light-mode .stock-item {
-    background: var(--color-bg-tertiary); 
-    border: 1px solid var(--color-border);
+.product-revenue {
+  color: #8b5cf6;
+  font-weight: 900;
+  font-size: 1.2rem;
 }
 
-/* --- Responsive --- */
-@media (max-width: 1024px) {
-  .charts-grid { grid-template-columns: 1fr; }
-  .products-grid { justify-content: space-around; }
-  .product-card { width: calc(33% - 15px); }
+/* ANALYTICS SECTION */
+.section-analytics {
+  margin-bottom: 40px;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+  gap: 25px;
+}
+
+/* SIMPLE CHART - Bar Chart */
+.simple-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 250px;
+  padding: 20px 10px;
+}
+
+.bar-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.bar-label {
+  color: #9ca3af;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  letter-spacing: 0.5px;
+}
+
+.bar-track {
+  flex: 1;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 8px;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.bar-fill {
+  width: 100%;
+  background: linear-gradient(180deg, #0ea5e9, #0284c7);
+  border-radius: 8px 8px 0 0;
+  position: relative;
+  transition: height 0.5s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  box-shadow: 0 -4px 15px rgba(14, 165, 233, 0.4);
+}
+
+.bar-value {
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 800;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+}
+
+/* PIE CHART SIMPLE */
+.pie-chart-simple {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px;
+}
+
+.pie-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 10px;
+  transition: all 0.3s ease;
+}
+
+.pie-item:hover {
+  background: rgba(0, 0, 0, 0.6);
+  transform: translateX(5px);
+}
+
+.pie-color {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.pie-label {
+  flex: 1;
+  color: #e5e5e5;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.pie-value {
+  color: #0ea5e9;
+  font-weight: 900;
+  font-size: 1.1rem;
+}
+
+/* RESPONSIVE */
+@media (max-width: 1200px) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
-  .header-content { flex-direction: column; align-items: flex-start; padding: 1rem; }
-  .main-title { font-size: 1.8rem; }
-  .kpi-grid { grid-template-columns: 1fr; }
-  .container { padding: 1.5rem 1rem; }
-  .product-card { width: calc(50% - 10px); }
-  .alert-content { flex-direction: column; gap: 0.75rem; }
+  .container {
+    padding: 20px;
+  }
+  
+  .header-content {
+    padding: 20px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .main-title {
+    font-size: 1.6rem;
+  }
+  
+  .period-buttons {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .period-btn {
+    flex: 1;
+    padding: 10px;
+    font-size: 0.75rem;
+  }
+  
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .products-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+  
+  .stock-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .alert-content {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 15px;
+  }
+  
+  .header-content {
+    padding: 15px;
+  }
+  
+  .main-title {
+    font-size: 1.3rem;
+  }
+  
+  .kpi-card {
+    padding: 20px;
+  }
+  
+  .kpi-value {
+    font-size: 2rem;
+  }
+  
+  .chart-card {
+    padding: 20px;
+  }
+  
+  .simple-chart {
+    height: 200px;
+  }
+  
+  .products-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* LIGHT MODE SUPPORT (opcional) */
+.light-mode .dashboard-container {
+  background: linear-gradient(145deg, #f3f4f6, #e5e7eb);
+  color: #1f2937;
+}
+
+.light-mode .kpi-card,
+.light-mode .chart-card,
+.light-mode .alert-box {
+  background: linear-gradient(145deg, #ffffff, #f9fafb);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+.light-mode .header {
+  background: linear-gradient(145deg, #ffffff, #f9fafb);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
 }
 </style>

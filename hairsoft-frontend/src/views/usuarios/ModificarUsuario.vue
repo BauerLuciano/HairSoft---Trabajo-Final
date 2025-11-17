@@ -79,7 +79,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, defineProps, defineEmits } from 'vue'
+import { ref, onMounted} from 'vue'
 import axios from 'axios'
 
 // 🔹 DEFINIR PROPS Y EMITS
@@ -171,6 +171,7 @@ const actualizarUsuario = async () => {
       return
     }
 
+    // ✅ PAYLOAD CORREGIDO - usar los nombres que espera el formulario Django
     const payload = {
       nombre: form.value.nombre,
       apellido: form.value.apellido,
@@ -179,22 +180,20 @@ const actualizarUsuario = async () => {
       correo: form.value.correo,
       rol: form.value.rol_id,
       estado: form.value.estado,
-      contrasena: form.value.nueva_contrasena || ''
+      nueva_contrasena: form.value.nueva_contrasena || '',  // ✅ CAMBIADO
+      contrasena_actual: form.value.contrasena_actual || '' // ✅ CAMBIADO
     }
 
-    if (form.value.nueva_contrasena && form.value.contrasena_actual) {
-      payload.contrasena_actual = form.value.contrasena_actual
-    }
-
-    await axios.post(`${API_BASE}/usuarios/api/usuarios/editar/${props.usuarioId}/`, payload) // 🔹 USA PROPS
+    console.log("📤 Enviando payload:", payload)  // Debug
+    
+    await axios.post(`${API_BASE}/usuarios/api/usuarios/editar/${props.usuarioId}/`, payload)
     alert('✅ Usuario actualizado con éxito')
-    emit('usuario-actualizado') // 🔹 EMITIR EN LUGAR DE ROUTER
+    emit('usuario-actualizado')
   } catch (err) {
     console.error('Error al actualizar usuario:', err)
-    errorMessage.value = 'Error al actualizar el usuario'
+    errorMessage.value = 'Error al actualizar el usuario: ' + (err.response?.data?.message || err.message)
   }
 }
-
 // 🔹 Cancelar edición
 const cancelar = () => {
   emit('cancelar')

@@ -1,0 +1,133 @@
+/* ============================================
+   SISTEMA DE TEMAS - HAIRSOFT
+   ============================================ */
+
+/* TEMA OSCURO (Por defecto) */
+:root {
+  /* Fondos */
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  
+  /* Textos */
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  
+  /* Bordes */
+  --border-color: #334155;
+  --border-hover: #475569;
+  
+  /* Acentos */
+  --accent-color: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-light: rgba(59, 130, 246, 0.1);
+  
+  /* Estados */
+  --hover-bg: rgba(255, 255, 255, 0.05);
+  --active-bg: rgba(59, 130, 246, 0.2);
+  
+  /* Sombras */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  
+  /* Success, Warning, Error */
+  --success-color: #22c55e;
+  --warning-color: #f59e0b;
+  --error-color: #ef4444;
+}
+
+/* TEMA CLARO (Se activa con clase .light-theme) */
+:root.light-theme {
+  /* Fondos */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  
+  /* Textos */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #94a3b8;
+  
+  /* Bordes */
+  --border-color: #e2e8f0;
+  --border-hover: #cbd5e1;
+  
+  /* Acentos */
+  --accent-color: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-light: rgba(59, 130, 246, 0.1);
+  
+  /* Estados */
+  --hover-bg: rgba(0, 0, 0, 0.05);
+  --active-bg: rgba(59, 130, 246, 0.1);
+  
+  /* Sombras */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  
+  /* Success, Warning, Error */
+  --success-color: #16a34a;
+  --warning-color: #ea580c;
+  --error-color: #dc2626;
+}
+
+/* Transición suave al cambiar tema */
+* {
+  transition: background-color 0.3s ease, 
+              color 0.3s ease, 
+              border-color 0.3s ease,
+              box-shadow 0.3s ease;
+}
+
+/* Evitar transición en elementos específicos */
+.no-theme-transition,
+.no-theme-transition * {
+  transition: none !important;
+}
+
+/* ============================================
+   ESTILOS BASE
+   ============================================ */
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Scrollbar personalizado */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+}
+
+/* ============================================
+   UTILIDADES
+   ============================================ */
+
+.bg-primary { background-color: var(--bg-primary); }
+.bg-secondary { background-color: var(--bg-secondary); }
+.bg-tertiary { background-color: var(--bg-tertiary); }
+
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-tertiary { color: var(--text-tertiary); }
+
+.border-color { border-color: var(--border-color); }
+.accent-color { color: var(--accent-color); }
+.accent-bg { background-color: var(--accent-color); }

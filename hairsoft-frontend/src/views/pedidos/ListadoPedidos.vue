@@ -324,43 +324,25 @@ const buscarPedidos = async () => {
   try {
     cargando.value = true
     
+    // ✅ SOLO ENVIAR PARÁMETROS QUE TIENEN VALOR
     const params = new URLSearchParams()
     
-    // Solo agregar filtros que tengan valor
-    if (filtros.value.id && filtros.value.id.toString().trim()) {
-      params.append('id', filtros.value.id.toString().trim())
-    }
-    if (filtros.value.proveedor_id && filtros.value.proveedor_id.toString().trim()) {
-      params.append('proveedor_id', filtros.value.proveedor_id.toString().trim())
-    }
-    if (filtros.value.estado && filtros.value.estado.trim()) {
-      params.append('estado', filtros.value.estado.trim())
-    }
-    if (filtros.value.fecha_desde && filtros.value.fecha_desde.trim()) {
-      params.append('fecha_desde', filtros.value.fecha_desde.trim())
-    }
-    if (filtros.value.fecha_hasta && filtros.value.fecha_hasta.trim()) {
-      params.append('fecha_hasta', filtros.value.fecha_hasta.trim())
-    }
+    if (filtros.value.id) params.append('id', filtros.value.id)
+    if (filtros.value.proveedor_id) params.append('proveedor_id', filtros.value.proveedor_id)
+    if (filtros.value.estado) params.append('estado', filtros.value.estado)
+    if (filtros.value.fecha_desde) params.append('fecha_desde', filtros.value.fecha_desde)
+    if (filtros.value.fecha_hasta) params.append('fecha_hasta', filtros.value.fecha_hasta)
     
-    console.log('🔍 Buscando pedidos con params:', params.toString())
+    console.log('🔍 Parámetros enviados:', params.toString())
     
     const response = await axios.get(`${API_BASE}/usuarios/api/pedidos/buscar/?${params}`)
     pedidos.value = response.data
-    
-    console.log('✅ Pedidos encontrados:', response.data.length)
-    
-    // Resetear a página 1 cuando se aplican nuevos filtros
-    pagina.value = 1
+    console.log('✅ Pedidos cargados:', pedidos.value.length)
     
   } catch (error) {
     console.error('❌ Error buscando pedidos:', error)
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'Error al buscar pedidos',
-      confirmButtonText: 'Entendido'
-    })
+    console.error('📄 Respuesta del error:', error.response?.data)
+    alert('Error al cargar pedidos: ' + (error.response?.data?.error || error.message))
   } finally {
     cargando.value = false
   }

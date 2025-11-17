@@ -4,6 +4,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 from django.views import View
 from django.db import transaction
+from django.db.models import Count, Sum, F, Q
 from django.contrib.auth.hashers import make_password
 # 🛑 CORRECCIÓN APLICADA: Importar authenticate y login
 from django.contrib.auth import authenticate, login 
@@ -13,11 +14,11 @@ from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticate
 from rest_framework.response import Response 
 from datetime import datetime, timedelta
 from django.utils import timezone
-from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido
+from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios
 from .mercadopago_service import MercadoPagoService
 import json
 import requests
-from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer
+from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer, ListaPrecioProveedorSerializer, HistorialPreciosSerializer, PrecioSugeridoSerializer, ActualizarListaPreciosSerializer
 from django.contrib.auth.hashers import check_password
 from django.http import HttpResponse
 from .pdf_utils import generar_comprobante_venta
@@ -98,6 +99,7 @@ def crear_usuario(request):
 
     try:
         data = json.loads(request.body)
+        print("📦 DATOS RECIBIDOS:", data)  # Debug
     except json.JSONDecodeError:
         return JsonResponse({'status': 'error', 'message': 'JSON inválido'}, status=400)
 
@@ -111,29 +113,62 @@ def crear_usuario(request):
             if Usuario.objects.filter(rol__nombre__iexact='ADMINISTRADOR', estado='ACTIVO').exists():
                 return JsonResponse({'status': 'error', 'message': 'Ya existe un administrador activo'}, status=400)
 
+    # ✅ CORRECCIÓN: Siempre procesar la contraseña para creación
     if 'contrasena' in data and data['contrasena']:
         data['contrasena'] = make_password(data['contrasena'])
     else:
-        data.pop('contrasena', None)
+        # Si no viene contraseña, devolver error
+        return JsonResponse({
+            'status': 'error', 
+            'message': 'La contraseña es obligatoria'
+        }, status=400)
 
-    form = UsuarioForm(data)
-    if form.is_valid():
-        try:
-            usuario = form.save()
-            return JsonResponse({'status': 'ok', 'id': usuario.id})
-        except Exception as e:
-            return JsonResponse({'status': 'error', 'message': f'Error al guardar el usuario: {str(e)}'}, status=500)
+    # ✅ CORRECCIÓN: Crear usuario directamente sin usar el form problemático
+    try:
+        # Validar campos requeridos
+        required_fields = ['nombre', 'apellido', 'dni', 'correo', 'contrasena']
+        for field in required_fields:
+            if not data.get(field):
+                return JsonResponse({
+                    'status': 'error', 
+                    'message': f'El campo {field} es obligatorio'
+                }, status=400)
 
-    errores = {k: v for k, v in form.errors.items()}
-    return JsonResponse({'status': 'error', 'errors': errores}, status=400)
+        # Verificar si el correo ya existe
+        if Usuario.objects.filter(correo=data['correo']).exists():
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'Ya existe un usuario con ese correo electrónico'
+            }, status=400)
 
-from django.views.decorators.csrf import csrf_exempt
-from django.utils.decorators import method_decorator
+        # Verificar si el DNI ya existe
+        if Usuario.objects.filter(dni=data['dni']).exists():
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'Ya existe un usuario con ese DNI'
+            }, status=400)
+
+        # Crear usuario directamente
+        usuario = Usuario.objects.create(
+            nombre=data['nombre'],
+            apellido=data['apellido'],
+            dni=data['dni'],
+            telefono=data.get('telefono', ''),
+            correo=data['correo'],
+            contrasena=data['contrasena'],  # Ya está hasheada
+            rol_id=rol_id,
+            estado=data.get('estado', 'ACTIVO')
+        )
+
+        return JsonResponse({'status': 'ok', 'id': usuario.id})
+
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': f'Error al crear el usuario: {str(e)}'}, status=500)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_auth(request):
-    print("🚨 LOGIN ENDPOINT HIT")
+    print("LOGIN ENDPOINT HIT")
     serializer = LoginSerializer(data=request.data)
     
     if not serializer.is_valid():
@@ -143,7 +178,7 @@ def login_auth(request):
     correo = validated_data.get('username')
     contrasena_ingresada = validated_data.get('password')
     
-    print(f"📦 Data Validada - Correo: {correo}")
+    print(f"Data Validada - Correo: {correo}")
 
     try:
         user = Usuario.objects.get(correo=correo)
@@ -170,7 +205,7 @@ def login_auth(request):
             raise Usuario.DoesNotExist
 
     except Usuario.DoesNotExist:
-        print("❌ Login failed - Credenciales inválidas")
+        print("Login failed - Credenciales inválidas")
         return Response(
             {'status': 'error', 'message': 'Credenciales inválidas. Usuario no registrado o contraseña incorrecta.'}, 
             status=status.HTTP_401_UNAUTHORIZED
@@ -184,20 +219,23 @@ def editar_usuario(request, pk):
 
     try:
         data = json.loads(request.body)
+        print(" DATOS EDITAR USUARIO:", data)  # Debug
     except json.JSONDecodeError:
         return JsonResponse({'status': 'error', 'message': 'JSON inválido'}, status=400)
 
-    if 'contrasena' in data and data['contrasena']:
-        data['contrasena'] = make_password(data['contrasena'])
-    else:
-        data.pop('contrasena', None)
-
+    # ✅ USAR EL NUEVO FORMULARIO MEJORADO
     form = UsuarioForm(data, instance=usuario)
+    
     if form.is_valid():
-        form.save()
-        return JsonResponse({'status': 'ok', 'id': usuario.id})
-    else:
-        return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
+        try:
+            usuario_actualizado = form.save()
+            return JsonResponse({'status': 'ok', 'id': usuario_actualizado.id})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': f'Error al guardar el usuario: {str(e)}'}, status=500)
+
+    errores = {k: v for k, v in form.errors.items()}
+    print(" ERRORES DEL FORM:", errores)  # Debug
+    return JsonResponse({'status': 'error', 'errors': errores}, status=400)
 
 
 @csrf_exempt
@@ -419,9 +457,7 @@ def listado_peluqueros(request):
 # ================================
 # Turnos
 # ================================
-# ================================
-# Turnos - Vistas Actualizadas
-# ================================
+
 @csrf_exempt
 def listado_turnos(request):
     if request.method != 'GET':
@@ -489,7 +525,8 @@ def listado_turnos(request):
                     'id': servicio.id,
                     'nombre': servicio.nombre,
                     'precio': float(servicio.precio),
-                    'duracion': servicio.duracion
+                    'duracion': servicio.duracion,
+                    'categoria': servicio.categoria.id if servicio.categoria else None  # ← CORREGIDO
                 })
                 duracion_total += servicio.duracion
 
@@ -515,11 +552,28 @@ def listado_turnos(request):
                 puede_modificar = False
                 puede_cancelar = False
 
+            # ✅✅✅ CORRECCIÓN DEFINITIVA: Formatear fecha manualmente
+            fecha_turno_corregida = t.fecha.strftime("%Y-%m-%d")
+            
+            # DEBUG: Ver qué fecha tenemos realmente
+            print(f"🔍 Turno {t.id}: Fecha en BD: {t.fecha} -> Formateada: {fecha_turno_corregida}")
+
             data.append({
                 'id': t.id,
-                'fecha': t.fecha.isoformat(),
-                'hora': t.hora.strftime("%H:%M"),
-                'estado': t.estado,  # ← ESTO ESTÁ BIEN, envía 'RESERVADO'
+                # ✅✅✅ FECHA CORREGIDA: Formateada manualmente
+                'fecha_turno': fecha_turno_corregida,
+                'hora_turno': t.hora.strftime("%H:%M"),
+                
+                # ✅ FECHA Y HORA REALES DEL REGISTRO (automáticas del sistema)
+                'fecha_registro_real': t.fecha_creacion.date().isoformat(),
+                'hora_registro_real': t.fecha_creacion.time().strftime("%H:%M:%S"),
+                'fecha_hora_completa_registro': t.fecha_creacion.isoformat(),
+                
+                # ✅ Campos para compatibilidad (mantener por si acaso)
+                'fecha': fecha_turno_corregida,  # ✅ Usar la fecha corregida
+                'hora': t.hora.strftime("%H:%M"),  # Mantener para compatibilidad
+                
+                'estado': t.estado,
                 'canal': getattr(t, 'canal', 'PRESENCIAL'),
                 'tipo_pago': getattr(t, 'tipo_pago', 'PENDIENTE'),
                 'monto_seña': float(getattr(t, 'monto_seña', 0)),
@@ -546,11 +600,7 @@ def listado_turnos(request):
     except Exception as e:
         print(f"Error en listado_turnos: {str(e)}")
         return JsonResponse({'error': f'Error interno del servidor: {str(e)}'}, status=500)
-
-
-# ================================
-# usuarios/views.py
-# ================================
+    
 @csrf_exempt
 def crear_turno(request):
     if request.method != 'POST':
@@ -559,10 +609,34 @@ def crear_turno(request):
     try:
         data = json.loads(request.body)
 
-        # 1️⃣ Usuario logueado
-        if not request.user.is_authenticated:
-            return JsonResponse({'status': 'error', 'message': "Debe iniciar sesión para reservar."}, status=401)
-        cliente = request.user
+        # 🔧 DETECTAR CANAL Y APLICAR LÓGICA CORRESPONDIENTE
+        canal = data.get('canal', 'WEB')
+        
+        if canal == 'PRESENCIAL':
+            # 🔧 MODO PRESENCIAL: Sin autenticación, cliente viene en el request
+            cliente_id = data.get('cliente_id')
+            if not cliente_id:
+                return JsonResponse({
+                    'status': 'error', 
+                    'message': "En modo presencial debe especificar un cliente."
+                }, status=400)
+            
+            try:
+                cliente = Usuario.objects.get(pk=cliente_id)
+            except Usuario.DoesNotExist:
+                return JsonResponse({
+                    'status': 'error', 
+                    'message': "Cliente no encontrado."
+                }, status=400)
+                
+        else:  # CANAL WEB
+            # 🔧 MODO WEB: Requiere autenticación del cliente
+            if not request.user.is_authenticated:
+                return JsonResponse({
+                    'status': 'error', 
+                    'message': "Debe iniciar sesión para reservar turnos online."
+                }, status=401)
+            cliente = request.user
 
         # 2️⃣ Datos del formulario
         peluquero_id = data.get('peluquero_id')
@@ -570,6 +644,7 @@ def crear_turno(request):
         fecha = data.get('fecha')
         hora = data.get('hora')
         tipo_pago_seleccionado = data.get('tipo_pago')  # SENA_50 o TOTAL
+        medio_pago = data.get('medio_pago', 'EFECTIVO')
 
         if tipo_pago_seleccionado not in ['SENA_50', 'TOTAL']:
             return JsonResponse({'status': 'error', 'message': "Debe seleccionar una opción de pago válida (Seña o Total)."}, status=400)
@@ -621,61 +696,67 @@ def crear_turno(request):
             peluquero=peluquero,
             fecha=fecha_obj,
             hora=hora_obj,
-            canal='WEB',
+            canal=canal,
             tipo_pago=tipo_pago_seleccionado,
-            medio_pago='MERCADO_PAGO',
+            medio_pago=medio_pago,
             monto_seña=monto_seña_a_guardar,
             monto_total=monto_total,
             estado='RESERVADO'
         )
         turno.servicios.set(servicios)
 
-        print(f"✅ Turno creado temporalmente: {turno.id} - Procesando MP")
+        print(f"✅ Turno creado: {turno.id} - Fecha: {turno.fecha} - Canal: {canal} - Cliente: {cliente.nombre}")
 
-        # 7️⃣ Preparar datos para Mercado Pago (SDK)
-        mp_service = MercadoPagoService()
-        es_pago_total = (tipo_pago_seleccionado == 'TOTAL')
+        # 7️⃣ Si es Mercado Pago, procesar pago
+        if medio_pago == 'MERCADO_PAGO':
+            mp_service = MercadoPagoService()
+            es_pago_total = (tipo_pago_seleccionado == 'TOTAL')
 
-        turno_data = {
-            'turno_id': turno.id,
-            'monto_pago': float(monto_pago_a_enviar_mp),
-            'cliente_nombre': f"{cliente.nombre} {cliente.apellido}",
-            'cliente_correo': "test_user_6205179917708892357@testuser.com",  # sandbox
-            'peluquero_nombre': f"{peluquero.nombre} {peluquero.apellido}",
-            'es_pago_total': es_pago_total
-        }
+            turno_data = {
+                'turno_id': turno.id,
+                'monto_pago': float(monto_pago_a_enviar_mp),
+                'cliente_nombre': f"{cliente.nombre} {cliente.apellido}",
+                'cliente_correo': "test_user_6205179917708892357@testuser.com",
+                'peluquero_nombre': f"{peluquero.nombre} {peluquero.apellido}",
+                'es_pago_total': es_pago_total
+            }
 
-        resultado_mp = mp_service.crear_preferencia_seña(turno_data)
+            resultado_mp = mp_service.crear_preferencia_seña(turno_data)
 
-        if resultado_mp['success']:
-            init_point = resultado_mp.get('init_point')
+            if resultado_mp['success']:
+                init_point = resultado_mp.get('init_point')
+                return JsonResponse({
+                    'status': 'ok',
+                    'turno_id': turno.id,
+                    'message': 'Turno pre-reservado. Redirigiendo a pago sandbox',
+                    'procesar_pago': True,
+                    'mp_data': {
+                        'init_point': init_point,
+                        'preference_id': resultado_mp['preference_id'],
+                    }
+                })
+            else:
+                turno.estado = 'CANCELADO_ERROR_MP'
+                turno.save()
+                error_msg = resultado_mp.get('error', 'Error desconocido al generar el enlace de pago.')
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Error al generar pago con Mercado Pago: {error_msg}. El turno fue cancelado.',
+                    'turno_id': turno.id
+                }, status=400)
+        else:
             return JsonResponse({
                 'status': 'ok',
                 'turno_id': turno.id,
-                'message': 'Turno pre-reservado. Redirigiendo a pago sandbox',
-                'procesar_pago': True,
-                'mp_data': {
-                    'init_point': init_point,
-                    'preference_id': resultado_mp['preference_id'],
-                }
+                'message': 'Turno registrado correctamente',
+                'procesar_pago': False
             })
-        else:
-            turno.estado = 'CANCELADO_ERROR_MP'
-            turno.save()
-            error_msg = resultado_mp.get('error', 'Error desconocido al generar el enlace de pago.')
-            return JsonResponse({
-                'status': 'error',
-                'message': f'Error al generar pago con Mercado Pago: {error_msg}. El turno fue cancelado.',
-                'turno_id': turno.id
-            }, status=400)
 
     except json.JSONDecodeError:
         return JsonResponse({'status': 'error', 'message': "Error en el formato JSON"}, status=400)
     except Exception as e:
         print(f"❌ Error interno al crear turno: {e}")
         return JsonResponse({'status': 'error', 'message': f"Error interno del servidor: {str(e)}"}, status=500)
-
-
     
 @csrf_exempt
 def verificar_disponibilidad(request):
@@ -721,42 +802,32 @@ def verificar_disponibilidad(request):
             'message': f"Error interno: {str(e)}"
         }, status=500)
 
-
+# En usuarios/views.py - REEMPLAZA la función cancelar_turno existente
 @csrf_exempt
 def cancelar_turno(request, turno_id):
+    """Cancelar turno con verificación de estado"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Método no permitido'}, status=405)
 
     try:
-        turno = Turno.objects.get(pk=turno_id)
+        turno = Turno.objects.get(id=turno_id)
         
         # Verificar si puede ser cancelado
-        puede_cancelar, hay_reembolso = turno.puede_ser_cancelado()
+        puede_cancelar, hay_reembolso, mensaje = turno.puede_ser_cancelado()
         
         if not puede_cancelar:
             return JsonResponse({
                 'status': 'error',
-                'message': 'No se puede cancelar el turno. Debe cancelarse con al menos 3 horas de anticipación.'
+                'message': mensaje
             }, status=400)
 
         # Cambiar estado a cancelado
         turno.estado = 'CANCELADO'
-        turno.reembolsado = hay_reembolso
         turno.save()
-
-        mensaje = 'Turno cancelado exitosamente'
-        if hay_reembolso:
-            if turno.canal == 'WEB':
-                mensaje += '. Seña reembolsada via Mercado Pago.'
-            else:
-                mensaje += '. Cliente debe pasar a buscar el reembolso.'
-        else:
-            mensaje += '. No corresponde reembolso.'
 
         return JsonResponse({
             'status': 'ok',
-            'message': mensaje,
-            'reembolsado': hay_reembolso
+            'message': f'Turno cancelado exitosamente. {mensaje}'
         })
 
     except Turno.DoesNotExist:
@@ -765,12 +836,12 @@ def cancelar_turno(request, turno_id):
             'message': 'Turno no encontrado'
         }, status=404)
     except Exception as e:
-        print("Error al cancelar turno:", e)
+        print(f"Error cancelando turno: {e}")
         return JsonResponse({
             'status': 'error',
-            'message': str(e)
-        }, status=400)
-
+            'message': f'Error interno: {str(e)}'
+        }, status=500)
+    
 @csrf_exempt
 def completar_turno(request, turno_id):
     if request.method != 'POST':
@@ -920,7 +991,189 @@ def modificar_turno(request, turno_id):
             'message': str(e)
         }, status=400)
 
+@csrf_exempt
+def registrar_interes_turno(request):
+    """
+    Registrar cliente interesado en un turno específico
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
 
+    try:
+        data = json.loads(request.body)
+        
+        # Para clientes web autenticados
+        if request.user.is_authenticated:
+            cliente_id = request.user.id
+        else:
+            # Para modo presencial o no autenticado
+            cliente_id = data.get('cliente_id')
+            if not cliente_id:
+                return JsonResponse({
+                    'status': 'error', 
+                    'message': 'Se requiere cliente_id para usuarios no autenticados'
+                }, status=400)
+        
+        servicio_id = data.get('servicio_id')
+        peluquero_id = data.get('peluquero_id')
+        fecha_deseada = data.get('fecha_deseada')
+        hora_deseada = data.get('hora_deseada')
+
+        if not all([servicio_id, peluquero_id, fecha_deseada, hora_deseada]):
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Faltan datos requeridos: servicio_id, peluquero_id, fecha_deseada, hora_deseada'
+            }, status=400)
+
+        from .turno_service import TurnoService
+        success, mensaje = TurnoService.registrar_interes_turno(
+            cliente_id, servicio_id, peluquero_id, fecha_deseada, hora_deseada
+        )
+
+        if success:
+            return JsonResponse({
+                'status': 'ok',
+                'message': mensaje
+            })
+        else:
+            return JsonResponse({
+                'status': 'error',
+                'message': mensaje
+            }, status=400)
+
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'JSON inválido'}, status=400)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error en registrar_interes_turno: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Error interno: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def listar_intereses_cliente(request, cliente_id=None):
+    """
+    Listar intereses de un cliente (para ver en su perfil)
+    """
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+    try:
+        from .models import InteresTurnoLiberado
+        
+        # Si no se especifica cliente_id, usar el usuario autenticado
+        if not cliente_id and request.user.is_authenticated:
+            cliente_id = request.user.id
+        
+        if not cliente_id:
+            return JsonResponse({'error': 'Se requiere cliente_id'}, status=400)
+
+        intereses = InteresTurnoLiberado.objects.filter(
+            cliente_id=cliente_id
+        ).select_related('servicio', 'peluquero').order_by('-fecha_registro')
+
+        data = []
+        for interes in intereses:
+            data.append({
+                'id': interes.id,
+                'servicio_nombre': interes.servicio.nombre,
+                'peluquero_nombre': f"{interes.peluquero.nombre} {interes.peluquero.apellido}",
+                'fecha_deseada': interes.fecha_deseada.isoformat(),
+                'hora_deseada': interes.hora_deseada.strftime("%H:%M"),
+                'fecha_registro': interes.fecha_registro.isoformat(),
+                'notificado': interes.notificado,
+                'fecha_notificacion': interes.fecha_notificacion.isoformat() if interes.fecha_notificacion else None
+            })
+
+        return JsonResponse(data, safe=False)
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error en listar_intereses_cliente: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+def procesar_sena_turno(request, turno_id):
+    """Procesar seña de un turno"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+    try:
+        turno = Turno.objects.get(id=turno_id)
+        
+        if turno.estado != 'RESERVADO':
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Solo se puede señar turnos en estado RESERVADO'
+            }, status=400)
+
+        # Calcular monto de seña
+        monto_sena = turno.monto_total * 0.5
+
+        # Actualizar turno
+        turno.tipo_pago = 'SENA_50'
+        turno.monto_seña = monto_sena
+        turno.estado = 'CONFIRMADO'
+        turno.save()
+
+        return JsonResponse({
+            'status': 'ok',
+            'message': f'Seña procesada exitosamente. Monto: ${monto_sena}',
+            'monto_sena': float(monto_sena)
+        })
+
+    except Turno.DoesNotExist:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Turno no encontrado'
+        }, status=404)
+    except Exception as e:
+        print(f"Error procesando seña: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Error interno: {str(e)}'
+        }, status=500)
+
+@csrf_exempt
+def completar_pago_turno(request, turno_id):
+    """Completar pago de un turno (pagar resto de seña)"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+    try:
+        turno = Turno.objects.get(id=turno_id)
+        
+        if turno.estado != 'CONFIRMADO' or turno.tipo_pago != 'SENA_50':
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Solo se puede completar pago de turnos confirmados con seña'
+            }, status=400)
+
+        # Cambiar a pago total
+        turno.tipo_pago = 'TOTAL'
+        turno.monto_seña = turno.monto_total
+        turno.save()
+
+        return JsonResponse({
+            'status': 'ok',
+            'message': f'Pago completado exitosamente. Monto total: ${turno.monto_total}',
+            'monto_total': float(turno.monto_total)
+        })
+
+    except Turno.DoesNotExist:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Turno no encontrado'
+        }, status=404)
+    except Exception as e:
+        print(f"Error completando pago: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Error interno: {str(e)}'
+        }, status=500)
 # ================================
 # Listado  de  Categorías
 # ================================
@@ -2097,3 +2350,566 @@ def debug_crear_pedido(request):
         import traceback
         print(f"🔍 Traceback: {traceback.format_exc()}")
         return Response({'error': str(e)}, status=500)
+
+
+# ===========================================
+# PROPUESTA Y CONFIRMACIÓN DE PRECIOS
+# ===========================================
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def proponer_precios(request, pedido_id):
+    """
+    El proveedor propone precios para cada detalle del pedido.
+    """
+    try:
+        pedido = get_object_or_404(Pedido, id=pedido_id)
+        detalles_data = request.data.get('detalles', [])
+
+        if not detalles_data:
+            return Response({'error': 'Debe enviar los detalles con precios.'}, status=400)
+
+        for d in detalles_data:
+            detalle = pedido.detalles.get(id=d['id'])
+            precio_propuesto = d.get('precio_propuesto')
+
+            if precio_propuesto is None:
+                return Response({'error': f'Falta precio_propuesto para el detalle {d["id"]}'}, status=400)
+
+            detalle.precio_propuesto = precio_propuesto
+            detalle.subtotal = detalle.cantidad * precio_propuesto
+            detalle.save()
+
+        return Response({'mensaje': 'Precios propuestos guardados correctamente.'})
+
+    except DetallePedido.DoesNotExist:
+        return Response({'error': 'Uno de los detalles no existe.'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def confirmar_precios(request, pedido_id):
+    """
+    El comercio confirma los precios propuestos y actualiza totales.
+    """
+    try:
+        pedido = get_object_or_404(Pedido, id=pedido_id)
+        total = 0
+
+        for detalle in pedido.detalles.all():
+            if detalle.precio_propuesto is not None:
+                detalle.precio_unitario = detalle.precio_propuesto
+                detalle.subtotal = detalle.cantidad * detalle.precio_unitario
+                detalle.save()
+            total += detalle.subtotal
+
+        pedido.total = total
+        pedido.estado = 'CONFIRMADO'
+        pedido.save()
+
+        return Response({
+            'mensaje': 'Precios confirmados correctamente.',
+            'pedido_id': pedido.id,
+            'total': pedido.total
+        })
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)
+
+
+####proveedores
+class ListaPrecioProveedorViewSet(viewsets.ModelViewSet):
+    queryset = ListaPrecioProveedor.objects.all()
+    serializer_class = ListaPrecioProveedorSerializer
+    # QUITAmos TEMPORALMENTE LA AUTENTICACIÓN
+    permission_classes = []
+
+    def get_queryset(self):
+        """Filtra por proveedor y producto si se especifican"""
+        queryset = super().get_queryset()
+        
+        proveedor_id = self.request.query_params.get('proveedor_id')
+        if proveedor_id:
+            queryset = queryset.filter(proveedor_id=proveedor_id)
+            
+        producto_id = self.request.query_params.get('producto_id')
+        if producto_id:
+            queryset = queryset.filter(producto_id=producto_id)
+            
+        solo_activos = self.request.query_params.get('activos', 'true').lower() == 'true'
+        if solo_activos:
+            queryset = queryset.filter(activo=True)
+            
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def por_proveedor(self, request):
+        """Obtiene todas las listas de precios de un proveedor específico"""
+        proveedor_id = request.query_params.get('proveedor_id')
+        if not proveedor_id:
+            return Response(
+                {'error': 'Se requiere el parámetro proveedor_id'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        proveedor = get_object_or_404(Proveedor, id=proveedor_id)
+        listas = self.get_queryset().filter(proveedor=proveedor, activo=True)
+        serializer = self.get_serializer(listas, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def desactivar(self, request, pk=None):
+        """Desactiva una lista de precios"""
+        lista_precio = self.get_object()
+        lista_precio.activo = False
+        lista_precio.save()
+        
+        return Response({
+            'message': 'Lista de precios desactivada correctamente',
+            'lista_id': lista_precio.id
+        })
+
+    @action(detail=False, methods=['post'])
+    def actualizar_masivo(self, request):
+        """Actualización masiva de listas de precios"""
+        serializer = ActualizarListaPreciosSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        proveedor_id = serializer.validated_data['proveedor_id']
+        precios_data = serializer.validated_data['precios']
+        
+        try:
+            with transaction.atomic():
+                proveedor = Proveedor.objects.get(id=proveedor_id)
+                actualizados = 0
+                creados = 0
+                
+                for precio_item in precios_data:
+                    producto_id = precio_item.get('producto_id')
+                    precio_base = precio_item.get('precio_base')
+                    margen_ganancia = precio_item.get('margen_ganancia', 30.0)
+                    
+                    producto = Producto.objects.get(id=producto_id)
+                    
+                    # Buscar si ya existe una lista activa
+                    lista_existente = ListaPrecioProveedor.objects.filter(
+                        proveedor=proveedor,
+                        producto=producto,
+                        activo=True
+                    ).first()
+                    
+                    if lista_existente:
+                        # Crear registro en historial antes de actualizar
+                        HistorialPrecios.objects.create(
+                            lista_precio=lista_existente,
+                            precio_anterior=lista_existente.precio_base,
+                            precio_nuevo=precio_base,
+                            margen_anterior=lista_existente.margen_ganancia,
+                            margen_nuevo=margen_ganancia,
+                            usuario=request.user,
+                            motivo=precio_item.get('motivo', 'Actualización masiva')
+                        )
+                        
+                        # Actualizar lista existente
+                        lista_existente.precio_base = precio_base
+                        lista_existente.margen_ganancia = margen_ganancia
+                        lista_existente.save()
+                        actualizados += 1
+                    else:
+                        # Crear nueva lista
+                        ListaPrecioProveedor.objects.create(
+                            proveedor=proveedor,
+                            producto=producto,
+                            precio_base=precio_base,
+                            margen_ganancia=margen_ganancia
+                        )
+                        creados += 1
+                
+                return Response({
+                    'message': f'Listas de precios actualizadas: {actualizados} actualizadas, {creados} nuevas',
+                    'actualizados': actualizados,
+                    'creados': creados
+                })
+                
+        except Exception as e:
+            return Response(
+                {'error': f'Error en actualización masiva: {str(e)}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class HistorialPreciosViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = HistorialPrecios.objects.all().select_related(
+        'lista_precio', 'lista_precio__proveedor', 'lista_precio__producto', 'usuario'
+    ).order_by('-fecha_cambio')
+    
+    serializer_class = HistorialPreciosSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Filtra por lista de precios o proveedor"""
+        queryset = super().get_queryset()
+        
+        lista_precio_id = self.request.query_params.get('lista_precio_id')
+        if lista_precio_id:
+            queryset = queryset.filter(lista_precio_id=lista_precio_id)
+            
+        proveedor_id = self.request.query_params.get('proveedor_id')
+        if proveedor_id:
+            queryset = queryset.filter(lista_precio__proveedor_id=proveedor_id)
+            
+        producto_id = self.request.query_params.get('producto_id')
+        if producto_id:
+            queryset = queryset.filter(lista_precio__producto_id=producto_id)
+            
+        return queryset
+
+
+# Servicio para cálculo de precios por volumen
+class PreciosService:
+    @staticmethod
+    def calcular_precio_sugerido(proveedor_id, producto_id, cantidad):
+        """Calcula precio sugerido basado en volumen"""
+        try:
+            lista_precio = ListaPrecioProveedor.objects.get(
+                proveedor_id=proveedor_id,
+                producto_id=producto_id,
+                activo=True
+            )
+            
+            precio_base = lista_precio.precio_base
+            margen_base = lista_precio.margen_ganancia
+            
+            # Aplicar descuento por volumen
+            descuento_volumen = PreciosService._calcular_descuento_volumen(cantidad)
+            margen_final = margen_base * (1 - descuento_volumen / 100)
+            
+            precio_sugerido = precio_base * (1 + (margen_final / 100))
+            
+            return {
+                'precio_base': float(precio_base),
+                'precio_sugerido': float(precio_sugerido),
+                'margen_aplicado': float(margen_final),
+                'descuento_volumen': float(descuento_volumen),
+                'lista_precio_id': lista_precio.id
+            }
+            
+        except ListaPrecioProveedor.DoesNotExist:
+            return None
+
+    @staticmethod
+    def _calcular_descuento_volumen(cantidad):
+        """Calcula el descuento aplicable por volumen de compra"""
+        if cantidad >= 100:
+            return 15.0  # 15% de descuento
+        elif cantidad >= 50:
+            return 10.0  # 10% de descuento
+        elif cantidad >= 25:
+            return 5.0   # 5% de descuento
+        else:
+            return 0.0   # Sin descuento
+
+
+# Vistas para cálculo de precios
+@api_view(['POST'])
+def calcular_precios_pedido(request):
+    """Calcula precios sugeridos para un pedido"""
+    items = request.data.get('items', [])
+    resultados = []
+    
+    for item in items:
+        producto_id = item.get('producto_id')
+        proveedor_id = item.get('proveedor_id')
+        cantidad = item.get('cantidad', 1)
+        
+        if not all([producto_id, proveedor_id]):
+            continue
+            
+        calculo = PreciosService.calcular_precio_sugerido(
+            proveedor_id, producto_id, cantidad
+        )
+        
+        if calculo:
+            resultados.append({
+                'producto_id': producto_id,
+                'proveedor_id': proveedor_id,
+                'cantidad': cantidad,
+                **calculo
+            })
+        else:
+            resultados.append({
+                'producto_id': producto_id,
+                'proveedor_id': proveedor_id,
+                'cantidad': cantidad,
+                'error': 'No se encontró lista de precios activa'
+            })
+    
+    return Response(resultados)
+
+@api_view(['GET'])
+def calcular_precio_sugerido(request):
+    """Calcula precio sugerido para un producto específico"""
+    producto_id = request.GET.get('producto_id')
+    proveedor_id = request.GET.get('proveedor_id')
+    cantidad = int(request.GET.get('cantidad', 1))
+    
+    if not all([producto_id, proveedor_id]):
+        return Response(
+            {'error': 'Se requieren producto_id y proveedor_id'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    calculo = PreciosService.calcular_precio_sugerido(
+        proveedor_id, producto_id, cantidad
+    )
+    
+    if calculo:
+        return Response(calculo)
+    else:
+        return Response(
+            {'error': 'No se encontró lista de precios activa'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['GET'])
+def listas_por_proveedor(request):
+    """Obtiene listas de precios por proveedor"""
+    proveedor_id = request.GET.get('proveedor_id')
+    if not proveedor_id:
+        return Response(
+            {'error': 'Se requiere proveedor_id'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    listas = ListaPrecioProveedor.objects.filter(
+        proveedor_id=proveedor_id, 
+        activo=True
+    ).select_related('producto')
+    
+    serializer = ListaPrecioProveedorSerializer(listas, many=True)
+    return Response(serializer.data)
+
+@api_view(['POST'])
+def desactivar_lista_precio(request, pk):
+    """Desactiva una lista de precios"""
+    lista_precio = get_object_or_404(ListaPrecioProveedor, id=pk)
+    lista_precio.activo = False
+    lista_precio.save()
+    
+    return Response({
+        'message': 'Lista de precios desactivada correctamente',
+        'lista_id': lista_precio.id
+    })
+
+@api_view(['POST'])
+def actualizar_listas_masivo(request):
+    """Actualización masiva de listas de precios"""
+    serializer = ActualizarListaPreciosSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+    proveedor_id = serializer.validated_data['proveedor_id']
+    precios_data = serializer.validated_data['precios']
+    
+    try:
+        with transaction.atomic():
+            proveedor = Proveedor.objects.get(id=proveedor_id)
+            actualizados = 0
+            creados = 0
+            
+            for precio_item in precios_data:
+                producto_id = precio_item.get('producto_id')
+                precio_base = precio_item.get('precio_base')
+                margen_ganancia = precio_item.get('margen_ganancia', 30.0)
+                
+                producto = Producto.objects.get(id=producto_id)
+                
+                # Buscar si ya existe una lista activa
+                lista_existente = ListaPrecioProveedor.objects.filter(
+                    proveedor=proveedor,
+                    producto=producto,
+                    activo=True
+                ).first()
+                
+                if lista_existente:
+                    # Crear registro en historial antes de actualizar
+                    HistorialPrecios.objects.create(
+                        lista_precio=lista_existente,
+                        precio_anterior=lista_existente.precio_base,
+                        precio_nuevo=precio_base,
+                        margen_anterior=lista_existente.margen_ganancia,
+                        margen_nuevo=margen_ganancia,
+                        usuario=request.user,
+                        motivo=precio_item.get('motivo', 'Actualización masiva')
+                    )
+                    
+                    # Actualizar lista existente
+                    lista_existente.precio_base = precio_base
+                    lista_existente.margen_ganancia = margen_ganancia
+                    lista_existente.save()
+                    actualizados += 1
+                else:
+                    # Crear nueva lista
+                    ListaPrecioProveedor.objects.create(
+                        proveedor=proveedor,
+                        producto=producto,
+                        precio_base=precio_base,
+                        margen_ganancia=margen_ganancia
+                    )
+                    creados += 1
+            
+            return Response({
+                'message': f'Listas de precios actualizadas: {actualizados} actualizadas, {creados} nuevas',
+                'actualizados': actualizados,
+                'creados': creados
+            })
+            
+    except Exception as e:
+        return Response(
+            {'error': f'Error en actualización masiva: {str(e)}'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+# ================================
+# DASHBOARD ENDPOINT - VERSIÓN SIMPLIFICADA TEMPORAL
+# ================================
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def dashboard_data(request):
+    """Endpoint REAL para dashboard - consulta la base de datos"""
+    try:
+        print("✅ Dashboard endpoint llamado - consultando BD real")
+        
+        # Obtener el período del request
+        period = request.GET.get('period', 'semana')
+        
+        # 🔥 CONSULTAS REALES A LA BASE DE DATOS
+        
+        # 1. INGRESOS TOTALES (último mes)
+        from datetime import datetime, timedelta
+        from django.utils import timezone
+        
+        fecha_inicio = timezone.now() - timedelta(days=30)
+        ingresos_totales = Venta.objects.filter(
+            fecha__gte=fecha_inicio, 
+            anulada=False
+        ).aggregate(total=Sum('total'))['total'] or 0
+        
+        # 2. SERVICIOS REALIZADOS (último mes)
+        servicios_realizados = Turno.objects.filter(
+            fecha__gte=fecha_inicio,
+            estado='COMPLETADO'
+        ).count()
+        
+        # 3. CLIENTES NUEVOS (último mes)
+        clientes_nuevos = Usuario.objects.filter(
+            fecha_creacion__gte=fecha_inicio,
+            rol__nombre__iexact='cliente'
+        ).count()
+        
+        # 4. PRODUCTOS VENDIDOS (último mes)
+        productos_vendidos = DetalleVenta.objects.filter(
+            venta__fecha__gte=fecha_inicio,
+            venta__anulada=False,
+            producto__isnull=False
+        ).aggregate(total=Sum('cantidad'))['total'] or 0
+        
+        # 5. TICKET PROMEDIO
+        ticket_promedio = ingresos_totales / max(servicios_realizados, 1)
+        
+        # 6. STOCK BAJO (productos con stock por debajo del mínimo)
+        # Asumiendo que tienes un campo stock_minimo en Producto
+        stock_bajo = Producto.objects.filter(
+            stock_actual__lte=5  # Ajusta según tu lógica de stock mínimo
+        )[:5]  # Limitar a 5 productos
+        
+        stock_bajo_data = [
+            {
+                'nombre': producto.nombre,
+                'stock_actual': producto.stock_actual,
+                'stock_minimo': 5,  # Ajusta según tu modelo
+                'categoria': producto.categoria.nombre if producto.categoria else 'Sin categoría'
+            }
+            for producto in stock_bajo
+        ]
+        
+        # 7. SERVICIOS TOP (más vendidos)
+        from django.db.models import Count
+        servicios_top = Servicio.objects.annotate(
+            ventas_count=Count('detalleventa')
+        ).order_by('-ventas_count')[:3]
+        
+        servicios_top_data = [
+            {
+                'nombre': servicio.nombre,
+                'cantidad': servicio.ventas_count,
+                'ingresos': servicio.ventas_count * servicio.precio,
+                'tendencia': 0  # Podrías calcular la tendencia vs período anterior
+            }
+            for servicio in servicios_top
+        ]
+        
+        # 8. TOP PELUQUEROS (más servicios completados)
+        top_peluqueros = Usuario.objects.filter(
+            turnos_peluquero__estado='COMPLETADO',
+            turnos_peluquero__fecha__gte=fecha_inicio
+        ).annotate(
+            servicios_count=Count('turnos_peluquero'),
+            ingresos_total=Sum('turnos_peluquero__monto_total')
+        ).order_by('-servicios_count')[:3]
+        
+        top_peluqueros_data = [
+            {
+                'nombre': f"{p.nombre} {p.apellido}",
+                'servicios_completados': p.servicios_count,
+                'ingresos_generados': p.ingresos_total or 0
+            }
+            for p in top_peluqueros
+        ]
+        
+        # 9. VENTAS POR DÍA (últimos 7 días)
+        ventas_por_dia = []
+        labels_dias = []
+        
+        for i in range(6, -1, -1):
+            fecha = timezone.now() - timedelta(days=i)
+            total_dia = Venta.objects.filter(
+                fecha__date=fecha.date(),
+                anulada=False
+            ).aggregate(total=Sum('total'))['total'] or 0
+            
+            ventas_por_dia.append(float(total_dia))
+            labels_dias.append(fecha.strftime('%a'))
+        
+        # Datos REALES de tu base de datos
+        data = {
+            'ingresosTotales': float(ingresos_totales),
+            'serviciosRealizados': servicios_realizados,
+            'clientesNuevos': clientes_nuevos,
+            'productosVendidos': productos_vendidos,
+            'ticketPromedio': float(ticket_promedio),
+            'ventasTrend': 0,  # Podrías calcular vs período anterior
+            'metaMensual': 150000.0,
+            'totalClientes': Usuario.objects.filter(rol__nombre__iexact='cliente').count(),
+            'stockBajoCount': stock_bajo.count(),
+            'stockBajo': stock_bajo_data,
+            'serviciosTop': servicios_top_data,
+            'topPeluqueros': top_peluqueros_data,
+            'productosTop': [],  # Podrías implementar similar a servicios_top
+            'ventasPorDia': ventas_por_dia,
+            'serviciosDistribucion': [],  # Podrías implementar
+            'labelsDias': labels_dias
+        }
+        
+        print(f"✅ Datos REALES enviados - Ingresos: ${ingresos_totales}, Servicios: {servicios_realizados}")
+        return Response(data)
+        
+    except Exception as e:
+        print(f"❌ Error en dashboard REAL: {str(e)}")
+        import traceback
+        print(f"🔍 Traceback: {traceback.format_exc()}")
+        return Response({'error': str(e)}, status=500)
+

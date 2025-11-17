@@ -165,6 +165,7 @@
 import { ref, onMounted, watch } from 'vue'
 import axios from 'axios'
 
+// ✅ Ya no es necesario importar defineProps o defineEmits
 const props = defineProps({
   productoId: {
     type: [String, Number],
@@ -193,7 +194,9 @@ const categorias = ref([])
 const proveedores = ref([])
 const cargando = ref(false)
 
+// ================================
 // Cargar datos del producto
+// ================================
 const cargarProducto = async () => {
   try {
     const response = await axios.get(`${API_BASE}/productos/api/productos/${props.productoId}/`)
@@ -204,14 +207,16 @@ const cargarProducto = async () => {
   }
 }
 
+// ================================
 // Cargar categorías y proveedores
+// ================================
 const cargarDatos = async () => {
   try {
     const [catRes, provRes] = await Promise.all([
       axios.get(`${API_BASE}/productos/api/categorias/`),
       axios.get(`${API_BASE}/proveedores/api/proveedores/`)
     ])
-    
+
     categorias.value = catRes.data.filter(c => c.activo)
     proveedores.value = provRes.data.filter(p => p.estado === 'ACTIVO')
   } catch (err) {
@@ -220,9 +225,12 @@ const cargarDatos = async () => {
   }
 }
 
+// ================================
+// Modificar producto
+// ================================
 const modificarProducto = async () => {
   if (!validarProducto()) return
-  
+
   cargando.value = true
   try {
     await axios.put(`${API_BASE}/productos/api/productos/${props.productoId}/`, producto.value)
@@ -236,6 +244,9 @@ const modificarProducto = async () => {
   }
 }
 
+// ================================
+// Validaciones
+// ================================
 const validarProducto = () => {
   if (!producto.value.nombre.trim()) {
     alert('El nombre del producto es obligatorio')
@@ -256,19 +267,22 @@ const validarProducto = () => {
   return true
 }
 
+// ================================
+// Cancelar acción
+// ================================
 const cancelar = () => {
   emit('cancelar')
 }
 
+// ================================
+// Ciclo de vida y watchers
+// ================================
 onMounted(async () => {
   await Promise.all([cargarProducto(), cargarDatos()])
 })
 
-// Recargar producto cuando cambie el ID
 watch(() => props.productoId, () => {
-  if (props.productoId) {
-    cargarProducto()
-  }
+  if (props.productoId) cargarProducto()
 })
 </script>
 

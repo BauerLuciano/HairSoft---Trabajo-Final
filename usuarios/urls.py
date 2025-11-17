@@ -1,6 +1,8 @@
 # usuarios/urls.py
 
 from django.urls import path
+from django.shortcuts import redirect
+from rest_framework.routers import DefaultRouter
 
 # ✅ 1. Importación para funciones: Renombrar 'views' a 'func_views'
 from . import views as func_views 
@@ -23,6 +25,8 @@ from .views import (
     pedidos_para_cancelar,
     datos_crear_pedido,
     debug_crear_pedido,
+    ListaPrecioProveedorViewSet,
+    HistorialPreciosViewSet,
 )
 
 
@@ -84,13 +88,14 @@ urlpatterns = [
     path('api/metodos-pago/', MetodoPagoListAPIView.as_view(), name='listado_metodos_pago'),
 
     # ================================
-    # Turnos (USAN FUNCIONES)
+    # Turnos (USAN FUNCIONES) - CORREGIDAS
     # ================================
     path('api/turnos/', func_views.listado_turnos, name='listado_turnos'),
     path('api/turnos/crear/', func_views.crear_turno, name='crear_turno'),
     path('api/turnos/<int:turno_id>/cancelar/', func_views.cancelar_turno, name='cancelar_turno'),
     path('api/turnos/<int:turno_id>/completar/', func_views.completar_turno, name='completar_turno'),
     path('api/turnos/<int:turno_id>/modificar/', func_views.modificar_turno, name='modificar_turno'),
+    path('api/turnos/<int:turno_id>/procesar-sena/', func_views.procesar_sena_turno, name='procesar_sena_turno'),
     path('api/turnos/verificar-disponibilidad/', func_views.verificar_disponibilidad, name='verificar_disponibilidad'),
 
     # ================================
@@ -154,7 +159,6 @@ urlpatterns = [
     #----PDF
     path('api/ventas/<int:venta_id>/comprobante-pdf/', generar_comprobante_pdf, name='generar_comprobante_pdf'),
 
-
     # ================================
     # PEDIDOS - Nuevas rutas
     # ================================
@@ -177,4 +181,48 @@ urlpatterns = [
 
     path('api/pedidos/debug/', debug_crear_pedido, name='debug_crear_pedido'),
 
+    #--dashboard!
+    path('api/dashboard/', func_views.dashboard_data, name='dashboard_data'),
+
+    # Propuesta y confirmación de precios
+    path('api/pedidos/<int:pedido_id>/proponer-precios/', func_views.proponer_precios, name='proponer-precios'),
+    path('api/pedidos/<int:pedido_id>/confirmar-precios/', func_views.confirmar_precios, name='confirmar-precios'),
+
+    # ================================
+    # ✅ NUEVO: SISTEMA DE LISTAS DE PRECIOS DE PROVEEDORES
+    # ================================
+    
+    # Listas de Precios
+    path('api/listas-precios/', ListaPrecioProveedorViewSet.as_view({
+        'get': 'list', 
+        'post': 'create'
+    }), name='listas-precios-list'),
+    
+    path('api/listas-precios/<int:pk>/', ListaPrecioProveedorViewSet.as_view({
+        'get': 'retrieve', 
+        'put': 'update', 
+        'patch': 'partial_update', 
+        'delete': 'destroy'
+    }), name='listas-precios-detail'),
+    
+    # Acciones específicas de listas de precios
+    path('api/listas-precios/por-proveedor/', func_views.listas_por_proveedor, name='listas-por-proveedor'),
+    path('api/listas-precios/<int:pk>/desactivar/', func_views.desactivar_lista_precio, name='desactivar-lista-precio'),
+    path('api/listas-precios/actualizar-masivo/', func_views.actualizar_listas_masivo, name='actualizar-listas-masivo'),
+    
+    # Historial de Precios
+    path('api/historial-precios/', HistorialPreciosViewSet.as_view({
+        'get': 'list'
+    }), name='historial-precios-list'),
+    
+    path('api/historial-precios/<int:pk>/', HistorialPreciosViewSet.as_view({
+        'get': 'retrieve'
+    }), name='historial-precios-detail'),
+    
+    # Cálculo de precios
+    path('api/calcular-precios-pedido/', func_views.calcular_precios_pedido, name='calcular-precios-pedido'),
+    path('api/calcular-precio-sugerido/', func_views.calcular_precio_sugerido, name='calcular-precio-sugerido'),
+
+    path('api/turnos/<int:turno_id>/procesar-sena/', func_views.procesar_sena_turno, name='procesar_sena_turno'),
+    path('api/turnos/<int:turno_id>/completar-pago/', func_views.completar_pago_turno, name='completar_pago_turno'),
 ]

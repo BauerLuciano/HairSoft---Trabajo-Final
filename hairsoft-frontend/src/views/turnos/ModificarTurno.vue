@@ -4,27 +4,40 @@
       <!-- Header -->
       <div class="header-section">
         <h2>
-          Reservar Turno Online
+          ✏️ Modificar Turno
         </h2>
-        <p class="subtitle">Reserva tu turno desde casa, con pago de seña o total</p>
+        <p class="subtitle">Editar turno existente</p>
       </div>
 
-      <div class="form-content">
+      <div v-if="cargando" class="loading-state">
+        <div class="spinner"></div>
+        <p>Cargando datos del turno...</p>
+      </div>
+
+
+      <div v-else-if="error" class="error-state">
+        <div class="error-icon">❌</div>
+        <h3>Error</h3>
+        <p>{{ error }}</p>
+        <button @click="$router.back()" class="btn-volver">
+          ← Volver
+        </button>
+      </div>
+
+      <div v-else class="form-content">
         <!-- ==================== -->
-        <!-- SECCIÓN CLIENTE (INFO AUTOMÁTICA) -->
+        <!-- SECCIÓN CLIENTE (SOLO LECTURA) -->
         <!-- ==================== -->
         <div class="input-group cliente-section">
           <label class="section-label">
-            👤 Tus Datos
+            Cliente:   
           </label>
-          <div class="cliente-info-card">
-            <div class="cliente-datos">
-              <p><strong>Cliente:</strong> {{ usuario.nombre }} {{ usuario.apellido }}</p>
-              <p><strong>DNI:</strong> {{ usuario.dni || 'Cargando...' }}</p>
-              <p><strong>Teléfono:</strong> {{ usuario.telefono || 'No registrado' }}</p>
-              <p v-if="usuario.turnosCount > 0"><strong>Turnos reservados:</strong> {{ usuario.turnosCount }}</p>
+          <div class="cliente-info-display">
+            <span class="cliente-avatar">{{ turnoData.cliente_nombre?.charAt(0) }}</span>
+            <div class="cliente-info">
+              <span class="cliente-nombre">{{ turnoData.cliente_nombre }} {{ turnoData.cliente_apellido }}</span>
+              <span class="cliente-dni">DNI: {{ turnoData.cliente_dni }}</span>
             </div>
-            <small class="info-pago">Tu información se enviará automáticamente al sistema.</small>
           </div>
         </div>
 
@@ -33,10 +46,10 @@
         <!-- ==================== -->
         <div class="input-group">
           <label class="section-label">
-            👨‍💼 Elegir Peluquero
+            Peluquero:
           </label>
-          <select v-model="form.peluquero" @change="limpiarSelecciones" class="select-modern-rounded">
-            <option value="">Selecciona tu peluquero preferido</option>
+          <select v-model="form.peluquero" @change="limpiarFechaHora" class="select-modern-rounded">
+            <option value="">Seleccione un peluquero</option>
             <option v-for="p in peluqueros" :key="p.id" :value="p.id">
               {{ p.nombre }} {{ p.apellido }}
             </option>
@@ -46,9 +59,9 @@
         <!-- ==================== -->
         <!-- SECCIÓN CATEGORÍAS (HORIZONTAL) -->
         <!-- ==================== -->
-        <div v-if="form.peluquero" class="input-group">
+        <div class="input-group">
           <label class="section-label">
-            📁 Seleccionar Categorías
+            Seleccionar Categorías
           </label>
           <div class="categorias-container-horizontal">
             <div class="categorias-grid-horizontal">
@@ -84,7 +97,7 @@
         <transition name="scale-fade">
           <div v-if="categoriasSeleccionadas.length > 0" class="input-group">
             <label class="section-label">
-              ✂️ Servicios Disponibles
+              Servicios Disponibles
               <span class="selected-categories">({{ categoriasSeleccionadasNombres }})</span>
             </label>
             
@@ -131,73 +144,19 @@
         </transition>
 
         <!-- ==================== -->
-        <!-- RESUMEN COSTOS -->
+        <!-- RESUMEN -->
         <!-- ==================== -->
         <transition name="scale-fade">
           <div v-if="form.servicios_ids.length > 0" class="resumen-pedido">
-            <h3 class="section-label">💰 Resumen de Costos</h3>
             <div class="resumen-grid">
               <div class="resumen-item" v-for="servicioId in form.servicios_ids" :key="servicioId">
                 <span>{{ getServicioNombre(servicioId) }}</span>
                 <span>${{ getServicioPrecio(servicioId) }}</span>
               </div>
               <div class="resumen-item total">
-                <span>Total del servicio</span>
-                <span><strong>${{ calcularTotal() }}</strong></span>
+                <span>Total</span>
+                <span>${{ calcularTotal() }}</span>
               </div>
-            </div>
-          </div>
-        </transition>
-
-        <!-- ==================== -->
-        <!-- OPCIONES DE PAGO -->
-        <!-- ==================== -->
-        <transition name="scale-fade">
-          <div v-if="form.servicios_ids.length > 0" class="input-group">
-            <label class="section-label">
-              💳 Seleccione Opción de Pago
-            </label>
-            
-            <div class="pago-container-horizontal">
-              <div class="pago-options-horizontal">
-                <div 
-                  class="pago-option-horizontal"
-                  :class="{ selected: form.tipo_pago === 'SENA_50' }"
-                  @click="form.tipo_pago = 'SENA_50'"
-                >
-                  <div class="pago-content-horizontal">
-                    <span class="pago-nombre-horizontal">Seña (50%)</span>
-                    <span class="pago-monto-horizontal">${{ calcularSena() }}</span>
-                    <span class="pago-desc-horizontal">Resto: ${{ (calcularTotal() * 0.5).toFixed(2) }} en el local</span>
-                  </div>
-                </div>
-
-                <div 
-                  class="pago-option-horizontal"
-                  :class="{ selected: form.tipo_pago === 'TOTAL' }"
-                  @click="form.tipo_pago = 'TOTAL'"
-                >
-                  <div class="pago-content-horizontal">
-                    <span class="pago-nombre-horizontal">Pago Total (100%)</span>
-                    <span class="pago-monto-horizontal">${{ calcularTotal() }}</span>
-                    <span class="pago-desc-horizontal">Pago completo online</span>
-                  </div>
-                </div>
-              </div>
-
-              <transition name="slide-fade">
-                <div v-if="form.tipo_pago" class="medio-pago-section-horizontal">
-                  <label class="section-label">🔗 Medio de Pago</label>
-                  <div class="medio-pago-options-horizontal">
-                    <div 
-                      class="medio-pago-btn-horizontal active"
-                    >
-                      <span class="medio-icon-horizontal">💳</span>
-                      <span class="medio-text-horizontal">Mercado Pago</span>
-                    </div>
-                  </div>
-                </div>
-              </transition>
             </div>
           </div>
         </transition>
@@ -206,9 +165,9 @@
         <!-- CALENDARIO -->
         <!-- ==================== -->
         <transition name="scale-fade">
-          <div v-if="form.servicios_ids.length > 0 && form.peluquero && form.tipo_pago" class="input-group">
+          <div v-if="form.servicios_ids.length > 0 && form.peluquero" class="input-group">
             <label class="section-label">
-              📅 Seleccionar Fecha
+              Seleccionar Fecha
             </label>
             
             <div class="calendar-container-horizontal">
@@ -242,7 +201,7 @@
         <transition name="scale-fade">
           <div v-if="form.fecha" class="input-group">
             <label class="section-label">
-              ⏰ Seleccionar Horario
+              Seleccionar Horario
             </label>
             
             <div class="time-picker-trigger" @click="abrirModalHora">
@@ -256,76 +215,110 @@
         </transition>
 
         <!-- ==================== -->
-        <!-- RESUMEN FINAL Y PAGO -->
+        <!-- FORMA DE PAGO -->
         <!-- ==================== -->
         <transition name="scale-fade">
-          <div v-if="formularioValido" class="card-modern resumen-final">
-            <h3 class="section-label">✅ Confirmar y Pagar</h3>
-            <div class="resumen-final-detalles">
-              <div class="resumen-grid">
-                <div class="resumen-item">
-                  <span>Fecha:</span>
-                  <span>{{ formatoFechaLegible(form.fecha) }} a las {{ form.hora }}</span>
-                </div>
-                <div class="resumen-item">
-                  <span>Peluquero:</span>
-                  <span>{{ getPeluqueroNombre() }}</span>
-                </div>
-                <div class="resumen-item">
-                  <span>Servicios:</span>
-                  <span>{{ getServiciosNombres() }}</span>
-                </div>
-                <div class="resumen-item total">
-                  <span>Total a pagar ahora:</span>
-                  <span class="monto-final-pago">${{ montoAPagarAhora() }}</span>
-                </div>
+          <div v-if="form.hora" class="input-group">
+            <label class="section-label">
+              <span class="label-icon">💳</span>
+              Forma de Pago
+            </label>
+            
+            <div class="pago-container-horizontal">
+              <div class="pago-options-horizontal">
+                <label class="pago-option-horizontal" :class="{ selected: form.tipo_pago === 'SENA_50' }">
+                  <input type="radio" v-model="form.tipo_pago" value="SENA_50" />
+                  <div class="pago-content-horizontal">
+                    <span class="pago-nombre-horizontal">Seña 50%</span>
+                    <span class="pago-monto-horizontal">${{ calcularSena() }}</span>
+                    <span class="pago-desc-horizontal">Cliente paga seña ahora</span>
+                  </div>
+                </label>
+
+                <label class="pago-option-horizontal" :class="{ selected: form.tipo_pago === 'TOTAL' }">
+                  <input type="radio" v-model="form.tipo_pago" value="TOTAL" />
+                  <div class="pago-content-horizontal">
+                    <span class="pago-nombre-horizontal">Pago Total</span>
+                    <span class="pago-monto-horizontal">${{ calcularTotal() }}</span>
+                    <span class="pago-desc-horizontal">Cliente paga todo ahora</span>
+                  </div>
+                </label>
               </div>
+
+              <transition name="slide-fade">
+                <div v-if="form.tipo_pago" class="medio-pago-section-horizontal">
+                  <label class="section-label">Medio de Pago</label>
+                  <div class="medio-pago-options-horizontal">
+                    <button 
+                      class="medio-pago-btn-horizontal" 
+                      :class="{ active: form.medio_pago === 'EFECTIVO' }"
+                      @click="form.medio_pago = 'EFECTIVO'"
+                    >
+                      <span class="medio-icon-horizontal">💵</span>
+                      <span class="medio-text-horizontal">Efectivo</span>
+                    </button>
+                    <button 
+                      class="medio-pago-btn-horizontal"
+                      :class="{ active: form.medio_pago === 'TARJETA' }"
+                      @click="form.medio_pago = 'TARJETA'"
+                    >
+                      <span class="medio-icon-horizontal">💳</span>
+                      <span class="medio-text-horizontal">Tarjeta</span>
+                    </button>
+                    <button 
+                      class="medio-pago-btn-horizontal"
+                      :class="{ active: form.medio_pago === 'TRANSFERENCIA' }"
+                      @click="form.medio_pago = 'TRANSFERENCIA'"
+                    >
+                      <span class="medio-icon-horizontal">📱</span>
+                      <span class="medio-text-horizontal">Transferencia</span>
+                    </button>
+                  </div>
+                </div>
+              </transition>
             </div>
-            
-            <button
-              @click="reservarTurno" 
-              class="btn-registrar-premium"
-              :disabled="cargando"
-            >
-              <span class="btn-content">
-                {{ cargando ? '🔄 Procesando...' : `💳 Pagar $${montoAPagarAhora()} con Mercado Pago` }}
-              </span>
-            </button>
-            
-            <p class="info-pago-final">
-              Tu turno quedará <strong>confirmado</strong> tras el pago exitoso.
-            </p>
           </div>
         </transition>
+
+        <!-- ==================== -->
+        <!-- BOTÓN ACTUALIZAR -->
+        <!-- ==================== -->
+        <div class="form-actions">
+          <button 
+            @click="$router.back()" 
+            class="btn-cancelar-premium"
+          >
+            <span class="btn-content">
+              <span>❌</span>
+              Cancelar
+            </span>
+          </button>
+
+          <button 
+            @click="modificarTurno" 
+            class="btn-registrar-premium"
+            :disabled="!formularioValido || guardando"
+          >
+            <span class="btn-content">
+              <span>💾</span>
+              {{ guardando ? 'Actualizando...' : textoBoton }}
+            </span>
+          </button>
+        </div>
 
         <!-- ==================== -->
         <!-- MENSAJES -->
         <!-- ==================== -->
         <transition name="bounce">
-          <div v-if="mensajeInteres" class="mensaje-premium" :class="{ error: mensajeInteres.includes('Error') }">
-            <span class="mensaje-icon">{{ mensajeInteres.includes('Error') ? '❌' : '✅' }}</span>
-            <span class="mensaje-text">{{ mensajeInteres }}</span>
-          </div>
-        </transition>
-
-        <transition name="bounce">
-          <div v-if="mensaje" class="mensaje-premium" :class="{ error: mensaje.includes('Error') }">
-            <span class="mensaje-icon">{{ mensaje.includes('Error') ? '❌' : '✅' }}</span>
+          <div v-if="mensaje" class="mensaje-premium" :class="{ error: mensaje.includes('❌') }">
+            <span class="mensaje-icon">{{ mensaje.includes('❌') ? '❌' : '✅' }}</span>
             <span class="mensaje-text">{{ mensaje }}</span>
           </div>
         </transition>
-
-        <!-- Loading overlay -->
-        <div v-if="cargando" class="loading-overlay">
-          <div class="loading-content">
-            <span class="loading-spinner">🔄</span>
-            <p>Iniciando proceso de pago. No cierres esta ventana...</p>
-          </div>
-        </div>
       </div>
     </div>
 
-    <!-- Modal de Hora - IGUAL QUE EL PRESENCIAL -->
+    <!-- Modal de Hora - IDÉNTICO AL DE REGISTRAR -->
     <div v-if="mostrarModalHora" class="modal-overlay" @click="cerrarModalHora">
       <div class="modal-content" @click.stop>
         <div class="modal-header">
@@ -405,532 +398,388 @@
         </div>
       </div>
     </div>
-
-    <!-- Modal de Interés -->
-    <div v-if="mostrarModalInteres" class="modal-overlay">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>🔔 Avisarme si se libera este turno</h3>
-          <button class="modal-close-btn" @click="cancelarRegistroInteres">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="info-interes-card">
-            <div class="info-details">
-              <p><strong>📅 Fecha:</strong> {{ formatoFechaLegible(form.fecha) }}</p>
-              <p><strong>⏰ Horario:</strong> {{ horarioSeleccionadoInteres }}</p>
-              <p><strong>👨‍💼 Peluquero:</strong> {{ getPeluqueroNombre() }}</p>
-              <p><strong>✂️ Servicios:</strong> {{ getServiciosNombres() }}</p>
-            </div>
-            <div class="beneficio-descuento">
-              <span class="icono-descuento">🔥</span>
-              <strong>¡Beneficio exclusivo!</strong> Si se libera, tendrás <strong>15% de descuento</strong> 
-              y 1 hora para confirmar el turno.
-            </div>
-          </div>
-          <div class="modal-actions">
-            <button 
-              @click="confirmarRegistroInteres" 
-              class="btn-confirmar-interes"
-              :disabled="registrandoInteres"
-            >
-              {{ registrandoInteres ? 'Registrando...' : 'Sí, avisarme' }}
-            </button>
-            <button @click="cancelarRegistroInteres" class="btn-cancelar-interes">Cancelar</button>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script>
-import axios from 'axios';
+import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import Swal from 'sweetalert2'
 
 export default {
-  data() {
-    return {
-      form: {
-        peluquero: null, 
-        servicios_ids: [],
-        hora: "",
-        fecha: "",
-        tipo_pago: null,
-        medio_pago: "MERCADO_PAGO",
-        canal: "WEB"
-      },
-      usuario: { 
-        id: null, 
-        nombre: 'Cargando', 
-        apellido: '...', 
-        dni: 'Cargando', 
-        telefono: '',
-        turnosCount: 0 
-      }, 
-      peluqueros: [],
-      servicios: [],
-      categorias: [],
-      turnosOcupados: [],
-      mensaje: "",
-      cargando: false,
-      
-      // Nuevas variables para mejoras
-      categoriasSeleccionadas: [],
-      busquedaServicio: "",
-      interesesRegistrados: [],
-      mostrarModalInteres: false,
-      horarioSeleccionadoInteres: null,
-      registrandoInteres: false,
-      mensajeInteres: "",
-      
-      // Para el modal de hora - IGUAL QUE PRESENCIAL
-      mostrarModalHora: false,
-      horaSeleccionada: "",
-      minutoSeleccionado: "",
-      horasDisponibles: Array.from({length: 13}, (_, i) => i + 8),
-      minutosDisponibles: [0, 15, 30, 45]
-    };
-  },
-  computed: {
-    formularioValido() {
-      return this.form.peluquero && 
-             this.form.servicios_ids.length > 0 &&
-             this.form.fecha && 
-             this.form.hora &&
-             this.form.tipo_pago;
-    },
-    fechasDisponibles() {
-      const dates = [];
-      const today = new Date();
-      
-      for (let i = 0; i < 14; i++) {
-        const date = new Date(today);
-        date.setDate(today.getDate() + i);
-        
-        // Excluir domingos (0)
-        if (date.getDay() !== 0) {
-          dates.push(this.formatDate(date));
-          if (dates.length === 7) break;
-        }
-      }
-      
-      return dates;
-    },
+  setup() {
+    const route = useRoute()
+    const router = useRouter()
+    const turnoId = route.params.id
 
-    serviciosFiltrados() {
-      let filtrados = this.servicios;
-      
-      // Filtrar por categorías seleccionadas
-      if (this.categoriasSeleccionadas.length > 0) {
-        filtrados = filtrados.filter(servicio => {
-          // Obtener el nombre de la categoría seleccionada
-          const categoriaSeleccionada = this.categorias.find(cat => 
-            cat.id === this.categoriasSeleccionadas[0]
-          );
-          
-          // Comparar por nombre de categoría (como viene del API)
-          return servicio.categoria === categoriaSeleccionada.nombre;
-        });
-      }
-      
-      // Filtrar por búsqueda
-      if (this.busquedaServicio) {
-        const termino = this.busquedaServicio.toLowerCase();
-        filtrados = filtrados.filter(s => 
-          s.nombre.toLowerCase().includes(termino)
-        );
-      }
-      
-      return filtrados;
-    },
+    const cargando = ref(true)
+    const guardando = ref(false)
+    const error = ref(null)
+    const turnoData = ref({})
+    const peluqueros = ref([])
+    const servicios = ref([])
+    const serviciosFiltradosPorCategoria = ref([])
+    const categorias = ref([])
+    const turnosOcupados = ref([])
+    const mensaje = ref("")
+    const horariosDisponibles = ref([])
+    const categoriasSeleccionadas = ref([])
+    const busquedaServicio = ref("")
+    const mostrarModalHora = ref(false)
+    const horaSeleccionada = ref("")
+    const minutoSeleccionado = ref("")
+    const horasDisponibles = Array.from({ length: 13 }, (_, i) => i + 8)
+    const minutosDisponibles = [0, 15, 30, 45]
 
-    categoriasSeleccionadasNombres() {
-      return this.categoriasSeleccionadas.map(catId => {
-        const categoria = this.categorias.find(c => c.id === catId);
-        return categoria ? categoria.nombre : '';
-      }).join(', ');
-    },
-    
-    horaValida() {
-      if (!this.horaSeleccionada || !this.minutoSeleccionado) return false;
-      
-      const horaStr = `${this.horaSeleccionada.toString().padStart(2, '0')}:${this.minutoSeleccionado.toString().padStart(2, '0')}`;
-      return this.estaHorarioDisponible(horaStr);
-    },
-    
-    // HORARIOS DISPONIBLES CORREGIDOS - SIN HORARIOS PASADOS
-    horariosDisponibles() {
-      const horariosBase = [];
-      const bloques = [
-        { inicio: 8, fin: 12 },
-        { inicio: 15, fin: 20 }
-      ];
+    const form = ref({
+      canal: 'PRESENCIAL',
+      cliente: null,
+      peluquero: "",
+      servicios_ids: [],
+      tipo_pago: "SENA_50",
+      medio_pago: "EFECTIVO",
+      hora: "",
+      fecha: ""
+    })
 
-      const ahora = new Date();
-      const horaActual = ahora.getHours();
-      const minutoActual = ahora.getMinutes();
-      
-      // Solo si la fecha seleccionada es hoy
-      const esHoy = this.form.fecha === new Date().toISOString().split('T')[0];
+    // =============================
+    //   COMPUTED
+    // =============================
+    const formularioValido = computed(() => {
+    return (
+        form.value.peluquero &&
+        form.value.servicios_ids.length > 0 &&
+        form.value.fecha &&
+        form.value.hora &&
+        form.value.tipo_pago &&
+        form.value.medio_pago
+    );
+    })
 
-      bloques.forEach(b => {
-        for (let h = b.inicio; h < b.fin; h++) {
-          for (let m = 0; m < 60; m += 30) {
-            const horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-            
-            // Verificar si es un horario pasado (solo para hoy)
-            let disponible = this.estaHorarioDisponible(horaStr);
-            
-            if (esHoy && disponible) {
-              if (h < horaActual || (h === horaActual && m < minutoActual)) {
-                disponible = false; // Horario ya pasó
-              }
-            }
-            
-            if (disponible) {
-              horariosBase.push(horaStr);
-            }
-          }
-        }
-      });
-      
-      return horariosBase;
-    }
-  },
-  methods: {
-    async cargarDatosIniciales() {
-      await Promise.all([
-        this.cargarUsuarioLogueado(),
-        this.cargarPeluqueros(),
-        this.cargarServicios(),
-        this.cargarCategorias(),
-        this.cargarTurnosOcupados(),
-        this.cargarInteresesUsuario()
-      ]);
-    },
+    const textoBoton = computed(() => {
+      const monto = form.value.tipo_pago === 'SENA_50' ? calcularSena() : calcularTotal();
+      const medio = getMedioPagoTexto();
 
-    async cargarUsuarioLogueado() {
-      try {
-        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-        const config = token ? { headers: { 'Authorization': `Bearer ${token}` } } : {};
-        
-        const res = await axios.get("http://localhost:8000/usuarios/api/me/", config); 
-        this.usuario = res.data;
-        
-        // Cargar estadísticas de turnos si el usuario está logueado
-        if (this.usuario.id) {
-          try {
-            const statsRes = await axios.get(`http://localhost:8000/usuarios/api/turnos/cliente/${this.usuario.id}/estadisticas/`, config);
-            this.usuario.turnosCount = statsRes.data.total_turnos || 0;
-          } catch (statsErr) {
-            console.log("No se pudieron cargar estadísticas:", statsErr);
-            this.usuario.turnosCount = 0;
-          }
-        }
-      } catch (err) {
-        console.error("Error al cargar usuario logueado:", err);
-        this.usuario = { 
-          nombre: 'Invitado', 
-          apellido: '', 
-          dni: 'No identificado', 
-          telefono: 'No registrado',
-          turnosCount: 0
-        };
-      }
-    },
-    
-    async cargarPeluqueros() {
-      try {
-        const res = await axios.get("http://localhost:8000/usuarios/api/peluqueros/");
-        this.peluqueros = res.data;
-      } catch (err) {
-        console.error("❌ Error al cargar peluqueros:", err.response ? err.response.data : err.message);
-        this.mensaje = "Error al cargar la lista de peluqueros.";
-        this.peluqueros = [];
-      }
-    },
-
-    async cargarServicios() {
-      try {
-        const res = await axios.get("http://localhost:8000/usuarios/api/servicios/");
-        this.servicios = res.data;
-      } catch (err) {
-        console.error("Error al cargar servicios:", err);
-      }
-    },
-
-    async cargarCategorias() {
-      try {
-        const res = await axios.get("http://localhost:8000/usuarios/api/categorias/servicios/");
-        this.categorias = res.data;
-      } catch (err) {
-        console.error("Error al cargar categorías:", err);
-      }
-    },
-
-    async cargarTurnosOcupados() {
-      try {
-        const res = await axios.get("http://localhost:8000/usuarios/api/turnos/?estado__in=RESERVADO,CONFIRMADO");
-        this.turnosOcupados = res.data.results || res.data;
-      } catch (err) {
-        console.error("Error al cargar turnos:", err);
-      }
-    },
-
-    async cargarInteresesUsuario() {
-      try {
-        if (this.usuario.id) {
-          const res = await axios.get(`http://localhost:8000/usuarios/api/intereses-turno/cliente/${this.usuario.id}/`);
-          this.interesesRegistrados = res.data;
-        }
-      } catch (err) {
-        console.error("Error al cargar intereses:", err);
-      }
-    },
-    
-    montoAPagarAhora() {
-      const total = parseFloat(this.calcularTotal());
-      if (this.form.tipo_pago === 'TOTAL') return total.toFixed(2);
-      if (this.form.tipo_pago === 'SENA_50') return (total * 0.5).toFixed(2);
-      return '0.00';
-    },
-
-    toggleCategoria(categoriaId) {
-      const index = this.categoriasSeleccionadas.indexOf(categoriaId);
-      if (index === -1) {
-        this.categoriasSeleccionadas.push(categoriaId);
+      if (form.value.tipo_pago === 'SENA_50') {
+        return `Actualizar - $${monto} (${medio})`;
       } else {
-        this.categoriasSeleccionadas.splice(index, 1);
+        return `Actualizar - $${monto} (${medio})`;
       }
-    },
+    })
 
-    toggleServicio(servicio) {
-      const index = this.form.servicios_ids.indexOf(servicio.id);
-      if (index === -1) this.form.servicios_ids.push(servicio.id);
-      else this.form.servicios_ids.splice(index, 1);
-    },
+    const fechasDisponibles = computed(() => {
+      const dates = []
+      const today = new Date()
 
-    getServicioNombre(id) {
-      const s = this.servicios.find(x => x.id === id);
-      return s ? s.nombre : '';
-    },
+      for (let i = 0; i < 14; i++) {
+        const date = new Date(today)
+        date.setDate(today.getDate() + i)
 
-    getServiciosNombres() {
-      return this.form.servicios_ids.map(id => this.getServicioNombre(id)).join(', ');
-    },
+        if (date.getDay() !== 0) {
+          dates.push(formatDate(date))
+          if (dates.length === 7) break
+        }
+      }
+      return dates
+    })
 
-    getServicioPrecio(id) {
-      const s = this.servicios.find(x => x.id === id);
-      return s ? s.precio : 0;
-    },
+    const serviciosFiltrados = computed(() => {
+      let filtrados = serviciosFiltradosPorCategoria.value
 
-    getCategoriaNombre(categoria) {
-      if (!categoria) return 'General';
-      return categoria;
-    },
+      if (busquedaServicio.value) {
+        const termino = busquedaServicio.value.toLowerCase()
+        filtrados = filtrados.filter(s =>
+          s.nombre.toLowerCase().includes(termino)
+        )
+      }
 
-    calcularTotal() {
-      return this.form.servicios_ids.reduce((total, id) => total + parseFloat(this.getServicioPrecio(id) || 0), 0).toFixed(2);
-    },
+      return filtrados
+    })
 
-    calcularSena() {
-      return (this.calcularTotal() * 0.5).toFixed(2);
-    },
+    const categoriasSeleccionadasNombres = computed(() => {
+      return categoriasSeleccionadas.value.map(catId => {
+        const categoria = categorias.value.find(c => c.id === catId)
+        return categoria ? categoria.nombre : ''
+      }).join(', ')
+    })
 
-    formatDate(date) {
-      const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-      const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-      const today = new Date();
-      
+    const horaValida = computed(() => {
+      if (!horaSeleccionada.value || !minutoSeleccionado.value) return false
+
+      const horaStr = `${horaSeleccionada.value.toString().padStart(2, '0')}:${minutoSeleccionado.value.toString().padStart(2, '0')}`
+      return estaHorarioDisponible(horaStr)
+    })
+
+    // =============================
+    //    MÉTODOS
+    // =============================
+    const formatDate = (date) => {
+      const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+      const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+      const today = new Date()
+
       return {
         dayName: days[date.getDay()],
         dayNum: date.getDate(),
         month: months[date.getMonth()],
-        fullDate: date.toISOString().split('T')[0],
+        fullDate: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
         isToday: date.toDateString() === today.toDateString(),
         dateObj: date
-      };
-    },
-
-    formatoFechaLegible(fechaStr) {
-      const fecha = new Date(fechaStr + 'T00:00:00');
-      return fecha.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-    },
-
-    seleccionarFecha(dateInfo) {
-      this.form.fecha = dateInfo.fullDate;
-      this.form.hora = "";
-    },
-
-    estaHorarioDisponible(horario) {
-      if (!this.form.fecha || !this.form.peluquero) return false;
-      const turnoOcupado = this.turnosOcupados.find(t => 
-        t.fecha === this.form.fecha && 
-        t.hora === horario && 
-        t.peluquero == this.form.peluquero
-      );
-      return !turnoOcupado;
-    },
-
-    estaInteresRegistrado(horario) {
-      return this.interesesRegistrados.some(interes => 
-        interes.fecha_deseada === this.form.fecha &&
-        interes.hora_deseada === horario &&
-        interes.peluquero_id == this.form.peluquero
-      );
-    },
-
-    getPeluqueroNombre() {
-      const p = this.peluqueros.find(p => p.id == this.form.peluquero); 
-      return p ? `${p.nombre} ${p.apellido}` : '';
-    },
-
-    limpiarSelecciones() {
-      this.form.fecha = null;
-      this.form.hora = "";
-      this.form.servicios_ids = [];
-      this.form.tipo_pago = null;
-      this.categoriasSeleccionadas = [];
-    },
-
-    // MÉTODOS PARA EL MODAL DE HORA - IGUAL QUE PRESENCIAL
-    abrirModalHora() {
-      this.mostrarModalHora = true;
-      this.horaSeleccionada = "";
-      this.minutoSeleccionado = "";
-    },
-    
-    cerrarModalHora() {
-      this.mostrarModalHora = false;
-      this.horaSeleccionada = "";
-      this.minutoSeleccionado = "";
-    },
-    
-    confirmarHora() {
-      if (this.horaValida) {
-        this.form.hora = `${this.horaSeleccionada.toString().padStart(2, '0')}:${this.minutoSeleccionado.toString().padStart(2, '0')}`;
-        this.cerrarModalHora();
       }
-    },
+    }
 
-    seleccionarHoraRapida(hora) {
-      if (this.estaHorarioDisponible(hora)) {
-        this.form.hora = hora;
-        this.cerrarModalHora();
+    const getMedioPagoTexto = () => {
+      switch (form.value.medio_pago) {
+        case 'EFECTIVO': return 'Efectivo'
+        case 'TARJETA': return 'Tarjeta'
+        case 'TRANSFERENCIA': return 'Transferencia'
+        default: return 'Efectivo'
       }
-    },
+    }
 
-    // MÉTODOS PARA EL SISTEMA DE INTERESES
-    registrarInteresHorario(horario) {
-      this.horarioSeleccionadoInteres = horario;
-      this.mostrarModalInteres = true;
-      this.mensajeInteres = "";
-    },
+    const toggleCategoria = (categoriaId) => {
+      const index = categoriasSeleccionadas.value.indexOf(categoriaId)
+      if (index === -1) categoriasSeleccionadas.value.push(categoriaId)
+      else categoriasSeleccionadas.value.splice(index, 1)
 
-    cancelarRegistroInteres() {
-      this.mostrarModalInteres = false;
-      this.horarioSeleccionadoInteres = null;
-    },
+      cargarServiciosPorCategorias()
+    }
 
-    async confirmarRegistroInteres() {
-      if (!this.horarioSeleccionadoInteres || !this.form.fecha || !this.form.peluquero || this.form.servicios_ids.length === 0) {
-        this.mensajeInteres = "Error: Faltan datos para registrar el interés";
-        return;
+    const toggleServicio = (servicio) => {
+      const index = form.value.servicios_ids.indexOf(servicio.id)
+      if (index === -1) form.value.servicios_ids.push(servicio.id)
+      else form.value.servicios_ids.splice(index, 1)
+    }
+
+    const getServicioNombre = (servicioId) => {
+      const servicio = servicios.value.find(s => s.id === servicioId)
+      return servicio ? servicio.nombre : ''
+    }
+
+    const getServicioPrecio = (servicioId) => {
+      const servicio = servicios.value.find(s => s.id === servicioId)
+      return servicio ? servicio.precio : 0
+    }
+
+    const getCategoriaNombre = (categoria) => {
+      if (!categoria) return 'General'
+
+      const cat = categorias.value.find(c => c.id === categoria)
+      return cat ? cat.nombre : 'General'
+    }
+
+    const calcularTotal = () => {
+      return form.value.servicios_ids.reduce((total, servicioId) => {
+        return total + parseFloat(getServicioPrecio(servicioId) || 0)
+      }, 0)
+    }
+
+    const calcularSena = () => calcularTotal() * 0.5
+
+    const seleccionarFecha = (dateInfo) => {
+      form.value.fecha = dateInfo.fullDate
+      form.value.hora = ""
+      generarHorarios()
+    }
+
+    const generarHorarios = () => {
+      const horarios = []
+      for (let h = 8; h < 12; h++)
+        for (let m = 0; m < 60; m += 20)
+          horarios.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+
+      for (let h = 15; h < 20; h++)
+        for (let m = 0; m < 60; m += 20)
+          horarios.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+
+      horariosDisponibles.value = horarios
+    }
+
+    const estaHorarioDisponible = (horario) => {
+      if (!form.value.fecha || !form.value.peluquero) return false
+
+      const turnoOcupado = turnosOcupados.value.find(t =>
+        t.fecha_turno === form.value.fecha &&
+        t.hora_turno === horario &&
+        t.peluquero_id == form.value.peluquero &&
+        t.estado !== 'CANCELADO' &&
+        t.id !== parseInt(turnoId)
+      )
+      return !turnoOcupado
+    }
+
+    const seleccionarHora = (hora) => {
+      if (estaHorarioDisponible(hora)) {
+        form.value.hora = hora
       }
+    }
 
-      this.registrandoInteres = true;
-      this.mensajeInteres = "Registrando tu interés...";
+    const abrirModalHora = () => {
+      mostrarModalHora.value = true
+    }
 
+    const cerrarModalHora = () => {
+      mostrarModalHora.value = false
+    }
+
+    const cargarDatosTurno = async () => {
       try {
-        const servicioId = this.form.servicios_ids[0];
+        cargando.value = true
 
-        const payload = {
-          servicio_id: servicioId,
-          peluquero_id: this.form.peluquero,
-          fecha_deseada: this.form.fecha,
-          hora_deseada: this.horarioSeleccionadoInteres
-        };
+        const [turnosRes, peluquerosRes, serviciosRes, categoriasRes] = await Promise.all([
+          fetch('http://localhost:8000/usuarios/api/turnos/'),
+          fetch('http://localhost:8000/usuarios/api/peluqueros/'),
+          fetch('http://localhost:8000/usuarios/api/servicios/'),
+          fetch('http://localhost:8000/usuarios/api/categorias/servicios/')
+        ])
 
-        const res = await axios.post("http://localhost:8000/usuarios/api/intereses-turno/registrar/", payload);
-        
-        if (res.data.status === 'ok') {
-          this.mensajeInteres = "✅ " + res.data.message;
-          this.mostrarModalInteres = false;
-          
-          await this.cargarInteresesUsuario();
-        } else {
-          this.mensajeInteres = "❌ " + res.data.message;
-        }
+        const todosTurnos = await turnosRes.json()
+        peluqueros.value = await peluquerosRes.json()
+        servicios.value = await serviciosRes.json()
+        categorias.value = await categoriasRes.json()
+        turnosOcupados.value = todosTurnos
+
+        const turnoEncontrado = todosTurnos.find(t => t.id === parseInt(turnoId))
+
+        turnoData.value = turnoEncontrado
+
+        // 💇 Peluquero — comparar con acentos normalizados
+        const normalizar = (str) =>
+          str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+
+        const peluqueroEncontrado = peluqueros.value.find(p => {
+          const turnoFull = normalizar(`${turnoEncontrado.peluquero_nombre} ${turnoEncontrado.peluquero_apellido}`)
+          const peluFull = normalizar(`${p.nombre} ${p.apellido}`)
+          return turnoFull === peluFull
+        })
+
+        form.value.peluquero = peluqueroEncontrado ? peluqueroEncontrado.id.toString() : ""
+
+        // 🧴 Servicios
+        form.value.servicios_ids = turnoEncontrado.servicios.map(s => s.id)
+
+        // 🏷 Categorías de los servicios cargados
+        const categoriasDelTurno = new Set()
+        turnoEncontrado.servicios.forEach(servicio => {
+          categoriasDelTurno.add(servicio.categoria_id || servicio.categoria)
+        })
+        categoriasSeleccionadas.value = Array.from(categoriasDelTurno)
+
+        cargarServiciosPorCategorias()
+
+        form.value.fecha = turnoEncontrado.fecha_turno
+        form.value.hora = turnoEncontrado.hora_turno
+
+        form.value.tipo_pago = turnoEncontrado.tipo_pago
+        form.value.medio_pago = turnoEncontrado.medio_pago
+
+        form.value.cliente = turnoEncontrado.cliente_id
+
+        if (form.value.fecha) generarHorarios()
+
       } catch (err) {
-        console.error("Error registrando interés:", err);
-        this.mensajeInteres = "❌ Error al registrar tu interés. Intenta nuevamente.";
+        console.error("Error cargando turno:", err)
       } finally {
-        this.registrandoInteres = false;
+        cargando.value = false
       }
-    },
+    }
 
-    async reservarTurno() {
-      if (!this.formularioValido) {
-        this.mensaje = "Error: Completa todos los campos y selecciona una opción de pago.";
-        return;
+    const cargarServiciosPorCategorias = () => {
+    if (categoriasSeleccionadas.value.length === 0) {
+        serviciosFiltradosPorCategoria.value = [...servicios.value];
+    } else {
+        serviciosFiltradosPorCategoria.value = servicios.value.filter(servicio => {
+        const categoriaNombre = servicio.categoria; // El backend manda STRING
+        const categoriasSeleccionadasNombres = categoriasSeleccionadas.value.map(
+            id => categorias.value.find(c => c.id === id)?.nombre
+        );
+        return categoriasSeleccionadasNombres.includes(categoriaNombre);
+        });
+    }
+    };
+
+
+    const modificarTurno = async () => {
+      if (!formularioValido.value) {
+        mensaje.value = "❌ Completa todos los campos."
+        return
       }
 
-      this.cargando = true;
-      this.mensaje = "Reservando turno y generando link de pago con Mercado Pago...";
+      const totalCalculado = calcularTotal()
+      const montoSeña = form.value.tipo_pago === 'SENA_50'
+        ? totalCalculado * 0.5
+        : totalCalculado
 
       const payload = {
-        peluquero_id: this.form.peluquero, 
-        servicios_ids: this.form.servicios_ids,
-        fecha: this.form.fecha,
-        hora: this.form.hora,
-        canal: 'WEB',
-        tipo_pago: this.form.tipo_pago,
-        medio_pago: this.form.medio_pago
-      };
+        cliente_id: form.value.cliente,
+        peluquero_id: parseInt(form.value.peluquero),
+        servicios_ids: form.value.servicios_ids,
+        fecha_turno: form.value.fecha,
+        hora_turno: form.value.hora,
+        tipo_pago: form.value.tipo_pago,
+        medio_pago: form.value.medio_pago,
+        monto_total: totalCalculado,
+        monto_seña: montoSeña
+      }
 
       try {
-        const res = await axios.post("http://localhost:8000/usuarios/api/turnos/crear/", payload);
-        const data = res.data;
-        this.cargando = false;
-        this.mensaje = "";
+        guardando.value = true
 
-        if (data.status === 'ok' && data.procesar_pago && data.mp_data?.init_point) {
-          this.mensaje = "Turno pre-reservado. Redirigiendo a Mercado Pago...";
-          
-          // Redirigir al listado después de 2 segundos
-          setTimeout(() => {
-            this.$router.push('/mis-turnos'); // Ajusta la ruta según tu configuración
-          }, 2000);
-          
-          this.iniciarPagoMercadoPago(data.mp_data.init_point);
+        const res = await fetch(`http://localhost:8000/usuarios/api/turnos/${turnoId}/modificar/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+
+        const data = await res.json()
+
+        if (res.ok) {
+          await Swal.fire({
+            icon: 'success',
+            title: 'Turno Actualizado',
+            text: 'El turno se actualizó correctamente'
+          })
+          router.push('/turnos')
         } else {
-          this.mensaje = `Error: ${data.message || "Error al reservar el turno."}`;
+          throw new Error(data.message || "Error al actualizar")
         }
+
       } catch (err) {
-        console.error("Error de red/servidor:", err);
-        this.cargando = false;
-        const msg = err.response?.data?.message || err.message || "Error de conexión con el servidor.";
-        this.mensaje = `Error de reserva: ${msg}`;
+        console.error(err)
+      } finally {
+        guardando.value = false
       }
-    },
-
-    iniciarPagoMercadoPago(initPointUrl) {
-      console.log("🔗 Redirigiendo a Mercado Pago:", initPointUrl);
-      if (!initPointUrl || !initPointUrl.includes('mercadopago.com')) {
-        console.error("❌ URL inválida:", initPointUrl);
-        this.mensaje = "Error: Enlace de pago no válido.";
-        return;
-      }
-      window.open(initPointUrl, '_blank');
     }
-  },
 
-  mounted() {
-    this.cargarDatosIniciales();
+    onMounted(() => {
+      cargarDatosTurno()
+    })
+    
+
+    return {
+      cargando, guardando, error, turnoData, form,
+      peluqueros, servicios, serviciosFiltrados, categorias,
+      categoriasSeleccionadas, busquedaServicio,
+      mostrarModalHora, horaSeleccionada, minutoSeleccionado,
+      horasDisponibles, minutosDisponibles,
+      horariosDisponibles, mensaje, formularioValido,
+      textoBoton, fechasDisponibles,
+      categoriasSeleccionadasNombres, horaValida,
+      toggleCategoria, toggleServicio,
+      getServicioNombre, getServicioPrecio,
+      getCategoriaNombre, calcularTotal, calcularSena,
+      seleccionarFecha, estaHorarioDisponible,
+      seleccionarHora, seleccionarHoraRapida: seleccionarHora,
+      abrirModalHora, cerrarModalHora,
+      modificarTurno
+    }
   }
-};
+}
 </script>
 
 <style scoped>
+/* ESTILOS EXACTAMENTE IGUALES AL REGISTRAR TURNO */
+
 /* CORRECCIÓN: Campo cliente ligeramente a la derecha */
 .cliente-section {
   margin-left: 10px;
@@ -1983,8 +1832,72 @@ export default {
   font-weight: 700;
 }
 
+/* Estilos específicos para ModificarTurno */
+.cliente-info-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 2px solid #e9ecef;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 40px;
+  color: #6c757d;
+}
+
+.error-state {
+  text-align: center;
+  padding: 40px;
+  color: #dc3545;
+}
+
+.error-icon {
+  font-size: 3em;
+  margin-bottom: 15px;
+}
+
+.btn-volver {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-top: 15px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 15px;
+  margin-top: 25px;
+}
+
+.btn-cancelar-premium {
+  flex: 1;
+  background: #6c757d;
+  color: white;
+  font-size: 1.1em;
+  padding: 18px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(108, 117, 125, 0.3);
+}
+
+.btn-cancelar-premium:hover {
+  background: #5a6268;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(108, 117, 125, 0.4);
+}
+
 .btn-registrar-premium {
-  width: 100%;
+  flex: 2;
   background: linear-gradient(135deg, #007bff, #0056b3);
   color: white;
   font-size: 1.1em;
@@ -1993,7 +1906,6 @@ export default {
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
-  margin-top: 25px;
   font-weight: 600;
   box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
 }
@@ -2076,266 +1988,6 @@ export default {
   100% { transform: scale(1); }
 }
 
-/* NUEVOS ESTILOS ESPECÍFICOS PARA TURNO WEB */
-.cliente-info-card {
-  background: #f8f9fa;
-  border-radius: 12px;
-  padding: 20px;
-  border: 2px solid #e9ecef;
-}
-
-.cliente-datos p {
-  margin: 8px 0;
-  color: #1a1a1a;
-}
-
-.info-pago-final {
-  margin-top: 15px;
-  text-align: center;
-  color: #6c757d;
-  font-size: 0.9em;
-}
-
-.resumen-final {
-  background: linear-gradient(135deg, #f8fff9, #f0f9ff);
-  border-color: #28a745;
-}
-
-.resumen-final-detalles {
-  margin-bottom: 20px;
-}
-
-.monto-final-pago {
-  color: #28a745;
-  font-weight: 800;
-  font-size: 1.3em;
-}
-
-/* Estilos para horarios mejorados */
-.horarios-grid-mejorado {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-  margin-top: 15px;
-}
-
-.horario-item-mejorado {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.horario-btn-mejorado {
-  width: 100%;
-  padding: 15px;
-  border: 2px solid #e9ecef;
-  border-radius: 12px;
-  background: #fff;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  font-weight: 600;
-}
-
-.horario-btn-mejorado.disponible {
-  border-color: #28a745;
-  color: #155724;
-}
-
-.horario-btn-mejorado.disponible:hover {
-  background: #d4edda;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.2);
-}
-
-.horario-btn-mejorado.disponible.selected {
-  background: #28a745;
-  color: white;
-  border-color: #1e7e34;
-}
-
-.horario-btn-mejorado.ocupado {
-  background: #f8f9fa;
-  border-color: #dc3545;
-  color: #721c24;
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.hora-text-mejorado {
-  font-size: 1.1em;
-  font-weight: 700;
-}
-
-.estado-text-mejorado {
-  font-size: 0.85em;
-  opacity: 0.8;
-}
-
-.horario-ocupado-container-mejorado {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.btn-aviso-liberacion-mejorado {
-  padding: 10px;
-  background: linear-gradient(135deg, #ffd700, #ffa500);
-  border: none;
-  border-radius: 8px;
-  color: #8b4513;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-size: 0.9em;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.btn-aviso-liberacion-mejorado:hover:not(:disabled) {
-  background: linear-gradient(135deg, #ffa500, #ff8c00);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 165, 0, 0.3);
-}
-
-.btn-aviso-liberacion-mejorado:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.interes-registrado-mejorado {
-  padding: 10px;
-  background: #d4edda;
-  border: 1px solid #c3e6cb;
-  border-radius: 8px;
-  color: #155724;
-  font-size: 0.9em;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-weight: 600;
-}
-
-.icono-aviso-mejorado, .icono-check-mejorado {
-  font-size: 1.1em;
-}
-
-/* Estilos para el modal de interés */
-.info-interes-card {
-  margin-bottom: 25px;
-}
-
-.info-details {
-  padding: 20px;
-  background: #f8f9fa;
-  border-radius: 12px;
-  margin-bottom: 20px;
-}
-
-.info-details p {
-  margin: 8px 0;
-  color: #1a1a1a;
-}
-
-.beneficio-descuento {
-  padding: 15px;
-  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
-  border-radius: 12px;
-  text-align: center;
-  border: 2px solid #ffd700;
-  font-weight: 600;
-}
-
-.icono-descuento {
-  font-size: 1.2em;
-  margin-right: 5px;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-}
-
-.btn-confirmar-interes {
-  padding: 15px 25px;
-  background: linear-gradient(135deg, #28a745, #20c997);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-size: 1.1em;
-  flex: 1;
-}
-
-.btn-confirmar-interes:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(40, 167, 69, 0.3);
-}
-
-.btn-confirmar-interes:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-cancelar-interes {
-  padding: 15px 25px;
-  background: #6c757d;
-  color: white;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-size: 1.1em;
-  flex: 1;
-}
-
-.btn-cancelar-interes:hover {
-  background: #5a6268;
-  transform: translateY(-2px);
-}
-
-.loading-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10000;
-}
-
-.loading-content {
-  background: white;
-  padding: 30px;
-  border-radius: 16px;
-  text-align: center;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-}
-
-.loading-spinner {
-  font-size: 2em;
-  display: block;
-  margin-bottom: 15px;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
 @media (max-width: 768px) {
   .pedido-container {
     padding: 15px;
@@ -2392,11 +2044,7 @@ export default {
     margin-left: 0;
   }
   
-  .horarios-grid-mejorado {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .modal-actions {
+  .form-actions {
     flex-direction: column;
   }
 }

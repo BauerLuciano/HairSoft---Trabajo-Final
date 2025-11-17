@@ -14,6 +14,7 @@ import './styles/base.css';
 import './styles/formularios.css';
 import './styles/login.css';
 import './styles/modos.css';
+import './styles/themes.css';
 
 // 🛑 2. Configuración Global de Axios
 // Esto le dice a Axios que incluya las cookies (incluida la cookie de sesión de Django)

@@ -66,135 +66,91 @@
       </div>
     </div>
 
-    <!-- Filtros de Productos -->
-    <div v-if="pedido.proveedor" class="card-modern">
+    <!-- Productos del Proveedor -->
+    <div v-if="pedido.proveedor && productosDelProveedor.length > 0" class="card-modern">
       <div class="card-header">
         <div class="card-icon">
           <ClipboardList :size="20" />
         </div>
-        <h3>Selección de Productos</h3>
+        <h3>Productos del Proveedor</h3>
+        <span class="badge-count">{{ productosDelProveedor.length }}</span>
       </div>
 
-      <!-- Filtro por Categorías -->
-      <div class="filtros-section">
-        <h4>
-          <Tag :size="18" />
-          Filtrar por Categorías
-        </h4>
-        <div class="categorias-grid">
-          <div 
-            v-for="categoria in categoriasDelProveedor" 
-            :key="categoria.id"
-            class="categoria-item"
-            :class="{ 'selected': categoriasSeleccionadas.includes(categoria.id) }"
-            @click="toggleCategoria(categoria.id)"
-          >
-            <div class="categoria-checkbox">
-              <div class="checkmark" :class="{ 'checked': categoriasSeleccionadas.includes(categoria.id) }">
-                <Check v-if="categoriasSeleccionadas.includes(categoria.id)" :size="14" />
-              </div>
+      <!-- Búsqueda -->
+      <div class="search-header">
+        <div class="search-box">
+          <Search class="search-icon" :size="18" />
+          <input
+            v-model="busquedaProducto"
+            type="text"
+            placeholder="Buscar producto por nombre o código..."
+            class="input-modern"
+          />
+        </div>
+        <div class="productos-stats">
+          <span class="stats-badge">
+            <Boxes :size="14" />
+            {{ productosFiltrados.length }} productos
+          </span>
+        </div>
+      </div>
+
+      <!-- Lista de Productos -->
+      <div v-if="productosFiltrados.length > 0" class="productos-grid">
+        <div 
+          v-for="producto in productosFiltrados" 
+          :key="producto.id"
+          class="producto-item"
+          :class="{ 'selected': productosSeleccionados.includes(producto.id) }"
+          @click="toggleSeleccionProducto(producto.id)"
+        >
+          <div class="producto-seleccion">
+            <div class="producto-checkbox" :class="{ 'checked': productosSeleccionados.includes(producto.id) }">
+              <Check v-if="productosSeleccionados.includes(producto.id)" :size="14" />
             </div>
-            <div class="categoria-info">
-              <span class="categoria-nombre">{{ categoria.nombre }}</span>
-              <span class="productos-count">
-                <Package2 :size="12" />
-                {{ contarProductosPorCategoria(categoria.id) }} productos
+          </div>
+          
+          <div class="producto-info">
+            <div class="producto-header">
+              <span class="producto-nombre">{{ producto.nombre }}</span>
+              <span class="producto-precio">
+                {{ formatPrecio(producto.precio_sugerido) }}
+              </span>
+            </div>
+            <div class="producto-details">
+              <span class="producto-codigo">
+                <Hash :size="12" />
+                {{ producto.codigo || 'SIN-CODIGO' }}
+              </span>
+              <span class="producto-stock" :class="getStockClass(producto.stock_actual)">
+                <Warehouse :size="12" />
+                Stock: {{ producto.stock_actual || 0 }}
               </span>
             </div>
           </div>
         </div>
-
-        <div class="filtro-actions">
-          <button @click="seleccionarTodasCategorias" class="btn-outline">
-            <CheckSquare :size="16" />
-            Seleccionar Todas
-          </button>
-          <button @click="deseleccionarTodasCategorias" class="btn-outline">
-            <RotateCcw :size="16" />
-            Limpiar
-          </button>
-        </div>
       </div>
 
-      <!-- Búsqueda y Productos -->
-      <div v-if="categoriasSeleccionadas.length > 0" class="productos-section">
-        <div class="search-header">
-          <div class="search-box">
-            <Search class="search-icon" :size="18" />
-            <input
-              v-model="busquedaProducto"
-              type="text"
-              placeholder="Buscar producto por nombre o código..."
-              class="input-modern"
-            />
-          </div>
-          <div class="productos-stats">
-            <span class="stats-badge">
-              <Boxes :size="14" />
-              {{ productosFiltrados.length }} productos
-            </span>
-          </div>
-        </div>
-
-        <!-- Lista de Productos -->
-        <div v-if="productosFiltrados.length > 0" class="productos-grid">
-          <div 
-            v-for="producto in productosFiltrados" 
-            :key="producto.id"
-            class="producto-item"
-            :class="{ 'selected': productosSeleccionados.includes(producto.id) }"
-            @click="toggleSeleccionProducto(producto.id)"
-          >
-            <div class="producto-seleccion">
-              <div class="producto-checkbox" :class="{ 'checked': productosSeleccionados.includes(producto.id) }">
-                <Check v-if="productosSeleccionados.includes(producto.id)" :size="14" />
-              </div>
-            </div>
-            
-            <div class="producto-info">
-              <div class="producto-header">
-                <span class="producto-nombre">{{ producto.nombre }}</span>
-                <span class="producto-precio">
-                  <DollarSign :size="16" />
-                  {{ producto.precio }}
-                </span>
-              </div>
-              <div class="producto-details">
-                <span class="producto-codigo">
-                  <Hash :size="12" />
-                  {{ producto.codigo || 'SIN-CODIGO' }}
-                </span>
-                <span class="producto-stock" :class="getStockClass(getProductStock(producto))">
-                  <Warehouse :size="12" />
-                  Stock: {{ getProductStock(producto) }}
-                </span>
-                <span class="producto-categoria">
-                  <FolderOpen :size="12" />
-                  {{ obtenerNombreCategoria(producto.categoria_id) }}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div v-else class="no-resultados">
-          <SearchX class="no-resultados-icon" :size="48" />
-          <p>No se encontraron productos</p>
-          <small>Intenta con otros términos de búsqueda</small>
-        </div>
-
-        <!-- Botón Agregar Seleccionados -->
-        <div v-if="productosSeleccionados.length > 0" class="agregar-section">
-          <button @click="agregarProductosSeleccionados" class="btn-agregar-masivo">
-            <ShoppingCart :size="18" />
-            Agregar {{ productosSeleccionados.length }} Productos al Pedido
-          </button>
-        </div>
+      <div v-else class="no-resultados">
+        <SearchX class="no-resultados-icon" :size="48" />
+        <p>No se encontraron productos</p>
+        <small>Intenta con otros términos de búsqueda</small>
       </div>
 
-      <div v-else-if="categoriasDelProveedor.length > 0" class="seleccion-categoria">
-        <FolderSearch class="seleccion-icon" :size="48" />
-        <p>Selecciona al menos una categoría para ver los productos</p>
+      <!-- Botón Agregar Seleccionados -->
+      <div v-if="productosSeleccionados.length > 0" class="agregar-section">
+        <button @click="agregarProductosSeleccionados" class="btn-agregar-masivo">
+          <ShoppingCart :size="18" />
+          Agregar {{ productosSeleccionados.length }} Productos al Pedido
+        </button>
+      </div>
+    </div>
+
+    <div v-else-if="pedido.proveedor" class="card-modern">
+      <div class="no-productos">
+        <PackageX class="no-productos-icon" :size="48" />
+        <p>Este proveedor no tiene productos disponibles</p>
+        <small>Contacta al proveedor para agregar productos a su lista</small>
       </div>
     </div>
 
@@ -217,9 +173,8 @@
           <div class="detalle-info">
             <div class="detalle-header">
               <span class="detalle-nombre">{{ detalle.producto_nombre }}</span>
-              <span class="detalle-categoria">
-                <Tag :size="12" />
-                {{ obtenerNombreCategoria(detalle.producto_categoria_id) }}
+              <span class="detalle-precio">
+                {{ formatPrecio(detalle.precio_unitario) }} c/u
               </span>
             </div>
             <div class="detalle-details">
@@ -249,27 +204,12 @@
               />
             </div>
             
-            <div class="control-group">
-              <label>
-                <CreditCard :size="14" />
-                Precio Unit.
-              </label>
-              <input
-                v-model.number="detalle.precio_unitario"
-                type="number"
-                step="0.01"
-                min="0"
-                class="input-precio"
-                @change="actualizarSubtotal(detalle)"
-              />
-            </div>
-            
             <div class="detalle-subtotal">
               <span class="subtotal-label">
                 <Calculator :size="14" />
                 Subtotal
               </span>
-              <span class="subtotal-value">${{ detalle.subtotal }}</span>
+              <span class="subtotal-value">{{ formatPrecio(detalle.subtotal) }}</span>
             </div>
             
             <button 
@@ -298,7 +238,7 @@
               <Wallet :size="18" />
               Total del Pedido:
             </span>
-            <strong>${{ totalPedido }}</strong>
+            <strong>{{ formatPrecio(totalPedido) }}</strong>
           </div>
         </div>
       </div>
@@ -336,7 +276,7 @@
     >
       <span v-if="!cargando" class="btn-content">
         <CheckCircle2 :size="20" />
-        Registrar Pedido - ${{ totalPedido }}
+        Registrar Pedido - {{ formatPrecio(totalPedido) }}
       </span>
       <span v-else class="btn-content">
         <Loader2 :size="20" class="btn-spinner" />
@@ -353,11 +293,11 @@ import axios from 'axios'
 import Swal from 'sweetalert2'
 import { 
   Package, ArrowLeft, Building2, User, Phone, Mail, 
-  ClipboardList, Tag, Check, CheckSquare, RotateCcw,
-  Search, Boxes, DollarSign, Hash, Warehouse, FolderOpen,
-  SearchX, FolderSearch, ShoppingCart, ShoppingBag,
-  Barcode, Layers, CreditCard, Calculator, Trash2,
-  Package2, Wallet, FileText, AlignLeft, CheckCircle2, Loader2
+  ClipboardList, Search, Boxes, Hash, Warehouse,
+  SearchX, ShoppingCart, ShoppingBag, Check,
+  Barcode, Layers, Trash2,
+  Package2, Wallet, FileText, AlignLeft, CheckCircle2, Loader2,
+  PackageX
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -371,12 +311,10 @@ const pedido = ref({
 })
 
 const proveedores = ref([])
-const productos = ref([])
-const categorias = ref([])
+const productosDelProveedor = ref([])
 const cargando = ref(false)
 const cargandoProveedores = ref(false)
 const busquedaProducto = ref('')
-const categoriasSeleccionadas = ref([])
 const productosSeleccionados = ref([])
 
 // Computed
@@ -388,143 +326,112 @@ const proveedorSeleccionado = computed(() => {
   return proveedores.value.find(p => p.id === pedido.value.proveedor)
 })
 
-const categoriasDelProveedor = computed(() => {
+const productosFiltrados = computed(() => {
   if (!pedido.value.proveedor) return []
   
-  const proveedorId = parseInt(pedido.value.proveedor)
-  const categoriasUnicas = {}
-  
-  productos.value
-    .filter(producto => producto.proveedores && producto.proveedores.includes(proveedorId))
-    .forEach(producto => {
-      if (producto.categoria_id && !categoriasUnicas[producto.categoria_id]) {
-        const categoria = categorias.value.find(c => c.id === producto.categoria_id)
-        if (categoria) {
-          categoriasUnicas[producto.categoria_id] = categoria
-        }
-      }
-    })
-  
-  return Object.values(categoriasUnicas).sort((a, b) => a.nombre.localeCompare(b.nombre))
-})
-
-const productosFiltrados = computed(() => {
-  if (!pedido.value.proveedor || categoriasSeleccionadas.value.length === 0) return []
-  
   const busqueda = busquedaProducto.value.toLowerCase()
-  const proveedorId = parseInt(pedido.value.proveedor)
   
-  return productos.value.filter(producto => {
-    const coincideProveedor = producto.proveedores && producto.proveedores.includes(proveedorId)
-    const coincideCategoria = categoriasSeleccionadas.value.includes(producto.categoria_id)
+  return productosDelProveedor.value.filter(producto => {
     const coincideBusqueda = !busqueda || 
       producto.nombre.toLowerCase().includes(busqueda) || 
       (producto.codigo && producto.codigo.toLowerCase().includes(busqueda))
     
-    return coincideProveedor && coincideCategoria && coincideBusqueda &&
-           !pedido.value.detalles.some(d => d.producto === producto.id)
+    return coincideBusqueda && !pedido.value.detalles.some(d => d.producto === producto.id)
   })
 })
 
+// 🔧 CORRECCIÓN DEL TOTAL - Asegurar que se sumen números, no strings
 const totalPedido = computed(() => {
-  return pedido.value.detalles.reduce((total, detalle) => total + detalle.subtotal, 0)
+  return pedido.value.detalles.reduce((total, detalle) => {
+    const subtotal = Number(detalle.subtotal) || 0
+    return total + subtotal
+  }, 0)
 })
 
 const puedeRegistrar = computed(() => {
   return pedido.value.proveedor && 
          pedido.value.detalles.length > 0 && 
-         pedido.value.detalles.every(d => d.cantidad > 0 && d.precio_unitario > 0)
+         pedido.value.detalles.every(d => d.cantidad > 0)
 })
 
 // Métodos
 const cargarDatosIniciales = async () => {
   try {
     cargandoProveedores.value = true
-    const response = await axios.get(`${API_BASE}/usuarios/api/pedidos/datos-crear/`)
-    proveedores.value = response.data.proveedores
-    productos.value = response.data.productos
-    categorias.value = response.data.categorias || []
-    
-    // Debug para verificar estructura de productos
-    console.log('Estructura completa de productos:', productos.value)
-    if (productos.value.length > 0) {
-      console.log('Primer producto:', productos.value[0])
-      console.log('Campos disponibles:', Object.keys(productos.value[0]))
-    }
+    const response = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
+    proveedores.value = response.data.filter(p => p.estado === 'ACTIVO')
     
   } catch (error) {
     console.error('Error cargando datos:', error)
-    Swal.fire('Error', 'No se pudieron cargar los datos del formulario', 'error')
+    Swal.fire('Error', 'No se pudieron cargar los proveedores', 'error')
   } finally {
     cargandoProveedores.value = false
   }
 }
 
-// ✅ FUNCIÓN: Maneja consistentemente el stock
-const getProductStock = (producto) => {
-  // Intenta con stock_actual, luego con stock, luego default 0
-  if (producto.stock_actual !== undefined && producto.stock_actual !== null) {
-    return producto.stock_actual
-  } else if (producto.stock !== undefined && producto.stock !== null) {
-    return producto.stock
-  }
-  return 0
+// ✅ CORREGIDO: Función para formatear precios
+const formatPrecio = (precio) => {
+  const numero = parseFloat(precio) || 0
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(numero)
 }
 
-const onProveedorChange = () => {
-  categoriasSeleccionadas.value = []
-  productosSeleccionados.value = []
-  busquedaProducto.value = ''
-  
-  if (pedido.value.detalles.length > 0) {
-    Swal.fire({
-      title: '¿Cambiar proveedor?',
-      text: 'Se eliminarán los productos agregados al pedido',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Sí, cambiar',
-      cancelButtonText: 'Cancelar'
-    }).then((result) => {
-      if (result.isConfirmed) {
-        pedido.value.detalles = []
-      } else {
-        pedido.value.proveedor = ''
+const cargarProductosDelProveedor = async (proveedorId) => {
+  try {
+    const responseListas = await axios.get(`${API_BASE}/usuarios/api/listas-precios/por-proveedor/?proveedor_id=${proveedorId}`)
+    const listasPrecios = responseListas.data
+    
+    const responseProductos = await axios.get(`${API_BASE}/usuarios/api/productos/`)
+    const todosProductos = responseProductos.data
+    
+    productosDelProveedor.value = listasPrecios.map(lista => {
+      const producto = todosProductos.find(p => p.id === lista.producto)
+      return {
+        id: producto.id,
+        nombre: producto.nombre,
+        codigo: producto.codigo,
+        stock_actual: producto.stock_actual || producto.stock || 0,
+        precio_sugerido: lista.precio_sugerido_venta
       }
     })
+    
+  } catch (error) {
+    console.error('Error cargando productos del proveedor:', error)
+    productosDelProveedor.value = []
+    Swal.fire('Error', 'No se pudieron cargar los productos del proveedor', 'error')
   }
 }
 
-const toggleCategoria = (categoriaId) => {
-  const index = categoriasSeleccionadas.value.indexOf(categoriaId)
-  if (index > -1) {
-    categoriasSeleccionadas.value.splice(index, 1)
-  } else {
-    categoriasSeleccionadas.value.push(categoriaId)
-  }
+const onProveedorChange = async () => {
   productosSeleccionados.value = []
-}
-
-const contarProductosPorCategoria = (categoriaId) => {
-  if (!pedido.value.proveedor) return 0
-  const proveedorId = parseInt(pedido.value.proveedor)
-  return productos.value.filter(producto => 
-    producto.proveedores && 
-    producto.proveedores.includes(proveedorId) &&
-    producto.categoria_id === categoriaId
-  ).length
-}
-
-const obtenerNombreCategoria = (categoriaId) => {
-  const categoria = categorias.value.find(c => c.id === categoriaId)
-  return categoria ? categoria.nombre : 'Sin categoría'
-}
-
-const seleccionarTodasCategorias = () => {
-  categoriasSeleccionadas.value = categoriasDelProveedor.value.map(c => c.id)
-}
-
-const deseleccionarTodasCategorias = () => {
-  categoriasSeleccionadas.value = []
+  busquedaProducto.value = ''
+  productosDelProveedor.value = []
+  
+  if (pedido.value.proveedor) {
+    await cargarProductosDelProveedor(pedido.value.proveedor)
+    
+    if (pedido.value.detalles.length > 0) {
+      Swal.fire({
+        title: '¿Cambiar proveedor?',
+        text: 'Se eliminarán los productos agregados al pedido',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, cambiar',
+        cancelButtonText: 'Cancelar'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          pedido.value.detalles = []
+        } else {
+          pedido.value.proveedor = ''
+          productosDelProveedor.value = []
+        }
+      })
+    }
+  }
 }
 
 const getStockClass = (stock) => {
@@ -546,17 +453,16 @@ const toggleSeleccionProducto = (productoId) => {
 
 const agregarProductosSeleccionados = () => {
   productosSeleccionados.value.forEach(productoId => {
-    const producto = productos.value.find(p => p.id === productoId)
+    const producto = productosDelProveedor.value.find(p => p.id === productoId)
     if (producto) {
       pedido.value.detalles.push({
         producto: producto.id,
         producto_nombre: producto.nombre,
         producto_codigo: producto.codigo,
-        producto_stock_actual: getProductStock(producto),
-        producto_categoria_id: producto.categoria_id,
+        producto_stock_actual: producto.stock_actual,
+        precio_unitario: producto.precio_sugerido,
         cantidad: 1,
-        precio_unitario: producto.precio,
-        subtotal: producto.precio
+        subtotal: producto.precio_sugerido // Inicializar subtotal
       })
     }
   })
@@ -583,8 +489,11 @@ const eliminarProducto = (index) => {
   })
 }
 
+// 🔧 CORRECCIÓN: Asegurar que se usen números para el cálculo
 const actualizarSubtotal = (detalle) => {
-  detalle.subtotal = detalle.cantidad * detalle.precio_unitario
+  const cantidad = Number(detalle.cantidad) || 0
+  const precio = Number(detalle.precio_unitario) || 0
+  detalle.subtotal = cantidad * precio
 }
 
 const registrarPedido = async () => {
@@ -597,7 +506,7 @@ const registrarPedido = async () => {
       detalles: pedido.value.detalles.map(detalle => ({
         producto: detalle.producto,
         cantidad: detalle.cantidad,
-        precio_unitario: detalle.precio_unitario
+        precio_unitario: detalle.precio_unitario || 0
       }))
     }
 
@@ -639,7 +548,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Estilos base mejorados */
 .pedido-container {
   max-width: 1000px;
   margin: 0 auto;
@@ -802,115 +710,6 @@ onMounted(() => {
   padding-left: 22px;
 }
 
-/* Filtros */
-.filtros-section h4 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #1a1a1a;
-  margin-bottom: 15px;
-}
-
-/* Categorías */
-.categorias-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.categoria-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 15px;
-  border: 2px solid #e9ecef;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  background: #fff;
-}
-
-.categoria-item:hover {
-  border-color: #007bff;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
-}
-
-.categoria-item.selected {
-  border-color: #007bff;
-  background: #e7f3ff;
-}
-
-.categoria-checkbox {
-  flex-shrink: 0;
-}
-
-.checkmark {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #dee2e6;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-  color: transparent;
-}
-
-.checkmark.checked {
-  background: #007bff;
-  border-color: #007bff;
-  color: white;
-}
-
-.categoria-info {
-  flex: 1;
-}
-
-.categoria-nombre {
-  font-weight: 600;
-  color: #1a1a1a;
-  display: block;
-  margin-bottom: 4px;
-}
-
-.productos-count {
-  font-size: 0.8em;
-  color: #6c757d;
-  background: #f8f9fa;
-  padding: 3px 8px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.filtro-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.btn-outline {
-  background: transparent;
-  border: 2px solid #007bff;
-  color: #007bff;
-  padding: 8px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.btn-outline:hover {
-  background: #007bff;
-  color: white;
-  transform: translateY(-1px);
-}
-
 /* Búsqueda */
 .search-header {
   display: flex;
@@ -1022,9 +821,6 @@ onMounted(() => {
   font-weight: 700;
   font-size: 1.1em;
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 2px;
 }
 
 .producto-details {
@@ -1034,7 +830,7 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
-.producto-codigo, .producto-stock, .producto-categoria {
+.producto-codigo, .producto-stock {
   font-size: 0.85em;
   padding: 4px 8px;
   border-radius: 6px;
@@ -1048,12 +844,6 @@ onMounted(() => {
   background: #f8f9fa;
   color: #6c757d;
   border: 1px solid #e9ecef;
-}
-
-.producto-categoria {
-  background: #e7f3ff;
-  color: #0056b3;
-  border: 1px solid #b3d9ff;
 }
 
 .stock-critico {
@@ -1146,17 +936,10 @@ onMounted(() => {
   font-size: 1.1em;
 }
 
-.detalle-categoria {
-  background: #e7f3ff;
-  color: #0056b3;
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 0.8em;
-  font-weight: 500;
-  border: 1px solid #b3d9ff;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.detalle-precio {
+  color: #495057;
+  font-weight: 600;
+  font-size: 0.95em;
 }
 
 .detalle-details {
@@ -1195,7 +978,7 @@ onMounted(() => {
   gap: 4px;
 }
 
-.input-cantidad, .input-precio {
+.input-cantidad {
   width: 80px;
   text-align: center;
   padding: 8px;
@@ -1206,7 +989,7 @@ onMounted(() => {
   color: #1a1a1a;
 }
 
-.input-cantidad:focus, .input-precio:focus {
+.input-cantidad:focus {
   border-color: #007bff;
   outline: none;
 }
@@ -1324,25 +1107,25 @@ onMounted(() => {
 }
 
 /* Estados vacíos */
-.no-resultados, .seleccion-categoria {
+.no-resultados, .no-productos {
   text-align: center;
   padding: 40px 20px;
   color: #6c757d;
 }
 
-.no-resultados-icon, .seleccion-icon {
+.no-resultados-icon, .no-productos-icon {
   margin-bottom: 15px;
   opacity: 0.5;
   color: #6c757d;
 }
 
-.no-resultados p, .seleccion-categoria p {
+.no-resultados p, .no-productos p {
   margin: 0 0 8px 0;
   font-size: 1.1em;
   color: #1a1a1a;
 }
 
-.no-resultados small, .seleccion-categoria small {
+.no-resultados small, .no-productos small {
   font-size: 0.9em;
   color: #6c757d;
 }
@@ -1421,10 +1204,6 @@ onMounted(() => {
   .detalle-controls {
     justify-content: space-between;
     flex-wrap: wrap;
-  }
-  
-  .categorias-grid {
-    grid-template-columns: 1fr;
   }
   
   .info-grid {

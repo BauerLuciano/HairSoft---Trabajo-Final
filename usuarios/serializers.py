@@ -375,9 +375,17 @@ class DetallePedidoSerializer(serializers.ModelSerializer):
     class Meta:
         model = DetallePedido
         fields = [
-            'id', 'producto', 'producto_nombre', 'producto_codigo', 
-            'producto_stock_actual', 'cantidad', 'cantidad_recibida',
-            'precio_unitario', 'subtotal', 'porcentaje_recibido'
+            'id',
+            'producto',
+            'producto_nombre',
+            'producto_codigo',
+            'producto_stock_actual',
+            'cantidad',
+            'cantidad_recibida',
+            'precio_propuesto',      
+            'precio_unitario',       
+            'subtotal',
+            'porcentaje_recibido'
         ]
         read_only_fields = ['subtotal']
 
@@ -385,31 +393,51 @@ class DetallePedidoSerializer(serializers.ModelSerializer):
         return obj.porcentaje_recibido()
 
 
+
 class PedidoSerializer(serializers.ModelSerializer):
     proveedor_nombre = serializers.CharField(source='proveedor.nombre', read_only=True)
     proveedor_contacto = serializers.CharField(source='proveedor.contacto', read_only=True)
     usuario_creador_nombre = serializers.CharField(source='usuario_creador.nombre', read_only=True)
     detalles = DetallePedidoSerializer(many=True, required=False)
-    
+
     # Campos calculados
     total_calculado = serializers.SerializerMethodField()
     puede_cancelar = serializers.SerializerMethodField()
-    puede_recibir = serializers.SerializerMethodField()
+    puede_completar = serializers.SerializerMethodField()  # ✅ CAMBIÉ EL NOMBRE
     cantidad_productos = serializers.SerializerMethodField()
+    tiene_precios_pendientes = serializers.SerializerMethodField()
 
     class Meta:
         model = Pedido
         fields = [
-            'id', 'proveedor', 'proveedor_nombre', 'proveedor_contacto',
-            'fecha_pedido', 'fecha_esperada_recepcion', 'fecha_recepcion',
-            'estado', 'observaciones', 'total', 'usuario_creador',
-            'usuario_creador_nombre', 'fecha_creacion', 'fecha_modificacion',
-            'detalles', 'total_calculado', 'puede_cancelar', 'puede_recibir',
-            'cantidad_productos'
+            'id',
+            'proveedor',
+            'proveedor_nombre',
+            'proveedor_contacto',
+            'fecha_pedido',
+            'fecha_esperada_recepcion',
+            'fecha_recepcion',
+            'estado',
+            'observaciones',
+            'total',
+            'usuario_creador',
+            'usuario_creador_nombre',
+            'fecha_creacion',
+            'fecha_modificacion',
+            'detalles',
+            'total_calculado',
+            'puede_cancelar',
+            'puede_completar',  # ✅ CAMBIÉ EL NOMBRE
+            'cantidad_productos',
+            'tiene_precios_pendientes'
         ]
         read_only_fields = [
-            'fecha_pedido', 'fecha_creacion', 'fecha_modificacion', 
-            'usuario_creador', 'total', 'total_calculado'
+            'fecha_pedido',
+            'fecha_creacion',
+            'fecha_modificacion',
+            'usuario_creador',
+            'total',
+            'total_calculado'
         ]
 
     def get_total_calculado(self, obj):
@@ -418,30 +446,31 @@ class PedidoSerializer(serializers.ModelSerializer):
     def get_puede_cancelar(self, obj):
         return obj.puede_ser_cancelado()
 
-    def get_puede_recibir(self, obj):
-        return obj.puede_ser_recibido()
+    def get_puede_completar(self, obj):  # ✅ CAMBIÉ EL NOMBRE Y MÉTODO
+        return obj.puede_ser_completado()
 
     def get_cantidad_productos(self, obj):
         return obj.detalles.count()
 
+    def get_tiene_precios_pendientes(self, obj):
+        """Verifica si hay productos sin precio confirmado"""
+        return obj.detalles.filter(precio_unitario__isnull=True).exists()
+
     @transaction.atomic
     def create(self, validated_data):
         detalles_data = validated_data.pop('detalles', [])
-        
-        # 🔧 CORRECCIÓN: Si no hay usuario_creador, usar uno por defecto
+
+        # Asignar usuario creador por defecto
         if 'usuario_creador' not in validated_data or not validated_data['usuario_creador']:
             usuario_default = Usuario.objects.filter(estado='ACTIVO').first()
-            if usuario_default:
-                validated_data['usuario_creador'] = usuario_default
-            else:
-                # Si no hay usuarios, crear uno temporal
+            if not usuario_default:
                 from django.contrib.auth.hashers import make_password
                 rol_admin = Rol.objects.filter(nombre__iexact='administrador').first()
                 if not rol_admin:
                     rol_admin = Rol.objects.create(nombre='Administrador', descripcion='Rol temporal')
-                
+
                 usuario_default = Usuario.objects.create(
-                    nombre='Admin', 
+                    nombre='Admin',
                     apellido='Temporal',
                     dni='99999999',
                     correo='admin@temp.com',
@@ -449,29 +478,25 @@ class PedidoSerializer(serializers.ModelSerializer):
                     rol=rol_admin,
                     estado='ACTIVO'
                 )
-                validated_data['usuario_creador'] = usuario_default
-        
-        # Validar que hay al menos un producto
+            validated_data['usuario_creador'] = usuario_default
+
+        # Validar que haya productos
         if not detalles_data:
-            raise serializers.ValidationError({
-                'detalles': 'El pedido debe tener al menos un producto.'
-            })
-        
-        # Crear el pedido
+            raise serializers.ValidationError({'detalles': 'El pedido debe tener al menos un producto.'})
+
+        # Crear pedido
         pedido = Pedido.objects.create(**validated_data)
-        
+
         # Crear detalles del pedido
         for detalle_data in detalles_data:
-            DetallePedido.objects.create(
-                pedido=pedido,
-                **detalle_data
-            )
-        
+            DetallePedido.objects.create(pedido=pedido, **detalle_data)
+
         # Actualizar total del pedido
         pedido.total = pedido.calcular_total()
         pedido.save()
-        
+
         return pedido
+
 
 class PedidoRecepcionSerializer(serializers.ModelSerializer):
     """Serializer específico para recepción de pedidos"""
@@ -502,7 +527,7 @@ class PedidoRecepcionSerializer(serializers.ModelSerializer):
                 })
         
         # Procesar recepción del pedido
-        instance.recibir_pedido()
+        instance.completar_pedido()  # ✅ CAMBIÉ POR EL NUEVO MÉTODO
         
         return instance
 
@@ -515,9 +540,9 @@ class PedidoBusquedaSerializer(serializers.ModelSerializer):
     cantidad_productos = serializers.SerializerMethodField()
     total_calculado = serializers.SerializerMethodField()
     puede_cancelar = serializers.SerializerMethodField()
-    puede_recibir = serializers.SerializerMethodField()
+    puede_completar = serializers.SerializerMethodField()  # ✅ CAMBIÉ EL NOMBRE
     
-    # ✅ CORRECCIÓN CLAVE: Incluir los detalles del pedido
+    # Incluir los detalles del pedido
     detalles = DetallePedidoSerializer(many=True, read_only=True)
 
     class Meta:
@@ -525,7 +550,7 @@ class PedidoBusquedaSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'proveedor_nombre', 'proveedor_contacto', 'fecha_pedido', 'estado', 
             'total', 'usuario_creador_nombre', 'cantidad_productos', 'total_calculado',
-            'puede_cancelar', 'puede_recibir', 'observaciones', 'detalles'  # ✅ Agregar detalles
+            'puede_cancelar', 'puede_completar', 'observaciones', 'detalles'  # ✅ CAMBIÉ EL NOMBRE
         ]
 
     def get_cantidad_productos(self, obj):
@@ -537,5 +562,48 @@ class PedidoBusquedaSerializer(serializers.ModelSerializer):
     def get_puede_cancelar(self, obj):
         return obj.puede_ser_cancelado()
 
-    def get_puede_recibir(self, obj):
-        return obj.puede_ser_recibido()
+    def get_puede_completar(self, obj):  # ✅ CAMBIÉ EL NOMBRE Y MÉTODO
+        return obj.puede_ser_completado()
+# ----------------------------------------------------------------------
+# LISTAS DE PRECIOS DE PROVEEDORES
+# ----------------------------------------------------------------------
+class ListaPrecioProveedorSerializer(serializers.ModelSerializer):
+    proveedor_nombre = serializers.CharField(source='proveedor.nombre', read_only=True)
+    producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
+    producto_codigo = serializers.CharField(source='producto.codigo', read_only=True)
+    precio_sugerido_venta = serializers.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        read_only=True
+    )
+    
+    class Meta:
+        model = ListaPrecioProveedor
+        fields = '__all__'
+    
+
+class HistorialPreciosSerializer(serializers.ModelSerializer):
+    lista_precio_info = serializers.CharField(source='lista_precio.__str__', read_only=True)
+    usuario_nombre = serializers.CharField(source='usuario.nombre', read_only=True)
+
+    class Meta:
+        model = HistorialPrecios
+        fields = [
+            'id', 'lista_precio', 'lista_precio_info', 'precio_anterior', 'precio_nuevo',
+            'margen_anterior', 'margen_nuevo', 'usuario', 'usuario_nombre', 
+            'fecha_cambio', 'motivo'
+        ]
+        read_only_fields = ['fecha_cambio']
+
+
+class PrecioSugeridoSerializer(serializers.Serializer):
+    producto_id = serializers.IntegerField()
+    proveedor_id = serializers.IntegerField()
+    cantidad = serializers.IntegerField(min_value=1)
+
+
+class ActualizarListaPreciosSerializer(serializers.Serializer):
+    proveedor_id = serializers.IntegerField()
+    precios = serializers.ListField(
+        child=serializers.DictField()
+    )

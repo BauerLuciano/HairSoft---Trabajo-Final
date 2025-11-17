@@ -8,7 +8,6 @@
         </div>
         <div class="brand-info">
           <span class="brand-name">HairSoft</span>
-          <span class="brand-tagline">Pro Studio</span>
         </div>
       </div>
     </div>
@@ -16,39 +15,146 @@
     <!-- Navegación Principal -->
     <div class="nav-section">
       <span class="section-title">MENÚ PRINCIPAL</span>
+      
+      <!-- Dashboard - Siempre visible -->
       <ul class="nav-links">
-        <li v-for="modulo in modulosConIcono" :key="modulo.name">
-          <router-link :to="modulo.path" class="nav-link">
+        <li>
+          <router-link to="/dashboard" class="nav-link">
             <div class="link-content">
               <div class="icon-wrapper">
-                <i :class="['icon', modulo.icon]"></i>
+                <i class="icon ri-dashboard-line"></i>
               </div>
-              <span class="link-text">{{ modulo.name }}</span>
+              <span class="link-text">Dashboard</span>
             </div>
             <div class="link-indicator"></div>
           </router-link>
         </li>
       </ul>
-    </div>
 
+      <!-- Acordeón: Gestión Comercial -->
+      <div class="acordeon-section">
+        <div class="acordeon-header" @click="toggleSection('comercial')">
+          <div class="acordeon-header-content">
+            <div class="acordeon-icon-wrapper">
+              <i class="ri-store-2-line acordeon-icon"></i>
+            </div>
+            <span class="acordeon-title">Gestión Comercial</span>
+          </div>
+          <i 
+            class="ri-arrow-down-s-line acordeon-arrow"
+            :class="{ 'rotated': openSection === 'comercial' }"
+          ></i>
+        </div>
+        <div class="acordeon-content" :class="{ 'open': openSection === 'comercial' }">
+          <ul class="nav-links acordeon-items">
+            <li v-for="item in menuSections.comercial" :key="item.path">
+              <router-link :to="item.path" class="nav-link acordeon-item">
+                <div class="link-content">
+                  <div class="icon-wrapper">
+                    <i :class="['icon', item.icon]"></i>
+                  </div>
+                  <span class="link-text">{{ item.name }}</span>
+                </div>
+                <div class="link-indicator"></div>
+              </router-link>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Acordeón: Inventario -->
+      <div class="acordeon-section">
+        <div class="acordeon-header" @click="toggleSection('inventario')">
+          <div class="acordeon-header-content">
+            <div class="acordeon-icon-wrapper">
+              <i class="ri-archive-line acordeon-icon"></i>
+            </div>
+            <span class="acordeon-title">Inventario</span>
+          </div>
+          <i 
+            class="ri-arrow-down-s-line acordeon-arrow"
+            :class="{ 'rotated': openSection === 'inventario' }"
+          ></i>
+        </div>
+        <div class="acordeon-content" :class="{ 'open': openSection === 'inventario' }">
+          <ul class="nav-links acordeon-items">
+            <li v-for="item in menuSections.inventario" :key="item.path">
+              <router-link :to="item.path" class="nav-link acordeon-item">
+                <div class="link-content">
+                  <div class="icon-wrapper">
+                    <i :class="['icon', item.icon]"></i>
+                  </div>
+                  <span class="link-text">{{ item.name }}</span>
+                </div>
+                <div class="link-indicator"></div>
+              </router-link>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Acordeón: Administración -->
+      <div class="acordeon-section">
+        <div class="acordeon-header" @click="toggleSection('admin')">
+          <div class="acordeon-header-content">
+            <div class="acordeon-icon-wrapper">
+              <i class="ri-settings-3-line acordeon-icon"></i>
+            </div>
+            <span class="acordeon-title">Administración</span>
+          </div>
+          <i 
+            class="ri-arrow-down-s-line acordeon-arrow"
+            :class="{ 'rotated': openSection === 'admin' }"
+          ></i>
+        </div>
+        <div class="acordeon-content" :class="{ 'open': openSection === 'admin' }">
+          <ul class="nav-links acordeon-items">
+            <li v-for="item in menuSections.admin" :key="item.path">
+              <router-link :to="item.path" class="nav-link acordeon-item">
+                <div class="link-content">
+                  <div class="icon-wrapper">
+                    <i :class="['icon', item.icon]"></i>
+                  </div>
+                  <span class="link-text">{{ item.name }}</span>
+                </div>
+                <div class="link-indicator"></div>
+              </router-link>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
   </nav>
 </template>
 
 <script setup>
+import { ref } from 'vue';
 import logo from '@/assets/logo.jpg';
 
-const modulosConIcono = [
-  { name: 'Dashboard', path: '/dashboard', icon: 'ri-dashboard-line' },
-  { name: 'Ventas', path: '/ventas', icon: 'ri-bar-chart-2-line' },
-  { name: 'Usuarios', path: '/usuarios', icon: 'ri-team-line' },
-  { name: 'Turnos', path: '/turnos', icon: 'ri-calendar-event-line' },
-  { name: 'Servicios', path: '/servicios', icon: 'ri-scissors-line' },
-  { name: 'Productos', path: '/productos', icon: 'ri-shopping-bag-line' },
-  { name: 'Pedidos', path: '/pedidos', icon: 'ri-shopping-cart-2-line' }, // ← Este sí existe
-  { name: 'Proveedores', path: '/proveedores', icon: 'ri-truck-line' },
-  { name: 'Categorías', path: '/categorias', icon: 'ri-list-settings-line' },
-  { name: 'Roles', path: '/roles', icon: 'ri-shield-user-line' },
-];
+const openSection = ref('comercial'); // Por defecto, abre Gestión Comercial
+
+const menuSections = {
+  comercial: [
+    { name: 'Ventas', path: '/ventas', icon: 'ri-bar-chart-2-line' },
+    { name: 'Turnos', path: '/turnos', icon: 'ri-calendar-event-line' },
+    { name: 'Servicios', path: '/servicios', icon: 'ri-scissors-line' },
+  ],
+  inventario: [
+    { name: 'Productos', path: '/productos', icon: 'ri-shopping-bag-line' },
+    { name: 'Pedidos', path: '/pedidos', icon: 'ri-shopping-cart-2-line' },
+    { name: 'Proveedores', path: '/proveedores', icon: 'ri-truck-line' },
+    { name: 'Categorías', path: '/categorias', icon: 'ri-list-settings-line' },
+  ],
+  admin: [
+    { name: 'Usuarios', path: '/usuarios', icon: 'ri-team-line' },
+    { name: 'Roles', path: '/roles', icon: 'ri-shield-user-line' },
+  ]
+};
+
+const toggleSection = (section) => {
+  openSection.value = openSection.value === section ? null : section;
+};
 </script>
 
 <style scoped>
@@ -96,30 +202,30 @@ const modulosConIcono = [
 
 .logo-wrapper {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 
 .logo-container {
-  width: 50px;
-  height: 50px;
+  width: 80px;
+  height: 80px;
   flex-shrink: 0;
-  border-radius: 14px;
+  border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
-  transition: all 0.3s ease;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.25);
+  transition: box-shadow 0.3s ease;
 }
 
 .logo-container:hover {
-  transform: translateY(-2px) rotate(5deg);
-  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35);
 }
 
 .logo {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border: 2px solid var(--accent-color);
+  border: 3px solid #3b82f6;
 }
 
 .brand-info {
@@ -129,19 +235,12 @@ const modulosConIcono = [
 }
 
 .brand-name {
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1;
-  letter-spacing: -0.5px;
-}
-
-.brand-tagline {
-  font-size: 0.75rem;
-  color: var(--accent-color);
-  font-weight: 600;
-  letter-spacing: 1px;
-  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: center;
 }
 
 /* Sección de Navegación */
@@ -167,7 +266,7 @@ const modulosConIcono = [
 /* Lista de Links */
 .nav-links {
   list-style: none;
-  margin: 0;
+  margin: 0 0 12px 0;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -243,7 +342,7 @@ const modulosConIcono = [
 }
 
 .nav-link:hover .icon-wrapper {
-  background: linear-gradient(135deg, var(--accent-color), #8b5cf6);
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
   border-color: transparent;
   transform: scale(1.05);
 }
@@ -264,8 +363,8 @@ const modulosConIcono = [
 
 /* Active State (Router Link Activo) */
 .nav-link.router-link-active {
-  background: linear-gradient(135deg, var(--accent-color), #8b5cf6);
-  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.3);
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
   transform: translateX(4px);
 }
 
@@ -289,65 +388,92 @@ const modulosConIcono = [
   background: #ffffff;
 }
 
-/* Footer del Sidebar */
-.sidebar-footer {
-  padding: 16px 20px 24px;
-  border-top: 1px solid var(--border-color);
-  margin-top: auto;
+/* ========== ESTILOS DEL ACORDEÓN ========== */
+
+.acordeon-section {
+  margin-bottom: 8px;
 }
 
-.footer-card {
+/* Header del Acordeón */
+.acordeon-header {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(139, 92, 246, 0.05));
-  border: 1px solid rgba(139, 92, 246, 0.2);
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px;
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
+  background: rgba(59, 130, 246, 0.05);
+  border: 1px solid rgba(59, 130, 246, 0.1);
 }
 
-.footer-card:hover {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.08));
-  border-color: var(--accent-color);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+.acordeon-header:hover {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.2);
+  transform: translateX(2px);
 }
 
-.footer-icon {
+.acordeon-header-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.acordeon-icon-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
-  background: var(--accent-color);
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
   border-radius: 8px;
   flex-shrink: 0;
 }
 
-.footer-icon i {
-  font-size: 16px;
+.acordeon-icon {
+  font-size: 1rem;
   color: #ffffff;
 }
 
-.footer-content {
-  flex: 1;
-}
-
-.footer-title {
-  font-size: 0.85rem;
+.acordeon-title {
+  font-size: 0.9rem;
   font-weight: 600;
   color: var(--text-primary);
-  margin: 0 0 2px 0;
-  line-height: 1.2;
 }
 
-.footer-text {
-  font-size: 0.75rem;
+.acordeon-arrow {
+  font-size: 1.2rem;
   color: var(--text-secondary);
+  transition: transform 0.3s ease;
+}
+
+.acordeon-arrow.rotated {
+  transform: rotate(180deg);
+}
+
+/* Contenido del Acordeón */
+.acordeon-content {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding-top: 0;
+}
+
+.acordeon-content.open {
+  max-height: 500px; /* Ajusta según necesites */
+  opacity: 1;
+  padding-top: 4px;
+}
+
+/* Items dentro del acordeón */
+.acordeon-items {
   margin: 0;
-  line-height: 1.3;
+  padding-left: 12px;
+}
+
+.acordeon-item {
+  /* Hereda estilos de .nav-link */
 }
 
 /* Responsive */

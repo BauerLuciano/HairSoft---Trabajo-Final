@@ -1,4 +1,3 @@
-
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
@@ -16,7 +15,7 @@ const routes = [
   { path: '/turnos', name: 'ListadoTurnos', component: () => import('@/views/turnos/ListadoTurnos.vue') },
   { path: '/turnos/crear-presencial', name: 'RegistrarTurnoPresencial', component: () => import('@/views/turnos/RegistrarTurnoPresencial.vue') },
   { path: '/turnos/crear-web', name: 'RegistrarTurnoWeb', component: () => import('@/views/turnos/RegistrarTurnoWeb.vue') },
-  //{ path: '/turnos/modificar/:id', name: 'ModificarTurno', component: () => import('@/views/turnos/ModificarTurno.vue') },
+  { path: '/turnos/modificar/:id', name: 'ModificarTurno', component: () => import('@/views/turnos/ModificarTurno.vue') },
 
   // Servicios
   { path: '/servicios', name: 'ListadoServicios', component: () => import('@/views/servicios/ListadoServicios.vue') },
@@ -53,6 +52,9 @@ const routes = [
   { path: '/proveedores', name: 'ListadoProveedores', component: () => import('@/views/proveedores/ListadoProveedores.vue') },
   { path: '/proveedores/crear', name: 'RegistrarProveedor', component: () => import('@/views/proveedores/RegistrarProveedor.vue') },
   { path: '/proveedores/modificar/:id', name: 'ModificarProveedor', component: () => import('@/views/proveedores/ModificarProveedor.vue'), props: true },
+
+  // ✅ NUEVA RUTA: GESTIÓN DE LISTAS DE PRECIOS
+  { path: '/proveedores/listas-precios', name: 'GestionListasPrecios', component: () => import('@/views/proveedores/GestionListasPrecios.vue') },
 
   // ================================
   // Ventas

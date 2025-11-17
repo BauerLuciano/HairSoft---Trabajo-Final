@@ -3,6 +3,7 @@ from django.db import models, transaction
 from datetime import timedelta
 from django.core.validators import RegexValidator
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.utils import timezone
 
 # ===============================
 # MANAGER PERSONALIZADO PARA USUARIO
@@ -240,14 +241,30 @@ class Turno(models.Model):
 
     def puede_ser_cancelado(self):
         from django.utils import timezone
+        from datetime import timedelta
+
+        if self.estado in ['COMPLETADO', 'CANCELADO']:
+            return False, False, "No se puede cancelar un turno completado o ya cancelado"
         ahora = timezone.now()
         fecha_turno = timezone.make_aware(
             timezone.datetime.combine(self.fecha, self.hora)
         )
-        tres_horas_antes = fecha_turno - timedelta(hours=3)
-        puede_cancelar = (self.estado in ['RESERVADO', 'CONFIRMADO'] and ahora < tres_horas_antes)
-        return puede_cancelar, puede_cancelar  # segundo valor = hay_reembolso
-
+        # No se pueden cancelar turnos pasados
+        if ahora >= fecha_turno:
+            return False, False, "No se puede cancelar un turno que ya pasó"
+        
+        tiempo_restante = fecha_turno - ahora
+        puede_cancelar = True
+        hay_reembolso = tiempo_restante >= timedelta(hours=3)
+        
+        mensaje = "Puede cancelar el turno"
+        if hay_reembolso:
+            mensaje += " con reembolso de seña"
+        else:
+            mensaje += " sin reembolso (menos de 3 horas de anticipación)"
+        
+        return puede_cancelar, hay_reembolso, mensaje
+    
     def calcular_duracion_total(self):
         return sum(servicio.duracion for servicio in self.servicios.all())
     
@@ -289,6 +306,33 @@ class Turno(models.Model):
         db_table = "turnos"
         ordering = ['fecha', 'hora']
 
+#Clientes interesados en turnos liberados
+class InteresTurnoLiberado(models.Model):
+    """Clientes interesados en horarios específicos"""
+    cliente = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="intereses_turnos")
+    servicio = models.ForeignKey(Servicio, on_delete=models.CASCADE)
+    peluquero = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="intereses_peluquero")
+    fecha_deseada = models.DateField()
+    hora_deseada = models.TimeField()
+    fecha_registro = models.DateTimeField(auto_now_add=True)
+    notificado = models.BooleanField(default=False)
+    fecha_notificacion = models.DateTimeField(null=True, blank=True)
+    
+    # Para el proceso FIFO
+    prioridad = models.IntegerField(default=0)  # 0 = normal, 1 = alta prioridad
+    
+    class Meta:
+        db_table = "intereses_turnos_liberados"
+        ordering = ['fecha_registro']  # FIFO por defecto
+        unique_together = ['cliente', 'servicio', 'peluquero', 'fecha_deseada', 'hora_deseada']
+
+    def __str__(self):
+        return f"{self.cliente.nombre} - {self.fecha_deseada} {self.hora_deseada}"
+
+    def puede_ser_notificado(self):
+        """Verifica si puede ser notificado (no notificado previamente)"""
+        return not self.notificado
+    
 # ===============================
 # MÉTODOS DE PAGO (NUEVO MODELO)
 # ===============================
@@ -414,17 +458,17 @@ class DetalleVenta(models.Model):
 # ===============================
 # PEDIDOS
 # ===============================
-# En usuarios/models.py - CORREGIR los estados del pedido
+
 class Pedido(models.Model):
     ESTADO_CHOICES = [
         ('PENDIENTE', 'Pendiente'),
-        ('CONFIRMADO', 'Confirmado'),  # ✅ ESTADO NUEVO
-        ('ENTREGADO', 'Entregado'),    # ✅ ESTADO NUEVO (en lugar de RECIBIDO)
+        ('CONFIRMADO', 'Confirmado'),
+        ('COMPLETADO', 'Completado'),
         ('CANCELADO', 'Cancelado'),
     ]
 
     proveedor = models.ForeignKey(
-        Proveedor, 
+        Proveedor,
         on_delete=models.PROTECT,
         related_name='pedidos'
     )
@@ -432,13 +476,13 @@ class Pedido(models.Model):
     fecha_esperada_recepcion = models.DateField(null=True, blank=True)
     fecha_recepcion = models.DateTimeField(null=True, blank=True)
     estado = models.CharField(
-        max_length=20, 
-        choices=ESTADO_CHOICES, 
+        max_length=20,
+        choices=ESTADO_CHOICES,
         default='PENDIENTE'
     )
     observaciones = models.TextField(blank=True, null=True)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    
+
     # Auditoría
     usuario_creador = models.ForeignKey(
         Usuario,
@@ -454,38 +498,45 @@ class Pedido(models.Model):
         return f"Pedido #{self.id} - {self.proveedor.nombre} ({self.estado})"
 
     def calcular_total(self):
-        """Calcula el total sumando todos los detalles"""
+        """Calcula el total usando los precios de la lista"""
         return self.detalles.aggregate(total=models.Sum('subtotal'))['total'] or 0
 
-    def puede_ser_cancelado(self):
-        """Un pedido solo puede cancelarse si está pendiente"""
+    def puede_ser_confirmado(self):
+        """Solo se puede confirmar si está PENDIENTE"""
         return self.estado == 'PENDIENTE'
 
-    def puede_ser_recibido(self):
-        """Un pedido puede recibirse si está pendiente o parcial"""
-        return self.estado in ['PENDIENTE', 'PARCIAL']
+    def puede_ser_completado(self):
+        """Solo si ya fue CONFIRMADO"""
+        return self.estado == 'CONFIRMADO'
+    
+    def puede_ser_cancelado(self):
+        """Solo se pueden cancelar pedidos PENDIENTES o CONFIRMADOS"""
+        return self.estado in ['PENDIENTE', 'CONFIRMADO']
 
     @transaction.atomic
-    def recibir_pedido(self):
-        """Marca el pedido como recibido y actualiza stock"""
-        if not self.puede_ser_recibido():
-            raise ValueError("El pedido no puede ser recibido en su estado actual")
-        
-        # Actualizar stock de productos
+    def confirmar_pedido(self):
+        """Confirma el pedido con los precios de la lista"""
+        if not self.puede_ser_confirmado():
+            raise ValueError("El pedido no puede ser confirmado en su estado actual")
+
+        # Ya no necesitamos copiar precios propuestos porque usamos lista de precios
+        self.estado = 'CONFIRMADO'
+        self.total = self.calcular_total()
+        self.save()
+
+    @transaction.atomic
+    def completar_pedido(self):
+        """Marca el pedido como COMPLETADO y actualiza stock"""
+        if not self.puede_ser_completado():
+            raise ValueError("El pedido no puede ser completado en su estado actual")
+
+        # Actualizar stock
         for detalle in self.detalles.all():
             if detalle.producto and detalle.cantidad_recibida > 0:
                 detalle.producto.stock_actual += detalle.cantidad_recibida
                 detalle.producto.save()
-        
-        # Verificar si fue recepción parcial o completa
-        total_solicitado = self.detalles.aggregate(total=models.Sum('cantidad'))['total'] or 0
-        total_recibido = self.detalles.aggregate(total=models.Sum('cantidad_recibida'))['total'] or 0
-        
-        if total_recibido == total_solicitado:
-            self.estado = 'ENTREGADO'  # ✅ CAMBIADO DE 'RECIBIDO' A 'ENTREGADO'
-        else:
-            self.estado = 'PARCIAL'
-            
+
+        self.estado = 'COMPLETADO'
         self.fecha_recepcion = timezone.now()
         self.save()
 
@@ -493,8 +544,8 @@ class Pedido(models.Model):
     def cancelar_pedido(self):
         """Cancela el pedido"""
         if not self.puede_ser_cancelado():
-            raise ValueError("El pedido no puede ser cancelado")
-        
+            raise ValueError("El pedido no puede ser cancelado en su estado actual")
+            
         self.estado = 'CANCELADO'
         self.save()
 
@@ -517,23 +568,36 @@ class DetallePedido(models.Model):
     )
     cantidad = models.PositiveIntegerField(default=1)
     cantidad_recibida = models.PositiveIntegerField(default=0)
-    precio_unitario = models.DecimalField(
-        max_digits=10, 
+
+    # 🆕 Campo nuevo: precio propuesto por el proveedor
+    precio_propuesto = models.DecimalField(
+        max_digits=10,
         decimal_places=2,
-        help_text="Precio acordado con el proveedor"
+        null=True,
+        blank=True,
+        help_text="Precio ofrecido por el proveedor"
     )
+
+    # Precio confirmado (después de aceptar la cotización)
+    precio_unitario = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Precio acordado final"
+    )
+
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     def save(self, *args, **kwargs):
-        # Calcular subtotal automáticamente
-        self.subtotal = self.cantidad * self.precio_unitario
+        # Calcular subtotal solo si hay precio confirmado
+        self.subtotal = (self.cantidad * self.precio_unitario) if self.precio_unitario else 0
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.producto.nombre} x{self.cantidad} - ${self.subtotal}"
-
+        return f"{self.producto.nombre} x{self.cantidad}"
+    
     def porcentaje_recibido(self):
-        """Calcula el porcentaje recibido de este producto"""
         if self.cantidad == 0:
             return 0
         return (self.cantidad_recibida / self.cantidad) * 100
@@ -542,4 +606,77 @@ class DetallePedido(models.Model):
         db_table = "detalle_pedidos"
         verbose_name = "Detalle de Pedido"
         verbose_name_plural = "Detalles de Pedidos"
-        unique_together = ['pedido', 'producto']
+
+# ===Lista Precio por Proveedor================
+class ListaPrecioProveedor(models.Model):
+    proveedor = models.ForeignKey(
+        'Proveedor',
+        on_delete=models.CASCADE,
+        related_name='listas_precios'
+    )
+    producto = models.ForeignKey(
+        'Producto', 
+        on_delete=models.CASCADE,
+        related_name='listas_precios_proveedores'
+    )
+    precio_base = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Precio base del proveedor"
+    )
+    margen_ganancia = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=30.0,
+        help_text="Porcentaje de ganancia (ej: 30 para +30%)"
+    )
+    activo = models.BooleanField(default=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "lista_precios_proveedores"
+        verbose_name = "Lista de precios de proveedor"
+        verbose_name_plural = "Listas de precios de proveedores"
+
+    def __str__(self):
+        return f"{self.proveedor.nombre} - {self.producto.nombre} (${self.precio_base})"
+
+    @property
+    def precio_sugerido_venta(self):
+        """Calcula el precio final sugerido según el margen"""
+        return self.precio_base * (1 + (self.margen_ganancia / 100))
+
+    def puede_ser_editado(self):
+        """Verifica si la lista de precios puede ser editada"""
+        return self.activo
+
+
+class HistorialPrecios(models.Model):
+    lista_precio = models.ForeignKey(
+        ListaPrecioProveedor,
+        on_delete=models.CASCADE,
+        related_name='historial'
+    )
+    precio_anterior = models.DecimalField(max_digits=10, decimal_places=2)
+    precio_nuevo = models.DecimalField(max_digits=10, decimal_places=2)
+    margen_anterior = models.DecimalField(max_digits=5, decimal_places=2)
+    margen_nuevo = models.DecimalField(max_digits=5, decimal_places=2)
+    usuario = models.ForeignKey(
+        Usuario,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    fecha_cambio = models.DateTimeField(auto_now_add=True)
+    motivo = models.TextField(blank=True, null=True)
+
+    class Meta:
+        db_table = "historial_precios"
+        ordering = ['-fecha_cambio']
+        verbose_name = "Historial de precios"
+        verbose_name_plural = "Historial de precios"
+
+    def __str__(self):
+        return f"Cambio {self.lista_precio} - {self.fecha_cambio.strftime('%d/%m/%Y')}"
+

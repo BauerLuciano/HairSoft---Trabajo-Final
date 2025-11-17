@@ -1,116 +1,193 @@
 <template>
-  <div class="venta-container">
-    <h2>Registrar Venta de Productos</h2>
+  <!-- Tu template permanece exactamente igual -->
+  <div class="pedido-container">
+    <div class="header-section">
+      <h2>
+        <span class="header-icon">💰</span>
+        Registrar Venta de Productos
+      </h2>
+    </div>
 
     <!-- Filtros de productos -->
-    <div class="input-group">
-      <input v-model="filtroNombre" placeholder="Buscar producto por nombre" class="input-modern"/>
-      <select v-model="filtroCategoria" class="select-modern">
-        <option value="">Todas las categorías</option>
-        <option v-for="cat in categorias" :key="cat.id" :value="cat.id">{{ cat.nombre }}</option>
-      </select>
+    <div class="card-modern">
+      <div class="card-header">
+        <div class="card-icon">🔍</div>
+        <h3>Filtros de Búsqueda</h3>
+      </div>
+      <div class="input-group">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input v-model="filtroNombre" placeholder="Buscar producto por nombre" class="input-modern"/>
+        </div>
+        <select v-model="filtroCategoria" class="select-modern">
+          <option value="">Todas las categorías</option>
+          <option v-for="cat in categorias" :key="cat.id" :value="cat.id">{{ cat.nombre }}</option>
+        </select>
+      </div>
     </div>
 
     <!-- Lista de productos -->
-    <div v-if="productos.length" class="productos-grid">
-      <div v-for="producto in productosFiltrados" :key="producto.id" class="producto-item" :class="{'sin-stock': producto.stock === 0}">
-        <div class="producto-info">
-          <span class="producto-nombre">{{ producto.nombre }}</span>
-          <span class="producto-stock" :class="{
-            'stock-bajo': producto.stock > 0 && producto.stock <= 5, 
-            'sin-stock-text': producto.stock === 0
-          }">
-            (Stock: {{ producto.stock }})
-            <span v-if="producto.stock === 0" class="sin-stock-badge">SIN STOCK</span>
-            <span v-else-if="producto.stock <= 5" class="stock-bajo-badge">STOCK BAJO</span>
-            
-            <span v-if="productoEnCarrito(producto.id)" class="stock-carrito-info">
-              (En carrito: {{ cantidadEnCarrito(producto.id) }})
-            </span>
-          </span>
-        </div>
-        <div class="producto-actions">
-          <span class="producto-precio">${{ producto.precio }}</span>
-          <input 
-            type="number" 
-            min="1" 
-            :max="stockDisponibleReal(producto)" 
-            v-model.number="cantidades[producto.id]" 
-            :disabled="producto.stock === 0"
-            class="input-cantidad"
-            :class="{'input-disabled': producto.stock === 0}"
-            @change="validarCantidad(producto)"
-          />
-          <button 
-            @click="agregarAlCarrito(producto)" 
-            :disabled="!puedeAgregarAlCarrito(producto)"
-            class="btn-agregar"
-            :class="{'btn-disabled': !puedeAgregarAlCarrito(producto)}"
-          >
-            {{ obtenerTextoBoton(producto) }}
-          </button>
+    <div class="card-modern">
+      <div class="card-header">
+        <div class="card-icon">📦</div>
+        <h3>Productos Disponibles</h3>
+        <div class="badge-count" v-if="productosFiltrados.length > 0">
+          {{ productosFiltrados.length }} {{ productosFiltrados.length === 1 ? 'producto' : 'productos' }}
         </div>
       </div>
+
+      <div v-if="productos.length" class="productos-grid">
+        <div v-for="producto in productosFiltrados" :key="producto.id" class="producto-item" :class="{'sin-stock': producto.stock === 0}">
+          <div class="producto-info">
+            <div class="producto-header">
+              <span class="producto-nombre">{{ producto.nombre }}</span>
+              <span class="producto-precio">${{ producto.precio }}</span>
+            </div>
+            <div class="producto-details">
+              <span class="producto-codigo">
+                <span>ID:</span>
+                <strong>{{ producto.id }}</strong>
+              </span>
+              <span class="producto-categoria">
+                <span>Categoría:</span>
+                <strong>{{ obtenerNombreCategoria(producto.categoria_id) }}</strong>
+              </span>
+              <span class="producto-stock" :class="{
+                'stock-critico': producto.stock === 0, 
+                'stock-bajo': producto.stock > 0 && producto.stock <= 5,
+                'stock-medio': producto.stock > 5 && producto.stock <= 15,
+                'stock-alto': producto.stock > 15
+              }">
+                <span>Stock:</span>
+                <strong>{{ producto.stock }}</strong>
+                <span v-if="producto.stock === 0" class="sin-stock-badge">SIN STOCK</span>
+                <span v-else-if="producto.stock <= 5" class="stock-bajo-badge">BAJO</span>
+                
+                <span v-if="productoEnCarrito(producto.id)" class="stock-carrito-info">
+                  (En carrito: {{ cantidadEnCarrito(producto.id) }})
+                </span>
+              </span>
+            </div>
+          </div>
+          <div class="producto-actions">
+            <div class="control-group">
+              <label for="cantidad">
+                <span>Cantidad:</span>
+              </label>
+              <input 
+                id="cantidad"
+                type="number" 
+                min="1" 
+                :max="stockDisponibleReal(producto)" 
+                v-model.number="cantidades[producto.id]" 
+                :disabled="producto.stock === 0"
+                class="input-cantidad"
+                :class="{'input-disabled': producto.stock === 0}"
+                @change="validarCantidad(producto)"
+              />
+            </div>
+            <button 
+              @click="agregarAlCarrito(producto)" 
+              :disabled="!puedeAgregarAlCarrito(producto)"
+              class="btn-agregar-masivo"
+              :class="{'btn-disabled': !puedeAgregarAlCarrito(producto)}"
+            >
+              {{ obtenerTextoBoton(producto) }}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div v-else class="no-resultados">
+        <div class="no-resultados-icon">📦</div>
+        <p>No hay productos disponibles</p>
+        <small>Intenta ajustar los filtros de búsqueda</small>
+      </div>
     </div>
-    <div v-else class="no-productos">No hay productos disponibles</div>
 
     <!-- Carrito Mejorado -->
-    <div class="resumen-container">
-      <div class="carrito-header">
-        <div class="carrito-title">
-          <span class="carrito-icon">🛒</span>
-          <h3>Carrito de Compras</h3>
-        </div>
-        <div class="carrito-badge" v-if="carrito.length > 0">
+    <div class="card-modern">
+      <div class="card-header">
+        <div class="card-icon">🛒</div>
+        <h3>Carrito de Compras</h3>
+        <div class="badge-count" v-if="carrito.length > 0">
           {{ carrito.length }} {{ carrito.length === 1 ? 'producto' : 'productos' }}
         </div>
       </div>
       
-      <div v-if="carrito.length" class="carrito-list">
-        <div v-for="item in carrito" :key="item.producto.id" class="carrito-item">
-          <div class="carrito-producto-info">
-            <span class="carrito-producto-nombre">{{ item.producto.nombre }}</span>
-            <div class="carrito-detalles">
-              <span class="carrito-precio-unitario">${{ item.producto.precio }} c/u</span>
-              <span class="carrito-cantidad">x {{ item.cantidad }}</span>
+      <div v-if="carrito.length" class="detalles-list">
+        <div v-for="item in carrito" :key="item.producto.id" class="detalle-item">
+          <div class="detalle-info">
+            <div class="detalle-header">
+              <span class="detalle-nombre">{{ item.producto.nombre }}</span>
+              <span class="detalle-categoria">
+                <span>Categoría:</span>
+                <strong>{{ obtenerNombreCategoria(item.producto.categoria_id) }}</strong>
+              </span>
+            </div>
+            <div class="detalle-details">
+              <span class="detalle-codigo">
+                <span>ID:</span>
+                <strong>{{ item.producto.id }}</strong>
+              </span>
+              <span class="detalle-precio">
+                <span>Precio:</span>
+                <strong>${{ item.producto.precio }}</strong>
+              </span>
             </div>
           </div>
-          <div class="carrito-actions">
-            <span class="carrito-subtotal">${{ item.subtotal }}</span>
-            <button @click="quitarDelCarrito(item.producto.id)" class="btn-quitar" title="Quitar del carrito">
+          <div class="detalle-controls">
+            <div class="control-group">
+              <label for="cantidad-carrito">
+                <span>Cantidad:</span>
+              </label>
+              <span class="input-cantidad">{{ item.cantidad }}</span>
+            </div>
+            <div class="detalle-subtotal">
+              <div class="subtotal-label">
+                <span>Subtotal:</span>
+              </div>
+              <div class="subtotal-value">${{ item.subtotal }}</div>
+            </div>
+            <button @click="quitarDelCarrito(item.producto.id)" class="btn-eliminar" title="Quitar del carrito">
               <span class="trash-icon">🗑️</span>
             </button>
           </div>
         </div>
         
         <!-- Resumen del carrito -->
-        <div class="carrito-resumen">
-          <div class="resumen-item">
-            <span>Subtotal:</span>
-            <span>${{ total.toFixed(2) }}</span>
-          </div>
-          <div class="resumen-total">
-            <strong>Total:</strong>
-            <strong>${{ total.toFixed(2) }}</strong>
+        <div class="resumen-pedido">
+          <div class="resumen-grid">
+            <div class="resumen-item total">
+              <span>
+                <span>Total a Pagar:</span>
+              </span>
+              <span>${{ total.toFixed(2) }}</span>
+            </div>
           </div>
         </div>
       </div>
-      <div v-else class="carrito-vacio">
-        <div class="carrito-vacio-icon">🛒</div>
+      <div v-else class="no-resultados">
+        <div class="no-resultados-icon">🛒</div>
         <p>Tu carrito está vacío</p>
         <small>Agrega productos desde la lista arriba</small>
       </div>
     </div>
 
     <!-- Selector de pago -->
-    <div class="pago-selector">
-      <label for="medio_pago" class="label-modern">Medio de Pago</label>
-      <select id="medio_pago" v-model.number="datosVenta.medio_pago" class="select-modern">
-        <option :value="null" disabled>Seleccione método de pago</option>
-        <option v-for="mp in metodosPago" :key="mp.id" :value="mp.id">
-          {{ mp.nombre }}
-        </option>
-      </select>
+    <div class="card-modern">
+      <div class="card-header">
+        <div class="card-icon">💳</div>
+        <h3>Información de Pago</h3>
+      </div>
+      <div class="input-group">
+        <label for="medio_pago" class="info-label">Medio de Pago</label>
+        <select id="medio_pago" v-model.number="datosVenta.medio_pago" class="select-modern">
+          <option :value="null" disabled>Seleccione método de pago</option>
+          <option v-for="mp in metodosPago" :key="mp.id" :value="mp.id">
+            {{ mp.nombre }}
+          </option>
+        </select>
+      </div>
     </div>
 
     <button 
@@ -171,6 +248,11 @@ export default {
         }
     },
     methods: {
+        obtenerNombreCategoria(categoriaId) {
+            const categoria = this.categorias.find(c => c.id === categoriaId);
+            return categoria ? categoria.nombre : 'Sin categoría';
+        },
+        
         productoEnCarrito(productoId) {
             return this.carrito.some(item => item.producto.id === productoId);
         },
@@ -283,7 +365,8 @@ export default {
                     producto: {
                         id: producto.id,
                         nombre: producto.nombre,
-                        precio: parseFloat(producto.precio)
+                        precio: parseFloat(producto.precio),
+                        categoria_id: producto.categoria_id
                     },
                     cantidad,
                     subtotal: cantidad * producto.precio
@@ -569,472 +652,820 @@ export default {
 
 <style scoped>
 /* Estilos base mejorados */
-.venta-container { 
-  max-width: 800px; 
-  margin: 0 auto; 
-  padding: 25px; 
-  background: #fff; 
-  border-radius: 16px; 
+.pedido-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 25px;
+  background: #fff;
+  border-radius: 16px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  color: #000000; 
 }
 
-.input-group {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 25px;
+.header-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #f1f3f4;
 }
 
-.input-modern, .select-modern { 
+.header-section h2 {
+  margin: 0;
+  color: #1a1a1a;
+  font-size: 1.8em;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-icon {
+  color: #007bff;
+}
+
+.btn-back {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-back:hover {
+  background: #5a6268;
+  transform: translateY(-1px);
+}
+
+/* Cards modernas */
+.card-modern {
+  background: #fff;
+  border-radius: 16px;
+  border: 2px solid #a6a6a6;
+  padding: 25px;
+  margin-bottom: 25px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.card-modern:hover {
+  border-color: #007bff;
+  box-shadow: 0 6px 20px rgba(0, 123, 255, 0.15);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #f1f3f4;
+}
+
+.card-icon {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  padding: 10px;
+  border-radius: 10px;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-header h3 {
+  margin: 0;
+  color: #1a1a1a;
+  font-size: 1.3em;
+  font-weight: 700;
   flex: 1;
-  padding: 12px 16px; 
-  border-radius: 10px; 
-  border: 2px solid #e1e5e9; 
+}
+
+.badge-count {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+/* Inputs y selects */
+.input-group {
+  margin-bottom: 20px;
+}
+
+.select-modern, .input-modern {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 2px solid #e1e5e9;
   background: #f8f9fa;
   font-size: 14px;
   transition: all 0.3s ease;
-  color: #000000; /* Texto negro */
+  color: #1a1a1a;
 }
 
-.input-modern:focus, .select-modern:focus {
-    border-color: #007bff;
-    background: #fff;
-    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-    outline: none;
-    color: #000000; /* Texto negro */
+.select-modern:focus, .input-modern:focus {
+  border-color: #007bff;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+  outline: none;
+}
+
+/* Info del proveedor */
+.proveedor-info {
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid #dee2e6;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.info-label {
+  font-weight: 600;
+  color: #495057;
+  font-size: 0.9em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.info-value {
+  color: #1a1a1a;
+  font-weight: 500;
+  padding-left: 22px;
+}
+
+/* Filtros */
+.filtros-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #1a1a1a;
+  margin-bottom: 15px;
+}
+
+/* Categorías */
+.categorias-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.categoria-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: #fff;
+}
+
+.categoria-item:hover {
+  border-color: #007bff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
+}
+
+.categoria-item.selected {
+  border-color: #007bff;
+  background: #e7f3ff;
+}
+
+.categoria-checkbox {
+  flex-shrink: 0;
+}
+
+.checkmark {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #dee2e6;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  color: transparent;
+}
+
+.checkmark.checked {
+  background: #007bff;
+  border-color: #007bff;
+  color: white;
+}
+
+.categoria-info {
+  flex: 1;
+}
+
+.categoria-nombre {
+  font-weight: 600;
+  color: #1a1a1a;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.productos-count {
+  font-size: 0.8em;
+  color: #6c757d;
+  background: #f8f9fa;
+  padding: 3px 8px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filtro-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 2px solid #007bff;
+  color: #007bff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-outline:hover {
+  background: #007bff;
+  color: white;
+  transform: translateY(-1px);
+}
+
+/* Búsqueda */
+.search-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  gap: 15px;
+}
+
+.search-box {
+  flex: 1;
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6c757d;
+}
+
+.search-box .input-modern {
+  padding-left: 40px;
+}
+
+.stats-badge {
+  background: linear-gradient(135deg, #6c757d, #5a6268);
+  color: white;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 0.9em;
+  font-weight: 600;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* Productos */
 .productos-grid {
-    display: grid;
-    gap: 12px;
-    margin-bottom: 25px;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
 .producto-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px;
-    border-radius: 12px;
-    border: 2px solid #f1f3f4;
-    background: #fff;
-    transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: #fff;
 }
 
 .producto-item:hover {
-    border-color: #007bff;
-    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.15);
+  border-color: #007bff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
 }
 
-.producto-item.sin-stock {
-    background-color: #f8f9fa;
-    opacity: 0.7;
-    border-color: #dee2e6;
+.producto-item.selected {
+  border-color: #007bff;
+  background: #e7f3ff;
+}
+
+.producto-checkbox {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #dee2e6;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  color: transparent;
+  flex-shrink: 0;
+}
+
+.producto-checkbox.checked {
+  background: #007bff;
+  border-color: #007bff;
+  color: white;
 }
 
 .producto-info {
-    flex-grow: 1;
+  flex: 1;
+}
+
+.producto-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
 }
 
 .producto-nombre {
-    font-weight: 600;
-    display: block;
-    color: #000000; /* Texto negro */
-    font-size: 15px;
-}
-
-.producto-stock {
-    font-size: 0.8em;
-    margin-left: 5px;
-    color: #000000; /* Texto negro */
-}
-
-.stock-bajo {
-    color: #e67e22;
-    font-weight: 600;
-}
-
-.sin-stock-text {
-    color: #e74c3c;
-    font-weight: 600;
-}
-
-.stock-carrito-info {
-    font-size: 0.75em;
-    color: #007bff;
-    font-weight: 600;
-    margin-left: 8px;
-    background: #e7f3ff;
-    padding: 3px 8px;
-    border-radius: 6px;
-    border: 1px solid #b3d9ff;
-}
-
-.stock-bajo-badge, .sin-stock-badge {
-    font-size: 0.7em;
-    padding: 3px 8px;
-    border-radius: 6px;
-    margin-left: 6px;
-    font-weight: 600;
-}
-
-.stock-bajo-badge {
-    background: #fff3cd;
-    color: #856404;
-    border: 1px solid #ffeaa7;
-}
-
-.sin-stock-badge {
-    background: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
-}
-
-.producto-actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  font-weight: 600;
+  color: #1a1a1a;
+  flex: 1;
+  margin-right: 10px;
 }
 
 .producto-precio {
-    color: #007bff;
-    font-weight: 700;
-    min-width: 70px;
-    font-size: 15px;
+  color: #28a745;
+  font-weight: 700;
+  font-size: 1.1em;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
-.input-cantidad {
-    width: 65px;
-    text-align: center;
-    padding: 8px;
-    border: 2px solid #e1e5e9;
-    border-radius: 8px;
-    background: #f8f9fa;
-    font-weight: 600;
-    color: #000000; /* Texto negro */
+.producto-details {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.producto-codigo, .producto-stock, .producto-categoria {
+  font-size: 0.85em;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.producto-codigo {
+  background: #f8f9fa;
+  color: #6c757d;
+  border: 1px solid #e9ecef;
+}
+
+.producto-categoria {
+  background: #e7f3ff;
+  color: #0056b3;
+  border: 1px solid #b3d9ff;
+}
+
+.stock-critico {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.stock-bajo {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeaa7;
+}
+
+.stock-medio {
+  background: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
+}
+
+.stock-alto {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.agregar-section {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.btn-agregar-masivo {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+  border: none;
+  padding: 15px 30px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1em;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-agregar-masivo:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+}
+
+.btn-agregar-masivo.btn-disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+/* Detalles del pedido */
+.detalles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.detalle-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 1px solid #e9ecef;
+  transition: all 0.3s ease;
+}
+
+.detalle-item:hover {
+  border-color: #007bff;
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
+}
+
+.detalle-info {
+  flex: 1;
+}
+
+.detalle-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.detalle-nombre {
+  font-weight: 600;
+  color: #1a1a1a;
+  font-size: 1.1em;
+}
+
+.detalle-categoria {
+  background: #e7f3ff;
+  color: #0056b3;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.8em;
+  font-weight: 500;
+  border: 1px solid #b3d9ff;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.detalle-details {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+}
+
+.detalle-codigo, .detalle-precio {
+  font-size: 0.9em;
+  color: #6c757d;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.detalle-controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+}
+
+.control-group label {
+  font-size: 0.8em;
+  color: #6c757d;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.input-cantidad, .input-precio {
+  width: 80px;
+  text-align: center;
+  padding: 8px;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  background: #fff;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.input-cantidad:focus, .input-precio:focus {
+  border-color: #007bff;
+  outline: none;
 }
 
 .input-cantidad.input-disabled {
-    background-color: #e9ecef;
-    cursor: not-allowed;
-    opacity: 0.6;
+  background-color: #e9ecef;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
-.btn-agregar { 
-    background: linear-gradient(135deg, #28a745, #20c997); 
-    color: white; 
-    border: none;
-    padding: 10px 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    white-space: nowrap;
-    min-width: 90px;
-    font-weight: 600;
-    font-size: 13px;
+.detalle-subtotal {
+  text-align: center;
+  min-width: 100px;
 }
 
-.btn-agregar:hover:not(.btn-disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+.subtotal-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 0.8em;
+  color: #6c757d;
+  margin-bottom: 4px;
 }
 
-.btn-agregar.btn-disabled {
-    background: #6c757d;
-    cursor: not-allowed;
-    opacity: 0.6;
-    transform: none;
+.subtotal-value {
+  font-weight: 700;
+  color: #28a745;
+  font-size: 1.1em;
 }
 
-/* Carrito Mejorado */
-.resumen-container {
-    padding: 20px;
-    border: 2px solid #e9ecef;
-    border-radius: 16px;
-    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-    margin-bottom: 25px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+.btn-eliminar {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.carrito-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
-    border-bottom: 2px solid #dee2e6;
+.btn-eliminar:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
 }
 
-.carrito-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+/* Resumen */
+.resumen-pedido {
+  margin-top: 25px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border-radius: 12px;
+  border: 2px solid #e9ecef;
 }
 
-.carrito-icon {
-    font-size: 1.8em;
-    background: linear-gradient(135deg, #007bff, #0056b3);
-    padding: 10px;
-    border-radius: 12px;
-    color: white;
-}
-
-.carrito-title h3 {
-    margin: 0;
-    color: #000000; /* Texto negro */
-    font-size: 1.4em;
-    font-weight: 700;
-}
-
-.carrito-badge {
-    background: linear-gradient(135deg, #28a745, #20c997);
-    color: white;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 0.9em;
-    font-weight: 600;
-}
-
-.carrito-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.carrito-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px;
-    background: white;
-    border-radius: 12px;
-    border: 1px solid #e9ecef;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.carrito-item:hover {
-    border-color: #007bff;
-    box-shadow: 0 4px 15px rgba(0, 123, 255, 0.1);
-    transform: translateY(-2px);
-}
-
-.carrito-producto-info {
-    flex-grow: 1;
-}
-
-.carrito-producto-nombre {
-    font-weight: 600;
-    display: block;
-    color: #000000; /* Texto negro */
-    font-size: 15px;
-    margin-bottom: 4px;
-}
-
-.carrito-detalles {
-    display: flex;
-    gap: 15px;
-    align-items: center;
-    font-size: 0.9em;
-}
-
-.carrito-precio-unitario {
-    color: #6c757d;
-}
-
-.carrito-cantidad {
-    color: #007bff;
-    font-weight: 600;
-    background: #e7f3ff;
-    padding: 2px 8px;
-    border-radius: 6px;
-    border: 1px solid #b3d9ff;
-}
-
-.carrito-actions {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-
-.carrito-subtotal {
-    font-weight: 700;
-    color: #28a745;
-    font-size: 16px;
-    min-width: 80px;
-    text-align: right;
-}
-
-.btn-quitar { 
-    background: linear-gradient(135deg, #dc3545, #c82333);
-    color: white;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 600;
-    transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.btn-quitar:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
-    background: linear-gradient(135deg, #c82333, #a71e2a);
-}
-
-.trash-icon {
-    font-size: 1.1em;
-}
-
-.carrito-resumen {
-    margin-top: 20px;
-    padding: 20px;
-    background: white;
-    border-radius: 12px;
-    border: 2px solid #e9ecef;
+.resumen-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
 }
 
 .resumen-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 0;
-    color: #000000; /* Texto negro */
-    font-size: 1em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  color: #1a1a1a;
+  font-size: 1em;
 }
 
-.resumen-total {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 0;
-    border-top: 2px solid #e9ecef;
-    margin-top: 8px;
-    color: #000000; /* Texto negro */
-    font-size: 1.2em;
+.resumen-item span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.carrito-vacio {
-    text-align: center;
-    padding: 40px 20px;
-    color: #6c757d;
+.resumen-item.total {
+  border-top: 2px solid #dee2e6;
+  margin-top: 10px;
+  padding-top: 15px;
+  font-size: 1.2em;
+  font-weight: 700;
 }
 
-.carrito-vacio-icon {
-    font-size: 3em;
-    margin-bottom: 15px;
-    opacity: 0.5;
+/* Textarea */
+.textarea-modern {
+  width: 100%;
+  padding: 15px;
+  border: 2px solid #e9ecef;
+  border-radius: 10px;
+  background: #f8f9fa;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  color: #1a1a1a;
+  resize: vertical;
+  min-height: 80px;
 }
 
-.carrito-vacio p {
-    margin: 0 0 8px 0;
-    font-size: 1.1em;
-    color: #000000; /* Texto negro */
+.textarea-modern:focus {
+  border-color: #007bff;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+  outline: none;
 }
 
-.carrito-vacio small {
-    font-size: 0.9em;
-    color: #6c757d;
+.textarea-footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
 }
 
-.no-productos {
-    text-align: center;
-    color: #6c757d;
-    font-style: italic;
-    padding: 25px;
-    font-size: 16px;
+.textarea-footer small {
+  color: #6c757d;
+  font-size: 0.8em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-/* Información de pago */
-.pago-selector {
-    padding: 20px 0;
-    border-top: 2px solid #f1f3f4;
-    border-bottom: 2px solid #f1f3f4;
+/* Estados vacíos */
+.no-resultados, .seleccion-categoria {
+  text-align: center;
+  padding: 40px 20px;
+  color: #6c757d;
 }
 
-.label-modern {
-    font-weight: 600;
-    display: block;
-    margin-bottom: 8px;
-    color: #000000; /* Texto negro */
-    font-size: 15px;
+.no-resultados-icon, .seleccion-icon {
+  margin-bottom: 15px;
+  opacity: 0.5;
+  color: #6c757d;
 }
 
-/* Botón final mejorado */
+.no-resultados p, .seleccion-categoria p {
+  margin: 0 0 8px 0;
+  font-size: 1.1em;
+  color: #1a1a1a;
+}
+
+.no-resultados small, .seleccion-categoria small {
+  font-size: 0.9em;
+  color: #6c757d;
+}
+
+/* Botón final premium */
 .btn-registrar-premium {
-    width: 100%;
-    background: linear-gradient(135deg, #007bff, #0056b3);
-    color: white;
-    font-size: 1.1em;
-    padding: 18px;
-    border: none;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    margin-top: 25px;
-    font-weight: 600;
-    box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
-    position: relative;
-    overflow: hidden;
+  width: 100%;
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  font-size: 1.1em;
+  padding: 18px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 25px;
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+  position: relative;
+  overflow: hidden;
 }
 
 .btn-registrar-premium:hover:not(:disabled):not(.btn-processing) {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4);
-    background: linear-gradient(135deg, #0056b3, #004085);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4);
+  background: linear-gradient(135deg, #0056b3, #004085);
 }
 
 .btn-registrar-premium:disabled,
 .btn-registrar-premium.btn-processing {
-    background: #6c757d;
-    cursor: not-allowed;
-    opacity: 0.7;
-    transform: none;
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
 }
 
 .btn-content {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-}
-
-.btn-icon {
-    font-size: 1.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 
 .btn-spinner {
-    font-size: 1.2em;
-    animation: spin 1s linear infinite;
+  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 /* Responsive */
 @media (max-width: 768px) {
-    .carrito-item {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 12px;
-    }
-    
-    .carrito-actions {
-        width: 100%;
-        justify-content: space-between;
-    }
-    
-    .carrito-detalles {
-        flex-direction: column;
-        gap: 5px;
-        align-items: flex-start;
-    }
+  .pedido-container {
+    padding: 15px;
+  }
+  
+  .header-section {
+    flex-direction: column;
+    gap: 15px;
+    align-items: stretch;
+  }
+  
+  .search-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .detalle-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+  }
+  
+  .detalle-controls {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  
+  .categorias-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .producto-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+  }
+  
+  .producto-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
 }
 </style>
