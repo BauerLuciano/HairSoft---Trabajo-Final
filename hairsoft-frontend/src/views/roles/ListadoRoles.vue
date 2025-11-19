@@ -62,8 +62,8 @@
               </td>
               <td>
                 <div class="action-buttons">
-                  <button @click="editarRol(rol)" class="action-button edit">✏️ Editar</button>
-                  <button @click="eliminarRol(rol)" class="action-button delete">🗑️ Eliminar</button>
+                  <button @click="editarRol(rol)" class="action-button edit">✏️</button>
+                  <button @click="eliminarRol(rol)" class="action-button delete">🗑️</button>
                 </div>
               </td>
             </tr>

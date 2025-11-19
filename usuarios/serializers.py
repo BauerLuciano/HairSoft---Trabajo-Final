@@ -148,16 +148,18 @@ class ProductoSerializer(serializers.ModelSerializer):
     categoria_id = serializers.IntegerField(source='categoria.id', read_only=True) 
     categoria_nombre = serializers.CharField(source='categoria.nombre', read_only=True)
     
-    # ✅ VERSIÓN SIMPLE: Mantener como estaba originalmente
-    stock = serializers.IntegerField(source='stock_actual')
+    # ✅ CORREGIR: Hacer stock readable y writeable
+    stock_actual = serializers.IntegerField(read_only=True)  # Para lectura
+    stock = serializers.IntegerField(source='stock_actual', required=False, write_only=True)  # Para escritura
     
-    # ✅ CORRECCIÓN: Agregar campo de proveedores
+    # ✅ CORRECCIÓN: Hacer proveedores writeable
     proveedores = serializers.PrimaryKeyRelatedField(
         many=True, 
-        read_only=True
+        queryset=Proveedor.objects.all(),
+        required=False,
+        allow_empty=True
     )
     
-    # Opcional: Si quieres mostrar los nombres de los proveedores también
     proveedores_nombres = serializers.SerializerMethodField()
 
     class Meta:
@@ -167,21 +169,22 @@ class ProductoSerializer(serializers.ModelSerializer):
             'nombre', 
             'precio', 
             'codigo',
-            'stock',  # ✅ Se llama 'stock' en el JSON pero viene de 'stock_actual' del modelo
+            'descripcion',
+            'stock_actual',  # ✅ AGREGAR para lectura
+            'stock',         # ✅ Mantener para escritura
             'categoria_id',         
             'categoria_nombre',
             'proveedores',
             'proveedores_nombres',
         ]
+        extra_kwargs = {
+            'nombre': {'required': True},
+            'precio': {'required': True},
+            'categoria': {'required': True},
+        }
 
     def get_proveedores_nombres(self, obj):
         return [proveedor.nombre for proveedor in obj.proveedores.all()]
-
-    def create(self, validated_data):
-        return Producto.objects.create(**validated_data)
-
-    def update(self, instance, validated_data):
-        return super().update(instance, validated_data)
 # ----------------------------------------------------------------------
 # DETALLEVENTA Y VENTA
 # ----------------------------------------------------------------------

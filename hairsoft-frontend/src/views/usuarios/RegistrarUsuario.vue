@@ -118,14 +118,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import Swal from 'sweetalert2'
 
-const emit = defineEmits(['usuario-registrado']) // <-- agregar aquí
+// 📌 API
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
-const API_BASE = 'http://127.0.0.1:8000'
+// 📌 Props y eventos
+const emit = defineEmits(['usuario-registrado'])
 
-const form = reactive({
+// 📌 Formulario
+const form = ref({
   nombre: '',
   apellido: '',
   dni: '',
@@ -135,16 +139,20 @@ const form = reactive({
   rol_id: ''
 })
 
-const usuarios = ref([])       // listado de usuarios para refrescar (opcional local)
-const roles = ref([])          // roles disponibles
-const errores = reactive({
+// 📌 Errores por campo
+const errores = ref({
   nombre: '',
   apellido: '',
   dni: '',
   telefono: '',
   correo: '',
-  contrasena: ''
+  contrasena: '',
+  rol_id: ''
 })
+
+// 📌 Roles y usuarios existentes
+const roles = ref([])
+const usuarios = ref([])
 
 // 🔹 Cargar usuarios existentes (sólo para checks internos, dejalo si lo usás)
 const cargarUsuarios = async () => {
@@ -160,7 +168,7 @@ const cargarUsuarios = async () => {
 const cargarRoles = async () => {
   try {
     const res = await axios.get(`${API_BASE}/usuarios/api/roles/`)
-    roles.value = res.data.filter(r => r.activo === true)
+    roles.value = (res.data || []).filter(r => r.activo === true || r.activo === undefined)
   } catch (error) {
     console.error('Error al cargar roles:', error)
   }
@@ -171,78 +179,225 @@ onMounted(async () => {
   await cargarRoles()
 })
 
-// 🔹 Validación de formulario (sin tocar tu lógica interna)
+// ------------------------------
+// VALIDACIONES POR CAMPO (AGREGADAS SIN BORRAR NINGUNA LÍNEA DEL TEMPLATE)
+// ------------------------------
+const validarNombre = () => {
+  if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{2,50}$/.test(form.value.nombre)) {
+    errores.value.nombre = "El nombre solo puede contener letras y tener 2-50 caracteres"
+  } else {
+    errores.value.nombre = ""
+  }
+}
+
+const mostrarErrorNombre = () => {
+  if (!form.value.nombre) errores.value.nombre = "El nombre es obligatorio"
+}
+
+const validarApellido = () => {
+  if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{2,50}$/.test(form.value.apellido)) {
+    errores.value.apellido = "El apellido solo puede contener letras y tener 2-50 caracteres"
+  } else {
+    errores.value.apellido = ""
+  }
+}
+
+const mostrarErrorApellido = () => {
+  if (!form.value.apellido) errores.value.apellido = "El apellido es obligatorio"
+}
+
+const validarDNI = () => {
+  // aceptamos 7-9 números (pero el input tiene maxlength=8 según template; mantenemos chequeo 7-10 por flexibilidad)
+  if (!/^\d{7,10}$/.test(form.value.dni)) {
+    errores.value.dni = "DNI inválido (solo números, 7-10 dígitos)"
+  } else {
+    errores.value.dni = ""
+  }
+}
+
+const mostrarErrorDNI = () => {
+  if (!form.value.dni) errores.value.dni = "El DNI es obligatorio"
+}
+
+const validarTelefono = () => {
+  if (form.value.telefono && !/^\+?\d{6,15}$/.test(form.value.telefono)) {
+    errores.value.telefono = "Número inválido (solo números y opcional +, 6-15 dígitos)"
+  } else {
+    errores.value.telefono = ""
+  }
+}
+
+const mostrarErrorTelefono = () => {
+  if (form.value.telefono && !/^\+?\d{6,15}$/.test(form.value.telefono)) {
+    errores.value.telefono = "Teléfono inválido"
+  }
+}
+
+const validarCorreo = () => {
+  if (!/\S+@\S+\.\S+/.test(form.value.correo)) {
+    errores.value.correo = "Correo inválido"
+  } else {
+    errores.value.correo = ""
+  }
+}
+
+const mostrarErrorCorreo = () => {
+  if (!form.value.correo) errores.value.correo = "El correo es obligatorio"
+}
+
+const validarContrasena = () => {
+  if (!form.value.contrasena || form.value.contrasena.length < 6) {
+    errores.value.contrasena = "Debe tener al menos 6 caracteres"
+  } else {
+    errores.value.contrasena = ""
+  }
+}
+
+const mostrarErrorContrasena = () => {
+  if (!form.value.contrasena) errores.value.contrasena = "La contraseña es obligatoria"
+}
+
+// ----------------------------------
+// VALIDACIÓN DE FORMULARIO (USADA ANTES DE ENVIAR)
+// ----------------------------------
 const validarFormulario = () => {
   console.log("🟢 Ejecutando validarFormulario()")
-  return true
+
+  // reset
+  errores.value = {
+    nombre: '',
+    apellido: '',
+    dni: '',
+    telefono: '',
+    correo: '',
+    contrasena: '',
+    rol_id: ''
+  }
+
+  let valido = true
+
+  // reutilizamos las validaciones por campo para llenar errores
+  validarNombre()
+  validarApellido()
+  validarDNI()
+  validarTelefono()
+  validarCorreo()
+  validarContrasena()
+
+  if (!form.value.rol_id) {
+    errores.value.rol_id = 'Selecciona un rol.'
+    valido = false
+  }
+
+  // si algún mensaje quedó, marcar inválido
+  Object.keys(errores.value).forEach(k => {
+    if (errores.value[k]) valido = false
+  })
+
+  return valido
 }
 
-// 🔹 Función para resetear formulario
-const resetForm = () => {
-  form.nombre = ''
-  form.apellido = ''
-  form.dni = ''
-  form.telefono = ''
-  form.correo = ''
-  form.contrasena = ''
-  form.rol_id = ''
-}
-
-// 🔹 Crear usuario
+// ----------------------------------
+// CREAR USUARIO
+// ----------------------------------
 const crearUsuario = async () => {
   console.log("✅ crearUsuario ejecutado")
 
   if (!validarFormulario()) {
-    alert('❌ Por favor corrige los errores en el formulario')
+    Swal.fire({
+      icon: 'error',
+      title: 'Formulario inválido',
+      text: 'Por favor corrige los errores en el formulario'
+    })
     return
   }
 
-  const rolSeleccionado = roles.value.find(r => r.id == form.rol_id)
+  const rolSeleccionado = roles.value.find(r => r.id == form.value.rol_id)
   if (!rolSeleccionado) {
-    alert('❌ Por favor selecciona un rol válido')
+    Swal.fire({
+      icon: 'error',
+      title: 'Rol no válido',
+      text: 'Por favor selecciona un rol válido'
+    })
     return
   }
 
   // 🔹 Verificar si ya existe un administrador activo
-  if (rolSeleccionado.nombre.toLowerCase() === 'administrador') {
+  if (rolSeleccionado.nombre?.toLowerCase() === 'administrador') {
     const hayAdminActivo = usuarios.value.some(u => u.rol_nombre?.toLowerCase() === 'administrador' && u.estado === 'ACTIVO')
     if (hayAdminActivo) {
-      alert('❌ Ya existe un usuario Administrador activo. No se puede crear otro.')
+      Swal.fire({
+        icon: 'warning',
+        title: 'Administrador existente',
+        text: 'Ya existe un usuario Administrador activo. No se puede crear otro.'
+      })
       return
     }
   }
 
   try {
     const payload = {
-      nombre: form.nombre,
-      apellido: form.apellido,
-      dni: form.dni,
-      telefono: form.telefono || '',
-      correo: form.correo,
-      contrasena: form.contrasena,
-      rol: form.rol_id,
+      nombre: form.value.nombre,
+      apellido: form.value.apellido,
+      dni: form.value.dni,
+      telefono: form.value.telefono || '',
+      correo: form.value.correo,
+      contrasena: form.value.contrasena,
+      rol: form.value.rol_id,
       estado: 'ACTIVO'
     }
 
     console.log("📤 Enviando datos al backend:", payload)
     const res = await axios.post(`${API_BASE}/usuarios/api/usuarios/crear/`, payload)
 
-    alert('✅ Usuario registrado con éxito')
+    Swal.fire({
+      icon: 'success',
+      title: 'Usuario registrado',
+      text: 'El usuario se creó correctamente'
+    })
 
-    // 🔹 Limpiar formulario
+    // Limpiar formulario
     resetForm()
 
-    // 🔹 EMITIR evento PARA QUE EL PADRE REFRESQUE LA LISTA Y CIERRE EL MODAL
-    emit('usuario-registrado', res.data) // <--- ESTA LÍNEA es la clave
+    // Emitir evento para que el padre refresque la lista y cierre modal
+    emit('usuario-registrado', res.data)
 
-    // NOTA: no llamamos cargarUsuarios() del hijo para no duplicar acciones.
-    // El padre (ListadoUsuarios.vue) ya tiene el handler refrescarUsuarios que recarga y cierra modal.
   } catch (err) {
     console.error('❌ Error en crearUsuario:', err.response?.data || err)
-    alert('Error al crear usuario:\n' + JSON.stringify(err.response?.data?.errors || err.response?.data || err))
+    Swal.fire({
+      icon: 'error',
+      title: 'Error al crear usuario',
+      text: err.response?.data?.message || JSON.stringify(err.response?.data) || 'Ocurrió un error inesperado.'
+    })
+  }
+}
+
+// ------------------------------
+// RESET
+// ------------------------------
+const resetForm = () => {
+  form.value = {
+    nombre: '',
+    apellido: '',
+    dni: '',
+    telefono: '',
+    correo: '',
+    contrasena: '',
+    rol_id: ''
+  }
+
+  errores.value = {
+    nombre: '',
+    apellido: '',
+    dni: '',
+    telefono: '',
+    correo: '',
+    contrasena: '',
+    rol_id: ''
   }
 }
 </script>
+
 
 
 <style scoped>

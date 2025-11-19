@@ -2,6 +2,7 @@
 from django.db import models, transaction
 from datetime import timedelta
 from django.core.validators import RegexValidator
+from django.core.exceptions import ValidationError
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
 
@@ -175,13 +176,53 @@ class Producto(models.Model):
     categoria = models.ForeignKey(CategoriaProducto, on_delete=models.CASCADE, null=True, blank=True)
     proveedores = models.ManyToManyField(Proveedor, blank=True)
 
+    # ✅ AGREGAR ESTOS MÉTODOS DENTRO DE LA CLASE Producto:
+    
+    def clean(self):
+        """Validaciones antes de guardar"""
+        if self.precio and self.precio < 0:
+            raise ValidationError({'precio': 'El precio no puede ser negativo'})
+        if self.stock_actual and self.stock_actual < 0:
+            raise ValidationError({'stock_actual': 'El stock no puede ser negativo'})
+    
+    def save(self, *args, **kwargs):
+        """Generar código automático antes de guardar"""
+        # Solo generar código si no tiene y tiene categoría
+        if not self.codigo and self.categoria:
+            # Buscar último producto de la misma categoría
+            ultimo_producto = Producto.objects.filter(
+                categoria=self.categoria
+            ).exclude(codigo__isnull=True).exclude(codigo='').order_by('-id').first()
+            
+            if ultimo_producto and ultimo_producto.codigo:
+                try:
+                    # Extraer número del último código: COS-001 → 001
+                    partes = ultimo_producto.codigo.split('-')
+                    if len(partes) == 2:
+                        ultimo_numero = int(partes[1])
+                        nuevo_numero = ultimo_numero + 1
+                    else:
+                        nuevo_numero = 1
+                except (ValueError, IndexError):
+                    nuevo_numero = 1
+            else:
+                nuevo_numero = 1
+            
+            # Crear abreviatura (primeras 3 letras en mayúscula)
+            abreviatura = self.categoria.nombre[:3].upper()
+            self.codigo = f"{abreviatura}-{nuevo_numero:03d}"
+        
+        # Validar antes de guardar
+        self.clean()
+        
+        # Guardar
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.nombre
 
     class Meta:
         db_table = "productos"
-
-
 # ===============================
 # TURNOS
 # ===============================

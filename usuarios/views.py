@@ -16,8 +16,7 @@ from datetime import datetime, timedelta
 from django.utils import timezone
 from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios
 from .mercadopago_service import MercadoPagoService
-import json
-import requests
+import json, re, requests
 from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer, ListaPrecioProveedorSerializer, HistorialPreciosSerializer, PrecioSugeridoSerializer, ActualizarListaPreciosSerializer
 from django.contrib.auth.hashers import check_password
 from django.http import HttpResponse
@@ -91,7 +90,6 @@ def listado_usuarios(request):
     ]
     return JsonResponse(data, safe=False)
 
-
 @csrf_exempt
 def crear_usuario(request):
     if request.method != 'POST':
@@ -99,63 +97,86 @@ def crear_usuario(request):
 
     try:
         data = json.loads(request.body)
-        print("📦 DATOS RECIBIDOS:", data)  # Debug
+        print("📦 DATOS RECIBIDOS:", data)
     except json.JSONDecodeError:
         return JsonResponse({'status': 'error', 'message': 'JSON inválido'}, status=400)
 
+    # =========================
+    # 🔹 CAMPOS OBLIGATORIOS
+    # =========================
+    required_fields = ['nombre', 'apellido', 'dni', 'correo', 'contrasena']
+    for field in required_fields:
+        if not data.get(field):
+            return JsonResponse({
+                'status': 'error',
+                'message': f'El campo {field} es obligatorio'
+            }, status=400)
+
+    # =========================
+    # 🔹 VALIDACIONES
+    # =========================
+
+    # Nombre y apellido → solo letras
+    if not re.match(r'^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{2,50}$', data['nombre']):
+        return JsonResponse({'status': 'error', 'message': 'El nombre solo debe contener letras y espacios (2-50 caracteres)'}, status=400)
+
+    if not re.match(r'^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{2,50}$', data['apellido']):
+        return JsonResponse({'status': 'error', 'message': 'El apellido solo debe contener letras y espacios (2-50 caracteres)'}, status=400)
+
+    # DNI → solo dígitos, 7 a 9 números
+    if not re.match(r'^\d{7,9}$', data['dni']):
+        return JsonResponse({'status': 'error', 'message': 'El DNI debe contener solo números (7-9 dígitos)'}, status=400)
+
+    # Teléfono → opcional, pero formato válido
+    telefono = data.get('telefono', '')
+    if telefono and not re.match(r'^\+?\d{6,15}$', telefono):
+        return JsonResponse({'status': 'error', 'message': 'El teléfono solo puede contener números y opcional "+" (6-15 dígitos)'}, status=400)
+
+    # Correo → validación real
+    if not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', data['correo']):
+        return JsonResponse({'status': 'error', 'message': 'Correo electrónico inválido'}, status=400)
+
+    # Contraseña → mínimo 6 caracteres
+    if len(data['contrasena']) < 6:
+        return JsonResponse({'status': 'error', 'message': 'La contraseña debe tener al menos 6 caracteres'}, status=400)
+
+    # =========================
+    # 🔹 EVITAR DUPLICADOS
+    # =========================
+    if Usuario.objects.filter(correo=data['correo']).exists():
+        return JsonResponse({'status': 'error', 'message': 'Ya existe un usuario con ese correo'}, status=400)
+
+    if Usuario.objects.filter(dni=data['dni']).exists():
+        return JsonResponse({'status': 'error', 'message': 'Ya existe un usuario con ese DNI'}, status=400)
+
+    # =========================
+    # 🔹 REGLA: UN SOLO ADMINISTRADOR ACTIVO
+    # =========================
     rol_id = data.get('rol') or data.get('rol_id')
     data['rol'] = rol_id if rol_id else None
 
-    # 🔹 Validación: un solo administrador
     if rol_id:
         rol = Rol.objects.filter(pk=rol_id).first()
         if rol and rol.nombre.upper() == 'ADMINISTRADOR':
             if Usuario.objects.filter(rol__nombre__iexact='ADMINISTRADOR', estado='ACTIVO').exists():
                 return JsonResponse({'status': 'error', 'message': 'Ya existe un administrador activo'}, status=400)
 
-    # ✅ CORRECCIÓN: Siempre procesar la contraseña para creación
-    if 'contrasena' in data and data['contrasena']:
-        data['contrasena'] = make_password(data['contrasena'])
-    else:
-        # Si no viene contraseña, devolver error
-        return JsonResponse({
-            'status': 'error', 
-            'message': 'La contraseña es obligatoria'
-        }, status=400)
+    # =========================
+    # 🔹 HASH DE CONTRASEÑA
+    # =========================
+    data['contrasena'] = make_password(data['contrasena'])
 
-    # ✅ CORRECCIÓN: Crear usuario directamente sin usar el form problemático
+    # =========================
+    # 🔹 CREAR USUARIO
+    # =========================
     try:
-        # Validar campos requeridos
-        required_fields = ['nombre', 'apellido', 'dni', 'correo', 'contrasena']
-        for field in required_fields:
-            if not data.get(field):
-                return JsonResponse({
-                    'status': 'error', 
-                    'message': f'El campo {field} es obligatorio'
-                }, status=400)
-
-        # Verificar si el correo ya existe
-        if Usuario.objects.filter(correo=data['correo']).exists():
-            return JsonResponse({
-                'status': 'error', 
-                'message': 'Ya existe un usuario con ese correo electrónico'
-            }, status=400)
-
-        # Verificar si el DNI ya existe
-        if Usuario.objects.filter(dni=data['dni']).exists():
-            return JsonResponse({
-                'status': 'error', 
-                'message': 'Ya existe un usuario con ese DNI'
-            }, status=400)
-
-        # Crear usuario directamente
         usuario = Usuario.objects.create(
             nombre=data['nombre'],
             apellido=data['apellido'],
             dni=data['dni'],
-            telefono=data.get('telefono', ''),
+            telefono=telefono,
             correo=data['correo'],
-            contrasena=data['contrasena'],  # Ya está hasheada
+            contrasena=data['contrasena'],
             rol_id=rol_id,
             estado=data.get('estado', 'ACTIVO')
         )
@@ -396,23 +417,24 @@ def eliminar_servicio(request, pk):
 # ================================
 # Productos
 # ================================
-#@csrf_exempt
-#def listado_productos(request):
-#    if request.method != 'GET':
-#        return JsonResponse({'error': 'Método no permitido'}, status=405)
-#
-#    productos = Producto.objects.all()
-#    data = [
-#        {
-#            'id': p.id,
-#            'nombre': p.nombre,
-#            'precio': float(p.precio),
-#            'stock': p.stock,
-#            'categoria': p.categoria.nombre if p.categoria else None
-#        } for p in productos
-#    ]
-#    return JsonResponse(data, safe=False)
-#
+@csrf_exempt
+def listado_productos(request):
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+    productos = Producto.objects.select_related('categoria').all()
+    data = [
+        {
+            'id': p.id,
+            'nombre': p.nombre,
+            'precio': float(p.precio),
+            'stock_actual': p.stock_actual,  # ✅ CORREGIR: usar stock_actual
+            'categoria': p.categoria.nombre if p.categoria else None,
+            'categoria_id': p.categoria.id if p.categoria else None  # ✅ AGREGAR
+        } for p in productos
+    ]
+    return JsonResponse(data, safe=False)
+
 
 class ProductoListCreateAPIView(generics.ListCreateAPIView):
     # 1. Definimos la fuente de datos (tus 6 productos)

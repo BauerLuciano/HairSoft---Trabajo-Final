@@ -4,7 +4,7 @@
     
     <form @submit.prevent="registrarProducto" class="product-form">
       <div class="form-grid">
-        <!-- Información Básica -->
+        <!-- Información Básica - REORDENADO -->
         <div class="form-section">
           <h3>Información Básica</h3>
           
@@ -20,15 +20,47 @@
             />
           </div>
 
+          <!-- CATEGORÍA PRIMERO -->
           <div class="form-group">
-            <label for="codigo">Código del Producto</label>
+            <label for="categoria_id">Categoría *</label>
+            <select
+              id="categoria_id"
+              v-model="producto.categoria"
+              required
+              class="form-select"
+              :disabled="cargandoCategorias || categoriasProductos.length === 0"
+              @change="generarCodigoAutomatico"
+            >
+              <option value="">Seleccione una categoría</option>
+              <option v-for="categoria in categoriasProductos" :key="categoria.id" :value="categoria.id">
+                {{ categoria.nombre }}
+              </option>
+            </select>
+            <small class="form-help">Al seleccionar categoría se genera código automático</small>
+            
+            <div v-if="cargandoCategorias" class="loading-message">
+              <div class="spinner"></div>
+              Cargando categorías...
+            </div>
+            <div v-else-if="categoriasProductos.length === 0" class="no-data-message error">
+              ❌ No hay categorías disponibles
+            </div>
+          </div>
+
+          <!-- CÓDIGO AUTOMÁTICO - SOLO LECTURA -->
+          <div class="form-group">
+            <label for="codigo">Código del Producto *</label>
             <input
               id="codigo"
               v-model="producto.codigo"
               type="text"
-              placeholder="Código único (opcional)"
-              class="form-input"
+              required
+              readonly
+              placeholder="Se generará automáticamente al elegir categoría"
+              class="form-input readonly"
+              style="background-color: #f9fafb; cursor: not-allowed;"
             />
+            <small class="form-help">Código generado automáticamente</small>
           </div>
 
           <div class="form-group">
@@ -37,7 +69,7 @@
               id="descripcion"
               v-model="producto.descripcion"
               rows="3"
-              placeholder="Descripción del producto..."
+              placeholder="Descripción del producto (opcional)..."
               class="form-textarea"
             ></textarea>
           </div>
@@ -54,11 +86,13 @@
               v-model.number="producto.precio"
               type="number"
               step="0.01"
-              min="0"
+              min="0.01"
               required
               placeholder="0.00"
               class="form-input"
+              @input="validarPrecio"
             />
+            <small class="form-help error" v-if="precioInvalido">El precio debe ser mayor a 0</small>
           </div>
 
           <div class="form-group">
@@ -71,43 +105,13 @@
               required
               placeholder="0"
               class="form-input"
+              @input="validarStock"
             />
             <small class="form-help">Alerta automática cuando el stock sea ≤ 10 unidades</small>
-          </div>
-        </div>
-
-        <!-- Categoría y Proveedor -->
-        <div class="form-section">
-          <h3>Categorización</h3>
-          
-          <!-- Categorías -->
-          <div class="form-group">
-            <label for="categoria_id">Categoría *</label>
-            <select
-              id="categoria_id"
-              v-model="producto.categoria"
-              required
-              class="form-select"
-              :disabled="cargandoCategorias || categoriasProductos.length === 0"
-            >
-              <option value="">Seleccione una categoría</option>
-              <option v-for="categoria in categoriasProductos" :key="categoria.id" :value="categoria.id">
-                {{ categoria.nombre }}
-              </option>
-            </select>
-            <small class="form-help">Categorías específicas para productos</small>
-            
-            <!-- Estados de carga de categorías -->
-            <div v-if="cargandoCategorias" class="loading-message">
-              <div class="spinner"></div>
-              Cargando categorías...
-            </div>
-            <div v-else-if="categoriasProductos.length === 0" class="no-data-message error">
-              ❌ No hay categorías disponibles. Verifique la conexión con la API.
-            </div>
+            <small class="form-help error" v-if="stockInvalido">El stock no puede ser negativo</small>
           </div>
 
-          <!-- Proveedores como CHECKBOXES MEJORADOS -->
+          <!-- Proveedores movidos aquí -->
           <div class="form-group">
             <label>Proveedores Disponibles</label>
             
@@ -148,7 +152,7 @@
         <button type="button" @click="cancelar" class="btn btn-secondary">
           Cancelar
         </button>
-        <button type="submit" :disabled="cargando || !producto.categoria" class="btn btn-primary">
+        <button type="submit" :disabled="cargando || !formularioValido" class="btn btn-primary">
           {{ cargando ? 'Registrando...' : 'Registrar Producto' }}
         </button>
       </div>
@@ -157,7 +161,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import axios from 'axios'
 
 const emit = defineEmits(['producto-registrado', 'cancelar'])
@@ -179,12 +183,21 @@ const proveedores = ref([])
 const cargando = ref(false)
 const cargandoCategorias = ref(false)
 const cargandoProveedores = ref(false)
-const showDebug = ref(true) // Activado para ver qué pasa
+const precioInvalido = ref(false)
+const stockInvalido = ref(false)
+
+// Computed para validar formulario completo
+const formularioValido = computed(() => {
+  return producto.value.nombre.trim() && 
+         producto.value.precio > 0 &&
+         producto.value.stock_actual >= 0 &&
+         producto.value.categoria &&
+         producto.value.codigo
+})
 
 // Filtrar solo categorías de productos
 const categoriasProductos = computed(() => {
   return categorias.value
-  // return categorias.value.filter(c => c.tipo === 'PRODUCTO' && c.activo)
 })
 
 // Filtrar proveedores activos
@@ -192,35 +205,72 @@ const proveedoresActivos = computed(() => {
   return proveedores.value.filter(p => p.estado === 'ACTIVO' || p.activo)
 })
 
+// Generar código automático cuando se selecciona categoría
+const generarCodigoAutomatico = async () => {
+  if (!producto.value.categoria) return
+  
+  try {
+    const categoriaSeleccionada = categorias.value.find(c => c.id == producto.value.categoria)
+    if (!categoriaSeleccionada) return
+
+    // Obtener el último código de esta categoría
+    const response = await axios.get(`${API_BASE}/usuarios/api/productos/?categoria=${producto.value.categoria}`)
+    const productosMismaCategoria = response.data
+    
+    let nuevoNumero = 1
+    if (productosMismaCategoria.length > 0) {
+      // Buscar el número más alto
+      const numeros = productosMismaCategoria
+        .map(p => {
+          if (p.codigo && p.codigo.startsWith(categoriaSeleccionada.nombre.substring(0, 3).toUpperCase())) {
+            const partes = p.codigo.split('-')
+            if (partes.length === 2) {
+              return parseInt(partes[1]) || 0
+            }
+          }
+          return 0
+        })
+        .filter(n => n > 0)
+      
+      nuevoNumero = numeros.length > 0 ? Math.max(...numeros) + 1 : 1
+    }
+
+    const abreviatura = categoriaSeleccionada.nombre.substring(0, 3).toUpperCase()
+    producto.value.codigo = `${abreviatura}-${nuevoNumero.toString().padStart(3, '0')}`
+    
+  } catch (error) {
+    console.error('Error generando código:', error)
+    // Si falla, generar código local
+    const categoriaSeleccionada = categorias.value.find(c => c.id == producto.value.categoria)
+    if (categoriaSeleccionada) {
+      const abreviatura = categoriaSeleccionada.nombre.substring(0, 3).toUpperCase()
+      producto.value.codigo = `${abreviatura}-001`
+    }
+  }
+}
+
+// Validaciones en tiempo real
+const validarPrecio = () => {
+  precioInvalido.value = producto.value.precio <= 0
+}
+
+const validarStock = () => {
+  stockInvalido.value = producto.value.stock_actual < 0
+}
+
 // Cargar categorías
 const cargarCategorias = async () => {
   cargandoCategorias.value = true
   try {
-    console.log('🔄 Intentando cargar categorías...')
-    console.log('📡 URL:', `${API_BASE}/usuarios/api/categorias/productos/`)
-    
     const response = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`)
-    console.log('✅ Respuesta de categorías:', response.data)
-    
     categorias.value = response.data
-    
-    if (response.data.length === 0) {
-      console.warn('⚠️ La API devolvió un array vacío de categorías')
-    }
-    
   } catch (err) {
-    console.error('❌ Error grave al cargar categorías:', err)
-    console.error('📡 URL que falló:', `${API_BASE}/usuarios/api/categorias/productos/`)
-    console.error('🔧 Error details:', err.response?.data || err.message)
-    
-    // Intentar con endpoint alternativo
+    console.error('Error cargando categorías:', err)
     try {
-      console.log('🔄 Intentando endpoint alternativo...')
       const altResponse = await axios.get(`${API_BASE}/usuarios/api/categorias/`)
-      console.log('✅ Respuesta alternativa:', altResponse.data)
       categorias.value = altResponse.data
     } catch (altErr) {
-      console.error('❌ También falló el endpoint alternativo:', altErr)
+      console.error('También falló endpoint alternativo:', altErr)
     }
   } finally {
     cargandoCategorias.value = false
@@ -231,12 +281,10 @@ const cargarCategorias = async () => {
 const cargarProveedores = async () => {
   cargandoProveedores.value = true
   try {
-    console.log('🔄 Cargando proveedores...')
     const response = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
-    console.log('✅ Proveedores cargados:', response.data)
     proveedores.value = response.data
   } catch (err) {
-    console.error('❌ Error al cargar proveedores:', err)
+    console.error('Error al cargar proveedores:', err)
   } finally {
     cargandoProveedores.value = false
   }
@@ -244,33 +292,35 @@ const cargarProveedores = async () => {
 
 // Cargar todos los datos
 const cargarDatos = async () => {
-  console.log('🚀 Iniciando carga de datos...')
   await Promise.all([
     cargarCategorias(),
     cargarProveedores()
   ])
-  console.log('🎉 Carga de datos completada')
 }
 
 const registrarProducto = async () => {
-  if (!validarProducto()) return
+  if (!formularioValido.value) {
+    alert('❌ Complete todos los campos obligatorios correctamente')
+    return
+  }
   
   cargando.value = true
   try {
     const payload = {
       nombre: producto.value.nombre.trim(),
-      codigo: producto.value.codigo.trim(),
-      descripcion: producto.value.descripcion.trim(),
+      codigo: producto.value.codigo,
+      descripcion: producto.value.descripcion.trim() || '',
       precio: parseFloat(producto.value.precio),
-      stock_actual: parseInt(producto.value.stock_actual),
-      categoria: producto.value.categoria,
-      proveedores: producto.value.proveedores_seleccionados
+      stock: parseInt(producto.value.stock_actual),
+      categoria: parseInt(producto.value.categoria),
+      proveedores: producto.value.proveedores_seleccionados.map(p => parseInt(p))
     }
 
     console.log('📤 Enviando producto:', payload)
     
     const response = await axios.post(`${API_BASE}/usuarios/api/productos/`, payload)
     
+    console.log('✅ Producto registrado con éxito:', response.data)
     alert('✅ Producto registrado con éxito')
     resetForm()
     emit('producto-registrado', response.data)
@@ -279,33 +329,21 @@ const registrarProducto = async () => {
     console.error('❌ Error al registrar producto:', err)
     if (err.response?.status === 400) {
       const errors = err.response.data
-      alert('❌ Error en los datos:\n' + Object.values(errors).flat().join('\n'))
+      let mensajeError = '❌ Error en los datos:\n'
+      if (typeof errors === 'object') {
+        Object.entries(errors).forEach(([campo, errores]) => {
+          mensajeError += `• ${campo}: ${Array.isArray(errores) ? errores.join(', ') : errores}\n`
+        })
+      } else {
+        mensajeError += JSON.stringify(errors, null, 2)
+      }
+      alert(mensajeError)
     } else {
       alert('❌ Error al registrar el producto: ' + (err.response?.data?.message || err.message))
     }
   } finally {
     cargando.value = false
   }
-}
-
-const validarProducto = () => {
-  if (!producto.value.nombre.trim()) {
-    alert('El nombre del producto es obligatorio')
-    return false
-  }
-  if (producto.value.precio < 0) {
-    alert('El precio no puede ser negativo')
-    return false
-  }
-  if (producto.value.stock_actual < 0) {
-    alert('El stock no puede ser negativo')
-    return false
-  }
-  if (!producto.value.categoria) {
-    alert('Debe seleccionar una categoría')
-    return false
-  }
-  return true
 }
 
 const resetForm = () => {
@@ -318,18 +356,15 @@ const resetForm = () => {
     categoria: '',
     proveedores_seleccionados: []
   }
+  precioInvalido.value = false
+  stockInvalido.value = false
 }
 
 const cancelar = () => {
   emit('cancelar')
 }
 
-const toggleDebug = () => {
-  showDebug.value = !showDebug.value
-}
-
 onMounted(() => {
-  console.log('🔍 Componente RegistrarProducto montado')
   cargarDatos()
 })
 </script>
@@ -416,6 +451,37 @@ onMounted(() => {
   font-size: 0.75rem;
   margin-top: 4px;
   display: block;
+}
+
+.form-select {
+  appearance: none; /* Remover estilo por defecto */
+  background-image: url("data:image/svg+xml;charset=US-ASCII,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 5'><path fill='%23333' d='M2 0L0 2h4zm0 5L0 3h4z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px;
+  padding-right: 40px;
+}
+
+.readonly {
+  background-color: #f9fafb !important;
+  cursor: not-allowed !important;
+  color: #6b7280;
+}
+
+.form-help.error {
+  color: #dc2626;
+  font-weight: 500;
+}
+
+/* Mejorar visibilidad de campos inválidos */
+.form-input:invalid {
+  border-color: #dc2626;
+}
+
+.btn-primary:disabled {
+  background-color: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 /* CHECKBOXES MEJORADOS - MUY VISIBLES */
