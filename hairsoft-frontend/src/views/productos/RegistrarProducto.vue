@@ -1,171 +1,232 @@
 <template>
-  <div class="form-container">
-    <h2>Registrar Nuevo Producto</h2>
-    
-    <form @submit.prevent="registrarProducto" class="product-form">
+  <div class="pedido-container">
+    <div class="header-section">
+      <h2>
+        <Package class="header-icon" />
+        Registrar Nuevo Producto
+      </h2>
+      <button @click="cancelar" class="btn-back">
+        <ArrowLeft :size="18" />
+        Volver al Listado
+      </button>
+    </div>
+
+    <!-- Información Básica -->
+    <div class="card-modern">
+      <div class="card-header">
+        <div class="card-icon">
+          <ClipboardList :size="20" />
+        </div>
+        <h3>Información Básica</h3>
+      </div>
+
+      <div class="input-group">
+        <label>
+          <Tag :size="16" />
+          Nombre del Producto *
+        </label>
+        <input
+          v-model="producto.nombre"
+          type="text"
+          required
+          placeholder="Ingrese el nombre del producto"
+          class="input-modern"
+        />
+      </div>
+
       <div class="form-grid">
-        <!-- Información Básica - REORDENADO -->
-        <div class="form-section">
-          <h3>Información Básica</h3>
-          
-          <div class="form-group">
-            <label for="nombre">Nombre del Producto *</label>
-            <input
-              id="nombre"
-              v-model="producto.nombre"
-              type="text"
-              required
-              placeholder="Ingrese el nombre del producto"
-              class="form-input"
-            />
-          </div>
-
-          <!-- CATEGORÍA PRIMERO -->
-          <div class="form-group">
-            <label for="categoria_id">Categoría *</label>
-            <select
-              id="categoria_id"
-              v-model="producto.categoria"
-              required
-              class="form-select"
-              :disabled="cargandoCategorias || categoriasProductos.length === 0"
-              @change="generarCodigoAutomatico"
-            >
-              <option value="">Seleccione una categoría</option>
-              <option v-for="categoria in categoriasProductos" :key="categoria.id" :value="categoria.id">
-                {{ categoria.nombre }}
-              </option>
-            </select>
-            <small class="form-help">Al seleccionar categoría se genera código automático</small>
-            
-            <div v-if="cargandoCategorias" class="loading-message">
-              <div class="spinner"></div>
-              Cargando categorías...
-            </div>
-            <div v-else-if="categoriasProductos.length === 0" class="no-data-message error">
-              ❌ No hay categorías disponibles
-            </div>
-          </div>
-
-          <!-- CÓDIGO AUTOMÁTICO - SOLO LECTURA -->
-          <div class="form-group">
-            <label for="codigo">Código del Producto *</label>
-            <input
-              id="codigo"
-              v-model="producto.codigo"
-              type="text"
-              required
-              readonly
-              placeholder="Se generará automáticamente al elegir categoría"
-              class="form-input readonly"
-              style="background-color: #f9fafb; cursor: not-allowed;"
-            />
-            <small class="form-help">Código generado automáticamente</small>
-          </div>
-
-          <div class="form-group">
-            <label for="descripcion">Descripción</label>
-            <textarea
-              id="descripcion"
-              v-model="producto.descripcion"
-              rows="3"
-              placeholder="Descripción del producto (opcional)..."
-              class="form-textarea"
-            ></textarea>
-          </div>
+        <div class="input-group">
+          <label>
+            <Award :size="16" />
+            Marca *
+          </label>
+          <select
+            v-model.number="producto.marca"
+            required
+            class="select-modern"
+            :disabled="cargandoMarcas || marcas.length === 0"
+          >
+            <option value="">Seleccione una marca</option>
+            <option v-for="marca in marcas" :key="marca.id" :value="marca.id">
+              {{ marca.nombre }}
+            </option>
+          </select>
         </div>
 
-        <!-- Precio y Stock -->
-        <div class="form-section">
-          <h3>Precio y Stock</h3>
-          
-          <div class="form-group">
-            <label for="precio">Precio de Venta *</label>
-            <input
-              id="precio"
-              v-model.number="producto.precio"
-              type="number"
-              step="0.01"
-              min="0.01"
-              required
-              placeholder="0.00"
-              class="form-input"
-              @input="validarPrecio"
-            />
-            <small class="form-help error" v-if="precioInvalido">El precio debe ser mayor a 0</small>
-          </div>
+        <div class="input-group">
+          <label>
+            <Layers :size="16" />
+            Categoría *
+          </label>
+          <select
+            v-model.number="producto.categoria"
+            required
+            class="select-modern"
+            :disabled="cargandoCategorias || categoriasProductos.length === 0"
+          >
+            <option value="">Seleccione una categoría</option>
+            <option v-for="categoria in categoriasProductos" :key="categoria.id" :value="categoria.id">
+              {{ categoria.nombre }}
+            </option>
+          </select>
+        </div>
+      </div>
 
-          <div class="form-group">
-            <label for="stock_actual">Stock Inicial *</label>
-            <input
-              id="stock_actual"
-              v-model.number="producto.stock_actual"
-              type="number"
-              min="0"
-              required
-              placeholder="0"
-              class="form-input"
-              @input="validarStock"
-            />
-            <small class="form-help">Alerta automática cuando el stock sea ≤ 10 unidades</small>
-            <small class="form-help error" v-if="stockInvalido">El stock no puede ser negativo</small>
-          </div>
+      <div class="input-group">
+        <label>
+          <Barcode :size="16" />
+          Código del Producto *
+        </label>
+        <input
+          v-model="producto.codigo"
+          type="text"
+          required
+          readonly
+          class="input-modern readonly"
+        />
+      </div>
 
-          <!-- Proveedores movidos aquí -->
-          <div class="form-group">
-            <label>Proveedores Disponibles</label>
-            
-            <div v-if="cargandoProveedores" class="loading-message">
-              <div class="spinner"></div>
-              Cargando proveedores...
-            </div>
-            
-            <div v-else-if="proveedoresActivos.length > 0" class="checkbox-group-enhanced">
-              <div class="checkbox-item" v-for="proveedor in proveedoresActivos" :key="proveedor.id">
-                <input 
-                  type="checkbox" 
-                  :id="`proveedor-${proveedor.id}`"
-                  :value="proveedor.id" 
-                  v-model="producto.proveedores_seleccionados"
-                  class="enhanced-checkbox"
-                />
-                <label :for="`proveedor-${proveedor.id}`" class="enhanced-checkbox-label">
-                  <span class="checkmark"></span>
-                  <span class="proveedor-info">
-                    <strong>{{ proveedor.nombre }}</strong>
-                    <span class="proveedor-contacto">{{ proveedor.contacto || 'Sin contacto' }}</span>
-                  </span>
-                </label>
+      <div class="input-group">
+        <label>
+          <FileText :size="16" />
+          Descripción (Opcional)
+        </label>
+        <textarea
+          v-model="producto.descripcion"
+          rows="3"
+          placeholder="Descripción del producto..."
+          class="textarea-modern"
+        ></textarea>
+      </div>
+    </div>
+
+    <!-- Precio y Stock -->
+    <div class="card-modern">
+      <div class="card-header">
+        <div class="card-icon">
+          <DollarSign :size="20" />
+        </div>
+        <h3>Precio y Stock</h3>
+      </div>
+
+      <div class="form-grid">
+        <div class="input-group">
+          <label>
+            <DollarSign :size="16" />
+            Precio de Venta *
+          </label>
+          <input
+            v-model.number="producto.precio"
+            type="number"
+            step="0.01"
+            min="0.01"
+            required
+            placeholder="0.00"
+            class="input-modern"
+          />
+        </div>
+
+        <div class="input-group">
+          <label>
+            <Package :size="16" />
+            Stock Inicial *
+          </label>
+          <input
+            v-model.number="producto.stock_actual"
+            type="number"
+            min="0"
+            required
+            placeholder="0"
+            class="input-modern"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Proveedores -->
+    <div class="card-modern">
+      <div class="card-header">
+        <div class="card-icon">
+          <Truck :size="20" />
+        </div>
+        <h3>Proveedores</h3>
+        <span v-if="proveedoresActivos.length > 0" class="badge-count">
+          {{ proveedoresActivos.length }}
+        </span>
+      </div>
+
+      <div class="input-group">
+        <div class="proveedores-grid">
+          <div 
+            v-for="proveedor in proveedoresActivos" 
+            :key="proveedor.id" 
+            class="proveedor-item"
+            :class="{ 'selected': producto.proveedores_seleccionados.includes(proveedor.id) }"
+            @click="toggleProveedor(proveedor.id)"
+          >
+            <div class="proveedor-seleccion">
+              <div class="proveedor-checkbox" :class="{ 'checked': producto.proveedores_seleccionados.includes(proveedor.id) }">
+                <Check v-if="producto.proveedores_seleccionados.includes(proveedor.id)" :size="14" />
               </div>
             </div>
             
-            <div v-else class="no-data-message">
-              No hay proveedores disponibles
+            <div class="proveedor-info">
+              <div class="proveedor-header">
+                <span class="proveedor-nombre">{{ proveedor.nombre }}</span>
+                <span class="proveedor-estado">
+                  <BadgeCheck :size="14" />
+                  Activo
+                </span>
+              </div>
+              <div class="proveedor-details">
+                <span class="proveedor-contacto">
+                  <User :size="12" />
+                  {{ proveedor.contacto || 'Sin contacto' }}
+                </span>
+                <span class="proveedor-telefono">
+                  <Phone :size="12" />
+                  {{ proveedor.telefono || 'Sin teléfono' }}
+                </span>
+              </div>
             </div>
-            <small class="form-help">Puede seleccionar múltiples proveedores</small>
           </div>
         </div>
+        
+        <div class="form-help" :class="{ 'error': producto.proveedores_seleccionados.length === 0 && proveedoresActivos.length > 0 }">
+          {{ producto.proveedores_seleccionados.length === 0 && proveedoresActivos.length > 0 ? '❌ Seleccione al menos un proveedor' : `✅ ${producto.proveedores_seleccionados.length} proveedor(es) seleccionado(s)` }}
+        </div>
       </div>
+    </div>
 
-      <!-- Botones -->
-      <div class="form-actions">
-        <button type="button" @click="cancelar" class="btn btn-secondary">
-          Cancelar
-        </button>
-        <button type="submit" :disabled="cargando || !formularioValido" class="btn btn-primary">
-          {{ cargando ? 'Registrando...' : 'Registrar Producto' }}
-        </button>
-      </div>
-    </form>
+    <!-- Botón Final -->
+    <button 
+      @click="registrarProducto" 
+      :disabled="!formularioValido || cargando" 
+      class="btn-registrar-premium"
+      :class="{'btn-processing': cargando}"
+    >
+      <span v-if="!cargando" class="btn-content">
+        <CheckCircle2 :size="20" />
+        Registrar Producto
+      </span>
+      <span v-else class="btn-content">
+        <Loader2 :size="20" class="btn-spinner" />
+        Procesando...
+      </span>
+    </button>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import axios from 'axios'
+import { 
+  Package, ArrowLeft, ClipboardList, Tag, Award, Layers, 
+  Barcode, FileText, DollarSign, Truck, User, Phone, 
+  Check, BadgeCheck, CheckCircle2, Loader2
+} from 'lucide-vue-next'
 
 const emit = defineEmits(['producto-registrado', 'cancelar'])
-
 const API_BASE = 'http://127.0.0.1:8000'
 
 const producto = ref({
@@ -175,172 +236,173 @@ const producto = ref({
   precio: 0,
   stock_actual: 0,
   categoria: '',
+  marca: '',
   proveedores_seleccionados: []
 })
 
 const categorias = ref([])
 const proveedores = ref([])
+const marcas = ref([])
+
 const cargando = ref(false)
 const cargandoCategorias = ref(false)
 const cargandoProveedores = ref(false)
-const precioInvalido = ref(false)
-const stockInvalido = ref(false)
+const cargandoMarcas = ref(false)
 
-// Computed para validar formulario completo
-const formularioValido = computed(() => {
-  return producto.value.nombre.trim() && 
-         producto.value.precio > 0 &&
-         producto.value.stock_actual >= 0 &&
-         producto.value.categoria &&
-         producto.value.codigo
-})
+const formularioValido = computed(() =>
+  producto.value.nombre.trim() &&
+  producto.value.precio > 0 &&
+  producto.value.stock_actual >= 0 &&
+  producto.value.categoria &&
+  producto.value.marca &&
+  producto.value.codigo &&
+  producto.value.proveedores_seleccionados.length > 0
+)
 
-// Filtrar solo categorías de productos
-const categoriasProductos = computed(() => {
-  return categorias.value
-})
+const categoriasProductos = computed(() => categorias.value)
+const proveedoresActivos = computed(() =>
+  proveedores.value.filter(p => p.estado === 'ACTIVO' || p.activo)
+)
 
-// Filtrar proveedores activos
-const proveedoresActivos = computed(() => {
-  return proveedores.value.filter(p => p.estado === 'ACTIVO' || p.activo)
-})
+// Toggle proveedor
+const toggleProveedor = (proveedorId) => {
+  const index = producto.value.proveedores_seleccionados.indexOf(proveedorId)
+  if (index > -1) {
+    producto.value.proveedores_seleccionados.splice(index, 1)
+  } else {
+    producto.value.proveedores_seleccionados.push(proveedorId)
+  }
+}
 
-// Generar código automático cuando se selecciona categoría
-const generarCodigoAutomatico = async () => {
-  if (!producto.value.categoria) return
-  
+// ================================
+// GENERAR CÓDIGO AUTOMÁTICO
+// ================================
+const generarCodigo = async (categoriaId) => {
+  if (!categoriaId) {
+    producto.value.codigo = ''
+    return
+  }
+
   try {
-    const categoriaSeleccionada = categorias.value.find(c => c.id == producto.value.categoria)
-    if (!categoriaSeleccionada) return
+    const categoria = categorias.value.find(c => c.id === categoriaId)
+    if (!categoria) return
 
-    // Obtener el último código de esta categoría
-    const response = await axios.get(`${API_BASE}/usuarios/api/productos/?categoria=${producto.value.categoria}`)
-    const productosMismaCategoria = response.data
+    const abreviatura = categoria.nombre.slice(0, 3).toUpperCase()
     
-    let nuevoNumero = 1
-    if (productosMismaCategoria.length > 0) {
-      // Buscar el número más alto
-      const numeros = productosMismaCategoria
-        .map(p => {
-          if (p.codigo && p.codigo.startsWith(categoriaSeleccionada.nombre.substring(0, 3).toUpperCase())) {
-            const partes = p.codigo.split('-')
-            if (partes.length === 2) {
-              return parseInt(partes[1]) || 0
-            }
+    const res = await axios.get(`${API_BASE}/usuarios/api/productos/`)
+    const todosLosProductos = res.data
+
+    let maxNum = 0
+    todosLosProductos.forEach(p => {
+      if (p.codigo && p.codigo.startsWith(abreviatura + '-')) {
+        const partes = p.codigo.split('-')
+        if (partes.length === 2) {
+          const num = parseInt(partes[1])
+          if (!isNaN(num) && num > maxNum) {
+            maxNum = num
           }
-          return 0
-        })
-        .filter(n => n > 0)
-      
-      nuevoNumero = numeros.length > 0 ? Math.max(...numeros) + 1 : 1
-    }
+        }
+      }
+    })
 
-    const abreviatura = categoriaSeleccionada.nombre.substring(0, 3).toUpperCase()
+    const nuevoNumero = maxNum + 1
     producto.value.codigo = `${abreviatura}-${nuevoNumero.toString().padStart(3, '0')}`
-    
-  } catch (error) {
-    console.error('Error generando código:', error)
-    // Si falla, generar código local
-    const categoriaSeleccionada = categorias.value.find(c => c.id == producto.value.categoria)
-    if (categoriaSeleccionada) {
-      const abreviatura = categoriaSeleccionada.nombre.substring(0, 3).toUpperCase()
+
+  } catch (err) {
+    console.error('Error generando código:', err)
+    const categoria = categorias.value.find(c => c.id === categoriaId)
+    if (categoria) {
+      const abreviatura = categoria.nombre.slice(0, 3).toUpperCase()
       producto.value.codigo = `${abreviatura}-001`
     }
   }
 }
 
-// Validaciones en tiempo real
-const validarPrecio = () => {
-  precioInvalido.value = producto.value.precio <= 0
+// ================================
+// CARGA DE DATOS
+// ================================
+const cargarMarcas = async () => {
+  cargandoMarcas.value = true
+  try {
+    const res = await axios.get(`${API_BASE}/usuarios/api/marcas/`)
+    marcas.value = res.data
+  } catch (err) {
+    console.error("Error cargando marcas:", err)
+  } finally {
+    cargandoMarcas.value = false
+  }
 }
 
-const validarStock = () => {
-  stockInvalido.value = producto.value.stock_actual < 0
-}
-
-// Cargar categorías
 const cargarCategorias = async () => {
   cargandoCategorias.value = true
   try {
-    const response = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`)
-    categorias.value = response.data
+    const res = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`)
+    categorias.value = res.data
   } catch (err) {
     console.error('Error cargando categorías:', err)
-    try {
-      const altResponse = await axios.get(`${API_BASE}/usuarios/api/categorias/`)
-      categorias.value = altResponse.data
-    } catch (altErr) {
-      console.error('También falló endpoint alternativo:', altErr)
-    }
   } finally {
     cargandoCategorias.value = false
   }
 }
 
-// Cargar proveedores
 const cargarProveedores = async () => {
   cargandoProveedores.value = true
   try {
-    const response = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
-    proveedores.value = response.data
+    const res = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
+    proveedores.value = res.data
   } catch (err) {
-    console.error('Error al cargar proveedores:', err)
+    console.error('Error cargando proveedores:', err)
   } finally {
     cargandoProveedores.value = false
   }
 }
 
-// Cargar todos los datos
 const cargarDatos = async () => {
-  await Promise.all([
-    cargarCategorias(),
-    cargarProveedores()
-  ])
+  await Promise.all([cargarMarcas(), cargarCategorias(), cargarProveedores()])
 }
 
+// ================================
+// WATCHER
+// ================================
+watch(() => producto.value.categoria, (newVal) => {
+  if (newVal) generarCodigo(Number(newVal))
+})
+
+// ================================
+// REGISTRAR PRODUCTO
+// ================================
 const registrarProducto = async () => {
   if (!formularioValido.value) {
-    alert('❌ Complete todos los campos obligatorios correctamente')
+    if (producto.value.proveedores_seleccionados.length === 0) {
+      alert("❌ Debe seleccionar al menos un proveedor para el producto.")
+    } else {
+      alert("❌ Complete todos los campos obligatorios.")
+    }
     return
   }
-  
+
   cargando.value = true
   try {
     const payload = {
       nombre: producto.value.nombre.trim(),
       codigo: producto.value.codigo,
-      descripcion: producto.value.descripcion.trim() || '',
-      precio: parseFloat(producto.value.precio),
-      stock: parseInt(producto.value.stock_actual),
-      categoria: parseInt(producto.value.categoria),
-      proveedores: producto.value.proveedores_seleccionados.map(p => parseInt(p))
+      descripcion: producto.value.descripcion.trim(),
+      precio: producto.value.precio,
+      stock: producto.value.stock_actual,
+      categoria: Number(producto.value.categoria),
+      marca: Number(producto.value.marca),
+      proveedores: producto.value.proveedores_seleccionados
     }
 
-    console.log('📤 Enviando producto:', payload)
-    
-    const response = await axios.post(`${API_BASE}/usuarios/api/productos/`, payload)
-    
-    console.log('✅ Producto registrado con éxito:', response.data)
-    alert('✅ Producto registrado con éxito')
+    const res = await axios.post(`${API_BASE}/usuarios/api/productos/`, payload)
+
+    alert("✅ Producto registrado correctamente")
+    emit("producto-registrado", res.data)
     resetForm()
-    emit('producto-registrado', response.data)
-    
+
   } catch (err) {
-    console.error('❌ Error al registrar producto:', err)
-    if (err.response?.status === 400) {
-      const errors = err.response.data
-      let mensajeError = '❌ Error en los datos:\n'
-      if (typeof errors === 'object') {
-        Object.entries(errors).forEach(([campo, errores]) => {
-          mensajeError += `• ${campo}: ${Array.isArray(errores) ? errores.join(', ') : errores}\n`
-        })
-      } else {
-        mensajeError += JSON.stringify(errors, null, 2)
-      }
-      alert(mensajeError)
-    } else {
-      alert('❌ Error al registrar el producto: ' + (err.response?.data?.message || err.message))
-    }
+    console.error(err)
+    alert("❌ Error al registrar producto")
   } finally {
     cargando.value = false
   }
@@ -348,248 +410,334 @@ const registrarProducto = async () => {
 
 const resetForm = () => {
   producto.value = {
-    nombre: '',
-    codigo: '',
-    descripcion: '',
+    nombre: "",
+    codigo: "",
+    descripcion: "",
     precio: 0,
     stock_actual: 0,
-    categoria: '',
+    categoria: "",
+    marca: "",
     proveedores_seleccionados: []
   }
-  precioInvalido.value = false
-  stockInvalido.value = false
 }
 
-const cancelar = () => {
-  emit('cancelar')
-}
+const cancelar = () => emit("cancelar")
 
-onMounted(() => {
-  cargarDatos()
-})
+onMounted(() => cargarDatos())
 </script>
 
 <style scoped>
-.form-container {
-  max-width: 900px;
+/* ESTILOS EXACTAMENTE IGUALES A REGISTRARPEDIDO.VUE */
+.pedido-container {
+  max-width: 1000px;
   margin: 0 auto;
-  padding: 20px;
-  background: white;
-  border-radius: 10px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 25px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.form-container h2 {
-  color: #1f2937;
-  margin-bottom: 20px;
-  text-align: center;
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 30px;
+.header-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #f1f3f4;
 }
 
-.form-section {
-  background: #f8fafc;
-  padding: 20px;
+.header-section h2 {
+  margin: 0;
+  color: #1a1a1a;
+  font-size: 1.8em;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-icon {
+  color: #007bff;
+}
+
+.btn-back {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 10px 20px;
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
-}
-
-.form-section h3 {
-  color: #374151;
-  margin-bottom: 15px;
-  font-size: 1.1rem;
+  cursor: pointer;
   font-weight: 600;
-  border-bottom: 2px solid #3b82f6;
-  padding-bottom: 8px;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.form-group {
+.btn-back:hover {
+  background: #5a6268;
+  transform: translateY(-1px);
+}
+
+/* Cards modernas */
+.card-modern {
+  background: #fff;
+  border-radius: 16px;
+  border: 2px solid #f1f3f4;
+  padding: 25px;
+  margin-bottom: 25px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.card-modern:hover {
+  border-color: #007bff;
+  box-shadow: 0 6px 20px rgba(0, 123, 255, 0.15);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #f1f3f4;
+}
+
+.card-icon {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  padding: 10px;
+  border-radius: 10px;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-header h3 {
+  margin: 0;
+  color: #1a1a1a;
+  font-size: 1.3em;
+  font-weight: 700;
+  flex: 1;
+}
+
+.badge-count {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+/* Inputs y selects */
+.input-group {
   margin-bottom: 20px;
 }
 
-.form-group label {
-  display: block;
-  margin-bottom: 6px;
-  font-weight: 500;
-  color: #374151;
-}
-
-.form-input,
-.form-select,
-.form-textarea {
+.select-modern, .input-modern {
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 2px solid #e1e5e9;
+  background: #f8f9fa;
   font-size: 14px;
-  transition: all 0.2s;
-  background: white;
+  transition: all 0.3s ease;
+  color: #1a1a1a;
 }
 
-.form-input:focus,
-.form-select:focus,
-.form-textarea:focus {
+.select-modern:focus, .input-modern:focus {
+  border-color: #007bff;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.form-textarea {
+.readonly {
+  background-color: #e9ecef !important;
+  cursor: not-allowed !important;
+  color: #6c757d;
+}
+
+/* Textarea */
+.textarea-modern {
+  width: 100%;
+  padding: 15px;
+  border: 2px solid #e9ecef;
+  border-radius: 10px;
+  background: #f8f9fa;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  color: #1a1a1a;
   resize: vertical;
   min-height: 80px;
 }
 
-.form-help {
-  color: #6b7280;
-  font-size: 0.75rem;
-  margin-top: 4px;
-  display: block;
+.textarea-modern:focus {
+  border-color: #007bff;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+  outline: none;
 }
 
-.form-select {
-  appearance: none; /* Remover estilo por defecto */
-  background-image: url("data:image/svg+xml;charset=US-ASCII,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 5'><path fill='%23333' d='M2 0L0 2h4zm0 5L0 3h4z'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 12px;
-  padding-right: 40px;
+/* Grid para formularios */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
 }
 
-.readonly {
-  background-color: #f9fafb !important;
-  cursor: not-allowed !important;
-  color: #6b7280;
-}
-
-.form-help.error {
-  color: #dc2626;
-  font-weight: 500;
-}
-
-/* Mejorar visibilidad de campos inválidos */
-.form-input:invalid {
-  border-color: #dc2626;
-}
-
-.btn-primary:disabled {
-  background-color: #9ca3af;
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-/* CHECKBOXES MEJORADOS - MUY VISIBLES */
-.checkbox-group-enhanced {
-  display: flex;
-  flex-direction: column;
+/* Proveedores como productos */
+.proveedores-grid {
+  display: grid;
   gap: 12px;
-  max-height: 300px;
-  overflow-y: auto;
-  padding: 15px;
-  background: white;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
+  margin-bottom: 15px;
 }
 
-.checkbox-item {
-  display: flex;
-  align-items: center;
-}
-
-.enhanced-checkbox {
-  display: none;
-}
-
-.enhanced-checkbox-label {
+.proveedor-item {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 16px;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
   cursor: pointer;
-  padding: 12px;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
   transition: all 0.3s ease;
-  width: 100%;
-  background: white;
+  background: #fff;
 }
 
-.enhanced-checkbox-label:hover {
-  border-color: #3b82f6;
-  background: #f0f7ff;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+.proveedor-item:hover {
+  border-color: #007bff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
 }
 
-.enhanced-checkbox:checked + .enhanced-checkbox-label {
-  border-color: #3b82f6;
-  background: #eff6ff;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+.proveedor-item.selected {
+  border-color: #007bff;
+  background: #e7f3ff;
 }
 
-.checkmark {
-  width: 22px;
-  height: 22px;
-  border: 2px solid #d1d5db;
+.proveedor-checkbox {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #dee2e6;
   border-radius: 6px;
-  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.3s ease;
+  color: transparent;
   flex-shrink: 0;
 }
 
-.enhanced-checkbox:checked + .enhanced-checkbox-label .checkmark {
-  background: #3b82f6;
-  border-color: #3b82f6;
-}
-
-.enhanced-checkbox:checked + .enhanced-checkbox-label .checkmark::after {
-  content: '✓';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+.proveedor-checkbox.checked {
+  background: #007bff;
+  border-color: #007bff;
   color: white;
-  font-size: 14px;
-  font-weight: bold;
 }
 
 .proveedor-info {
+  flex: 1;
+}
+
+.proveedor-header {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
 }
 
-.proveedor-info strong {
-  color: #1f2937;
-  font-size: 14px;
+.proveedor-nombre {
+  font-weight: 600;
+  color: #1a1a1a;
+  flex: 1;
+  margin-right: 10px;
 }
 
-.proveedor-contacto {
-  color: #6b7280;
-  font-size: 12px;
-}
-
-/* Estados de carga y mensajes */
-.loading-message {
+.proveedor-estado {
+  color: #28a745;
+  font-weight: 600;
+  font-size: 0.85em;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
-  color: #6b7280;
-  font-size: 0.875rem;
+  gap: 4px;
 }
 
-.spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #e5e7eb;
-  border-top: 2px solid #3b82f6;
-  border-radius: 50%;
+.proveedor-details {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.proveedor-contacto, .proveedor-telefono {
+  font-size: 0.85em;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f8f9fa;
+  color: #6c757d;
+  border: 1px solid #e9ecef;
+}
+
+/* Mensajes de ayuda */
+.form-help {
+  color: #6c757d;
+  font-size: 0.85em;
+  margin-top: 8px;
+  display: block;
+}
+
+.form-help.error {
+  color: #dc3545;
+  font-weight: 500;
+}
+
+/* Botón final premium */
+.btn-registrar-premium {
+  width: 100%;
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  font-size: 1.1em;
+  padding: 18px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 25px;
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-registrar-premium:hover:not(:disabled):not(.btn-processing) {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4);
+  background: linear-gradient(135deg, #0056b3, #004085);
+}
+
+.btn-registrar-premium:disabled,
+.btn-registrar-premium.btn-processing {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+}
+
+.btn-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.btn-spinner {
   animation: spin 1s linear infinite;
 }
 
@@ -598,83 +746,33 @@ onMounted(() => {
   100% { transform: rotate(360deg); }
 }
 
-.no-data-message {
-  text-align: center;
-  padding: 15px;
-  color: #6b7280;
-  font-style: italic;
-  background: #f9fafb;
-  border-radius: 6px;
-  border: 1px dashed #d1d5db;
-}
-
-.no-data-message.error {
-  color: #dc2626;
-  background: #fef2f2;
-  border-color: #fecaca;
-}
-
-/* Form Actions */
-.form-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 15px;
-  padding-top: 20px;
-  border-top: 1px solid #e5e7eb;
-}
-
-.btn {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-primary {
-  background-color: #3b82f6;
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: #2563eb;
-}
-
-.btn-primary:disabled {
-  background-color: #9ca3af;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background-color: #6b7280;
-  color: white;
-}
-
-.btn-secondary:hover {
-  background-color: #4b5563;
-}
-
 /* Responsive */
 @media (max-width: 768px) {
+  .pedido-container {
+    padding: 15px;
+  }
+  
+  .header-section {
+    flex-direction: column;
+    gap: 15px;
+    align-items: stretch;
+  }
+  
   .form-grid {
     grid-template-columns: 1fr;
-    gap: 20px;
+    gap: 15px;
   }
   
-  .form-container {
-    padding: 15px;
-    margin: 10px;
-  }
-  
-  .form-actions {
+  .proveedor-header {
     flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
   }
   
-  .btn {
-    width: 100%;
+  .proveedor-details {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
   }
 }
 </style>

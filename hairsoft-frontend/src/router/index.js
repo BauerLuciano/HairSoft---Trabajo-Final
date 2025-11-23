@@ -37,6 +37,12 @@ const routes = [
   // Dashboard
   { path: '/dashboard', name: 'Dashboard', component: () => import('@/views/Dashboard.vue') },
 
+  //Marcas
+  { path: '/marcas', name: 'ListadoMarcas', component: () => import('@/views/productos/ListadoMarcas.vue') },
+  { path: '/marcas/crear', name: 'RegistrarMarca', component: () => import('@/views/productos/RegistrarMarca.vue') },
+  { path: '/marcas/modificar/:id', name: 'ModificarMarca', component: () => import('@/views/productos/RegistrarMarca.vue'), props: true },
+
+
    // ================================
   // Productos
   // ================================ 

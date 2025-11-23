@@ -103,6 +103,9 @@
                     <span class="canal-badge" :class="turno.canal.toLowerCase()">
                       {{ turno.canal === 'WEB' ? '🌐 Web' : '🏪 Presencial' }}
                     </span>
+                    <span v-if="turno.oferta_activa" class="badge-reoferta">
+                      🔥 Reoferta Activa
+                    </span>
                   </div>
                 </div>
               </td>
@@ -126,6 +129,9 @@
                 <span class="badge-estado" :class="getEstadoClass(turno.estado)">
                   {{ formatearEstado(turno.estado) }}
                 </span>
+                <div v-if="turno.oferta_activa" class="info-reoferta">
+                  <small>Oferta expira: {{ formatHora(turno.fecha_expiracion_oferta) }}</small>
+                </div>
               </td>
               <td>
                 <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 6px;">
@@ -159,10 +165,10 @@
                     <DollarSign :size="16" />
                   </button>
 
-                  <!-- Botón Cancelar -->
+                  <!-- Botón Cancelar CON REOFERTA -->
                   <button 
                     v-if="turno.puede_cancelar"
-                    @click="cancelarTurno(turno)"
+                    @click="cancelarTurnoConReoferta(turno)"
                     class="btn-action-icon delete"
                     title="Cancelar turno"
                   >
@@ -209,6 +215,9 @@
             <Calendar :size="16" />
             Mostrando {{ turnosFiltradosPaginados.length }} de {{ turnosFiltrados.length }} turnos
           </span>
+          <span v-if="turnosConReoferta > 0" class="info-reoferta-count">
+            🔥 {{ turnosConReoferta }} con reoferta activa
+          </span>
         </div>
         
         <div class="pagination">
@@ -242,7 +251,7 @@ const peluqueros = ref([])
 const pagina = ref(1)
 const itemsPorPagina = 10
 
-const estadosDisponibles = ref(['RESERVADO', 'CONFIRMADO', 'COMPLETADO', 'CANCELADO'])
+const estadosDisponibles = ref(['RESERVADO', 'CONFIRMADO', 'COMPLETADO', 'CANCELADO', 'DISPONIBLE'])
 
 const filtros = ref({
   busqueda: '',
@@ -253,10 +262,20 @@ const filtros = ref({
   fechaHasta: ''
 })
 
+// Computed para turnos con reoferta
+const turnosConReoferta = computed(() => {
+  return turnos.value.filter(t => t.oferta_activa).length
+})
+
 // Cargar peluqueros
 const cargarPeluqueros = async () => {
   try {
-    const res = await fetch('http://localhost:8000/usuarios/api/peluqueros/')
+    const token = localStorage.getItem('token')
+    const res = await fetch('http://localhost:8000/usuarios/api/peluqueros/', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
     peluqueros.value = await res.json()
   } catch (err) {
     console.error('Error al cargar peluqueros:', err)
@@ -272,6 +291,7 @@ const cargarPeluqueros = async () => {
 // Cargar turnos
 const cargarTurnos = async () => {
   try {
+    const token = localStorage.getItem('token')
     const params = new URLSearchParams()
     if (filtros.value.peluquero) params.append('peluquero', filtros.value.peluquero)
     if (filtros.value.estado) params.append('estado', filtros.value.estado)
@@ -279,7 +299,11 @@ const cargarTurnos = async () => {
     if (filtros.value.fechaDesde) params.append('fecha_desde', filtros.value.fechaDesde)
     if (filtros.value.fechaHasta) params.append('fecha_hasta', filtros.value.fechaHasta)
 
-    const res = await fetch(`http://localhost:8000/usuarios/api/turnos/?${params.toString()}`)
+    const res = await fetch(`http://localhost:8000/usuarios/api/turnos/?${params.toString()}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
     const data = await res.json()
 
     // Ordenar turnos: activos primero, cancelados al final
@@ -301,7 +325,10 @@ const cargarTurnos = async () => {
         puede_modificar: (t.estado === 'RESERVADO' || t.estado === 'CONFIRMADO') && t.puede_modificar,
         puede_cancelar: (t.estado === 'RESERVADO' || t.estado === 'CONFIRMADO') && t.puede_cancelar,
         puede_completar: (t.estado === 'CONFIRMADO'),
-        puede_senar: t.estado === 'RESERVADO' && t.tipo_pago === 'PENDIENTE'
+        puede_senar: t.estado === 'RESERVADO' && t.tipo_pago === 'PENDIENTE',
+        // Campos para reoferta
+        oferta_activa: t.oferta_activa || false,
+        fecha_expiracion_oferta: t.fecha_expiracion_oferta || null
       }))
       .sort((a, b) => {
         // Cancelados van al final
@@ -323,22 +350,6 @@ const cargarTurnos = async () => {
       icon: 'error',
       title: 'Error',
       text: 'Error al cargar los turnos',
-      confirmButtonText: 'Entendido'
-    })
-  }
-}
-
-// Cargar todo
-const cargarTodo = async () => {
-  try {
-    await cargarPeluqueros()
-    await cargarTurnos()
-  } catch (error) {
-    console.error('Error cargando datos:', error)
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'Error al cargar los datos iniciales',
       confirmButtonText: 'Entendido'
     })
   }
@@ -401,7 +412,10 @@ const formatFecha = fechaString => {
 
 const formatHora = horaString => {
   if (!horaString) return '–'
-  return horaString.slice(0,5)
+  if (typeof horaString === 'string') {
+    return horaString.slice(0,5)
+  }
+  return '–'
 }
 
 const getServiciosLista = (servicios) => {
@@ -414,7 +428,8 @@ const formatearEstado = (estado) => {
     'RESERVADO': 'Reservado',
     'CONFIRMADO': 'Confirmado', 
     'COMPLETADO': 'Completado',
-    'CANCELADO': 'Cancelado'
+    'CANCELADO': 'Cancelado',
+    'DISPONIBLE': 'Disponible'
   }
   return estados[estado] || estado
 }
@@ -424,7 +439,8 @@ const getEstadoClass = (estado) => {
     'RESERVADO': 'estado-warning',
     'CONFIRMADO': 'estado-info',
     'COMPLETADO': 'estado-success',
-    'CANCELADO': 'estado-danger'
+    'CANCELADO': 'estado-danger',
+    'DISPONIBLE': 'estado-secondary'
   }
   return clases[estado] || 'estado-secondary'
 }
@@ -460,56 +476,72 @@ const modificarTurno = (turnoId) => {
   router.push(`/turnos/modificar/${turnoId}`)
 }
 
-// ✅ NUEVA FUNCIÓN: Completar pago (seña restante)
-const completarPago = async (turno) => {
-  const montoRestante = turno.monto_total - turno.monto_seña
-  
+// ✅ NUEVA FUNCIÓN: Cancelar con reoferta
+const cancelarTurnoConReoferta = async (turno) => {
   const result = await Swal.fire({
-    title: 'Completar Pago',
+    title: 'Cancelar Turno',
     html: `
       <div style="text-align: left;">
         <p><strong>Cliente:</strong> ${turno.cliente_nombre} ${turno.cliente_apellido}</p>
+        <p><strong>Fecha:</strong> ${formatFecha(turno.fecha)} ${formatHora(turno.hora)}</p>
         <p><strong>Servicios:</strong> ${getServiciosLista(turno.servicios).join(', ')}</p>
-        <p><strong>Monto total:</strong> $${turno.monto_total}</p>
-        <p><strong>Seña pagada:</strong> $${turno.monto_seña}</p>
-        <p><strong>Restante a pagar:</strong> $${montoRestante}</p>
+        ${turno.monto_seña > 0 ? `<p style="color: #f59e0b;"><strong>Seña pagada:</strong> $${turno.monto_seña}</p>` : ''}
+        <p style="color: #0ea5e9; margin-top: 10px;">
+          <strong>🔥 RECOFERTA AUTOMÁTICA:</strong> Se enviarán ofertas a clientes interesados.
+        </p>
       </div>
     `,
-    icon: 'question',
+    icon: 'warning',
     showCancelButton: true,
-    confirmButtonText: 'Confirmar Pago',
-    cancelButtonText: 'Cancelar',
-    confirmButtonColor: '#3085d6',
-    cancelButtonColor: '#d33'
+    confirmButtonText: 'Sí, Cancelar y Reofertar',
+    cancelButtonText: 'No, Mantener',
+    confirmButtonColor: '#d33',
+    cancelButtonColor: '#3085d6'
   })
 
   if (result.isConfirmed) {
     try {
-      const res = await fetch(`http://localhost:8000/usuarios/api/turnos/${turno.id}/completar-pago/`, {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`http://localhost:8000/usuarios/api/turnos/${turno.id}/cancelar-con-reoferta/`, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          tipo_pago: 'TOTAL'
-        })
+        }
       })
       
       const data = await res.json()
       
       if (res.ok && data.status === 'ok') {
         await cargarTurnos()
-        Swal.fire({
-          icon: 'success',
-          title: 'Pago Completado',
-          text: data.message,
-          confirmButtonText: 'Entendido'
-        })
+        
+        if (data.reoferta_iniciada) {
+          Swal.fire({
+            icon: 'success',
+            title: 'Turno Cancelado',
+            html: `
+              <div style="text-align: left;">
+                <p>${data.message}</p>
+                <p style="color: #059669; margin-top: 10px;">
+                  <strong>✅ Reoferta masiva iniciada:</strong> Se están enviando ofertas a clientes interesados.
+                </p>
+              </div>
+            `,
+            confirmButtonText: 'Entendido'
+          })
+        } else {
+          Swal.fire({
+            icon: 'success',
+            title: 'Turno Cancelado',
+            text: data.message,
+            confirmButtonText: 'Entendido'
+          })
+        }
       } else {
         Swal.fire({
           icon: 'error',
           title: 'Error',
-          text: data.message || 'Error al completar el pago',
+          text: data.error || 'Error al cancelar el turno',
           confirmButtonText: 'Entendido'
         })
       }
@@ -524,7 +556,7 @@ const completarPago = async (turno) => {
   }
 }
 
-// ✅ FUNCIÓN: Procesar seña inicial
+// Funciones existentes (procesarSena, completarPago, completarTurno) se mantienen igual...
 const procesarSena = async (turno) => {
   const montoSena = turno.monto_total * 0.5
   
@@ -548,9 +580,11 @@ const procesarSena = async (turno) => {
 
   if (result.isConfirmed) {
     try {
+      const token = localStorage.getItem('token')
       const res = await fetch(`http://localhost:8000/usuarios/api/turnos/${turno.id}/procesar-sena/`, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -587,60 +621,6 @@ const procesarSena = async (turno) => {
   }
 }
 
-const cancelarTurno = async (turno) => {
-  const result = await Swal.fire({
-    title: 'Cancelar Turno',
-    html: `
-      <div style="text-align: left;">
-        <p><strong>Cliente:</strong> ${turno.cliente_nombre} ${turno.cliente_apellido}</p>
-        <p><strong>Fecha:</strong> ${formatFecha(turno.fecha)} ${formatHora(turno.hora)}</p>
-        <p><strong>Servicios:</strong> ${getServiciosLista(turno.servicios).join(', ')}</p>
-        ${turno.monto_seña > 0 ? `<p style="color: #f59e0b;"><strong>Seña pagada:</strong> $${turno.monto_seña}</p>` : ''}
-      </div>
-    `,
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonText: 'Sí, Cancelar',
-    cancelButtonText: 'No, Mantener',
-    confirmButtonColor: '#d33',
-    cancelButtonColor: '#3085d6'
-  })
-
-  if (result.isConfirmed) {
-    try {
-      const res = await fetch(`http://localhost:8000/usuarios/api/turnos/${turno.id}/cancelar/`, {
-        method: 'POST'
-      })
-      
-      const data = await res.json()
-      
-      if (res.ok && data.status === 'ok') {
-        await cargarTurnos()
-        Swal.fire({
-          icon: 'success',
-          title: 'Turno Cancelado',
-          text: data.message,
-          confirmButtonText: 'Entendido'
-        })
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message || 'Error al cancelar el turno',
-          confirmButtonText: 'Entendido'
-        })
-      }
-    } catch (err) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Error de Conexión',
-        text: 'No se pudo conectar con el servidor',
-        confirmButtonText: 'Entendido'
-      })
-    }
-  }
-}
-
 const completarTurno = async (id) => {
   const result = await Swal.fire({
     title: 'Completar Turno',
@@ -655,8 +635,12 @@ const completarTurno = async (id) => {
 
   if (result.isConfirmed) {
     try {
+      const token = localStorage.getItem('token')
       const res = await fetch(`http://localhost:8000/usuarios/api/turnos/${id}/completar/`, {
-        method: 'POST'
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       })
       
       const data = await res.json()
@@ -707,12 +691,24 @@ watch(() => [
 ], () => {
   pagina.value = 1
 })
+
+const cargarTodo = async () => {
+  try {
+    await cargarPeluqueros()
+    await cargarTurnos()
+  } catch (error) {
+    console.error('Error cargando datos:', error)
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'Error al cargar los datos iniciales',
+      confirmButtonText: 'Entendido'
+    })
+  }
+}
 </script>
 
 <style scoped>
-/* ========================================
-   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE - TURNOS
-   ======================================== */
 
 /* Tarjeta principal - CON VARIABLES */
 .list-card {
@@ -1163,6 +1159,42 @@ watch(() => [
   font-size: 0.85rem;
   font-style: italic;
 }
+
+/* NUEVOS ESTILOS PARA REOFERTA */
+.badge-reoferta {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+.info-reoferta {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.info-reoferta-count {
+  background: rgba(255, 107, 107, 0.1);
+  color: #ff6b6b;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  border: 1px solid #ff6b6b;
+}
+
 
 /* ESTADOS DE CARGA - CON VARIABLES */
 .no-results {

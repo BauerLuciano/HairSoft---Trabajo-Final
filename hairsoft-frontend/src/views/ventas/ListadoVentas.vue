@@ -1,17 +1,14 @@
 <template>
   <div class="list-container">
     <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarEditar }">
-      <!-- Header -->
       <div class="list-header">
         <div class="header-content">
           <h1>Ventas Registradas</h1>
           <p>Gestión de ventas del sistema</p>
         </div>
-        <!-- Botón para abrir modal de registrar venta -->
         <button @click="mostrarRegistrar = true" class="register-button">➕ Registrar Venta</button>
       </div>
 
-      <!-- Filtros -->
       <div class="filters-container">
         <div class="filters-grid">
           <div class="filter-group">
@@ -36,12 +33,10 @@
         </div>
       </div>
 
-      <!-- Estado de carga -->
       <div v-if="cargando" class="loading-state">
         <p>🔄 Cargando ventas...</p>
       </div>
 
-      <!-- Tabla de ventas -->
       <div v-else class="table-container">
         <table class="users-table">
           <thead>
@@ -122,7 +117,6 @@
         </div>
       </div>
 
-      <!-- Mostrando cantidad -->
       <div v-if="!cargando" class="usuarios-count">
         <p>📊 Mostrando {{ ventasPaginadas.length }} de {{ ventasFiltradas.length }} ventas</p>
         <p v-if="ventaRecienCreada" class="venta-reciente">
@@ -130,7 +124,6 @@
         </p>
       </div>
 
-      <!-- Paginación -->
       <div v-if="!cargando && ventasFiltradas.length > 0" class="pagination">
         <button @click="paginaAnterior" :disabled="pagina === 1">← Anterior</button>
         <span>Página {{ pagina }} de {{ totalPaginas }}</span>
@@ -138,7 +131,6 @@
       </div>
     </div>
 
-    <!-- Modal Registrar Venta -->
     <div v-if="mostrarRegistrar" class="modal-overlay">
       <div class="modal-content">
         <button class="modal-close" @click="cerrarModal" title="Cerrar formulario">✖️</button>
@@ -150,7 +142,6 @@
       </div>
     </div>
 
-    <!-- Modal Editar Venta -->
     <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
       <div class="modal-content">
         <ModificarVenta 
@@ -193,6 +184,7 @@ const cargarVentas = async () => {
     const res = await axios.get(`${API_BASE}/usuarios/api/ventas/`)
     
     if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+      // Ordenar por fecha descendente
       ventas.value = res.data.sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
       console.log('✅ Ventas cargadas:', ventas.value.length)
     } else {
@@ -426,7 +418,9 @@ const procesarVentaRegistrada = async (ventaData) => {
       usuario_nombre: 'Sistema', 
       medio_pago_nombre: 'Efectivo',
       tipo: 'PRODUCTO',
-      anulada: false
+      anulada: false,
+      // 🚨 FIX: Si el backend no devuelve fecha, usamos la actual para la tabla
+      fecha: ventaData.fecha || new Date().toISOString()
     }
     
     ventas.value.unshift(nuevaVenta)
@@ -457,15 +451,28 @@ const limpiarFiltros = () => {
   pagina.value = 1
 }
 
+// 🚨 FUNCIÓN FORMATFECHA MEJORADA Y BLINDADA
 const formatFecha = (fecha) => {
   if (!fecha) return '–'
-  return new Date(fecha).toLocaleDateString('es-ES', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  try {
+    const dateObj = new Date(fecha)
+    // Verificar si es válida
+    if (isNaN(dateObj.getTime())) {
+      return 'Fecha inválida'
+    }
+    // Formato amigable: DD/MM/YYYY HH:mm
+    return dateObj.toLocaleString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+  } catch (e) {
+    console.error("Error formateando fecha:", e)
+    return 'Error fecha'
+  }
 }
 
 const formatPrecio = (precio) => {
@@ -483,7 +490,6 @@ const getClaseTipoPago = (tipoPago) => {
   return tipos[tipoPago] || 'default'
 }
 </script>
-
 
 <style scoped>
 /* ========================================

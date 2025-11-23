@@ -1,13 +1,22 @@
 <template>
   <div class="list-container">
-    <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarEditar }">
+    <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarEditar || mostrarRegistrarMarca }">
       <!-- Header -->
       <div class="list-header">
         <div class="header-content">
           <h1>Productos Registrados</h1>
           <p>Gestión de productos del sistema</p>
         </div>
-        <button @click="mostrarRegistrar = true" class="register-button">➕ Registrar Producto</button>
+        <div class="header-buttons" style="display: flex; gap: 12px;">
+          <button @click="mostrarRegistrar = true" class="register-button">
+            <Plus :size="18" />
+            Registrar Producto
+          </button>
+          <button @click="mostrarRegistrarMarca = true" class="register-button">
+            <Tag :size="18" />
+            Registrar Marca
+          </button>
+        </div>
       </div>
 
       <!-- Filtros -->
@@ -20,7 +29,7 @@
 
           <div class="filter-group">
             <label>Categoría</label>
-            <select v-model="filtros.categoria" class="filter-select">
+            <select v-model="filtros.categoria" class="filter-input">
               <option value="">Todas</option>
               <option v-for="categoria in categorias" :key="categoria.id" :value="categoria.id">
                 {{ categoria.nombre }}
@@ -29,8 +38,27 @@
           </div>
 
           <div class="filter-group">
+            <label>Marca</label>
+            <select v-model="filtros.marca" class="filter-input">
+              <option value="">Todas</option>
+              <option v-for="marca in marcas" :key="marca.id" :value="marca.id">
+                {{ marca.nombre }}
+              </option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>Estado</label>
+            <select v-model="filtros.estado" class="filter-input">
+              <option value="">Todos</option>
+              <option value="ACTIVO">Activos</option>
+              <option value="INACTIVO">Inactivos</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
             <label>Stock bajo</label>
-            <select v-model="filtros.stockBajo" class="filter-select">
+            <select v-model="filtros.stockBajo" class="filter-input">
               <option value="">Todos</option>
               <option value="si">Solo stock bajo (≤ 10)</option>
             </select>
@@ -38,7 +66,10 @@
 
           <div class="filter-group">
             <label>&nbsp;</label>
-            <button @click="limpiarFiltros" class="clear-filters-btn">🗑️ Limpiar filtros</button>
+            <button @click="limpiarFiltros" class="clear-filters-btn">
+              <Trash2 :size="16" />
+              Limpiar filtros
+            </button>
           </div>
         </div>
       </div>
@@ -52,8 +83,10 @@
               <th>Nombre</th>
               <th>Descripción</th>
               <th>Categoría</th>
+              <th>Marca</th>
               <th>Precio</th>
               <th>Stock</th>
+              <th>Estado</th>
               <th>Proveedores</th>
               <th>Acciones</th>
             </tr>
@@ -61,18 +94,28 @@
           <tbody>
             <tr v-for="producto in productosPaginados" :key="producto.id" 
                 :class="{'stock-bajo-row': producto.stock_actual <= 10}">
-              <td>{{ producto.codigo || '–' }}</td>
+              <td><strong>{{ producto.codigo || '–' }}</strong></td>
               <td>{{ producto.nombre || '–' }}</td>
               <td class="descripcion-cell">{{ producto.descripcion || 'Sin descripción' }}</td>
-              <td>{{ getCategoriaNombre(producto) }}</td>
-              <td>${{ producto.precio ? producto.precio.toLocaleString() : '0' }}</td>
               <td>
-                <span :class="{
-                  'stock-bajo': producto.stock_actual <= 10, 
-                  'stock-critico': producto.stock_actual <= 5
-                }">
+                <span class="badge-estado estado-info">
+                  {{ getCategoriaNombre(producto) }}
+                </span>
+              </td>
+              <td>
+                <span class="badge-estado estado-secondary">
+                  {{ getMarcaNombre(producto) }}
+                </span>
+              </td>
+              <td><strong>${{ producto.precio ? producto.precio.toLocaleString() : '0' }}</strong></td>
+              <td>
+                <span class="badge-estado" :class="getStockClass(producto.stock_actual)">
                   {{ producto.stock_actual || 0 }}
-                  <span v-if="producto.stock_actual <= 10" class="alerta-icon">⚠️</span>
+                </span>
+              </td>
+              <td>
+                <span class="badge-estado" :class="getEstadoClass(producto.estado)">
+                  {{ producto.estado === 'ACTIVO' ? 'Activo' : 'Inactivo' }}
                 </span>
               </td>
               <td>
@@ -91,8 +134,15 @@
               </td>
               <td>
                 <div class="action-buttons">
-                  <button @click="editarProducto(producto)" class="action-button edit">✏️</button>
-                  <button @click="eliminarProducto(producto)" class="action-button delete">🗑️</button>
+                  <button @click="editarProducto(producto)" class="action-button edit" title="Editar producto">
+                    <Edit3 :size="14" />
+                  </button>
+                  <button @click="cambiarEstadoProducto(producto)" class="action-button" 
+                          :class="producto.estado === 'ACTIVO' ? 'delete' : 'success'" 
+                          :title="producto.estado === 'ACTIVO' ? 'Desactivar producto' : 'Activar producto'">
+                    <Power :size="14" v-if="producto.estado === 'ACTIVO'" />
+                    <CheckCircle :size="14" v-else />
+                  </button>
                 </div>
               </td>
             </tr>
@@ -100,37 +150,47 @@
         </table>
 
         <div v-if="productosPaginados.length === 0" class="no-results">
-          <p v-if="productos.length === 0">No hay productos registrados</p>
-          <p v-else>No se encontraron productos con los filtros aplicados</p>
+          <PackageX class="no-results-icon" :size="48" />
+          <p>No se encontraron productos</p>
+          <small>Intenta con otros términos de búsqueda</small>
         </div>
       </div>
 
       <!-- Mostrando cantidad -->
-      <p class="usuarios-count">
-        Mostrando {{ productosPaginados.length }} de {{ productosFiltrados.length }} productos
-        <span v-if="productosStockBajo > 0" class="alerta-stock">
-          ⚠️ {{ productosStockBajo }} productos con stock bajo
-        </span>
-      </p>
+      <div class="usuarios-count">
+        <p>
+          <Package :size="16" />
+          Mostrando {{ productosPaginados.length }} de {{ productosFiltrados.length }} productos
+        </p>
+        <div class="alertas-container">
+          <span v-if="productosStockBajo > 0" class="alerta-stock">
+            <AlertTriangle :size="14" />
+            {{ productosStockBajo }} con stock bajo
+          </span>
+          <span v-if="productosInactivos > 0" class="alerta-inactivo">
+            <PowerOff :size="14" />
+            {{ productosInactivos }} inactivos
+          </span>
+        </div>
+      </div>
 
       <!-- Paginación -->
       <div class="pagination">
-        <button @click="paginaAnterior" :disabled="pagina === 1">← Anterior</button>
+        <button @click="paginaAnterior" :disabled="pagina === 1">
+          <ChevronLeft :size="16" />
+          Anterior
+        </button>
         <span>Página {{ pagina }} de {{ totalPaginas }}</span>
-        <button @click="paginaSiguiente" :disabled="pagina === totalPaginas">Siguiente →</button>
+        <button @click="paginaSiguiente" :disabled="pagina === totalPaginas">
+          Siguiente
+          <ChevronRight :size="16" />
+        </button>
       </div>
     </div>
 
     <!-- Modal Registrar Producto -->
     <div v-if="mostrarRegistrar" class="modal-overlay" @click.self="cerrarModal">
       <div class="modal-content">
-        <button class="modal-close" @click="cerrarModal" title="Cerrar formulario">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-        
         <RegistrarProducto 
           @producto-registrado="productoRegistrado"
           @cancelar="cerrarModal"
@@ -142,10 +202,7 @@
     <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
       <div class="modal-content">
         <button class="modal-close" @click="cerrarModalEditar" title="Cerrar formulario">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <X :size="20" />
         </button>
         <ModificarProducto 
           :producto-id="productoEditando?.id" 
@@ -154,68 +211,86 @@
         />
       </div>
     </div>
+
+    <!-- Modal Registrar Marca -->
+    <div v-if="mostrarRegistrarMarca" class="modal-overlay" @click.self="cerrarModalMarca">
+      <div class="modal-content">
+        <button class="modal-close" @click="cerrarModalMarca" title="Cerrar formulario">
+          <X :size="20" />
+        </button>
+        <RegistrarMarca 
+          @marca-registrada="marcaRegistrada"
+          @cancelar="cerrarModalMarca"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
+import Swal from 'sweetalert2'
 import RegistrarProducto from './RegistrarProducto.vue'
 import ModificarProducto from './ModificarProducto.vue'
+import RegistrarMarca from './RegistrarMarca.vue'
+import { 
+  Package, PackageX, Plus, Tag, Edit3, Power, CheckCircle, PowerOff,
+  ChevronLeft, ChevronRight, Trash2, X, AlertTriangle
+} from 'lucide-vue-next'
 
 const API_BASE = 'http://127.0.0.1:8000'
 
 const productos = ref([])
 const categorias = ref([])
 const proveedores = ref([])
-const filtros = ref({ 
-  busqueda: '', 
-  categoria: '', 
-  stockBajo: '' 
-})
+const marcas = ref([])
+
+const filtros = ref({ busqueda: '', categoria: '', stockBajo: '', marca: '', estado: '' })
 
 const pagina = ref(1)
 const itemsPorPagina = 8
 const mostrarRegistrar = ref(false)
 const mostrarEditar = ref(false)
+const mostrarRegistrarMarca = ref(false)
 const productoEditando = ref(null)
 
-// Cargar productos desde backend
 const cargarProductos = async () => {
   try {
-    console.log('🔄 Cargando productos...')
     const res = await axios.get(`${API_BASE}/usuarios/api/productos/`)
-    console.log('✅ Productos cargados:', res.data)
-    
-    // Ordenar por ID (más reciente primero)
     productos.value = res.data.sort((a, b) => b.id - a.id)
   } catch (err) {
     console.error('❌ Error al cargar productos:', err)
-    alert('No se pudo cargar la lista de productos')
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'No se pudo cargar la lista de productos',
+      confirmButtonColor: '#0ea5e9'
+    })
   }
 }
 
-// Cargar categorías
 const cargarCategorias = async () => {
   try {
     const res = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`)
     categorias.value = res.data
-  } catch (err) {
-    console.error('Error al cargar categorías:', err)
-  }
+  } catch (err) { console.error(err) }
 }
 
-// Cargar proveedores
 const cargarProveedores = async () => {
   try {
     const res = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
     proveedores.value = res.data
-  } catch (err) {
-    console.error('Error al cargar proveedores:', err)
-  }
+  } catch (err) { console.error(err) }
 }
 
-// Helper para obtener nombre de categoría - CORREGIR
+const cargarMarcas = async () => {
+  try {
+    const res = await axios.get(`${API_BASE}/usuarios/api/marcas/`)
+    marcas.value = res.data
+  } catch (err) { console.error(err) }
+}
+
 const getCategoriaNombre = (producto) => {
   if (producto.categoria_nombre) return producto.categoria_nombre
   if (producto.categoria) {
@@ -225,129 +300,130 @@ const getCategoriaNombre = (producto) => {
   return '–'
 }
 
-// Helper para obtener nombres de proveedores
+const getMarcaNombre = (producto) => {
+  if (producto.marca_nombre) return producto.marca_nombre
+  if (producto.marca) {
+    const marca = marcas.value.find(m => m.id === producto.marca)
+    return marca ? marca.nombre : '–'
+  }
+  return '–'
+}
+
 const getProveedoresNombres = (producto) => {
   if (!producto.proveedores || !Array.isArray(producto.proveedores)) return []
-  
   return producto.proveedores.map(provId => {
     const proveedor = proveedores.value.find(p => p.id === provId)
     return proveedor ? proveedor.nombre : null
   }).filter(Boolean)
 }
 
-// Helper para obtener primeros proveedores para mostrar en tabla
 const getPrimerosProveedores = (producto) => {
-  const proveedoresNombres = getProveedoresNombres(producto)
-  if (!proveedoresNombres || proveedoresNombres.length === 0) return []
-  
-  // Convertir array de nombres a objetos con id y nombre
-  return proveedoresNombres.slice(0, 3).map((nombre, index) => ({
-    id: index,
-    nombre: nombre,
-    tipo: 'Prov'
-  }))
+  const nombres = getProveedoresNombres(producto)
+  if (!nombres || nombres.length === 0) return []
+  return nombres.slice(0, 3).map((nombre, index) => ({ id: index, nombre }))
+}
+
+const getEstadoClass = (estado) => {
+  const estadoLower = estado?.toLowerCase() || ''
+  if (estadoLower === 'activo') return 'estado-success'
+  if (estadoLower === 'inactivo') return 'estado-danger'
+  return 'estado-secondary'
+}
+
+const getStockClass = (stock) => {
+  if (stock <= 5) return 'estado-danger'
+  if (stock <= 10) return 'estado-warning'
+  return 'estado-success'
 }
 
 onMounted(async () => {
   await cargarCategorias()
   await cargarProveedores()
+  await cargarMarcas()
   await cargarProductos()
 })
 
-// Filtrar productos
 const productosFiltrados = computed(() => {
-  const filtrados = productos.value.filter(p => {
+  return productos.value.filter(p => {
     const busca = filtros.value.busqueda.toLowerCase()
-    const matchBusqueda = !busca || 
-      (p.nombre?.toLowerCase().includes(busca) || 
-       p.codigo?.toLowerCase().includes(busca))
-    
+    const matchBusqueda = !busca || (p.nombre?.toLowerCase().includes(busca) || p.codigo?.toLowerCase().includes(busca))
     const matchCategoria = !filtros.value.categoria || p.categoria == filtros.value.categoria
     const matchStockBajo = !filtros.value.stockBajo || p.stock_actual <= 10
-    
-    return matchBusqueda && matchCategoria && matchStockBajo
+    const matchMarca = !filtros.value.marca || p.marca == filtros.value.marca
+    const matchEstado = !filtros.value.estado || p.estado == filtros.value.estado
+    return matchBusqueda && matchCategoria && matchStockBajo && matchMarca && matchEstado
   })
-  
-  return filtrados
 })
 
-// Contar productos con stock bajo
-const productosStockBajo = computed(() => {
-  return productosFiltrados.value.filter(p => p.stock_actual <= 10).length
-})
+const productosStockBajo = computed(() => productosFiltrados.value.filter(p => p.stock_actual <= 10).length)
+const productosInactivos = computed(() => productosFiltrados.value.filter(p => p.estado === 'INACTIVO').length)
 
-// Paginación
-const totalPaginas = computed(() => {
-  return Math.max(1, Math.ceil(productosFiltrados.value.length / itemsPorPagina))
-})
+const totalPaginas = computed(() => Math.max(1, Math.ceil(productosFiltrados.value.length / itemsPorPagina)))
 
 const productosPaginados = computed(() => {
   const inicio = (pagina.value - 1) * itemsPorPagina
-  const fin = inicio + itemsPorPagina
-  return productosFiltrados.value.slice(inicio, fin)
+  return productosFiltrados.value.slice(inicio, inicio + itemsPorPagina)
 })
 
-// Navegación paginación
-const paginaAnterior = () => { 
-  if (pagina.value > 1) pagina.value--
-}
+const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
+const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 
-const paginaSiguiente = () => { 
-  if (pagina.value < totalPaginas.value) pagina.value++
-}
+const editarProducto = (producto) => { productoEditando.value = producto; mostrarEditar.value = true }
 
-// Acciones sobre productos
-const editarProducto = (producto) => {
-  productoEditando.value = producto
-  mostrarEditar.value = true
-}
+const productoRegistrado = async () => { await cargarProductos(); cerrarModal(); pagina.value = 1 }
+const productoActualizado = async () => { await cargarProductos(); cerrarModalEditar() }
 
-// Cuando se registra un nuevo producto
-const productoRegistrado = async (nuevoProducto) => {
-  console.log('🔄 Recargando productos después de registro...')
-  await cargarProductos() // Recargar la lista completa
-  cerrarModal()
-  pagina.value = 1 // Ir a la primera página
-}
-
-// Cuando se actualiza el producto
-const productoActualizado = async () => {
-  await cargarProductos()
-  cerrarModalEditar()
-}
-
-const eliminarProducto = async (producto) => {
-  if (!confirm(`¿Está seguro de eliminar el producto "${producto.nombre}"?`)) return
+const cambiarEstadoProducto = async (producto) => {
+  const nuevoEstado = producto.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO'
+  const accion = nuevoEstado === 'ACTIVO' ? 'activar' : 'desactivar'
+  
+  const result = await Swal.fire({
+    title: `¿${accion.charAt(0).toUpperCase() + accion.slice(1)} producto?`,
+    text: `¿Está seguro de ${accion} el producto "${producto.nombre}"?`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#0ea5e9',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: `Sí, ${accion}`,
+    cancelButtonText: 'Cancelar'
+  })
+  
+  if (!result.isConfirmed) return
+  
   try {
-    await axios.delete(`${API_BASE}/usuarios/api/productos/${producto.id}/`)
-    await cargarProductos() // Recargar la lista
-    alert('Producto eliminado con éxito')
-  } catch (err) {
+    await axios.patch(`${API_BASE}/usuarios/api/productos/${producto.id}/`, {
+      estado: nuevoEstado
+    })
+    await cargarProductos()
+    
+    Swal.fire({
+      icon: 'success',
+      title: '¡Éxito!',
+      text: `Producto ${accion}do correctamente`,
+      confirmButtonColor: '#0ea5e9'
+    })
+  } catch (err) { 
     console.error(err)
-    alert('No se pudo eliminar el producto')
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: `No se pudo ${accion} el producto`,
+      confirmButtonColor: '#0ea5e9'
+    })
   }
 }
 
-// Limpiar filtros
-const limpiarFiltros = () => {
-  filtros.value = { busqueda: '', categoria: '', stockBajo: '' }
-  pagina.value = 1
+const limpiarFiltros = () => { 
+  filtros.value = { busqueda: '', categoria: '', stockBajo: '', marca: '', estado: '' }
+  pagina.value = 1 
 }
 
-// Cerrar modales
-const cerrarModal = () => {
-  mostrarRegistrar.value = false
-}
+const cerrarModal = () => { mostrarRegistrar.value = false }
+const cerrarModalEditar = () => { mostrarEditar.value = false; productoEditando.value = null }
+const cerrarModalMarca = () => { mostrarRegistrarMarca.value = false }
+const marcaRegistrada = async () => { cerrarModalMarca() }
 
-const cerrarModalEditar = () => {
-  mostrarEditar.value = false
-  productoEditando.value = null
-}
-
-// Resetear página al cambiar filtros
-watch(filtros, () => {
-  pagina.value = 1
-}, { deep: true })
+watch(filtros, () => { pagina.value = 1 }, { deep: true })
 </script>
 
 <style scoped>
@@ -378,6 +454,55 @@ watch(filtros, () => {
   height: 4px;
   background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9);
   border-radius: 24px 24px 0 0;
+}
+
+/* BADGES DE ESTADO - CON VARIABLES */
+.badge-estado {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.estado-warning {
+  background: var(--bg-tertiary);
+  color: #f59e0b;
+  border: 2px solid #f59e0b;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+}
+
+.estado-info {
+  background: var(--bg-tertiary);
+  color: #0ea5e9;
+  border: 2px solid #0ea5e9;
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.3);
+}
+
+.estado-success {
+  background: var(--bg-tertiary);
+  color: #10b981;
+  border: 2px solid #10b981;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+}
+
+.estado-danger {
+  background: var(--bg-tertiary);
+  color: var(--error-color);
+  border: 2px solid var(--error-color);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+.estado-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  border: 2px solid var(--text-tertiary);
+  box-shadow: 0 0 8px rgba(156, 163, 175, 0.2);
 }
 
 /* HEADER - CON VARIABLES */
@@ -426,6 +551,9 @@ watch(filtros, () => {
   box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35);
   position: relative;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .register-button::before {
@@ -509,6 +637,9 @@ watch(filtros, () => {
   text-transform: uppercase;
   font-size: 0.85rem;
   letter-spacing: 0.8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .clear-filters-btn:hover {
@@ -575,29 +706,9 @@ watch(filtros, () => {
   white-space: nowrap;
 }
 
-.stock-bajo {
-  color: #f59e0b;
-  font-weight: bold;
-  background: rgba(245, 158, 11, 0.1);
-  padding: 4px 8px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.stock-critico {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
-}
-
 .stock-bajo-row {
   background: rgba(245, 158, 11, 0.05);
   border-left: 3px solid #f59e0b;
-}
-
-.alerta-icon {
-  font-size: 12px;
 }
 
 /* ESTILOS PARA LA LISTA DE PROVEEDORES EN LA TABLA */
@@ -654,7 +765,7 @@ watch(filtros, () => {
 }
 
 .action-button {
-  padding: 8px 14px;
+  padding: 8px;
   border: none;
   border-radius: 10px;
   font-size: 0.8rem;
@@ -662,11 +773,10 @@ watch(filtros, () => {
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 4px;
-  color: white;
+  justify-content: center;
   transition: all 0.3s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  width: 40px;
+  height: 40px;
 }
 
 .action-button.edit {
@@ -694,11 +804,17 @@ watch(filtros, () => {
   border-color: var(--error-color);
 }
 
-/* ESTADOS DE CARGA - CON VARIABLES */
-.no-results {
-  text-align: center;
-  padding: 80px;
-  color: var(--text-secondary);
+.action-button.success {
+  background: var(--bg-tertiary);
+  border: 1px solid #10b981;
+  color: #10b981;
+}
+
+.action-button.success:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+  border-color: #10b981;
 }
 
 /* CONTADOR Y MENSAJES - CON VARIABLES */
@@ -720,17 +836,67 @@ watch(filtros, () => {
   font-weight: 600;
   letter-spacing: 0.5px;
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alertas-container {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .alerta-stock {
   background: var(--bg-tertiary);
   color: #f59e0b;
   border: 2px solid #f59e0b;
-  padding: 10px 18px;
+  padding: 8px 16px;
   border-radius: 20px;
-  font-weight: 800;
-  letter-spacing: 0.8px;
-  box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alerta-inactivo {
+  background: var(--bg-tertiary);
+  color: #ef4444;
+  border: 2px solid #ef4444;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ESTADOS DE CARGA - CON VARIABLES */
+.no-results {
+  text-align: center;
+  padding: 80px;
+  color: var(--text-secondary);
+}
+
+.no-results-icon {
+  margin-bottom: 15px;
+  opacity: 0.5;
+  color: var(--text-tertiary);
+}
+
+.no-results p {
+  margin: 0 0 8px 0;
+  font-size: 1.1em;
+  color: var(--text-primary);
+}
+
+.no-results small {
+  font-size: 0.9em;
+  color: var(--text-tertiary);
 }
 
 /* PAGINACIÓN - CON VARIABLES */
@@ -754,6 +920,9 @@ watch(filtros, () => {
   text-transform: uppercase;
   letter-spacing: 1px;
   font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .pagination button:hover:not(:disabled) {
@@ -839,8 +1008,6 @@ watch(filtros, () => {
   box-shadow: var(--shadow-md);
   transition: all 0.3s ease;
   z-index: 1001;
-  font-weight: 900;
-  font-size: 1.2rem;
 }
 
 .modal-close:hover {
@@ -918,6 +1085,12 @@ watch(filtros, () => {
   .usuarios-count {
     flex-direction: column;
     align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .alertas-container {
+    flex-direction: column;
+    width: 100%;
   }
   
   .pagination {
@@ -944,6 +1117,26 @@ watch(filtros, () => {
   
   .filter-input, .filter-select {
     font-size: 0.9rem;
+  }
+  
+  .badge-estado {
+    font-size: 0.65rem;
+    padding: 5px 10px;
+  }
+  
+  .action-button {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .header-buttons {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .register-button {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>

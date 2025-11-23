@@ -1,4 +1,4 @@
-# usuarios/api_views.py
+# Esto es parte del API general de otros modulos (servicios, turnos y usuarios), en algún momento voy a corregir esto :)
 from rest_framework import generics
 from .models import Servicio, Turno, Usuario
 from .serializers import ServicioSerializer, TurnoSerializer, UsuarioSerializer

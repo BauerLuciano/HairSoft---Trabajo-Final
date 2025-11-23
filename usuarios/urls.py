@@ -1,5 +1,3 @@
-# usuarios/urls.py
-
 from django.urls import path
 from django.shortcuts import redirect
 from rest_framework.routers import DefaultRouter
@@ -11,6 +9,7 @@ from . import views as func_views
 from .views import (
     VentaViewSet, 
     ProductoListCreateAPIView, 
+    ProductoRetrieveUpdateDestroyAPIView,
     ProveedorListCreateView, 
     ProveedorRetrieveUpdateDestroyView,
     CategoriaProductoListAPIView,
@@ -27,6 +26,7 @@ from .views import (
     debug_crear_pedido,
     ListaPrecioProveedorViewSet,
     HistorialPreciosViewSet,
+    turnos_ocupados,
 )
 
 
@@ -83,20 +83,25 @@ urlpatterns = [
     # ================================
     path('api/categorias/productos/', CategoriaProductoListAPIView.as_view(), name='listado_categorias_productos'), 
     path('api/productos/', ProductoListCreateAPIView.as_view(), name='productos_api'),
+    path('api/productos/<int:pk>/', ProductoRetrieveUpdateDestroyAPIView.as_view(), name='productos-detail'),
     
-    # ✅ NUEVA RUTA: MÉTODOS DE PAGO
+    # ✅ MÉTODOS DE PAGO
     path('api/metodos-pago/', MetodoPagoListAPIView.as_view(), name='listado_metodos_pago'),
 
     # ================================
-    # Turnos (USAN FUNCIONES) - CORREGIDAS
+    # Turnos (USAN FUNCIONES)
     # ================================
     path('api/turnos/', func_views.listado_turnos, name='listado_turnos'),
     path('api/turnos/crear/', func_views.crear_turno, name='crear_turno'),
-    path('api/turnos/<int:turno_id>/cancelar/', func_views.cancelar_turno, name='cancelar_turno'),
     path('api/turnos/<int:turno_id>/completar/', func_views.completar_turno, name='completar_turno'),
     path('api/turnos/<int:turno_id>/modificar/', func_views.modificar_turno, name='modificar_turno'),
     path('api/turnos/<int:turno_id>/procesar-sena/', func_views.procesar_sena_turno, name='procesar_sena_turno'),
     path('api/turnos/verificar-disponibilidad/', func_views.verificar_disponibilidad, name='verificar_disponibilidad'),
+
+    # ================================
+    # ✅✅✅ RUTA CRÍTICA FALTANTE - REGISTRAR INTERÉS
+    # ================================
+    path('api/turnos/registrar-interes/', func_views.registrar_interes_turno, name='registrar_interes_turno'),
 
     # ================================
     # Categorías Servicios (USAN FUNCIONES)
@@ -143,56 +148,35 @@ urlpatterns = [
     # ================================
     # VENTAS (USA VentaViewSet Y FUNCIONES PARA MODIFICAR)
     # ================================
+    path('api/ventas/registrar/', func_views.registrar_venta, name='registrar_venta_custom'),
     path('api/ventas/', venta_list, name='ventas-list'), 
     path('api/ventas/<int:pk>/', venta_detail, name='ventas-detail'),
-
-    # ✅ RUTAS CORREGIDAS - SIN DUPLICADOS
     path('api/ventas/<int:venta_id>/editar/', func_views.obtener_venta_para_edicion, name='venta-detalle'),
     path('api/ventas/<int:venta_id>/actualizar/', func_views.actualizar_venta, name='venta-actualizar'),
-    
-    # ✅ SOLO UNA RUTA PARA ANULAR
     path('api/ventas/<int:venta_id>/anular/', func_views.anular_venta, name='anular_venta'),
-
-    #-----
     path('api/debug-ventas/', func_views.debug_ventas, name='debug_ventas'),
-
-    #----PDF
     path('api/ventas/<int:venta_id>/comprobante-pdf/', generar_comprobante_pdf, name='generar_comprobante_pdf'),
 
     # ================================
-    # PEDIDOS - Nuevas rutas
+    # PEDIDOS
     # ================================
     path('api/pedidos/', PedidoListCreateAPIView.as_view(), name='pedidos-list-create'),
     path('api/pedidos/<int:pk>/', PedidoRetrieveUpdateDestroyAPIView.as_view(), name='pedidos-detail'),
-    
-    # Búsqueda y Filtros
     path('api/pedidos/buscar/', buscar_pedidos, name='buscar-pedidos'),
-    
-    # Operaciones de Estado
     path('api/pedidos/<int:pedido_id>/cancelar/', cancelar_pedido, name='cancelar-pedido'),
     path('api/pedidos/<int:pedido_id>/recibir/', recibir_pedido, name='recibir-pedido'),
-    
-    # Listados Especializados
     path('api/pedidos/pendientes-recepcion/', pedidos_pendientes_recepcion, name='pedidos-pendientes-recepcion'),
     path('api/pedidos/para-cancelar/', pedidos_para_cancelar, name='pedidos-para-cancelar'),
-    
-    # Datos para formularios
     path('api/pedidos/datos-crear/', datos_crear_pedido, name='datos-crear-pedido'),
-
     path('api/pedidos/debug/', debug_crear_pedido, name='debug_crear_pedido'),
-
-    #--dashboard!
-    path('api/dashboard/', func_views.dashboard_data, name='dashboard_data'),
 
     # Propuesta y confirmación de precios
     path('api/pedidos/<int:pedido_id>/proponer-precios/', func_views.proponer_precios, name='proponer-precios'),
     path('api/pedidos/<int:pedido_id>/confirmar-precios/', func_views.confirmar_precios, name='confirmar-precios'),
 
     # ================================
-    # ✅ NUEVO: SISTEMA DE LISTAS DE PRECIOS DE PROVEEDORES
+    # LISTAS DE PRECIOS DE PROVEEDORES
     # ================================
-    
-    # Listas de Precios
     path('api/listas-precios/', ListaPrecioProveedorViewSet.as_view({
         'get': 'list', 
         'post': 'create'
@@ -205,7 +189,6 @@ urlpatterns = [
         'delete': 'destroy'
     }), name='listas-precios-detail'),
     
-    # Acciones específicas de listas de precios
     path('api/listas-precios/por-proveedor/', func_views.listas_por_proveedor, name='listas-por-proveedor'),
     path('api/listas-precios/<int:pk>/desactivar/', func_views.desactivar_lista_precio, name='desactivar-lista-precio'),
     path('api/listas-precios/actualizar-masivo/', func_views.actualizar_listas_masivo, name='actualizar-listas-masivo'),
@@ -225,4 +208,30 @@ urlpatterns = [
 
     path('api/turnos/<int:turno_id>/procesar-sena/', func_views.procesar_sena_turno, name='procesar_sena_turno'),
     path('api/turnos/<int:turno_id>/completar-pago/', func_views.completar_pago_turno, name='completar_pago_turno'),
+
+    # ================================
+    # REOFERTA MASIVA - ✅ RUTAS CORREGIDAS
+    # ================================
+    path('api/turnos/<int:turno_id>/cancelar-con-reoferta/', func_views.cancelar_turno_con_reoferta, name='cancelar_turno_con_reoferta'),
+    path('api/turnos/<int:turno_id>/aceptar-oferta/<str:token>/', func_views.aceptar_oferta_turno, name='aceptar_oferta_turno'),
+    path('api/turnos/mis-intereses/', func_views.listar_intereses_usuario, name='listar_intereses_usuario'),
+    path('api/turnos/eliminar-interes/<int:interes_id>/', func_views.eliminar_interes_turno, name='eliminar_interes_turno'),
+
+    # ================================
+    # REOFERTA AUTOMÁTICA
+    # ================================
+    path('api/reoferta/configuracion/', func_views.obtener_configuracion_reoferta, name='configuracion-reoferta'),
+    path('api/reoferta/configuracion/actualizar/', func_views.actualizar_configuracion_reoferta, name='actualizar-configuracion-reoferta'),
+    path('api/reoferta/estadisticas/', func_views.estadisticas_reoferta, name='estadisticas-reoferta'),
+    path('api/reoferta/forzar/<int:turno_id>/', func_views.forzar_reoferta, name='forzar-reoferta'),
+    path('api/intereses-turnos/cliente/<int:cliente_id>/', func_views.listar_intereses_cliente, name='listar-intereses-cliente'),
+    path('api/reoferta/respuesta/<int:interes_id>/', func_views.procesar_respuesta_oferta, name='procesar-respuesta-oferta'),
+
+    # ================================
+    # OTRAS RUTAS
+    # ================================
+    path('turnos/api/ocupados/', turnos_ocupados, name='turnos_ocupados'),
+    path('api/dashboard/', func_views.dashboard_data, name='dashboard_data'),
+    path('api/marcas/', func_views.listar_marcas, name='listar_marcas'),
+    path('api/marcas/crear/', func_views.crear_marca, name='crear_marca'),
 ]

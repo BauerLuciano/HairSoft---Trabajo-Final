@@ -1,10 +1,13 @@
 # hairsoft/models.py
 from django.db import models, transaction
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django.core.validators import RegexValidator
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
+import uuid
+import secrets
+from django.core.signing import Signer
 
 # ===============================
 # MANAGER PERSONALIZADO PARA USUARIO
@@ -154,77 +157,98 @@ class Proveedor(models.Model):
     telefono = models.CharField(max_length=20)
     email = models.EmailField(blank=True, null=True)
     direccion = models.TextField(blank=True, null=True)
-    productos_que_ofrece = models.TextField(blank=True, null=True)
+
     estado = models.CharField(max_length=10, choices=ESTADOS, default='ACTIVO')
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     
     categorias = models.ManyToManyField('CategoriaProducto', blank=True)
-    productos_especificos = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return self.nombre
 
 # ===============================
-# PRODUCTOS
+# MARCAS DE PRODUCTOS
 # ===============================
-class Producto(models.Model):
-    nombre = models.CharField(max_length=100)
-    codigo = models.CharField(max_length=50, blank=True, null=True)
-    descripcion = models.TextField(blank=True, null=True)
-    precio = models.DecimalField(max_digits=8, decimal_places=2)
-    stock_actual = models.PositiveIntegerField(default=0)
-    categoria = models.ForeignKey(CategoriaProducto, on_delete=models.CASCADE, null=True, blank=True)
-    proveedores = models.ManyToManyField(Proveedor, blank=True)
-
-    # ✅ AGREGAR ESTOS MÉTODOS DENTRO DE LA CLASE Producto:
-    
-    def clean(self):
-        """Validaciones antes de guardar"""
-        if self.precio and self.precio < 0:
-            raise ValidationError({'precio': 'El precio no puede ser negativo'})
-        if self.stock_actual and self.stock_actual < 0:
-            raise ValidationError({'stock_actual': 'El stock no puede ser negativo'})
-    
-    def save(self, *args, **kwargs):
-        """Generar código automático antes de guardar"""
-        # Solo generar código si no tiene y tiene categoría
-        if not self.codigo and self.categoria:
-            # Buscar último producto de la misma categoría
-            ultimo_producto = Producto.objects.filter(
-                categoria=self.categoria
-            ).exclude(codigo__isnull=True).exclude(codigo='').order_by('-id').first()
-            
-            if ultimo_producto and ultimo_producto.codigo:
-                try:
-                    # Extraer número del último código: COS-001 → 001
-                    partes = ultimo_producto.codigo.split('-')
-                    if len(partes) == 2:
-                        ultimo_numero = int(partes[1])
-                        nuevo_numero = ultimo_numero + 1
-                    else:
-                        nuevo_numero = 1
-                except (ValueError, IndexError):
-                    nuevo_numero = 1
-            else:
-                nuevo_numero = 1
-            
-            # Crear abreviatura (primeras 3 letras en mayúscula)
-            abreviatura = self.categoria.nombre[:3].upper()
-            self.codigo = f"{abreviatura}-{nuevo_numero:03d}"
-        
-        # Validar antes de guardar
-        self.clean()
-        
-        # Guardar
-        super().save(*args, **kwargs)
+class Marca(models.Model):
+    nombre = models.CharField(max_length=100, unique=True)
 
     def __str__(self):
         return self.nombre
 
     class Meta:
-        db_table = "productos"
+        db_table = "marcas"
+        verbose_name = "Marca"
+        verbose_name_plural = "Marcas"
+
 # ===============================
-# TURNOS
+# PRODUCTOS
+# ===============================
+class Producto(models.Model):
+    ESTADOS = [
+        ('ACTIVO', 'Activo'),
+        ('INACTIVO', 'Inactivo'),
+    ]
+    
+    nombre = models.CharField(max_length=255)
+    precio = models.DecimalField(max_digits=10, decimal_places=2)
+    descripcion = models.TextField(blank=True, null=True)
+    categoria = models.ForeignKey('CategoriaProducto', on_delete=models.CASCADE, null=True, blank=True)
+    proveedores = models.ManyToManyField('Proveedor', blank=True, related_name='productos')
+    marca = models.ForeignKey('Marca', on_delete=models.SET_NULL, null=True, blank=True, related_name='productos')
+    stock_actual = models.IntegerField(default=0)
+    codigo = models.CharField(max_length=20, unique=True, editable=False)
+    estado = models.CharField(max_length=10, choices=ESTADOS, default='ACTIVO')
+
+    def clean(self):
+        if self.precio is not None and self.precio < 0:
+            raise ValidationError({'precio': 'El precio no puede ser negativo'})
+        if self.stock_actual is not None and self.stock_actual < 0:
+            raise ValidationError({'stock_actual': 'El stock no puede ser negativo'})
+
+    def generar_codigo(self):
+        if self.categoria:
+            abreviatura = self.categoria.nombre[:3].upper()
+            
+            # Filtrar productos de la misma categoría que ya tienen código
+            productos_categoria = Producto.objects.filter(
+                categoria=self.categoria,
+                codigo__startswith=abreviatura + "-"
+            )
+            
+            # Si el producto ya existe (está siendo editado), excluirlo
+            if self.pk:
+                productos_categoria = productos_categoria.exclude(pk=self.pk)
+            
+            max_num = 0
+            for producto in productos_categoria:
+                try:
+                    partes = producto.codigo.split('-')
+                    if len(partes) == 2:
+                        num = int(partes[1])
+                        if num > max_num:
+                            max_num = num
+                except (ValueError, IndexError):
+                    continue
+            
+            self.codigo = f"{abreviatura}-{max_num + 1:03d}"
+
+    def save(self, *args, **kwargs):
+        # Genera el código SIEMPRE si la categoría existe y codigo está vacío
+        if self.categoria and not self.codigo:
+            self.generar_codigo()
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        if self.marca:
+            return f"{self.nombre} ({self.marca.nombre})"
+        return self.nombre
+
+    class Meta:
+        db_table = "productos"
+
+# ===============================
+# TURNOS - ACTUALIZADO CON REOFERTA
 # ===============================
 class Turno(models.Model):
     CANAL_CHOICES = [
@@ -237,6 +261,7 @@ class Turno(models.Model):
         ('CONFIRMADO', 'Confirmado'),
         ('COMPLETADO', 'Completado'),
         ('CANCELADO', 'Cancelado'),
+        ('DISPONIBLE', 'Disponible'), 
     ]
 
     TIPO_PAGO_CHOICES = [
@@ -268,28 +293,32 @@ class Turno(models.Model):
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True)
 
+    # NUEVOS CAMPOS PARA REOFERTA MASIVA
+    oferta_activa = models.BooleanField(default=False)
+    fecha_expiracion_oferta = models.DateTimeField(null=True, blank=True)
+    token_reoferta = models.CharField(max_length=100, blank=True, null=True)
+    cliente_asignado_reoferta = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="turnos_asignados_reoferta")
+
     def __str__(self):
         return f"{self.fecha} {self.hora} - {self.cliente.nombre} ({self.estado})"
 
     def puede_ser_modificado(self):
-        from django.utils import timezone
         ahora = timezone.now()
-        fecha_turno = timezone.make_aware(
-            timezone.datetime.combine(self.fecha, self.hora)
-        )
+        # Nota: Asumo que en un entorno de producción, la base de datos y Django usarán UTC
+        # Para hacer el combine, usamos la versión naive y luego la hacemos aware si es necesario
+        fecha_turno_naive = datetime.combine(self.fecha, self.hora)
+        fecha_turno = timezone.make_aware(fecha_turno_naive)
         tres_horas_antes = fecha_turno - timedelta(hours=3)
         return (self.estado in ['RESERVADO', 'CONFIRMADO'] and ahora < tres_horas_antes)
 
     def puede_ser_cancelado(self):
-        from django.utils import timezone
-        from datetime import timedelta
-
         if self.estado in ['COMPLETADO', 'CANCELADO']:
             return False, False, "No se puede cancelar un turno completado o ya cancelado"
+        
         ahora = timezone.now()
-        fecha_turno = timezone.make_aware(
-            timezone.datetime.combine(self.fecha, self.hora)
-        )
+        fecha_turno_naive = datetime.combine(self.fecha, self.hora)
+        fecha_turno = timezone.make_aware(fecha_turno_naive)
+
         # No se pueden cancelar turnos pasados
         if ahora >= fecha_turno:
             return False, False, "No se puede cancelar un turno que ya pasó"
@@ -312,24 +341,96 @@ class Turno(models.Model):
     def necesita_pago_mp(self):
         return self.medio_pago == 'MERCADO_PAGO'
 
+    # NUEVOS MÉTODOS PARA REOFERTA MASIVA
+    def puede_reofertar(self):
+        """Verifica si el turno puede ser reofertado"""
+        if self.estado != 'CANCELADO':
+            return False
+            
+        fecha_turno_naive = datetime.combine(self.fecha, self.hora)
+        fecha_turno = timezone.make_aware(fecha_turno_naive)
+        tiempo_restante = fecha_turno - timezone.now()
+        
+        # Debe quedar un tiempo razonable para reofertar
+        return tiempo_restante > timedelta(minutes=5) and not self.oferta_activa
+    
+    def obtener_interesados(self):
+            """
+            ✅ CORREGIDO: Obtiene clientes interesados para este slot específico.
+            Filtra por fecha, hora, peluquero y estado 'pendiente'.
+            """
+            print(f"🔍🔍🔍 BUSCANDO INTERESADOS PARA TURNO {self.id}:")
+
+            # 1. Filtro base: Mismo slot (Fecha, Hora, Peluquero) y estado pendiente
+            interesados = InteresTurnoLiberado.objects.filter(
+                fecha_deseada=self.fecha,
+                hora_deseada=self.hora,
+                peluquero=self.peluquero,
+                estado_oferta='pendiente' # Solo notificar a quienes no han sido contactados aún
+            ).order_by('fecha_registro') # FIFO (First In, First Out)
+            
+            # 🚨 DEBUG Y FLEXIBILIDAD (Corregido para evitar NameError)
+            # NOTA: Desactivamos el filtro por servicio para la prueba, ya que solo complica la depuración.
+            
+            servicios_ids = list(self.servicios.all().values_list('id', flat=True))
+
+            print(f"   - Parámetros de búsqueda CORREGIDOS:")
+            print(f"     fecha_deseada: {self.fecha}")
+            print(f"     hora_deseada: {self.hora}") 
+            print(f"     peluquero: {self.peluquero.id}")
+            # 💡 Muestra los IDs de los servicios del turno, pero no filtra por ellos
+            print(f"     Servicios en turno: {servicios_ids}") 
+            print(f"   - Resultados encontrados (sin filtro de servicio): {interesados.count()}")
+
+            return interesados
+        
+    def iniciar_reoferta(self):
+        """Inicia el proceso de reoferta para este turno"""
+        from .tasks import procesar_reoferta_masiva
+        
+        if self.puede_reofertar():
+            self.oferta_activa = True
+            # Asignar expiración de la reoferta 5 minutos antes del turno, por defecto
+            fecha_turno_naive = datetime.combine(self.fecha, self.hora)
+            fecha_turno = timezone.make_aware(fecha_turno_naive)
+            self.fecha_expiracion_oferta = fecha_turno - timedelta(minutes=5)
+            self.token_reoferta = secrets.token_urlsafe(32)
+            self.save()
+            
+            # Disparar tarea async
+            procesar_reoferta_masiva.delay(self.id)
+            return True
+        return False
+
     def save(self, *args, **kwargs):
         crear_venta = False
         if self.pk:
             old = Turno.objects.get(pk=self.pk)
+            # Solo si el estado pasó a COMPLETADO
             if old.estado != 'COMPLETADO' and self.estado == 'COMPLETADO':
                 crear_venta = True
 
         super().save(*args, **kwargs)
 
+        if crear_venta:
+            self.crear_venta_turno()
+
     @transaction.atomic
     def crear_venta_turno(self):
-        from ventas.models import Venta, DetalleVenta
+        # NOTA: Importa los modelos de Venta aquí si están en otro archivo/app
+        # Si Venta y DetalleVenta están en esta misma app (usuarios), ignora el 'from ventas.models...'
+        # Asumo que Venta y DetalleVenta están en esta misma app 'usuarios' dado el listado.
+        
         total_servicios = sum(servicio.precio for servicio in self.servicios.all())
+        # Buscamos el método de pago por defecto, si no existe, usamos el tipo de pago del turno
+        medio_pago_obj = MetodoPago.objects.filter(nombre__iexact=self.medio_pago).first() 
+
         venta = Venta.objects.create(
             cliente=self.cliente,
-            usuario=self.peluquero,
+            usuario=self.peluquero, # Asumimos que el peluquero registra el completado o un recepcionista (se podría cambiar a usuario logueado)
             total=total_servicios,
-            tipo='TURNO'
+            tipo='TURNO',
+            medio_pago=medio_pago_obj if medio_pago_obj else None
         )
         for servicio in self.servicios.all():
             DetalleVenta.objects.create(
@@ -340,6 +441,7 @@ class Turno(models.Model):
                 precio_unitario=servicio.precio,
                 subtotal=servicio.precio
             )
+        # Recalcular total por si acaso
         venta.total = venta.detalles.aggregate(total=models.Sum('subtotal'))['total'] or 0
         venta.save()
 
@@ -347,41 +449,103 @@ class Turno(models.Model):
         db_table = "turnos"
         ordering = ['fecha', 'hora']
 
-#Clientes interesados en turnos liberados
+# Clientess interesados en turnos liberados - ACTUALIZADO Y CORREGIDO
 class InteresTurnoLiberado(models.Model):
-    """Clientes interesados en horarios específicos"""
+    """Clientes interesados en horarios específicos - ACTUALIZADO PARA REOFERTA"""
+    ESTADO_OFERTA_CHOICES = [
+        ('pendiente', 'Pendiente'),
+        ('enviada', 'Oferta Enviada'),
+        ('aceptada', 'Aceptada'),
+        ('rechazada', 'Rechazada'),
+        ('expirada', 'Expirada'),
+    ]
+    
     cliente = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="intereses_turnos")
     servicio = models.ForeignKey(Servicio, on_delete=models.CASCADE)
     peluquero = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="intereses_peluquero")
     fecha_deseada = models.DateField()
     hora_deseada = models.TimeField()
     fecha_registro = models.DateTimeField(auto_now_add=True)
-    notificado = models.BooleanField(default=False)
-    fecha_notificacion = models.DateTimeField(null=True, blank=True)
     
-    # Para el proceso FIFO
-    prioridad = models.IntegerField(default=0)  # 0 = normal, 1 = alta prioridad
+    # ✅ Relación directa con el turno liberado que se les está ofreciendo
+    turno_liberado = models.ForeignKey(
+        'Turno', 
+        on_delete=models.SET_NULL, # Usar SET_NULL para no borrar el Interes si borran el Turno, solo desvincular
+        related_name="intereses_asociados",
+        null=True, 
+        blank=True
+    )
+    
+    # Campos para el proceso de reoferta masiva
+    estado_oferta = models.CharField(max_length=20, choices=ESTADO_OFERTA_CHOICES, default='pendiente')
+    token_oferta = models.CharField(max_length=100, unique=True, blank=True, null=True)
+    fecha_envio_oferta = models.DateTimeField(null=True, blank=True)
+    fecha_respuesta = models.DateTimeField(null=True, blank=True)
+    ip_aceptacion = models.GenericIPAddressField(null=True, blank=True)
+    
+    # Configuración de oferta
+    descuento_aplicado = models.DecimalField(max_digits=5, decimal_places=2, default=15.0)
+    tiempo_limite_respuesta = models.IntegerField(default=60) 	# minutos
+    
+    # Para seguimiento del proceso FIFO
+    prioridad = models.IntegerField(default=0)
+    orden_notificacion = models.IntegerField(default=0)
     
     class Meta:
         db_table = "intereses_turnos_liberados"
-        ordering = ['fecha_registro']  # FIFO por defecto
-        unique_together = ['cliente', 'servicio', 'peluquero', 'fecha_deseada', 'hora_deseada']
+        ordering = ['fecha_registro', 'prioridad']
+        # ✅ CORRECCIÓN: Evitar duplicados para el mismo slot
+        unique_together = ['cliente', 'peluquero', 'fecha_deseada', 'hora_deseada'] 
+        # Se elimina 'servicio' del unique_together para permitir al cliente 
+        # registrar interés por el mismo slot pero con distinto servicio (si fuera necesario).
 
     def __str__(self):
         return f"{self.cliente.nombre} - {self.fecha_deseada} {self.hora_deseada}"
 
+    def save(self, *args, **kwargs):
+        if not self.token_oferta:
+            self.token_oferta = secrets.token_urlsafe(32)
+        super().save(*args, **kwargs)
+
     def puede_ser_notificado(self):
-        """Verifica si puede ser notificado (no notificado previamente)"""
-        return not self.notificado
+        """Verifica si puede ser notificado"""
+        return self.estado_oferta == 'pendiente'
     
+    def oferta_expirada(self):
+        """Verifica si la oferta ya expiró"""
+        if not self.fecha_envio_oferta:
+            return False
+        tiempo_transcurrido = timezone.now() - self.fecha_envio_oferta
+        # Usamos el tiempo límite de la configuración global si es nulo, si no, el del interés
+        limite = self.tiempo_limite_respuesta or ConfiguracionReoferta.get_configuracion().tiempo_limite_respuesta
+        return tiempo_transcurrido.total_seconds() > (limite * 60)
+    
+    def aceptar_oferta(self, ip_address=None):
+        """Marca la oferta como aceptada"""
+        self.estado_oferta = 'aceptada'
+        self.fecha_respuesta = timezone.now()
+        self.ip_aceptacion = ip_address
+        self.save()
+    
+    def rechazar_oferta(self):
+        """Marca la oferta como rechazada"""
+        self.estado_oferta = 'rechazada'
+        self.fecha_respuesta = timezone.now()
+        self.save()
+    
+    def marcar_enviada(self):
+        """Marca la oferta como enviada"""
+        self.estado_oferta = 'enviada'
+        self.fecha_envio_oferta = timezone.now()
+        self.save()
 # ===============================
 # MÉTODOS DE PAGO (NUEVO MODELO)
 # ===============================
 class MetodoPago(models.Model):
     TIPO_CHOICES = [
         ('EFECTIVO', 'Efectivo'),
-        ('TARJETA', 'Tarjeta'),  # ✅ Unificado: débito/crédito
-        ('TRANSFERENCIA', 'Transferencia/QR'),  # ✅ Unificado
+        ('TARJETA', 'Tarjeta'), 
+        ('TRANSFERENCIA', 'Transferencia/QR'), 
     ]
     
     nombre = models.CharField(max_length=50, unique=True)
@@ -393,6 +557,8 @@ class MetodoPago(models.Model):
     def __str__(self):
         return self.nombre
 
+    class Meta:
+        db_table = "metodos_pago"
 
 # ===============================
 # VENTAS
@@ -560,7 +726,6 @@ class Pedido(models.Model):
         if not self.puede_ser_confirmado():
             raise ValueError("El pedido no puede ser confirmado en su estado actual")
 
-        # Ya no necesitamos copiar precios propuestos porque usamos lista de precios
         self.estado = 'CONFIRMADO'
         self.total = self.calcular_total()
         self.save()
@@ -721,3 +886,32 @@ class HistorialPrecios(models.Model):
     def __str__(self):
         return f"Cambio {self.lista_precio} - {self.fecha_cambio.strftime('%d/%m/%Y')}"
 
+#Reofera automatica del proceso automatizado!
+class ConfiguracionReoferta(models.Model):
+    """Configuración del módulo de reoferta automática"""
+    descuento_por_defecto = models.DecimalField(max_digits=5, decimal_places=2, default=15.0)
+    tiempo_limite_respuesta = models.IntegerField(default=60) 	# minutos
+    max_intentos_notificacion = models.IntegerField(default=3)
+    activo = models.BooleanField(default=True)
+    
+    # Configuración de notificaciones
+    notificar_email = models.BooleanField(default=True)
+    notificar_whatsapp = models.BooleanField(default=False)
+    
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "configuracion_reoferta"
+        verbose_name = "Configuración de Reoferta"
+        verbose_name_plural = "Configuraciones de Reoferta"
+
+    def __str__(self):
+        return f"Configuración Reoferta ({'Activo' if self.activo else 'Inactivo'})"
+
+    @classmethod
+    def get_configuracion(cls):
+        """Obtiene la configuración activa, crea una por defecto si no existe"""
+        config = cls.objects.first()
+        if not config:
+            config = cls.objects.create()
+        return config

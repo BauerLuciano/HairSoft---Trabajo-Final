@@ -13,11 +13,11 @@ class NoLogAdmin(admin.ModelAdmin):
     def log_deletion(self, request, object, object_repr):
         return
 
-# Lista de todos los modelos a registrar
+# Lista de todos los modelos a registrar - ✅ AGREGAR InteresTurnoLiberado
 MODELOS = [
-    Usuario, Rol, Permiso, Servicio, Producto, 
+    Usuario, Rol, Permiso, Servicio, Producto,
     Turno, Venta, DetalleVenta, MetodoPago, Proveedor,
-    Pedido, DetallePedido  # ✅ AGREGADOS
+    Pedido, DetallePedido, InteresTurnoLiberado  # ✅ AGREGADO
 ]
 
 # Registrar todos los modelos automáticamente

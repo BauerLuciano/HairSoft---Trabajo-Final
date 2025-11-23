@@ -1,22 +1,22 @@
 <template>
   <div class="pedido-container">
     <div class="card-modern">
-      <!-- Header -->
       <div class="header-section">
-        <h2>
-          Reservar Turno Online
-        </h2>
+        <h2>Reservar Turno Online</h2>
         <p class="subtitle">Reserva tu turno desde casa, con pago de seña o total</p>
       </div>
 
       <div class="form-content">
-        <!-- ==================== -->
-        <!-- SECCIÓN CLIENTE (INFO AUTOMÁTICA) -->
-        <!-- ==================== -->
+        <!-- DEBUG INFO -->
+        <div class="debug-info" style="background: #f0f0f0; padding: 10px; margin-bottom: 10px; border-radius: 8px;">
+          <p><strong>Debug:</strong></p>
+          <p>Peluquero: {{ form.peluquero }}</p>
+          <p>Fecha: {{ form.fecha }}</p>
+          <p>Turnos ocupados: {{ turnosOcupados.length }}</p>
+        </div>
+
         <div class="input-group cliente-section">
-          <label class="section-label">
-            👤 Tus Datos
-          </label>
+          <label class="section-label">👤 Tus Datos</label>
           <div class="cliente-info-card">
             <div class="cliente-datos">
               <p><strong>Cliente:</strong> {{ usuario.nombre }} {{ usuario.apellido }}</p>
@@ -28,14 +28,9 @@
           </div>
         </div>
 
-        <!-- ==================== -->
-        <!-- SECCIÓN PELUQUERO -->
-        <!-- ==================== -->
         <div class="input-group">
-          <label class="section-label">
-            👨‍💼 Elegir Peluquero
-          </label>
-          <select v-model="form.peluquero" @change="limpiarSelecciones" class="select-modern-rounded">
+          <label class="section-label">👨‍💼 Elegir Peluquero</label>
+          <select v-model="form.peluquero" @change="onPeluqueroSeleccionado" class="select-modern-rounded">
             <option value="">Selecciona tu peluquero preferido</option>
             <option v-for="p in peluqueros" :key="p.id" :value="p.id">
               {{ p.nombre }} {{ p.apellido }}
@@ -43,13 +38,8 @@
           </select>
         </div>
 
-        <!-- ==================== -->
-        <!-- SECCIÓN CATEGORÍAS (HORIZONTAL) -->
-        <!-- ==================== -->
         <div v-if="form.peluquero" class="input-group">
-          <label class="section-label">
-            📁 Seleccionar Categorías
-          </label>
+          <label class="section-label">📁 Seleccionar Categorías</label>
           <div class="categorias-container-horizontal">
             <div class="categorias-grid-horizontal">
               <div 
@@ -78,9 +68,6 @@
           </div>
         </div>
 
-        <!-- ==================== -->
-        <!-- SECCIÓN SERVICIOS -->
-        <!-- ==================== -->
         <transition name="scale-fade">
           <div v-if="categoriasSeleccionadas.length > 0" class="input-group">
             <label class="section-label">
@@ -88,7 +75,6 @@
               <span class="selected-categories">({{ categoriasSeleccionadasNombres }})</span>
             </label>
             
-            <!-- Búsqueda de servicios -->
             <div class="busqueda-servicios">
               <input
                 type="text"
@@ -98,7 +84,6 @@
               />
             </div>
             
-            <!-- Grid de Servicios Filtrados -->
             <div class="servicios-grid-horizontal" v-if="serviciosFiltrados.length > 0">
               <div 
                 v-for="servicio in serviciosFiltrados" 
@@ -130,9 +115,6 @@
           </div>
         </transition>
 
-        <!-- ==================== -->
-        <!-- RESUMEN COSTOS -->
-        <!-- ==================== -->
         <transition name="scale-fade">
           <div v-if="form.servicios_ids.length > 0" class="resumen-pedido">
             <h3 class="section-label">💰 Resumen de Costos</h3>
@@ -149,14 +131,52 @@
           </div>
         </transition>
 
-        <!-- ==================== -->
-        <!-- OPCIONES DE PAGO -->
-        <!-- ==================== -->
         <transition name="scale-fade">
           <div v-if="form.servicios_ids.length > 0" class="input-group">
-            <label class="section-label">
-              💳 Seleccione Opción de Pago
-            </label>
+            <label class="section-label">📅 Seleccionar Fecha</label>
+            
+            <div class="calendar-container-horizontal">
+              <div class="calendar-grid-horizontal">
+                <div 
+                  v-for="dateInfo in fechasDisponibles" 
+                  :key="dateInfo.fullDate"
+                  class="date-card-horizontal"
+                  :class="{ 
+                    selected: form.fecha === dateInfo.fullDate,
+                    today: dateInfo.isToday 
+                  }"
+                  @click="seleccionarFecha(dateInfo)"
+                >
+                  <div v-if="dateInfo.isToday" class="today-badge">Hoy</div>
+                  <div class="date-content">
+                    <span class="day-name">{{ dateInfo.dayName }}</span>
+                    <span class="day-number">{{ dateInfo.dayNum }}</span>
+                    <span class="month-name">{{ dateInfo.month }}</span>
+                  </div>
+                  <div class="shine-effect"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </transition>
+
+        <transition name="scale-fade">
+          <div v-if="form.fecha" class="input-group">
+            <label class="section-label">⏰ Seleccionar Horario</label>
+            
+            <div class="time-picker-trigger" @click="abrirModalHora">
+              <div class="time-display">
+                <span class="time-icon">⏰</span>
+                <span class="time-text">{{ form.hora || 'Seleccionar hora' }}</span>
+                <span class="time-arrow">▼</span>
+              </div>
+            </div>
+          </div>
+        </transition>
+
+        <transition name="scale-fade">
+          <div v-if="form.fecha && form.hora" class="input-group">
+            <label class="section-label">💳 Seleccione Opción de Pago</label>
             
             <div class="pago-container-horizontal">
               <div class="pago-options-horizontal">
@@ -189,9 +209,7 @@
                 <div v-if="form.tipo_pago" class="medio-pago-section-horizontal">
                   <label class="section-label">🔗 Medio de Pago</label>
                   <div class="medio-pago-options-horizontal">
-                    <div 
-                      class="medio-pago-btn-horizontal active"
-                    >
+                    <div class="medio-pago-btn-horizontal active">
                       <span class="medio-icon-horizontal">💳</span>
                       <span class="medio-text-horizontal">Mercado Pago</span>
                     </div>
@@ -202,62 +220,6 @@
           </div>
         </transition>
 
-        <!-- ==================== -->
-        <!-- CALENDARIO -->
-        <!-- ==================== -->
-        <transition name="scale-fade">
-          <div v-if="form.servicios_ids.length > 0 && form.peluquero && form.tipo_pago" class="input-group">
-            <label class="section-label">
-              📅 Seleccionar Fecha
-            </label>
-            
-            <div class="calendar-container-horizontal">
-              <div class="calendar-grid-horizontal">
-                <div 
-                  v-for="dateInfo in fechasDisponibles" 
-                  :key="dateInfo.fullDate"
-                  class="date-card-horizontal"
-                  :class="{ 
-                    selected: form.fecha === dateInfo.fullDate,
-                    today: dateInfo.isToday 
-                  }"
-                  @click="seleccionarFecha(dateInfo)"
-                >
-                  <div v-if="dateInfo.isToday" class="today-badge">Hoy</div>
-                  <div class="date-content">
-                    <span class="day-name">{{ dateInfo.dayName }}</span>
-                    <span class="day-number">{{ dateInfo.dayNum }}</span>
-                    <span class="month-name">{{ dateInfo.month }}</span>
-                  </div>
-                  <div class="shine-effect"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </transition>
-
-        <!-- ==================== -->
-        <!-- HORARIO -->
-        <!-- ==================== -->
-        <transition name="scale-fade">
-          <div v-if="form.fecha" class="input-group">
-            <label class="section-label">
-              ⏰ Seleccionar Horario
-            </label>
-            
-            <div class="time-picker-trigger" @click="abrirModalHora">
-              <div class="time-display">
-                <span class="time-icon">⏰</span>
-                <span class="time-text">{{ form.hora || 'Seleccionar hora' }}</span>
-                <span class="time-arrow">▼</span>
-              </div>
-            </div>
-          </div>
-        </transition>
-
-        <!-- ==================== -->
-        <!-- RESUMEN FINAL Y PAGO -->
-        <!-- ==================== -->
         <transition name="scale-fade">
           <div v-if="formularioValido" class="card-modern resumen-final">
             <h3 class="section-label">✅ Confirmar y Pagar</h3>
@@ -298,9 +260,6 @@
           </div>
         </transition>
 
-        <!-- ==================== -->
-        <!-- MENSAJES -->
-        <!-- ==================== -->
         <transition name="bounce">
           <div v-if="mensajeInteres" class="mensaje-premium" :class="{ error: mensajeInteres.includes('Error') }">
             <span class="mensaje-icon">{{ mensajeInteres.includes('Error') ? '❌' : '✅' }}</span>
@@ -315,7 +274,6 @@
           </div>
         </transition>
 
-        <!-- Loading overlay -->
         <div v-if="cargando" class="loading-overlay">
           <div class="loading-content">
             <span class="loading-spinner">🔄</span>
@@ -325,92 +283,91 @@
       </div>
     </div>
 
-    <!-- Modal de Hora - IGUAL QUE EL PRESENCIAL -->
+    <!-- MODAL DE HORARIOS -->
     <div v-if="mostrarModalHora" class="modal-overlay" @click="cerrarModalHora">
-      <div class="modal-content" @click.stop>
+      <div class="modal-content modal-horario-grande" @click.stop>
         <div class="modal-header">
-          <h3>🕐 Seleccionar Horario</h3>
+          <h3>⏰ Seleccionar Horario</h3>
           <button class="modal-close-btn" @click="cerrarModalHora">×</button>
         </div>
         <div class="modal-body">
-          <div class="time-selector-modal-content">
-            <!-- Selector de hora manual -->
-            <div class="time-inputs-modal">
-              <div class="input-group-modal">
-                <label class="input-label-modal">HORA</label>
-                <select v-model="horaSeleccionada" class="time-select-modal">
-                  <option value="">--</option>
-                  <option v-for="h in horasDisponibles" :key="h" :value="h">
-                    {{ h.toString().padStart(2, '0') }}
-                  </option>
-                </select>
-              </div>
+          
+          <!-- DEBUG URGENTE -->
+          <div class="debug-urgente" style="background: red; color: white; padding: 10px; margin: 10px;">
+            <p><strong>🚨 DEBUG URGENTE</strong></p>
+            <p>Peluquero ID: {{ form.peluquero }}</p>
+            <p>Fecha: {{ form.fecha }}</p>
+            <p>Total turnos ocupados: {{ turnosOcupados.length }}</p>
+            <p>Horario 08:00 disponible: {{ estaHorarioDisponible('08:00') }}</p>
+            <p>Horario 09:00 disponible: {{ estaHorarioDisponible('09:00') }}</p>
+          </div>
+          
+          <!-- GRID DE HORARIOS -->
+          <div class="horarios-grid-nuevo">
+            
+            <!-- CADA HORARIO -->
+            <div 
+              v-for="hora in horariosDisponibles" 
+              :key="hora"
+              class="horario-card-nuevo"
+            >
               
-              <div class="separator-modal">:</div>
-              
-              <div class="input-group-modal">
-                <label class="input-label-modal">MINUTOS</label>
-                <select v-model="minutoSeleccionado" class="time-select-modal">
-                  <option value="">--</option>
-                  <option v-for="m in minutosDisponibles" :key="m" :value="m">
-                    {{ m.toString().padStart(2, '0') }}
-                  </option>
-                </select>
-              </div>
-            </div>
-
-            <!-- Hora seleccionada -->
-            <div v-if="horaSeleccionada && minutoSeleccionado" class="selected-time-display-modal">
-              <div class="display-content-modal">
-                <div class="display-icon-modal">⏰</div>
-                <div class="display-text-modal">
-                  <div class="display-label-modal">Horario Seleccionado</div>
-                  <div class="display-time-modal">
-                    {{ horaSeleccionada.toString().padStart(2, '0') }}:{{ minutoSeleccionado.toString().padStart(2, '0') }}
-                  </div>
-                </div>
-              </div>
-              <button 
-                class="confirm-time-btn-modal" 
-                @click="confirmarHora"
-                :disabled="!horaValida"
+              <!-- SI ESTÁ DISPONIBLE -->
+              <div 
+                v-if="estaHorarioDisponible(hora)"
+                class="horario-disponible-card"
+                :class="{ seleccionado: form.hora === hora }"
+                @click="seleccionarHoraRapida(hora)"
               >
-                {{ horaValida ? '✅ Confirmar Horario' : '❌ Horario No Disponible' }}
-              </button>
-              
-              <div v-if="!horaValida && horaSeleccionada && minutoSeleccionado" class="time-error-modal">
-                Este horario no está disponible. Por favor selecciona otro.
+                <div class="horario-header">
+                  <span class="horario-icono">✅</span>
+                  <span class="horario-hora">{{ hora }}</span>
+                </div>
+                <div class="horario-estado-texto">Disponible</div>
               </div>
-            </div>
-
-            <!-- Horarios rápidos -->
-            <div class="quick-times-modal">
-              <h4>🕐 Horarios Disponibles</h4>
-              <div class="quick-time-grid-modal">
-                <div 
-                  v-for="hora in horariosDisponibles" 
-                  :key="hora"
-                  class="quick-time-option-modal"
-                  :class="{ 
-                    selected: form.hora === hora,
-                    disabled: !estaHorarioDisponible(hora)
-                  }"
-                  @click="seleccionarHoraRapida(hora)"
-                >
-                  {{ hora }}
+              
+              <!-- SI ESTÁ OCUPADO -->
+              <div 
+                v-else
+                class="horario-ocupado-card"
+              >
+                <div class="horario-header">
+                  <span class="horario-icono">❌</span>
+                  <span class="horario-hora">{{ hora }}</span>
+                </div>
+                <div class="horario-estado-texto">Ocupado</div>
+                
+                <!-- BOTÓN "AVÍSAME" - SIEMPRE VISIBLE -->
+                <div class="horario-accion">
+                  <button 
+                    @click="registrarInteresHorario(hora)"
+                    class="btn-avisar-nuevo"
+                    :disabled="estaInteresRegistrado(hora)"
+                  >
+                    {{ estaInteresRegistrado(hora) ? '✅ Ya estás en lista' : '🔔 Avísame si se libera' }}
+                  </button>
                 </div>
               </div>
+              
             </div>
           </div>
+          
+          <!-- INFORMACIÓN ADICIONAL -->
+          <div class="info-box-nuevo">
+            <p><strong>💡 ¿El horario está ocupado?</strong></p>
+            <p>Tocá "Avísame si se libera" y te notificaremos si alguien cancela.</p>
+            <p>Tendrás <strong>PRIORIDAD</strong> (primer registrado = primero avisado) + <strong>15% descuento</strong>.</p>
+          </div>
+          
         </div>
       </div>
     </div>
 
-    <!-- Modal de Interés -->
+    <!-- Modal de Confirmación de Interés -->
     <div v-if="mostrarModalInteres" class="modal-overlay">
       <div class="modal-content">
         <div class="modal-header">
-          <h3>🔔 Avisarme si se libera este turno</h3>
+          <h3>🔔 Confirmar Interés</h3>
           <button class="modal-close-btn" @click="cancelarRegistroInteres">×</button>
         </div>
         <div class="modal-body">
@@ -423,7 +380,7 @@
             </div>
             <div class="beneficio-descuento">
               <span class="icono-descuento">🔥</span>
-              <strong>¡Beneficio exclusivo!</strong> Si se libera, tendrás <strong>15% de descuento</strong> 
+              <strong>¡Beneficio exclusivo!</strong> Si se libera, tendrás <strong>PRIORIDAD</strong> (primer registrado = primer avisado), <strong>15% de descuento</strong> 
               y 1 hora para confirmar el turno.
             </div>
           </div>
@@ -433,9 +390,9 @@
               class="btn-confirmar-interes"
               :disabled="registrandoInteres"
             >
-              {{ registrandoInteres ? 'Registrando...' : 'Sí, avisarme' }}
+              {{ registrandoInteres ? 'Registrando...' : '✅ Sí, avisarme' }}
             </button>
-            <button @click="cancelarRegistroInteres" class="btn-cancelar-interes">Cancelar</button>
+            <button @click="cancelarRegistroInteres" class="btn-cancelar-interes">❌ Cancelar</button>
           </div>
         </div>
       </div>
@@ -472,8 +429,6 @@ export default {
       turnosOcupados: [],
       mensaje: "",
       cargando: false,
-      
-      // Nuevas variables para mejoras
       categoriasSeleccionadas: [],
       busquedaServicio: "",
       interesesRegistrados: [],
@@ -481,13 +436,7 @@ export default {
       horarioSeleccionadoInteres: null,
       registrandoInteres: false,
       mensajeInteres: "",
-      
-      // Para el modal de hora - IGUAL QUE PRESENCIAL
-      mostrarModalHora: false,
-      horaSeleccionada: "",
-      minutoSeleccionado: "",
-      horasDisponibles: Array.from({length: 13}, (_, i) => i + 8),
-      minutosDisponibles: [0, 15, 30, 45]
+      mostrarModalHora: false
     };
   },
   computed: {
@@ -498,6 +447,7 @@ export default {
              this.form.hora &&
              this.form.tipo_pago;
     },
+    
     fechasDisponibles() {
       const dates = [];
       const today = new Date();
@@ -506,7 +456,6 @@ export default {
         const date = new Date(today);
         date.setDate(today.getDate() + i);
         
-        // Excluir domingos (0)
         if (date.getDay() !== 0) {
           dates.push(this.formatDate(date));
           if (dates.length === 7) break;
@@ -519,20 +468,16 @@ export default {
     serviciosFiltrados() {
       let filtrados = this.servicios;
       
-      // Filtrar por categorías seleccionadas
       if (this.categoriasSeleccionadas.length > 0) {
         filtrados = filtrados.filter(servicio => {
-          // Obtener el nombre de la categoría seleccionada
           const categoriaSeleccionada = this.categorias.find(cat => 
             cat.id === this.categoriasSeleccionadas[0]
           );
           
-          // Comparar por nombre de categoría (como viene del API)
           return servicio.categoria === categoriaSeleccionada.nombre;
         });
       }
       
-      // Filtrar por búsqueda
       if (this.busquedaServicio) {
         const termino = this.busquedaServicio.toLowerCase();
         filtrados = filtrados.filter(s => 
@@ -550,14 +495,6 @@ export default {
       }).join(', ');
     },
     
-    horaValida() {
-      if (!this.horaSeleccionada || !this.minutoSeleccionado) return false;
-      
-      const horaStr = `${this.horaSeleccionada.toString().padStart(2, '0')}:${this.minutoSeleccionado.toString().padStart(2, '0')}`;
-      return this.estaHorarioDisponible(horaStr);
-    },
-    
-    // HORARIOS DISPONIBLES CORREGIDOS - SIN HORARIOS PASADOS
     horariosDisponibles() {
       const horariosBase = [];
       const bloques = [
@@ -569,26 +506,23 @@ export default {
       const horaActual = ahora.getHours();
       const minutoActual = ahora.getMinutes();
       
-      // Solo si la fecha seleccionada es hoy
-      const esHoy = this.form.fecha === new Date().toISOString().split('T')[0];
+      // CORRECCIÓN: Comparar fechas sin zona horaria
+      const hoy = new Date();
+      const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+      const esHoy = this.form.fecha === hoyFormateado;
 
       bloques.forEach(b => {
         for (let h = b.inicio; h < b.fin; h++) {
           for (let m = 0; m < 60; m += 30) {
             const horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
             
-            // Verificar si es un horario pasado (solo para hoy)
-            let disponible = this.estaHorarioDisponible(horaStr);
-            
-            if (esHoy && disponible) {
-              if (h < horaActual || (h === horaActual && m < minutoActual)) {
-                disponible = false; // Horario ya pasó
+            if (esHoy) {
+              if (h < horaActual || (h === horaActual && m <= minutoActual)) {
+                continue; // Saltar horarios pasados
               }
             }
             
-            if (disponible) {
-              horariosBase.push(horaStr);
-            }
+            horariosBase.push(horaStr);
           }
         }
       });
@@ -609,42 +543,64 @@ export default {
     },
 
     async cargarUsuarioLogueado() {
-      try {
-        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-        const config = token ? { headers: { 'Authorization': `Bearer ${token}` } } : {};
-        
-        const res = await axios.get("http://localhost:8000/usuarios/api/me/", config); 
-        this.usuario = res.data;
-        
-        // Cargar estadísticas de turnos si el usuario está logueado
-        if (this.usuario.id) {
           try {
-            const statsRes = await axios.get(`http://localhost:8000/usuarios/api/turnos/cliente/${this.usuario.id}/estadisticas/`, config);
-            this.usuario.turnosCount = statsRes.data.total_turnos || 0;
-          } catch (statsErr) {
-            console.log("No se pudieron cargar estadísticas:", statsErr);
-            this.usuario.turnosCount = 0;
+            // 🚨 CAMBIO AQUI: Obtener el ID del storage, no solo de /api/me/
+            const storedUserId = localStorage.getItem('user_id') || sessionStorage.getItem('user_id');
+            
+            // 1. Cargar datos generales (incluir token/headers)
+            const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+            const config = token ? { headers: { 'Authorization': `Bearer ${token}` } } : {};
+            
+            // Intentar obtener info completa del usuario por su ID (usando el ID del storage)
+            if (storedUserId) {
+                const res = await axios.get(`http://localhost:8000/usuarios/api/usuarios/${storedUserId}/`, config); 
+                
+                // Asignar los datos recibidos
+                this.usuario = res.data; 
+                this.usuario.id = parseInt(storedUserId); // Asegurar el ID
+
+                // 2. Cargar estadísticas
+                try {
+                  const statsRes = await axios.get(`http://localhost:8000/usuarios/api/turnos/cliente/${this.usuario.id}/estadisticas/`, config);
+                  this.usuario.turnosCount = statsRes.data.total_turnos || 0;
+                } catch (statsErr) {
+                  this.usuario.turnosCount = 0;
+                }
+            } else {
+                // Si no hay ID en storage (no logueado)
+                this.usuario = { 
+                    nombre: 'Invitado', apellido: '', dni: 'No identificado', telefono: 'No registrado', turnosCount: 0, id: null
+                };
+            }
+
+          } catch (err) {
+            console.error("Error al cargar usuario logueado:", err);
+            // Fallback robusto si la API de /api/usuarios/{id} falla
+            const storedUserId = localStorage.getItem('user_id') || sessionStorage.getItem('user_id');
+            this.usuario = { 
+              nombre: localStorage.getItem('user_nombre') || 'Invitado', 
+              apellido: localStorage.getItem('user_apellido') || '', 
+              dni: 'No disponible', 
+              telefono: '',
+              turnosCount: 0,
+              id: storedUserId ? parseInt(storedUserId) : null // Asegura que el ID existe
+            };
           }
-        }
-      } catch (err) {
-        console.error("Error al cargar usuario logueado:", err);
-        this.usuario = { 
-          nombre: 'Invitado', 
-          apellido: '', 
-          dni: 'No identificado', 
-          telefono: 'No registrado',
-          turnosCount: 0
-        };
-      }
-    },
+        },
     
     async cargarPeluqueros() {
       try {
         const res = await axios.get("http://localhost:8000/usuarios/api/peluqueros/");
-        this.peluqueros = res.data;
+        
+        // CORRECCIÓN: Asegurar que los apellidos no sean undefined
+        this.peluqueros = res.data.map(peluquero => ({
+          ...peluquero,
+          apellido: peluquero.apellido || '' // Si es undefined, convertir a string vacío
+        }));
+        
+        console.log("👨‍💼 Peluqueros cargados (corregidos):", this.peluqueros);
       } catch (err) {
-        console.error("❌ Error al cargar peluqueros:", err.response ? err.response.data : err.message);
-        this.mensaje = "Error al cargar la lista de peluqueros.";
+        console.error("Error al cargar peluqueros:", err);
         this.peluqueros = [];
       }
     },
@@ -667,12 +623,26 @@ export default {
       }
     },
 
-    async cargarTurnosOcupados() {
+    async cargarTurnosOcupados(fecha = null) {
       try {
-        const res = await axios.get("http://localhost:8000/usuarios/api/turnos/?estado__in=RESERVADO,CONFIRMADO");
-        this.turnosOcupados = res.data.results || res.data;
+        let url = "http://localhost:8000/usuarios/api/turnos/?estado__in=RESERVADO,CONFIRMADO";
+        
+        // SI HAY FECHA, FILTRAR DIRECTAMENTE
+        if (fecha) {
+          url += `&fecha=${fecha}`;
+        }
+        
+        console.log("📡 Cargando turnos ocupados para fecha:", fecha);
+        
+        const res = await axios.get(url);
+        let turnos = res.data.results || res.data;
+                
+        this.turnosOcupados = turnos;
+        console.log("📋 Turnos ocupados cargados:", this.turnosOcupados.length);
+        
       } catch (err) {
-        console.error("Error al cargar turnos:", err);
+        console.error("❌ Error al cargar turnos:", err);
+        this.turnosOcupados = [];
       }
     },
 
@@ -741,34 +711,85 @@ export default {
       const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
       const today = new Date();
       
+      // CORRECCIÓN: Usar toLocaleDateString para evitar problemas de zona horaria
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const fullDate = `${year}-${month}-${day}`;
+      
+      // Verificar si es hoy comparando día, mes y año
+      const isToday = date.getDate() === today.getDate() && 
+                      date.getMonth() === today.getMonth() && 
+                      date.getFullYear() === today.getFullYear();
+      
       return {
         dayName: days[date.getDay()],
         dayNum: date.getDate(),
         month: months[date.getMonth()],
-        fullDate: date.toISOString().split('T')[0],
-        isToday: date.toDateString() === today.toDateString(),
+        fullDate: fullDate, // ← ESTA ES LA LÍNEA CLAVE CORREGIDA
+        isToday: isToday,
         dateObj: date
       };
     },
 
     formatoFechaLegible(fechaStr) {
-      const fecha = new Date(fechaStr + 'T00:00:00');
+      // CORRECCIÓN: Parsear la fecha correctamente
+      const [year, month, day] = fechaStr.split('-');
+      const fecha = new Date(year, month - 1, day); // Mes es 0-based
       return fecha.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+    },
+
+    onPeluqueroSeleccionado() {
+      this.limpiarSelecciones();
+      this.cargarTurnosOcupados(this.form.fecha);
     },
 
     seleccionarFecha(dateInfo) {
       this.form.fecha = dateInfo.fullDate;
       this.form.hora = "";
+      this.form.tipo_pago = null;
+      this.cargarTurnosOcupados(dateInfo.fullDate);
     },
 
     estaHorarioDisponible(horario) {
-      if (!this.form.fecha || !this.form.peluquero) return false;
-      const turnoOcupado = this.turnosOcupados.find(t => 
-        t.fecha === this.form.fecha && 
-        t.hora === horario && 
-        t.peluquero == this.form.peluquero
-      );
-      return !turnoOcupado;
+      if (!this.form.fecha || !this.form.peluquero) return true;
+
+      const peluqueroSeleccionado = this.peluqueros.find(p => p.id == this.form.peluquero);
+      if (!peluqueroSeleccionado) return true;
+
+      // COMPARACIÓN SUPER ROBUSTA - USANDO NOMBRE COMPLETO
+      const turnoOcupado = this.turnosOcupados.find(turno => {
+        // Normalizar nombres COMPLETAMENTE - nombre + apellido
+        const nombreCompletoSeleccionado = `${peluqueroSeleccionado.nombre} ${peluqueroSeleccionado.apellido || ''}`
+          .toLowerCase()
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        const nombreCompletoTurno = `${turno.peluquero_nombre || ''} ${turno.peluquero_apellido || ''}`
+          .toLowerCase()
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        // Comparaciones exactas
+        const mismaFecha = turno.fecha === this.form.fecha;
+        const mismaHora = turno.hora === horario;
+        const mismoPeluquero = nombreCompletoSeleccionado === nombreCompletoTurno;
+        
+        // DEBUG DETALLADO
+        if (mismaFecha && mismaHora && mismoPeluquero) {
+          console.log(`🎯 HORARIO OCUPADO ENCONTRADO: ${horario} | Peluquero: "${nombreCompletoSeleccionado}"`);
+        }
+        
+        return mismoPeluquero && mismaFecha && mismaHora;
+      });
+
+      const disponible = !turnoOcupado;
+      
+      if (!disponible) {
+        console.log(`🚫 HORARIO OCUPADO: ${horario} - No se puede seleccionar`);
+      }
+      
+      return disponible;
     },
 
     estaInteresRegistrado(horario) {
@@ -792,35 +813,30 @@ export default {
       this.categoriasSeleccionadas = [];
     },
 
-    // MÉTODOS PARA EL MODAL DE HORA - IGUAL QUE PRESENCIAL
     abrirModalHora() {
       this.mostrarModalHora = true;
-      this.horaSeleccionada = "";
-      this.minutoSeleccionado = "";
     },
     
     cerrarModalHora() {
       this.mostrarModalHora = false;
-      this.horaSeleccionada = "";
-      this.minutoSeleccionado = "";
-    },
-    
-    confirmarHora() {
-      if (this.horaValida) {
-        this.form.hora = `${this.horaSeleccionada.toString().padStart(2, '0')}:${this.minutoSeleccionado.toString().padStart(2, '0')}`;
-        this.cerrarModalHora();
-      }
     },
 
     seleccionarHoraRapida(hora) {
       if (this.estaHorarioDisponible(hora)) {
         this.form.hora = hora;
+        this.form.tipo_pago = null;
         this.cerrarModalHora();
       }
     },
 
-    // MÉTODOS PARA EL SISTEMA DE INTERESES
     registrarInteresHorario(horario) {
+      // SOLO permitir registrar interés si el horario está OCUPADO
+      if (this.estaHorarioDisponible(horario)) {
+        console.log("❌ No se puede registrar interés en horario disponible");
+        this.mensajeInteres = "❌ Este horario está disponible, puedes reservarlo directamente";
+        return;
+      }
+      
       this.horarioSeleccionadoInteres = horario;
       this.mostrarModalInteres = true;
       this.mensajeInteres = "";
@@ -831,43 +847,66 @@ export default {
       this.horarioSeleccionadoInteres = null;
     },
 
+    // En ./hairsoft-frontend/src/views/turnos/RegistrarTurnoWeb.vue
+
     async confirmarRegistroInteres() {
-      if (!this.horarioSeleccionadoInteres || !this.form.fecha || !this.form.peluquero || this.form.servicios_ids.length === 0) {
-        this.mensajeInteres = "Error: Faltan datos para registrar el interés";
-        return;
-      }
-
-      this.registrandoInteres = true;
-      this.mensajeInteres = "Registrando tu interés...";
-
-      try {
-        const servicioId = this.form.servicios_ids[0];
-
-        const payload = {
-          servicio_id: servicioId,
-          peluquero_id: this.form.peluquero,
-          fecha_deseada: this.form.fecha,
-          hora_deseada: this.horarioSeleccionadoInteres
-        };
-
-        const res = await axios.post("http://localhost:8000/usuarios/api/intereses-turno/registrar/", payload);
-        
-        if (res.data.status === 'ok') {
-          this.mensajeInteres = "✅ " + res.data.message;
-          this.mostrarModalInteres = false;
-          
-          await this.cargarInteresesUsuario();
-        } else {
-          this.mensajeInteres = "❌ " + res.data.message;
+        if (!this.horarioSeleccionadoInteres || !this.form.fecha || !this.form.peluquero || this.form.servicios_ids.length === 0) {
+            this.mensajeInteres = "Error: Faltan datos para registrar el interés";
+            return;
         }
-      } catch (err) {
-        console.error("Error registrando interés:", err);
-        this.mensajeInteres = "❌ Error al registrar tu interés. Intenta nuevamente.";
-      } finally {
-        this.registrandoInteres = false;
-      }
-    },
 
+        // 🚨 VERIFICACIÓN FINAL: Usa this.usuario.id, que ahora está garantizado por cargarUsuarioLogueado
+        if (!this.usuario.id) { 
+            this.mensajeInteres = "❌ Error: ID de usuario no disponible. Recarga la página o revisa el login.";
+            return; 
+        }
+
+        this.registrandoInteres = true;
+        this.mensajeInteres = "Registrando tu interés...";
+
+        try {
+            const servicioId = this.form.servicios_ids[0];
+            
+            // ID ya es correcto porque se forzó en cargarUsuarioLogueado
+            const clienteFinalId = this.usuario.id; 
+
+            const payload = {
+                cliente_id: clienteFinalId, // Correcto
+                servicio_id: servicioId,
+                peluquero_id: this.form.peluquero,
+                fecha_deseada: this.form.fecha,
+                hora_deseada: this.horarioSeleccionadoInteres
+            };
+
+            console.log("📤 Enviando payload:", payload); 
+
+            // Configurar HEAEDRS con TOKEN
+            const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+            const config = token ? { headers: { 'Authorization': `Bearer ${token}` } } : {};
+
+            const res = await axios.post(
+                "http://localhost:8000/usuarios/api/turnos/registrar-interes/",
+                payload, 
+                config
+            );
+            
+            if (res.data.success) {
+                this.mensajeInteres = "✅ " + res.data.message;
+                this.mostrarModalInteres = false;
+                await this.cargarInteresesUsuario();
+            } else {
+                this.mensajeInteres = "❌ " + (res.data.error || "Error al registrar interés");
+            }
+        } catch (err) {
+            console.error("Error registrando interés:", err);
+            const errorMsg = err.response?.data?.error || "Error al registrar tu interés. Intenta nuevamente.";
+            this.mensajeInteres = "❌ " + errorMsg;
+            
+        } finally {
+            this.registrandoInteres = false;
+        }
+    },
+    
     async reservarTurno() {
       if (!this.formularioValido) {
         this.mensaje = "Error: Completa todos los campos y selecciona una opción de pago.";
@@ -896,9 +935,8 @@ export default {
         if (data.status === 'ok' && data.procesar_pago && data.mp_data?.init_point) {
           this.mensaje = "Turno pre-reservado. Redirigiendo a Mercado Pago...";
           
-          // Redirigir al listado después de 2 segundos
           setTimeout(() => {
-            this.$router.push('/mis-turnos'); // Ajusta la ruta según tu configuración
+            this.$router.push('/turnos');
           }, 2000);
           
           this.iniciarPagoMercadoPago(data.mp_data.init_point);
@@ -926,17 +964,113 @@ export default {
 
   mounted() {
     this.cargarDatosIniciales();
+    this.cargarTurnosOcupados();
   }
 };
 </script>
 
 <style scoped>
-/* CORRECCIÓN: Campo cliente ligeramente a la derecha */
-.cliente-section {
-  margin-left: 10px;
+/* ESTILOS BASE */
+.pedido-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 25px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* NUEVO ESTILO: Categorías en disposición horizontal */
+.header-section {
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #f1f3f4;
+}
+
+.header-section h2 {
+  margin: 0 0 8px 0;
+  color: #1a1a1a;
+  font-size: 1.8em;
+  font-weight: 700;
+}
+
+.subtitle {
+  color: #6c757d;
+  font-size: 1.1em;
+  margin: 0;
+}
+
+.card-modern {
+  background: #fff;
+  border-radius: 16px;
+  border: 2px solid #f1f3f4;
+  padding: 25px;
+  margin-bottom: 25px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.input-group {
+  margin-bottom: 25px;
+}
+
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #1a1a1a;
+  margin-bottom: 12px;
+  font-weight: 600;
+  font-size: 1.1em;
+}
+
+.cliente-section {
+  margin-left: 0;
+}
+
+.cliente-info-card {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 20px;
+  border: 2px solid #e9ecef;
+}
+
+.cliente-datos p {
+  margin: 8px 0;
+  color: #1a1a1a;
+}
+
+.info-pago {
+  display: block;
+  margin-top: 10px;
+  color: #6c757d;
+  font-size: 0.9em;
+}
+
+.select-modern-rounded {
+  width: 100%;
+  padding: 16px;
+  border-radius: 16px;
+  border: 2px solid #e1e5e9;
+  background: #f8f9fa;
+  font-size: 16px;
+  transition: all 0.3s ease;
+  color: #1a1a1a;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 5'><path fill='%23666' d='M2 0L0 2h4zm0 5L0 3h4z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 12px;
+}
+
+.select-modern-rounded:focus {
+  border-color: #007bff;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+  outline: none;
+}
+
+/* CATEGORÍAS HORIZONTALES */
 .categorias-container-horizontal {
   background: #fff;
   border-radius: 16px;
@@ -978,10 +1112,6 @@ export default {
   background: #e7f3ff;
 }
 
-.categoria-checkbox-horizontal {
-  flex-shrink: 0;
-}
-
 .checkmark-horizontal {
   width: 20px;
   height: 20px;
@@ -1002,16 +1132,11 @@ export default {
   color: white;
 }
 
-.categoria-content-horizontal {
-  flex: 1;
-}
-
 .categoria-nombre-horizontal {
   font-weight: 600;
   color: #1a1a1a;
   display: block;
   margin-bottom: 4px;
-  font-size: 1em;
 }
 
 .categoria-desc-horizontal {
@@ -1019,191 +1144,22 @@ export default {
   color: #6c757d;
 }
 
-/* Mantener todos los otros estilos existentes del código anterior... */
-/* [Aquí van todos los otros estilos que ya tenías] */
-
-.pedido-container {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 25px;
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-.header-section {
-  margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 2px solid #f1f3f4;
-}
-
-.header-section h2 {
-  margin: 0 0 8px 0;
-  color: #1a1a1a;
-  font-size: 1.8em;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.subtitle {
+.no-selection {
+  text-align: center;
+  padding: 30px 20px;
   color: #6c757d;
-  font-size: 1.1em;
-  margin: 0;
-}
-
-.header-icon {
-  color: #007bff;
-}
-
-.card-modern {
-  background: #fff;
-  border-radius: 16px;
-  border: 2px solid #f1f3f4;
-  padding: 25px;
-  margin-bottom: 25px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
-}
-
-.card-modern:hover {
-  border-color: #007bff;
-  box-shadow: 0 6px 20px rgba(0, 123, 255, 0.15);
-}
-
-.input-group {
-  margin-bottom: 25px;
-}
-
-.section-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #1a1a1a;
-  margin-bottom: 12px;
-  font-weight: 600;
-  font-size: 1.1em;
-}
-
-.search-box-improved {
-  position: relative;
-  margin-bottom: 8px;
-}
-
-.search-icon {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #6c757d;
-  z-index: 2;
-}
-
-.input-modern-improved {
-  width: 100%;
-  padding: 16px 16px 16px 48px;
+  border: 2px dashed #e9ecef;
   border-radius: 12px;
-  border: 2px solid #e1e5e9;
-  background: #f8f9fa;
-  font-size: 16px;
-  transition: all 0.3s ease;
-  color: #1a1a1a;
+  margin-top: 10px;
 }
 
-.input-modern-improved:focus {
-  border-color: #007bff;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-  outline: none;
+.no-selection span {
+  font-size: 2em;
+  margin-bottom: 10px;
+  display: block;
 }
 
-.sugerencias-list-improved {
-  position: absolute;
-  width: 100%;
-  background: white;
-  border: 2px solid #e1e5e9;
-  border-radius: 12px;
-  margin-top: 8px;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  max-height: 250px;
-  overflow-y: auto;
-}
-
-.sugerencia-item-improved {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  border-bottom: 1px solid #f1f3f4;
-}
-
-.sugerencia-item-improved:hover {
-  background: #f8f9fa;
-}
-
-.sugerencia-item-improved:last-child {
-  border-bottom: none;
-}
-
-.cliente-avatar {
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 1.1em;
-  flex-shrink: 0;
-}
-
-.cliente-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.cliente-nombre {
-  font-weight: 600;
-  color: #1a1a1a;
-  font-size: 1em;
-}
-
-.cliente-dni {
-  font-size: 0.85em;
-  color: #6c757d;
-}
-
-.select-modern-rounded {
-  width: 100%;
-  padding: 16px;
-  border-radius: 16px;
-  border: 2px solid #e1e5e9;
-  background: #f8f9fa;
-  font-size: 16px;
-  transition: all 0.3s ease;
-  color: #1a1a1a;
-  appearance: none;
-  background-image: url("data:image/svg+xml;charset=US-ASCII,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 5'><path fill='%23666' d='M2 0L0 2h4zm0 5L0 3h4z'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 16px center;
-  background-size: 12px;
-}
-
-.select-modern-rounded:focus {
-  border-color: #007bff;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-  outline: none;
-}
-
+/* SERVICIOS */
 .busqueda-servicios {
   margin-bottom: 15px;
 }
@@ -1231,22 +1187,6 @@ export default {
   gap: 12px;
   padding: 10px 5px;
   margin-bottom: 15px;
-  scrollbar-width: thin;
-  scrollbar-color: #007bff #f1f3f4;
-}
-
-.servicios-grid-horizontal::-webkit-scrollbar {
-  height: 6px;
-}
-
-.servicios-grid-horizontal::-webkit-scrollbar-track {
-  background: #f1f3f4;
-  border-radius: 3px;
-}
-
-.servicios-grid-horizontal::-webkit-scrollbar-thumb {
-  background: #007bff;
-  border-radius: 3px;
 }
 
 .servicio-item-horizontal {
@@ -1274,10 +1214,6 @@ export default {
   background: #e7f3ff;
 }
 
-.servicio-checkbox {
-  flex-shrink: 0;
-}
-
 .checkmark {
   width: 20px;
   height: 20px;
@@ -1298,16 +1234,11 @@ export default {
   color: white;
 }
 
-.servicio-info {
-  flex: 1;
-}
-
 .servicio-nombre {
   font-weight: 600;
   color: #1a1a1a;
   display: block;
   margin-bottom: 6px;
-  font-size: 1em;
 }
 
 .servicio-details {
@@ -1320,7 +1251,6 @@ export default {
 .servicio-precio {
   color: #28a745;
   font-weight: 700;
-  font-size: 1em;
 }
 
 .servicio-duracion {
@@ -1337,43 +1267,6 @@ export default {
   display: inline-block;
 }
 
-.no-servicios {
-  text-align: center;
-  padding: 30px 20px;
-  color: #6c757d;
-}
-
-.no-servicios span {
-  font-size: 2em;
-  margin-bottom: 10px;
-  display: block;
-}
-
-.no-servicios p {
-  margin: 0;
-  font-size: 1.1em;
-}
-
-.no-selection {
-  text-align: center;
-  padding: 30px 20px;
-  color: #6c757d;
-  border: 2px dashed #e9ecef;
-  border-radius: 12px;
-  margin-top: 10px;
-}
-
-.no-selection span {
-  font-size: 2em;
-  margin-bottom: 10px;
-  display: block;
-}
-
-.no-selection p {
-  margin: 0;
-  font-size: 1em;
-}
-
 .selected-categories {
   color: #007bff;
   font-weight: 500;
@@ -1381,6 +1274,7 @@ export default {
   margin-left: 8px;
 }
 
+/* CALENDARIO */
 .calendar-container-horizontal {
   background: #fff;
   border-radius: 16px;
@@ -1394,22 +1288,6 @@ export default {
   overflow-x: auto;
   padding: 20px;
   gap: 12px;
-  scrollbar-width: thin;
-  scrollbar-color: #007bff #f1f3f4;
-}
-
-.calendar-grid-horizontal::-webkit-scrollbar {
-  height: 6px;
-}
-
-.calendar-grid-horizontal::-webkit-scrollbar-track {
-  background: #f1f3f4;
-  border-radius: 3px;
-}
-
-.calendar-grid-horizontal::-webkit-scrollbar-thumb {
-  background: #007bff;
-  border-radius: 3px;
 }
 
 .date-card-horizontal {
@@ -1428,7 +1306,6 @@ export default {
 .date-card-horizontal:hover {
   transform: translateY(-8px) scale(1.02);
   box-shadow: 0 20px 40px rgba(79, 172, 254, 0.3);
-  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
 }
 
 .date-card-horizontal.selected {
@@ -1436,10 +1313,6 @@ export default {
   border-color: #4facfe;
   box-shadow: 0 25px 50px rgba(79, 172, 254, 0.5);
   transform: scale(1.05);
-}
-
-.date-card-horizontal.today {
-  border-color: #ffd700;
 }
 
 .today-badge {
@@ -1452,9 +1325,6 @@ export default {
   font-weight: 700;
   padding: 4px 8px;
   border-radius: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
 }
 
 .date-content {
@@ -1462,8 +1332,6 @@ export default {
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  position: relative;
-  z-index: 1;
 }
 
 .day-name {
@@ -1471,8 +1339,6 @@ export default {
   font-weight: 700;
   color: #64748b;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  transition: color 0.3s;
 }
 
 .date-card-horizontal.selected .day-name {
@@ -1483,8 +1349,6 @@ export default {
   font-size: 2rem;
   font-weight: 900;
   color: #1e293b;
-  line-height: 1;
-  transition: color 0.3s;
 }
 
 .date-card-horizontal.selected .day-number {
@@ -1496,34 +1360,13 @@ export default {
   font-weight: 600;
   color: #64748b;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  transition: color 0.3s;
 }
 
 .date-card-horizontal.selected .month-name {
   color: rgba(255, 255, 255, 0.85);
 }
 
-.shine-effect {
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: linear-gradient(
-    45deg,
-    transparent 30%,
-    rgba(255, 255, 255, 0.3) 50%,
-    transparent 70%
-  );
-  transform: translateX(-100%);
-  transition: transform 0.6s;
-}
-
-.date-card-horizontal:hover .shine-effect {
-  transform: translateX(100%);
-}
-
+/* SELECTOR DE HORA */
 .time-picker-trigger {
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
   border-radius: 16px;
@@ -1557,15 +1400,7 @@ export default {
   font-size: 1.1em;
 }
 
-.time-arrow {
-  color: #6c757d;
-  transition: transform 0.3s ease;
-}
-
-.time-picker-trigger:hover .time-arrow {
-  transform: rotate(180deg);
-}
-
+/* MODAL */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -1588,18 +1423,10 @@ export default {
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
-  animation: modalSlideIn 0.3s ease-out;
 }
 
-@keyframes modalSlideIn {
-  from {
-    opacity: 0;
-    transform: scale(0.9) translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+.modal-horario-grande {
+  max-width: 800px !important;
 }
 
 .modal-header {
@@ -1624,7 +1451,6 @@ export default {
   color: white;
   font-size: 1.8em;
   cursor: pointer;
-  padding: 0;
   width: 40px;
   height: 40px;
   display: flex;
@@ -1642,591 +1468,159 @@ export default {
   padding: 30px;
 }
 
-.time-selector-modal-content {
-  text-align: center;
+/* GRID DE HORARIOS MEJORADO */
+.quick-time-grid-modal-mejorado {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-top: 20px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 10px;
 }
 
-.time-inputs-modal {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  margin-bottom: 30px;
-}
-
-.input-group-modal {
+.quick-time-option-modal-mejorado {
+  border-radius: 12px;
+  transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 10px;
 }
 
-.input-label-modal {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.time-select-modal {
-  width: 120px;
-  height: 90px;
-  font-size: 2.5rem;
-  font-weight: 900;
-  color: #1e293b;
-  background: white;
-  border: 3px solid #e1e5e9;
-  border-radius: 16px;
-  text-align: center;
+/* HORARIOS DISPONIBLES */
+.hora-content-disponible {
+  padding: 15px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-  appearance: none;
-  outline: none;
-}
-
-.time-select-modal:hover {
-  transform: translateY(-4px) scale(1.05);
-  box-shadow: 0 15px 40px rgba(79, 172, 254, 0.3);
-  border-color: #4facfe;
-}
-
-.time-select-modal:focus {
-  border-color: #4facfe;
-  box-shadow: 0 15px 40px rgba(79, 172, 254, 0.4);
-}
-
-.separator-modal {
-  font-size: 3rem;
-  font-weight: 900;
-  color: #4facfe;
-  margin: 0 15px;
-  animation: blink 2s ease-in-out infinite;
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
-.selected-time-display-modal {
-  background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
-  border-radius: 16px;
-  padding: 25px;
-  margin-bottom: 25px;
-  animation: slideUp 0.4s ease-out;
-}
-
-.display-content-modal {
   display: flex;
   align-items: center;
-  gap: 20px;
-  margin-bottom: 20px;
+  gap: 12px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #d4edda, #c3e6cb);
+  border: 2px solid #28a745;
+  transition: all 0.3s ease;
 }
 
-.display-icon-modal {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  border-radius: 12px;
+.hora-content-disponible:hover {
+  background: linear-gradient(135deg, #c3e6cb, #b1dfbb);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+}
+
+/* HORARIOS OCUPADOS */
+.hora-content-ocupado {
   padding: 15px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  box-shadow: 0 8px 20px rgba(79, 172, 254, 0.3);
+  gap: 12px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border: 2px solid #ffc107;
+}
+
+.hora-icon {
+  font-size: 1.5em;
   flex-shrink: 0;
-  color: white;
-  font-weight: bold;
-  font-size: 1.2em;
 }
 
-.display-text-modal {
-  flex: 1;
-  text-align: left;
-}
-
-.display-label-modal {
-  font-size: 1rem;
-  color: #64748b;
-  font-weight: 600;
-  margin-bottom: 5px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.display-time-modal {
-  font-size: 2.2rem;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.confirm-time-btn-modal {
-  width: 100%;
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  padding: 18px;
-  font-size: 1.2rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s;
-  box-shadow: 0 8px 20px rgba(79, 172, 254, 0.4);
-}
-
-.confirm-time-btn-modal:hover:not(:disabled) {
-  transform: translateY(-3px);
-  box-shadow: 0 15px 40px rgba(79, 172, 254, 0.5);
-}
-
-.confirm-time-btn-modal:disabled {
-  background: #cbd5e1;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.time-error-modal {
-  margin-top: 15px;
-  padding: 12px;
-  background: #fee2e2;
-  color: #991b1b;
-  border-radius: 8px;
-  text-align: center;
-  font-size: 1em;
-}
-
-.quick-times-modal {
-  margin-top: 25px;
-}
-
-.quick-times-modal h4 {
-  margin: 0 0 20px 0;
-  color: #1a1a1a;
-  font-size: 1.2em;
-  font-weight: 600;
-}
-
-.quick-time-grid-modal {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
-  gap: 12px;
-}
-
-.quick-time-option-modal {
-  padding: 15px 10px;
-  border: 2px solid #e9ecef;
-  border-radius: 12px;
-  background: #fff;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-weight: 600;
-  color: #1a1a1a;
-  text-align: center;
-  font-size: 1em;
-}
-
-.quick-time-option-modal:hover:not(.disabled) {
-  border-color: #007bff;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
-}
-
-.quick-time-option-modal.selected {
-  background: #007bff;
-  border-color: #007bff;
-  color: white;
-}
-
-.quick-time-option-modal.disabled {
-  background: #f8f9fa;
-  color: #6c757d;
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.pago-container-horizontal {
-  background: #fff;
-  border-radius: 16px;
-  border: 2px solid #f1f3f4;
-  padding: 25px;
-}
-
-.pago-options-horizontal {
-  display: flex;
-  gap: 15px;
-  margin-bottom: 25px;
-}
-
-.pago-option-horizontal {
+.hora-texto {
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 25px 20px;
-  border: 2px solid #e9ecef;
-  border-radius: 16px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  background: #fff;
-  text-align: center;
+  gap: 4px;
 }
 
-.pago-option-horizontal:hover {
-  border-color: #007bff;
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 123, 255, 0.1);
-}
-
-.pago-option-horizontal.selected {
-  border-color: #007bff;
-  background: #e7f3ff;
-}
-
-.pago-content-horizontal {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-}
-
-.pago-nombre-horizontal {
-  font-weight: 700;
-  color: #1a1a1a;
-  font-size: 1.2em;
-}
-
-.pago-monto-horizontal {
-  color: #28a745;
-  font-weight: 800;
-  font-size: 1.4em;
-}
-
-.pago-desc-horizontal {
-  color: #6c757d;
-  font-size: 0.9em;
-}
-
-.medio-pago-section-horizontal {
-  margin-top: 25px;
-  padding-top: 25px;
-  border-top: 2px solid #f1f3f4;
-}
-
-.medio-pago-options-horizontal {
-  display: flex;
-  gap: 15px;
-}
-
-.medio-pago-btn-horizontal {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 25px 20px;
-  border: 2px solid #e9ecef;
-  border-radius: 16px;
-  background: #fff;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.medio-pago-btn-horizontal:hover {
-  border-color: #007bff;
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 123, 255, 0.1);
-}
-
-.medio-pago-btn-horizontal.active {
-  border-color: #007bff;
-  background: #e7f3ff;
-}
-
-.medio-icon-horizontal {
-  font-size: 2.5em;
-}
-
-.medio-text-horizontal {
-  font-weight: 700;
-  color: #1a1a1a;
-  font-size: 1.1em;
-}
-
-.resumen-pedido {
-  margin-top: 20px;
-  padding: 20px;
-  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-  border-radius: 12px;
-  border: 2px solid #e9ecef;
-}
-
-.resumen-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.resumen-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  color: #1a1a1a;
-  font-size: 1em;
-}
-
-.resumen-item.total {
-  border-top: 2px solid #dee2e6;
-  margin-top: 10px;
-  padding-top: 12px;
-  font-size: 1.2em;
-  font-weight: 700;
-}
-
-.btn-registrar-premium {
-  width: 100%;
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  color: white;
-  font-size: 1.1em;
-  padding: 18px;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  margin-top: 25px;
-  font-weight: 600;
-  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
-}
-
-.btn-registrar-premium:hover:not(:disabled) {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4);
-  background: linear-gradient(135deg, #0056b3, #004085);
-}
-
-.btn-registrar-premium:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-  opacity: 0.7;
-  transform: none;
-}
-
-.btn-content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.mensaje-premium {
-  margin-top: 20px;
-  padding: 15px 20px;
-  border-radius: 10px;
-  background: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.mensaje-premium.error {
-  background: #f8d7da;
-  color: #721c24;
-  border-color: #f5c6cb;
-}
-
-.mensaje-icon {
-  font-size: 1.2em;
-}
-
-.slide-fade-enter-active {
-  transition: all 0.3s ease;
-}
-.slide-fade-leave-active {
-  transition: all 0.3s cubic-bezier(1, 0.5, 0.8, 1);
-}
-.slide-fade-enter-from,
-.slide-fade-leave-to {
-  transform: translateY(-10px);
-  opacity: 0;
-}
-
-.scale-fade-enter-active {
-  transition: all 0.3s ease;
-}
-.scale-fade-leave-active {
-  transition: all 0.3s cubic-bezier(1, 0.5, 0.8, 1);
-}
-.scale-fade-enter-from,
-.scale-fade-leave-to {
-  transform: scale(0.95);
-  opacity: 0;
-}
-
-.bounce-enter-active {
-  animation: bounce-in 0.5s;
-}
-.bounce-leave-active {
-  animation: bounce-in 0.5s reverse;
-}
-@keyframes bounce-in {
-  0% { transform: scale(0); }
-  50% { transform: scale(1.05); }
-  100% { transform: scale(1); }
-}
-
-/* NUEVOS ESTILOS ESPECÍFICOS PARA TURNO WEB */
-.cliente-info-card {
-  background: #f8f9fa;
-  border-radius: 12px;
-  padding: 20px;
-  border: 2px solid #e9ecef;
-}
-
-.cliente-datos p {
-  margin: 8px 0;
-  color: #1a1a1a;
-}
-
-.info-pago-final {
-  margin-top: 15px;
-  text-align: center;
-  color: #6c757d;
-  font-size: 0.9em;
-}
-
-.resumen-final {
-  background: linear-gradient(135deg, #f8fff9, #f0f9ff);
-  border-color: #28a745;
-}
-
-.resumen-final-detalles {
-  margin-bottom: 20px;
-}
-
-.monto-final-pago {
-  color: #28a745;
-  font-weight: 800;
+.hora-hora {
   font-size: 1.3em;
-}
-
-/* Estilos para horarios mejorados */
-.horarios-grid-mejorado {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-  margin-top: 15px;
-}
-
-.horario-item-mejorado {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.horario-btn-mejorado {
-  width: 100%;
-  padding: 15px;
-  border: 2px solid #e9ecef;
-  border-radius: 12px;
-  background: #fff;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  font-weight: 600;
-}
-
-.horario-btn-mejorado.disponible {
-  border-color: #28a745;
+  font-weight: 700;
   color: #155724;
 }
 
-.horario-btn-mejorado.disponible:hover {
-  background: #d4edda;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.2);
+.hora-content-ocupado .hora-hora {
+  color: #856404;
 }
 
-.horario-btn-mejorado.disponible.selected {
-  background: #28a745;
-  color: white;
-  border-color: #1e7e34;
-}
-
-.horario-btn-mejorado.ocupado {
-  background: #f8f9fa;
-  border-color: #dc3545;
-  color: #721c24;
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.hora-text-mejorado {
-  font-size: 1.1em;
-  font-weight: 700;
-}
-
-.estado-text-mejorado {
+.hora-estado {
   font-size: 0.85em;
+  color: #155724;
   opacity: 0.8;
 }
 
-.horario-ocupado-container-mejorado {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.hora-content-ocupado .hora-estado {
+  color: #856404;
 }
 
-.btn-aviso-liberacion-mejorado {
-  padding: 10px;
-  background: linear-gradient(135deg, #ffd700, #ffa500);
+/* BOTÓN "AVÍSAME SI SE LIBERA" */
+.horario-ocupado-actions-mejorado {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #ffc107;
+  width: 100%;
+}
+
+.btn-avisar-liberado-mejorado {
+  width: 100%;
+  background: linear-gradient(135deg, #74b9ff, #0984e3);
+  color: white;
   border: none;
+  padding: 10px 15px;
   border-radius: 8px;
-  color: #8b4513;
-  font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-size: 0.9em;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-}
-
-.btn-aviso-liberacion-mejorado:hover:not(:disabled) {
-  background: linear-gradient(135deg, #ffa500, #ff8c00);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 165, 0, 0.3);
-}
-
-.btn-aviso-liberacion-mejorado:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.interes-registrado-mejorado {
-  padding: 10px;
-  background: #d4edda;
-  border: 1px solid #c3e6cb;
-  border-radius: 8px;
-  color: #155724;
-  font-size: 0.9em;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+  gap: 8px;
   font-weight: 600;
+  font-size: 0.9em;
 }
 
-.icono-aviso-mejorado, .icono-check-mejorado {
-  font-size: 1.1em;
+.btn-avisar-liberado-mejorado:hover {
+  background: linear-gradient(135deg, #0984e3, #074a8f);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(116, 185, 255, 0.4);
 }
 
-/* Estilos para el modal de interés */
+.ya-registrado-mejorado {
+  width: 100%;
+  background: linear-gradient(135deg, #00b894, #00a085);
+  color: white;
+  padding: 10px 15px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+/* INFO AVISOS */
+.info-avisos-horarios {
+  margin-top: 20px;
+  padding: 15px;
+  background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+  border-radius: 10px;
+  border: 1px solid #90caf9;
+  text-align: center;
+}
+
+.info-avisos-horarios p {
+  margin: 5px 0;
+  color: #1565c0;
+  font-size: 0.9em;
+}
+
+/* ESTADO SELECCIONADO */
+.quick-time-option-modal-mejorado.selected .hora-content-disponible {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  border-color: #1e7e34;
+}
+
+.quick-time-option-modal-mejorado.selected .hora-hora,
+.quick-time-option-modal-mejorado.selected .hora-estado {
+  color: white;
+}
+
+/* MODAL DE INTERÉS */
 .info-interes-card {
   margin-bottom: 25px;
 }
@@ -2255,12 +1649,17 @@ export default {
 .icono-descuento {
   font-size: 1.2em;
   margin-right: 5px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
 }
 
 .modal-actions {
   display: flex;
   gap: 12px;
-  justify-content: center;
 }
 
 .btn-confirmar-interes {
@@ -2303,6 +1702,197 @@ export default {
   transform: translateY(-2px);
 }
 
+/* PAGO */
+.pago-container-horizontal {
+  background: #fff;
+  border-radius: 16px;
+  border: 2px solid #f1f3f4;
+  padding: 25px;
+}
+
+.pago-options-horizontal {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 25px;
+}
+
+.pago-option-horizontal {
+  flex: 1;
+  padding: 25px 20px;
+  border: 2px solid #e9ecef;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+}
+
+.pago-option-horizontal:hover {
+  border-color: #007bff;
+  transform: translateY(-2px);
+}
+
+.pago-option-horizontal.selected {
+  border-color: #007bff;
+  background: #e7f3ff;
+}
+
+.pago-nombre-horizontal {
+  font-weight: 700;
+  color: #1a1a1a;
+  font-size: 1.2em;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.pago-monto-horizontal {
+  color: #28a745;
+  font-weight: 800;
+  font-size: 1.4em;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.pago-desc-horizontal {
+  color: #6c757d;
+  font-size: 0.9em;
+}
+
+.medio-pago-section-horizontal {
+  margin-top: 25px;
+  padding-top: 25px;
+  border-top: 2px solid #f1f3f4;
+}
+
+.medio-pago-btn-horizontal {
+  padding: 25px 20px;
+  border: 2px solid #e9ecef;
+  border-radius: 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.medio-pago-btn-horizontal.active {
+  border-color: #007bff;
+  background: #e7f3ff;
+}
+
+.medio-icon-horizontal {
+  font-size: 2.5em;
+}
+
+.medio-text-horizontal {
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+/* RESUMEN */
+.resumen-pedido {
+  margin-top: 20px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border-radius: 12px;
+  border: 2px solid #e9ecef;
+}
+
+.resumen-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.resumen-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  color: #1a1a1a;
+}
+
+.resumen-item.total {
+  border-top: 2px solid #dee2e6;
+  margin-top: 10px;
+  padding-top: 12px;
+  font-size: 1.2em;
+  font-weight: 700;
+}
+
+.resumen-final {
+  background: linear-gradient(135deg, #f8fff9, #f0f9ff);
+  border-color: #28a745;
+}
+
+.monto-final-pago {
+  color: #28a745;
+  font-weight: 800;
+  font-size: 1.3em;
+}
+
+.btn-registrar-premium {
+  width: 100%;
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  font-size: 1.1em;
+  padding: 18px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 25px;
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+}
+
+.btn-registrar-premium:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4);
+}
+
+.btn-registrar-premium:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.btn-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.info-pago-final {
+  margin-top: 15px;
+  text-align: center;
+  color: #6c757d;
+  font-size: 0.9em;
+}
+
+/* MENSAJES */
+.mensaje-premium {
+  margin-top: 20px;
+  padding: 15px 20px;
+  border-radius: 10px;
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mensaje-premium.error {
+  background: #f8d7da;
+  color: #721c24;
+  border-color: #f5c6cb;
+}
+
+.mensaje-icon {
+  font-size: 1.2em;
+}
+
+/* LOADING */
 .loading-overlay {
   position: fixed;
   top: 0;
@@ -2336,68 +1926,72 @@ export default {
   100% { transform: rotate(360deg); }
 }
 
+/* ANIMACIONES */
+.slide-fade-enter-active {
+  transition: all 0.3s ease;
+}
+.slide-fade-leave-active {
+  transition: all 0.3s cubic-bezier(1, 0.5, 0.8, 1);
+}
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  transform: translateY(-10px);
+  opacity: 0;
+}
+
+.scale-fade-enter-active {
+  transition: all 0.3s ease;
+}
+.scale-fade-leave-active {
+  transition: all 0.3s cubic-bezier(1, 0.5, 0.8, 1);
+}
+.scale-fade-enter-from,
+.scale-fade-leave-to {
+  transform: scale(0.95);
+  opacity: 0;
+}
+
+.bounce-enter-active {
+  animation: bounce-in 0.5s;
+}
+.bounce-leave-active {
+  animation: bounce-in 0.5s reverse;
+}
+@keyframes bounce-in {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* RESPONSIVE */
 @media (max-width: 768px) {
   .pedido-container {
     padding: 15px;
   }
   
-  .calendar-grid-horizontal {
-    padding: 15px;
-  }
-  
-  .servicios-grid-horizontal {
-    flex-direction: column;
-    overflow-x: visible;
-  }
-  
-  .servicio-item-horizontal {
-    min-width: auto;
-  }
-  
+  .calendar-grid-horizontal,
+  .servicios-grid-horizontal,
   .categorias-grid-horizontal {
     flex-direction: column;
   }
   
+  .servicio-item-horizontal,
   .categoria-card-horizontal {
     min-width: auto;
   }
   
-  .pago-options-horizontal {
-    flex-direction: column;
-  }
-  
-  .medio-pago-options-horizontal {
-    flex-direction: column;
-  }
-  
-  .quick-time-grid-modal {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  
-  .time-inputs-modal {
-    flex-direction: column;
-    gap: 20px;
-  }
-  
-  .separator-modal {
-    margin: 0;
-  }
-  
-  .modal-content {
-    margin: 10px;
-    max-height: 95vh;
-  }
-  
-  .cliente-section {
-    margin-left: 0;
-  }
-  
-  .horarios-grid-mejorado {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
+  .pago-options-horizontal,
   .modal-actions {
     flex-direction: column;
+  }
+  
+  .quick-time-grid-modal-mejorado {
+    grid-template-columns: 1fr;
+  }
+  
+  .modal-horario-grande {
+    margin: 10px;
+    max-height: 95vh;
   }
 }
 </style>

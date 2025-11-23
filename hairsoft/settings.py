@@ -214,3 +214,70 @@ LOGGING = {
     },
 }
 
+# ================================
+# CONFIGURACIÓN EMAIL PARA REOFERTA
+# ================================
+
+# Para testing - los emails se muestran en la consola
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_HOST = 'localhost'
+EMAIL_PORT = 25
+EMAIL_USE_TLS = False
+EMAIL_USE_SSL = False
+DEFAULT_FROM_EMAIL = 'HairSoft <noreply@hairsoft.com>'
+
+# Si queres configurar Gmail más adelante, descomenta esto:
+"""
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'tu_email@gmail.com'
+EMAIL_HOST_PASSWORD = 'tu_app_password'
+DEFAULT_FROM_EMAIL = 'HairSoft <noreply@hairsoft.com>'
+"""
+
+# ================================
+# CONFIGURACIÓN CELERY (MODO TESTING)
+# ================================
+
+# Para desarrollo - tareas se ejecutan sincrónicamente (sin necesidad de Redis)
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
+
+# Si quieres usar Redis más adelante, descomenta:
+"""
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+"""
+
+# ================================
+# CONFIGURACIÓN EMAIL PARA REOFERTA
+# ================================
+
+# Para testing - los emails se muestran en la consola
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_HOST = 'localhost'
+EMAIL_PORT = 25
+EMAIL_USE_TLS = False
+EMAIL_USE_SSL = False
+DEFAULT_FROM_EMAIL = 'HairSoft <noreply@hairsoft.com>'
+
+# ================================
+# CONFIGURACIÓN CELERY (MODO TESTING)
+# ================================
+
+# Para desarrollo - tareas se ejecutan sincrónicamente (sin necesidad de Redis)
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
+
+# ================================
+# CONFIGURACIÓN TWILIO WHATSAPP (REAL)
+# ================================
+TWILIO_ACCOUNT_SID = 'ACb3de53c73913d7ec07a5c253ab2ca97f' # <-- SID PRINCIPAL
+TWILIO_AUTH_TOKEN = '946cb8accd5aed4c44b27af02ed224f3'
+TWILIO_WHATSAPP_NUMBER = 'whatsapp:+12762210253'  # Sandbox de Twilio

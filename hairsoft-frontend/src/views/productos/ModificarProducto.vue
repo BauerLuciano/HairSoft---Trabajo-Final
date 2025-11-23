@@ -1,171 +1,117 @@
 <template>
   <div class="form-container">
     <h2>Modificar Producto</h2>
-    
     <form @submit.prevent="modificarProducto" class="product-form">
       <div class="form-grid">
+
         <!-- Información Básica -->
         <div class="form-section">
           <h3>Información Básica</h3>
-          
+
+          <!-- Nombre -->
           <div class="form-group">
             <label for="nombre">Nombre del Producto *</label>
-            <input
-              id="nombre"
-              v-model="producto.nombre"
-              type="text"
-              required
-              placeholder="Ingrese el nombre del producto"
-              class="form-input"
-            />
+            <input id="nombre" v-model="producto.nombre" type="text" required placeholder="Ingrese el nombre del producto" class="form-input"/>
           </div>
 
+          <!-- Marca -->
           <div class="form-group">
-            <label for="codigo">Código del Producto</label>
-            <input
-              id="codigo"
-              v-model="producto.codigo"
-              type="text"
-              placeholder="Código único"
-              class="form-input"
-            />
+            <label for="marca">Marca *</label>
+            <select id="marca" v-model.number="producto.marca" required class="form-select" :disabled="cargandoMarcas || marcas.length === 0">
+              <option value="">Seleccione una marca</option>
+              <option v-for="marca in marcas" :key="marca.id" :value="marca.id">{{ marca.nombre }}</option>
+            </select>
           </div>
 
+          <!-- Categoría -->
+          <div class="form-group">
+            <label for="categoria_id">Categoría *</label>
+            <select id="categoria_id" v-model.number="producto.categoria" required class="form-select" :disabled="cargandoCategorias || categoriasProductos.length === 0">
+              <option value="">Seleccione una categoría</option>
+              <option v-for="categoria in categoriasProductos" :key="categoria.id" :value="categoria.id">{{ categoria.nombre }}</option>
+            </select>
+          </div>
+
+          <!-- Código autogenerado (solo lectura) -->
+          <div class="form-group">
+            <label for="codigo">Código del Producto *</label>
+            <input id="codigo" v-model="producto.codigo" type="text" required readonly class="form-input readonly"/>
+          </div>
+
+          <!-- Descripción -->
           <div class="form-group">
             <label for="descripcion">Descripción</label>
-            <textarea
-              id="descripcion"
-              v-model="producto.descripcion"
-              rows="3"
-              placeholder="Descripción del producto..."
-              class="form-textarea"
-            ></textarea>
+            <textarea id="descripcion" v-model="producto.descripcion" rows="3" placeholder="Descripción del producto (opcional)..." class="form-textarea"></textarea>
           </div>
         </div>
 
-        <!-- Precio y Stock -->
+        <!-- Precio, Stock y Proveedores -->
         <div class="form-section">
           <h3>Precio y Stock</h3>
-          
           <div class="form-group">
             <label for="precio">Precio de Venta *</label>
-            <input
-              id="precio"
-              v-model="producto.precio"
-              type="number"
-              step="0.01"
-              min="0"
-              required
-              placeholder="0.00"
-              class="form-input"
-            />
-          </div>
-
-          <div class="form-group">
-            <label for="costo">Costo de Compra</label>
-            <input
-              id="costo"
-              v-model="producto.costo"
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0.00"
-              class="form-input"
-            />
+            <input id="precio" v-model.number="producto.precio" type="number" step="0.01" min="0.01" required placeholder="0.00" class="form-input"/>
           </div>
 
           <div class="form-group">
             <label for="stock_actual">Stock Actual *</label>
-            <input
-              id="stock_actual"
-              v-model="producto.stock_actual"
-              type="number"
-              min="0"
-              required
-              placeholder="0"
-              class="form-input"
-            />
+            <input id="stock_actual" v-model.number="producto.stock_actual" type="number" min="0" required placeholder="0" class="form-input"/>
           </div>
 
+          <!-- Proveedores -->
           <div class="form-group">
-            <label for="stock_minimo">Stock Mínimo</label>
-            <input
-              id="stock_minimo"
-              v-model="producto.stock_minimo"
-              type="number"
-              min="0"
-              placeholder="0"
-              class="form-input"
-            />
-          </div>
-        </div>
-
-        <!-- Categoría y Proveedor -->
-        <div class="form-section">
-          <h3>Categorización</h3>
-          
-          <div class="form-group">
-            <label for="categoria_id">Categoría *</label>
-            <select
-              id="categoria_id"
-              v-model="producto.categoria_id"
-              required
-              class="form-select"
-            >
-              <option value="">Seleccione una categoría</option>
-              <option v-for="categoria in categorias" :key="categoria.id" :value="categoria.id">
-                {{ categoria.nombre }}
-              </option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="proveedor_id">Proveedor</label>
-            <select
-              id="proveedor_id"
-              v-model="producto.proveedor_id"
-              class="form-select"
-            >
-              <option value="">Seleccione un proveedor</option>
-              <option v-for="proveedor in proveedores" :key="proveedor.id" :value="proveedor.id">
-                {{ proveedor.nombre }}
-              </option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="estado">Estado *</label>
-            <select
-              id="estado"
-              v-model="producto.estado"
-              required
-              class="form-select"
-            >
-              <option value="ACTIVO">Activo</option>
-              <option value="INACTIVO">Inactivo</option>
-            </select>
+            <label>Proveedores *</label>
+            <div class="checkbox-group-enhanced">
+              <div v-if="cargandoProveedores" class="loading-message">
+                <div class="spinner"></div>
+                <span>Cargando proveedores...</span>
+              </div>
+              
+              <div v-else-if="proveedoresActivos.length === 0" class="no-data-message error">
+                ❌ No hay proveedores activos registrados.
+              </div>
+              
+              <div v-else class="checkbox-list">
+                <div v-for="proveedor in proveedoresActivos" :key="proveedor.id" class="checkbox-item">
+                  <input 
+                    :id="'proveedor_' + proveedor.id" 
+                    v-model="producto.proveedores_seleccionados" 
+                    :value="proveedor.id" 
+                    type="checkbox" 
+                    class="enhanced-checkbox"
+                  >
+                  <label :for="'proveedor_' + proveedor.id" class="enhanced-checkbox-label">
+                    <div class="checkmark"></div>
+                    <div class="proveedor-info">
+                      <strong>{{ proveedor.nombre }}</strong>
+                      <span class="proveedor-contacto">
+                        {{ proveedor.contacto || 'Sin contacto' }} | {{ proveedor.telefono || 'Sin teléfono' }}
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <span class="form-help" :class="{ 'error': producto.proveedores_seleccionados.length === 0 && proveedoresActivos.length > 0 }">
+              {{ producto.proveedores_seleccionados.length === 0 && proveedoresActivos.length > 0 ? '❌ Seleccione al menos un proveedor' : 'Seleccione uno o más proveedores que venden este producto' }}
+            </span>
           </div>
         </div>
       </div>
 
       <!-- Botones -->
       <div class="form-actions">
-        <button type="button" @click="cancelar" class="btn btn-secondary">
-          Cancelar
-        </button>
-        <button type="submit" :disabled="cargando" class="btn btn-primary">
-          {{ cargando ? 'Actualizando...' : 'Actualizar Producto' }}
-        </button>
+        <button type="button" @click="cancelar" class="btn btn-secondary">Cancelar</button>
+        <button type="submit" :disabled="cargando || !formularioValido" class="btn btn-primary">{{ cargando ? 'Actualizando...' : 'Actualizar Producto' }}</button>
       </div>
     </form>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import axios from 'axios'
 
-// ✅ Ya no es necesario importar defineProps o defineEmits
 const props = defineProps({
   productoId: {
     type: [String, Number],
@@ -174,7 +120,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['producto-actualizado', 'cancelar'])
-
 const API_BASE = 'http://127.0.0.1:8000'
 
 const producto = ref({
@@ -182,103 +127,159 @@ const producto = ref({
   codigo: '',
   descripcion: '',
   precio: 0,
-  costo: 0,
   stock_actual: 0,
-  stock_minimo: 0,
-  categoria_id: '',
-  proveedor_id: '',
-  estado: 'ACTIVO'
+  categoria: '',
+  marca: '',
+  proveedores_seleccionados: []
 })
 
 const categorias = ref([])
 const proveedores = ref([])
+const marcas = ref([])
+
 const cargando = ref(false)
+const cargandoCategorias = ref(false)
+const cargandoProveedores = ref(false)
+const cargandoMarcas = ref(false)
+
+const formularioValido = computed(() =>
+  producto.value.nombre.trim() &&
+  producto.value.precio > 0 &&
+  producto.value.stock_actual >= 0 &&
+  producto.value.categoria &&
+  producto.value.marca &&
+  producto.value.codigo &&
+  producto.value.proveedores_seleccionados.length > 0
+)
+
+const categoriasProductos = computed(() => categorias.value)
+const proveedoresActivos = computed(() =>
+  proveedores.value.filter(p => p.estado === 'ACTIVO' || p.activo)
+)
 
 // ================================
-// Cargar datos del producto
+// CARGAR DATOS DEL PRODUCTO
 // ================================
 const cargarProducto = async () => {
   try {
-    const response = await axios.get(`${API_BASE}/productos/api/productos/${props.productoId}/`)
-    producto.value = response.data
+    console.log(`Cargando producto ID: ${props.productoId}`)
+    const response = await axios.get(`${API_BASE}/usuarios/api/productos/${props.productoId}/`)
+    const productoData = response.data
+    
+    // Mapear los datos del producto al formato del formulario
+    producto.value = {
+      nombre: productoData.nombre || '',
+      codigo: productoData.codigo || '',
+      descripcion: productoData.descripcion || '',
+      precio: parseFloat(productoData.precio) || 0,
+      stock_actual: productoData.stock_actual || 0,
+      categoria: productoData.categoria || productoData.categoria_id || '',
+      marca: productoData.marca || productoData.marca_id || '',
+      proveedores_seleccionados: productoData.proveedores || []
+    }
+    
+    console.log('Producto cargado:', producto.value)
   } catch (err) {
     console.error('Error al cargar producto:', err)
-    alert('Error al cargar los datos del producto')
+    alert('❌ Error al cargar los datos del producto')
   }
 }
 
 // ================================
-// Cargar categorías y proveedores
+// CARGAR DATOS ADICIONALES
 // ================================
-const cargarDatos = async () => {
+const cargarMarcas = async () => {
+  cargandoMarcas.value = true
   try {
-    const [catRes, provRes] = await Promise.all([
-      axios.get(`${API_BASE}/productos/api/categorias/`),
-      axios.get(`${API_BASE}/proveedores/api/proveedores/`)
-    ])
-
-    categorias.value = catRes.data.filter(c => c.activo)
-    proveedores.value = provRes.data.filter(p => p.estado === 'ACTIVO')
+    const res = await axios.get(`${API_BASE}/usuarios/api/marcas/`)
+    marcas.value = res.data
   } catch (err) {
-    console.error('Error al cargar datos:', err)
-    alert('Error al cargar categorías o proveedores')
+    console.error("Error cargando marcas:", err)
+  } finally {
+    cargandoMarcas.value = false
   }
 }
 
+const cargarCategorias = async () => {
+  cargandoCategorias.value = true
+  try {
+    const res = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`)
+    categorias.value = res.data
+  } catch (err) {
+    console.error('Error cargando categorías:', err)
+  } finally {
+    cargandoCategorias.value = false
+  }
+}
+
+const cargarProveedores = async () => {
+  cargandoProveedores.value = true
+  try {
+    const res = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
+    proveedores.value = res.data
+  } catch (err) {
+    console.error('Error cargando proveedores:', err)
+  } finally {
+    cargandoProveedores.value = false
+  }
+}
+
+const cargarDatos = async () => {
+  await Promise.all([cargarMarcas(), cargarCategorias(), cargarProveedores()])
+}
+
 // ================================
-// Modificar producto
+// MODIFICAR PRODUCTO
 // ================================
 const modificarProducto = async () => {
-  if (!validarProducto()) return
+  if (!formularioValido.value) {
+    if (producto.value.proveedores_seleccionados.length === 0) {
+      alert("❌ Debe seleccionar al menos un proveedor para el producto.")
+    } else {
+      alert("❌ Complete todos los campos obligatorios.")
+    }
+    return
+  }
 
   cargando.value = true
   try {
-    await axios.put(`${API_BASE}/productos/api/productos/${props.productoId}/`, producto.value)
-    alert('Producto actualizado con éxito')
-    emit('producto-actualizado')
+    const payload = {
+      nombre: producto.value.nombre.trim(),
+      codigo: producto.value.codigo,
+      descripcion: producto.value.descripcion.trim(),
+      precio: producto.value.precio,
+      stock: producto.value.stock_actual,
+      categoria: Number(producto.value.categoria),
+      marca: Number(producto.value.marca),
+      proveedores: producto.value.proveedores_seleccionados
+    }
+
+    const res = await axios.put(`${API_BASE}/usuarios/api/productos/${props.productoId}/`, payload)
+
+    alert("✅ Producto actualizado correctamente")
+    emit("producto-actualizado", res.data)
+
   } catch (err) {
     console.error('Error al actualizar producto:', err)
-    alert('Error al actualizar el producto: ' + (err.response?.data?.message || err.message))
+    alert("❌ Error al actualizar el producto")
   } finally {
     cargando.value = false
   }
 }
 
 // ================================
-// Validaciones
-// ================================
-const validarProducto = () => {
-  if (!producto.value.nombre.trim()) {
-    alert('El nombre del producto es obligatorio')
-    return false
-  }
-  if (producto.value.precio < 0) {
-    alert('El precio no puede ser negativo')
-    return false
-  }
-  if (producto.value.stock_actual < 0) {
-    alert('El stock no puede ser negativo')
-    return false
-  }
-  if (producto.value.stock_minimo < 0) {
-    alert('El stock mínimo no puede ser negativo')
-    return false
-  }
-  return true
-}
-
-// ================================
-// Cancelar acción
+// CANCELAR
 // ================================
 const cancelar = () => {
-  emit('cancelar')
+  emit("cancelar")
 }
 
 // ================================
-// Ciclo de vida y watchers
+// WATCHERS Y MOUNTED
 // ================================
 onMounted(async () => {
-  await Promise.all([cargarProducto(), cargarDatos()])
+  await cargarDatos()
+  await cargarProducto()
 })
 
 watch(() => props.productoId, () => {
@@ -287,28 +288,22 @@ watch(() => props.productoId, () => {
 </script>
 
 <style scoped>
-/* Los estilos son los mismos que en RegistrarProducto.vue */
+/* LOS MISMOS ESTILOS QUE REGISTRAR PRODUCTO */
 .form-container {
-  background: rgba(23, 23, 23, 0.95);
-  border-radius: 16px;
-  padding: 30px;
   max-width: 900px;
   margin: 0 auto;
+  padding: 20px;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
-h2 {
-  color: white;
-  margin-bottom: 30px;
-  text-align: center;
-  font-size: 1.8rem;
-}
-
-h3 {
-  color: #9ca3af;
+.form-container h2 {
+  color: #1f2937;
   margin-bottom: 20px;
-  font-size: 1.2rem;
-  border-bottom: 1px solid #374151;
-  padding-bottom: 8px;
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: 600;
 }
 
 .form-grid {
@@ -319,39 +314,47 @@ h3 {
 }
 
 .form-section {
-  background: rgba(31, 41, 55, 0.3);
+  background: #f8fafc;
   padding: 20px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.form-section h3 {
+  color: #374151;
+  margin-bottom: 15px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-bottom: 2px solid #3b82f6;
+  padding-bottom: 8px;
 }
 
 .form-group {
   margin-bottom: 20px;
 }
 
-label {
+.form-group label {
   display: block;
-  margin-bottom: 8px;
-  color: #d1d5db;
+  margin-bottom: 6px;
   font-weight: 500;
+  color: #374151;
 }
 
 .form-input,
-.form-textarea,
-.form-select {
+.form-select,
+.form-textarea {
   width: 100%;
-  padding: 12px;
-  border: 1px solid #4b5563;
-  border-radius: 8px;
-  background: rgba(17, 24, 39, 0.8);
-  color: white;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
   font-size: 14px;
-  transition: all 0.3s ease;
+  transition: all 0.2s;
+  background: white;
 }
 
 .form-input:focus,
-.form-textarea:focus,
-.form-select:focus {
+.form-select:focus,
+.form-textarea:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
@@ -362,48 +365,202 @@ label {
   min-height: 80px;
 }
 
+.form-help {
+  color: #6b7280;
+  font-size: 0.75rem;
+  margin-top: 4px;
+  display: block;
+}
+
+.form-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 5'><path fill='%23333' d='M2 0L0 2h4zm0 5L0 3h4z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px;
+  padding-right: 40px;
+}
+
+.readonly {
+  background-color: #f9fafb !important;
+  cursor: not-allowed !important;
+  color: #6b7280;
+}
+
+.form-help.error {
+  color: #dc2626;
+  font-weight: 500;
+}
+
+.btn-primary:disabled {
+  background-color: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.checkbox-group-enhanced {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 15px;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+}
+
+.enhanced-checkbox {
+  display: none;
+}
+
+.enhanced-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  padding: 12px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  width: 100%;
+  background: white;
+}
+
+.enhanced-checkbox-label:hover {
+  border-color: #3b82f6;
+  background: #f0f7ff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+}
+
+.enhanced-checkbox:checked + .enhanced-checkbox-label {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.checkmark {
+  width: 22px;
+  height: 22px;
+  border: 2px solid #d1d5db;
+  border-radius: 6px;
+  position: relative;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.enhanced-checkbox:checked + .enhanced-checkbox-label .checkmark {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.enhanced-checkbox:checked + .enhanced-checkbox-label .checkmark::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.proveedor-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.proveedor-info strong {
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.proveedor-contacto {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.loading-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e5e7eb;
+  border-top: 2px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.no-data-message {
+  text-align: center;
+  padding: 15px;
+  color: #6b7280;
+  font-style: italic;
+  background: #f9fafb;
+  border-radius: 6px;
+  border: 1px dashed #d1d5db;
+}
+
+.no-data-message.error {
+  color: #dc2626;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
 .form-actions {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 15px;
-  justify-content: flex-end;
   padding-top: 20px;
-  border-top: 1px solid #374151;
+  border-top: 1px solid #e5e7eb;
 }
 
 .btn {
-  padding: 12px 24px;
+  padding: 10px 20px;
   border: none;
-  border-radius: 8px;
-  font-weight: 600;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.3s ease;
-  min-width: 120px;
+  transition: all 0.2s;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  background-color: #3b82f6;
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, #1d4ed8, #1e40af);
-  transform: translateY(-2px);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
+  background-color: #2563eb;
 }
 
 .btn-secondary {
-  background: linear-gradient(135deg, #6b7280, #4b5563);
+  background-color: #6b7280;
   color: white;
 }
 
 .btn-secondary:hover {
-  background: linear-gradient(135deg, #4b5563, #374151);
-  transform: translateY(-2px);
+  background-color: #4b5563;
 }
 
 @media (max-width: 768px) {
@@ -413,7 +570,16 @@ label {
   }
   
   .form-container {
-    padding: 20px;
+    padding: 15px;
+    margin: 10px;
+  }
+  
+  .form-actions {
+    flex-direction: column;
+  }
+  
+  .btn {
+    width: 100%;
   }
 }
 </style>

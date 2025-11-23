@@ -320,17 +320,27 @@ export default {
             }
         },
         
+        // En RegistrarVenta.vue -> methods:
+
         async cargarProductos() {
             try {
-                const res = await axios.get(`${API_BASE_URL}/usuarios/api/productos/`); 
-                this.productos = Array.isArray(res.data) ? res.data : [];
+                const res = await axios.get(`${API_BASE_URL}/usuarios/api/productos/`);
+                const datosCrudos = Array.isArray(res.data) ? res.data : [];
+                
+                // 🚨 LA CORRECCIÓN MÁGICA ESTÁ ACÁ ABAJO:
+                // Mapeamos 'stock_actual' (Backend) a 'stock' (Frontend)
+                this.productos = datosCrudos.map(prod => ({
+                    ...prod,
+                    stock: prod.stock_actual // <--- ESTO SOLUCIONA EL PROBLEMA
+                }));
+
                 this.inicializarCantidades();
             } catch (err) { 
                 console.error("Error al cargar productos:", err);
                 this.productos = [] 
             }
         },
-        
+
         inicializarCantidades() {
             this.productos.forEach(p => { 
                 p.stock = parseInt(p.stock) || 0;
@@ -475,7 +485,7 @@ export default {
                 const payload = this.prepararPayloadVenta();
                 console.log("📦 Payload enviado:", payload);
 
-                const response = await axios.post(`${API_BASE_URL}/usuarios/api/ventas/`, payload);
+                const response = await axios.post(`${API_BASE_URL}/usuarios/api/ventas/registrar/`, payload);
                 
                 if (response.status === 201) {
                     console.log("✅ Venta registrada en backend");
@@ -532,16 +542,20 @@ export default {
         async procesarVentaExitosa(ventaData) {
             console.log("🔄 procesarVentaExitosa iniciado:", ventaData);
             
+            // 1. Guardamos el total REAL que viene del backend antes de limpiar nada
+            const totalConfirmado = parseFloat(ventaData.total); // <--- CLAVE
+
             // Cerrar loading
             Swal.close();
             
+            // 2. Limpiamos el formulario (esto pone this.total en 0)
             this.limpiarFormulario();
             await this.cargarProductos();
             
-            // ✅ EMITIR PARA ACTUALIZAR LISTADO
+            // Emitir para actualizar listado
             this.$emit('venta-registrada', ventaData);
             
-            // ✅ MOSTRAR MODAL ELEGANTE CON SWEETALERT2
+            // 3. Mostrar Modal usando 'totalConfirmado' en vez de 'this.total'
             const result = await Swal.fire({
                 title: '¡Venta Registrada Exitosamente!',
                 html: `
@@ -553,11 +567,11 @@ export default {
                             </div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                                 <strong>Total:</strong>
-                                <span style="color: #28a745; font-weight: bold;">$${this.total.toFixed(2)}</span>
+                                <span style="color: #28a745; font-weight: bold;">$${totalConfirmado.toFixed(2)}</span>
                             </div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                                 <strong>Método de Pago:</strong>
-                                <span>${this.metodoPagoSeleccionado?.nombre || ''}</span>
+                                <span>${ventaData.medio_pago_nombre || 'Efectivo'}</span>
                             </div>
                             <div style="display: flex; justify-content: space-between;">
                                 <strong>Fecha:</strong>
@@ -581,10 +595,8 @@ export default {
             });
 
             if (result.isConfirmed) {
-                // Abrir comprobante PDF
                 this.abrirComprobante(ventaData.id);
             } else {
-                // Continuar sin abrir comprobante
                 this.continuarSinAbrir();
             }
         },

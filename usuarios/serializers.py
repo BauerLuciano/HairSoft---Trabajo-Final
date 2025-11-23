@@ -105,28 +105,36 @@ class RolSerializer(serializers.ModelSerializer):
 # PROVEEDOR
 # ----------------------------------------------------------------------
 class ProveedorSerializer(serializers.ModelSerializer):
-    categorias_nombres = serializers.StringRelatedField(many=True, source='categorias', read_only=True)
+    categorias_nombres = serializers.StringRelatedField(
+        many=True, 
+        source='categorias',
+        read_only=True
+    )
+    
     categorias = serializers.PrimaryKeyRelatedField(
         many=True,
         queryset=CategoriaProducto.objects.all(),
         required=False
     )
+    
     productos = serializers.SerializerMethodField()
 
     class Meta:
         model = Proveedor
         fields = [
-            'id', 'nombre', 'cuit', 'contacto', 'telefono', 'email',
-            'direccion', 'productos_que_ofrece', 'estado',
+            'id', 'nombre', 'cuit', 'contacto','telefono', 'email', 'direccion', 
+            'estado',  'fecha_creacion',  'categorias_nombres', 'categorias', 'productos'
+        ]
+        
+        read_only_fields = [
             'fecha_creacion', 
-            'categorias_nombres', 'categorias',
-            'productos_especificos',
+            'categorias_nombres', 
             'productos'
         ]
-        read_only_fields = ['fecha_creacion', 'categorias_nombres', 'productos']
 
     def get_productos(self, obj):
-        return list(obj.producto_set.values_list('nombre', flat=True))
+        return list(obj.productos.values_list('nombre', flat=True))
+
 
     def create(self, validated_data):
         categorias_data = validated_data.pop('categorias', [])
@@ -141,50 +149,92 @@ class ProveedorSerializer(serializers.ModelSerializer):
             instance.categorias.set(categorias_data)
         return instance
 
-# ----------------------------------------------------------------------
-# PRODUCTO
-# ----------------------------------------------------------------------
+#Producto!
+
 class ProductoSerializer(serializers.ModelSerializer):
+    codigo = serializers.CharField(read_only=True)
+
+    # ======= CATEGORÍA =======
     categoria_id = serializers.IntegerField(source='categoria.id', read_only=True) 
     categoria_nombre = serializers.CharField(source='categoria.nombre', read_only=True)
-    
-    # ✅ CORREGIR: Hacer stock readable y writeable
-    stock_actual = serializers.IntegerField(read_only=True)  # Para lectura
-    stock = serializers.IntegerField(source='stock_actual', required=False, write_only=True)  # Para escritura
-    
-    # ✅ CORRECCIÓN: Hacer proveedores writeable
+    categoria = serializers.PrimaryKeyRelatedField(
+        queryset=CategoriaProducto.objects.all(),
+        required=True
+    )
+
+    # ======= MARCA =======
+    marca_id = serializers.IntegerField(source='marca.id', read_only=True)
+    marca_nombre = serializers.CharField(source='marca.nombre', read_only=True)
+    marca = serializers.PrimaryKeyRelatedField(
+        queryset=Marca.objects.all(),
+        required=True
+    )
+
+    # ======= ESTADO =======  # ✅ NUEVO
+    estado = serializers.ChoiceField(choices=Producto.ESTADOS, required=False)
+
+    # ======= STOCK =======
+    stock_actual = serializers.IntegerField(read_only=True)
+    stock = serializers.IntegerField(source='stock_actual', required=False, write_only=True)
+
+    # ======= PROVEEDORES =======
     proveedores = serializers.PrimaryKeyRelatedField(
-        many=True, 
+        many=True,
         queryset=Proveedor.objects.all(),
         required=False,
         allow_empty=True
     )
-    
+
     proveedores_nombres = serializers.SerializerMethodField()
 
     class Meta:
         model = Producto
         fields = [
-            'id', 
-            'nombre', 
-            'precio', 
+            'id',
+            'nombre',
+            'precio',
             'codigo',
             'descripcion',
-            'stock_actual',  # ✅ AGREGAR para lectura
-            'stock',         # ✅ Mantener para escritura
-            'categoria_id',         
+            'estado',  # ✅ NUEVO
+
+            # Stock
+            'stock_actual',
+            'stock',
+
+            # Categoría
+            'categoria',
+            'categoria_id',
             'categoria_nombre',
+
+            # Marca
+            'marca',
+            'marca_id',
+            'marca_nombre',
+
+            # Proveedores
             'proveedores',
             'proveedores_nombres',
         ]
-        extra_kwargs = {
-            'nombre': {'required': True},
-            'precio': {'required': True},
-            'categoria': {'required': True},
-        }
 
     def get_proveedores_nombres(self, obj):
-        return [proveedor.nombre for proveedor in obj.proveedores.all()]
+        return [p.nombre for p in obj.proveedores.all()]
+
+    def create(self, validated_data):
+        print("🔍 DEBUG - Datos que llegan al serializer:", validated_data)
+        
+        # Extraer proveedores si existen
+        proveedores_data = validated_data.pop('proveedores', [])
+        
+        # Crear el producto
+        producto = Producto.objects.create(**validated_data)
+        
+        print(f"✅ Producto creado - ID: {producto.id}, Categoría: {producto.categoria}, Código: {producto.codigo}")
+        
+        # Asignar proveedores
+        if proveedores_data:
+            producto.proveedores.set(proveedores_data)
+            
+        return producto
 # ----------------------------------------------------------------------
 # DETALLEVENTA Y VENTA
 # ----------------------------------------------------------------------
@@ -610,3 +660,36 @@ class ActualizarListaPreciosSerializer(serializers.Serializer):
     precios = serializers.ListField(
         child=serializers.DictField()
     )
+
+# ================================
+# SERIALIZERS REOFERTA AUTOMÁTICA
+# ================================
+
+class InteresTurnoLiberadoSerializer(serializers.ModelSerializer):
+    cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True)
+    cliente_correo = serializers.CharField(source='cliente.correo', read_only=True)
+    servicio_nombre = serializers.CharField(source='servicio.nombre', read_only=True)
+    peluquero_nombre = serializers.CharField(source='peluquero.nombre', read_only=True)
+    
+    class Meta:
+        model = InteresTurnoLiberado
+        fields = [
+            'id', 'cliente', 'cliente_nombre', 'cliente_correo',
+            'servicio', 'servicio_nombre', 'peluquero', 'peluquero_nombre',
+            'fecha_deseada', 'hora_deseada', 'fecha_registro',
+            'notificado', 'fecha_notificacion', 'prioridad',
+            'oferta_enviada', 'fecha_oferta_enviada', 'oferta_aceptada',
+            'fecha_respuesta', 'descuento_aplicado', 'tiempo_limite_respuesta',
+            'orden_notificacion'
+        ]
+
+class ConfiguracionReofertaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConfiguracionReoferta
+        fields = '__all__'
+
+#Marcas
+class MarcaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Marca
+        fields = ['id', 'nombre']

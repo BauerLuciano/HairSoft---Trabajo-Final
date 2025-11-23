@@ -12,15 +12,21 @@ from rest_framework import viewsets, status, generics
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response 
+from django.utils.decorators import method_decorator
 from datetime import datetime, timedelta
 from django.utils import timezone
-from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios
+from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, InteresTurnoLiberado
 from .mercadopago_service import MercadoPagoService
 import json, re, requests
 from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer, ListaPrecioProveedorSerializer, HistorialPreciosSerializer, PrecioSugeridoSerializer, ActualizarListaPreciosSerializer
 from django.contrib.auth.hashers import check_password
+from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from .pdf_utils import generar_comprobante_venta
+import secrets, logging
+
+# Configuración del logger
+logger = logging.getLogger(__name__)
 
 # Modelos y formularios
 from .models import (
@@ -435,29 +441,32 @@ def listado_productos(request):
     ]
     return JsonResponse(data, safe=False)
 
-
 class ProductoListCreateAPIView(generics.ListCreateAPIView):
-    # 1. Definimos la fuente de datos (tus 6 productos)
-    queryset = Producto.objects.select_related('categoria').all()  # Cargar la categoría relacionada
-    
-    # 2. Definimos quién los traduce (tu Serializer)
+    queryset = Producto.objects.select_related('categoria', 'marca').prefetch_related('proveedores').all()
     serializer_class = ProductoSerializer
 
-    # 3. Mantenemos la lógica de filtros que ya tenías
     def get_queryset(self):
         queryset = super().get_queryset()
-        
-        # Filtro por nombre (tu código original)
         nombre = self.request.query_params.get('nombre')
         if nombre:
             queryset = queryset.filter(nombre__icontains=nombre)
-        
-        # Filtro por categoría (tu código original)
+
         categoria_id = self.request.query_params.get('categoria')
         if categoria_id:
-            queryset = queryset.filter(categoria_id=categoria_id)
-        
+            try:
+                categoria_id = int(categoria_id)
+                queryset = queryset.filter(categoria_id=categoria_id)
+            except ValueError:
+                pass
+
         return queryset
+
+class ProductoRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
+    """Para ver, editar y eliminar productos individuales"""
+    queryset = Producto.objects.select_related('categoria', 'marca').prefetch_related('proveedores').all()
+    serializer_class = ProductoSerializer
+    permission_classes = [AllowAny]  # Temporal para testing
+    
 # ================================
 # Peluqueros
 # ================================
@@ -824,46 +833,6 @@ def verificar_disponibilidad(request):
             'message': f"Error interno: {str(e)}"
         }, status=500)
 
-# En usuarios/views.py - REEMPLAZA la función cancelar_turno existente
-@csrf_exempt
-def cancelar_turno(request, turno_id):
-    """Cancelar turno con verificación de estado"""
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
-
-    try:
-        turno = Turno.objects.get(id=turno_id)
-        
-        # Verificar si puede ser cancelado
-        puede_cancelar, hay_reembolso, mensaje = turno.puede_ser_cancelado()
-        
-        if not puede_cancelar:
-            return JsonResponse({
-                'status': 'error',
-                'message': mensaje
-            }, status=400)
-
-        # Cambiar estado a cancelado
-        turno.estado = 'CANCELADO'
-        turno.save()
-
-        return JsonResponse({
-            'status': 'ok',
-            'message': f'Turno cancelado exitosamente. {mensaje}'
-        })
-
-    except Turno.DoesNotExist:
-        return JsonResponse({
-            'status': 'error',
-            'message': 'Turno no encontrado'
-        }, status=404)
-    except Exception as e:
-        print(f"Error cancelando turno: {e}")
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Error interno: {str(e)}'
-        }, status=500)
-    
 @csrf_exempt
 def completar_turno(request, turno_id):
     if request.method != 'POST':
@@ -1012,68 +981,92 @@ def modificar_turno(request, turno_id):
             'status': 'error',
             'message': str(e)
         }, status=400)
-
+    
+@api_view(['POST'])
 @csrf_exempt
+@permission_classes([AllowAny]) 
 def registrar_interes_turno(request):
     """
-    Registrar cliente interesado en un turno específico
+    *** MODO DEPURACIÓN ***
+    Verifica que el cliente_id esté llegando correctamente.
+    Si cliente_id NO está llegando en el cuerpo del request, este endpoint falla.
     """
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
-
+    print("-------------------------------------------------------")
+    print("🔥 DEBUG: Intentando registrar interés (Ignorando Sesión)")
+    print("Datos crudos recibidos:", request.data)
+    print("-------------------------------------------------------")
+    
     try:
-        data = json.loads(request.body)
+        data = request.data
         
-        # Para clientes web autenticados
-        if request.user.is_authenticated:
-            cliente_id = request.user.id
-        else:
-            # Para modo presencial o no autenticado
-            cliente_id = data.get('cliente_id')
-            if not cliente_id:
-                return JsonResponse({
-                    'status': 'error', 
-                    'message': 'Se requiere cliente_id para usuarios no autenticados'
-                }, status=400)
+        # 1. PRUEBA DE IDENTIFICACIÓN CRÍTICA
+        cliente_id_candidato = data.get('cliente_id')
+        
+        if not cliente_id_candidato:
+            print("❌ DEBUG FALLO: El campo 'cliente_id' NO se encontró en el cuerpo del POST.")
+            return Response({
+                'error': '❌❌ Error: El campo "cliente_id" es OBLIGATORIO en el cuerpo del request. El frontend NO lo está enviando.'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+            
+        # 2. PRUEBA DE FORMATO NUMÉRICO
+        try:
+            cliente_id = int(cliente_id_candidato)
+        except (TypeError, ValueError):
+            print(f"❌ DEBUG FALLO: El valor '{cliente_id_candidato}' NO es un número válido.")
+            return Response({
+                'error': f'Error: El ID de cliente ({cliente_id_candidato}) no es un número válido.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 3. PRUEBA DE EXISTENCIA EN BD (LA MAYOR CAUSA DE FALLO)
+        from .models import Usuario, Servicio, Turno, InteresTurnoLiberado
+        from datetime import datetime
+        
+        try:
+            # 💡 Verificamos si existe el usuario
+            cliente = Usuario.objects.get(id=cliente_id) 
+        except Usuario.DoesNotExist:
+            print(f"❌ DEBUG FALLO: El cliente con ID {cliente_id} NO EXISTE en la tabla de usuarios.")
+            return Response({'error': f'Error: El cliente con ID {cliente_id} NO EXISTE. Verifica tu base de datos.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 4. SI LLEGA HASTA AQUÍ, EL ID ES CORRECTO. Continuamos con la lógica.
         
         servicio_id = data.get('servicio_id')
         peluquero_id = data.get('peluquero_id')
-        fecha_deseada = data.get('fecha_deseada')
-        hora_deseada = data.get('hora_deseada')
+        fecha_deseada_str = data.get('fecha_deseada') 
+        hora_deseada_str = data.get('hora_deseada') 
 
-        if not all([servicio_id, peluquero_id, fecha_deseada, hora_deseada]):
-            return JsonResponse({
-                'status': 'error',
-                'message': 'Faltan datos requeridos: servicio_id, peluquero_id, fecha_deseada, hora_deseada'
-            }, status=400)
-
-        from .turno_service import TurnoService
-        success, mensaje = TurnoService.registrar_interes_turno(
-            cliente_id, servicio_id, peluquero_id, fecha_deseada, hora_deseada
+        # Más chequeos de existencia de objetos
+        try:
+            servicio = Servicio.objects.get(id=servicio_id)
+            peluquero = Usuario.objects.get(id=peluquero_id)
+            fecha_deseada = datetime.strptime(fecha_deseada_str, "%Y-%m-%d").date()
+            hora_deseada = datetime.strptime(hora_deseada_str, "%H:%M").time()
+        except Exception as e:
+            return Response({'error': f'Error en datos de turno (Servicio/Peluquero/Fecha Inválida): {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 5. CREAR INTERÉS
+        interes_existente = InteresTurnoLiberado.objects.filter(
+            cliente=cliente, peluquero=peluquero, fecha_deseada=fecha_deseada, hora_deseada=hora_deseada
+        ).exists()
+        
+        if interes_existente:
+            return Response({'error': 'Ya estás registrado como interesado en este horario'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        interes = InteresTurnoLiberado.objects.create(
+            cliente=cliente, servicio=servicio, peluquero=peluquero,
+            fecha_deseada=fecha_deseada, hora_deseada=hora_deseada
         )
-
-        if success:
-            return JsonResponse({
-                'status': 'ok',
-                'message': mensaje
-            })
-        else:
-            return JsonResponse({
-                'status': 'error',
-                'message': mensaje
-            }, status=400)
-
-    except json.JSONDecodeError:
-        return JsonResponse({'status': 'error', 'message': 'JSON inválido'}, status=400)
+        
+        return Response({
+            'success': True,
+            'message': '✅ ¡Interés registrado! Procede a la cancelación para que Celery envíe el WhatsApp.',
+            'interes_id': interes.id
+        })
+        
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error en registrar_interes_turno: {str(e)}")
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Error interno: {str(e)}'
-        }, status=500)
-
+        import traceback
+        return Response({'error': f'Error interno inesperado: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
 @csrf_exempt
 def listar_intereses_cliente(request, cliente_id=None):
     """
@@ -1196,6 +1189,24 @@ def completar_pago_turno(request, turno_id):
             'status': 'error',
             'message': f'Error interno: {str(e)}'
         }, status=500)
+
+def turnos_ocupados(request):
+    fecha = request.GET.get("fecha")
+    peluquero_id = request.GET.get("peluquero")
+
+    if not fecha or not peluquero_id:
+        return JsonResponse({"error": "Faltan parámetros"}, status=400)
+
+    ocupados = Turno.objects.filter(
+        fecha=fecha,
+        peluquero_id=peluquero_id,
+    ).values_list("hora", flat=True)
+
+    return JsonResponse({
+        "fecha": fecha,
+        "peluquero": peluquero_id,
+        "ocupados": list(ocupados)
+    })
 # ================================
 # Listado  de  Categorías
 # ================================
@@ -1700,6 +1711,108 @@ def obtener_usuario_por_id(request, user_id):
 # VENTAS
 # =================================
 
+# En usuarios/views.py (Pégalo al final del archivo o cerca de VentaViewSet)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def registrar_venta(request):
+    """
+    Registra una venta, descuenta stock y valida datos.
+    Reemplaza la lógica del Serializer para mayor control.
+    """
+    print("💰 Iniciando registro de venta (Función Personalizada)...")
+    data = request.data
+    
+    try:
+        with transaction.atomic(): # 🔐 Bloque atómico
+            
+            # 1. Validar datos básicos
+            usuario_vendedor = request.user
+            # En Vue mandas 'usuario', pero lo tomamos del request.user por seguridad
+            
+            cliente_id = data.get('cliente') or data.get('cliente_id')
+            # Vue manda 'medio_pago' (que es el ID)
+            medio_pago_id = data.get('medio_pago') 
+            items = data.get('detalles', [])
+
+            if not items:
+                return Response({"error": "La venta debe tener al menos un detalle."}, status=400)
+
+            if not medio_pago_id:
+                return Response({"error": "El medio de pago es obligatorio."}, status=400)
+
+            # 2. Obtener Método de Pago
+            try:
+                medio_pago = MetodoPago.objects.get(id=medio_pago_id, activo=True)
+            except MetodoPago.DoesNotExist:
+                return Response({"error": "Método de pago inválido o inactivo."}, status=400)
+
+            # 3. Crear Cabecera de Venta
+            venta = Venta.objects.create(
+                cliente_id=cliente_id if cliente_id else None,
+                usuario=usuario_vendedor,
+                tipo='PRODUCTO',
+                medio_pago=medio_pago,
+                total=0 
+            )
+
+            total_acumulado = 0
+
+            # 4. Procesar items
+            for item in items:
+                # Vue manda 'producto' (ID) dentro de cada detalle
+                producto_id = item.get('producto')
+                cantidad = int(item.get('cantidad', 1))
+                precio_enviado = float(item.get('precio_unitario', 0))
+
+                if cantidad <= 0:
+                    raise Exception(f"La cantidad debe ser mayor a 0.")
+
+                # Bloqueamos el producto para evitar condición de carrera
+                try:
+                    producto = Producto.objects.select_for_update().get(id=producto_id)
+                except Producto.DoesNotExist:
+                    raise Exception(f"El producto con ID {producto_id} no existe.")
+
+                # 📦 Validación de Stock
+                if producto.stock_actual < cantidad:
+                    raise Exception(f"Stock insuficiente para '{producto.nombre}'. Disponibles: {producto.stock_actual}, Solicitados: {cantidad}")
+                
+                # 📉 Descontar Stock
+                producto.stock_actual -= cantidad
+                producto.save()
+
+                # Usamos el precio del producto en BD por seguridad, o el enviado si hay descuento manual
+                precio_unitario = producto.precio 
+                subtotal = precio_unitario * cantidad
+
+                DetalleVenta.objects.create(
+                    venta=venta,
+                    producto=producto,
+                    cantidad=cantidad,
+                    precio_unitario=precio_unitario,
+                    subtotal=subtotal
+                )
+
+                total_acumulado += subtotal
+
+            # 5. Guardar Total Final
+            venta.total = total_acumulado
+            venta.save()
+
+            print(f"✅ Venta #{venta.id} registrada con éxito. Total: ${venta.total}")
+            
+            return Response({
+                "success": True,
+                "message": "Venta registrada correctamente",
+                "id": venta.id, # Vue espera 'id'
+                "total": float(venta.total)
+            }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        print(f"❌ Error al registrar venta: {str(e)}")
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 class VentaViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly]
     
@@ -1964,47 +2077,10 @@ def debug_ventas(request):
         'mensaje': f'Hay {total_ventas} ventas en la base de datos'
     })
 
-#-------Comprobante de pruebaaaaaa
+# En usuarios/views.py
 
-# En views.py - Agrega esta función
 @api_view(['GET'])
 @permission_classes([AllowAny])
-def generar_comprobante_pdf(request, venta_id):
-    """Genera y descarga el comprobante PDF de una venta"""
-    try:
-        # Obtener la venta con todos los detalles
-        venta = Venta.objects\
-            .select_related('cliente', 'usuario', 'medio_pago')\
-            .prefetch_related('detalles__producto')\
-            .get(id=venta_id)
-        
-        # Obtener detalles de la venta
-        detalles = venta.detalles.all()
-        
-        # Preparar datos para el serializer (para obtener nombres)
-        from .serializers import VentaSerializer
-        venta_data = VentaSerializer(venta).data
-        
-        # Generar PDF
-        from .pdf_utils import generar_comprobante_venta
-        pdf_content = generar_comprobante_venta(venta_data, detalles)
-        
-        if pdf_content:
-            # Crear respuesta HTTP con el PDF
-            response = HttpResponse(pdf_content, content_type='application/pdf')
-            response['Content-Disposition'] = f'attachment; filename="comprobante_venta_{venta_id}.pdf"'
-            return response
-        else:
-            return HttpResponse("Error generando el comprobante", status=500)
-            
-    except Venta.DoesNotExist:
-        return HttpResponse("Venta no encontrada", status=404)
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        return HttpResponse(f"Error interno: {str(e)}", status=500)
-    
-
-
 def generar_comprobante_pdf(request, venta_id):
     """
     Vista para generar y descargar el comprobante PDF de una venta
@@ -2012,19 +2088,28 @@ def generar_comprobante_pdf(request, venta_id):
     try:
         print(f"🔍 VISTA: Iniciando generación PDF para venta {venta_id}")
         
-        # Obtener la venta y sus detalles
+        # 1. Obtener el objeto Venta y sus detalles
         venta = get_object_or_404(Venta, id=venta_id)
         detalles = DetalleVenta.objects.filter(venta=venta)
         
         print(f"✅ VISTA: Venta {venta.id} encontrada, {detalles.count()} detalles")
         
-        # Generar el PDF
-        pdf_content = generar_comprobante_venta(venta, detalles)
+        # 2. 🚨 SERIALIZAR LA VENTA (Convertir Objeto -> Diccionario)
+        # Esto es necesario porque pdf_utils espera un diccionario con .get()
+        # y además el serializer ya nos trae los nombres (cliente_nombre, medio_pago_nombre)
+        from .serializers import VentaSerializer
+        venta_data = VentaSerializer(venta).data
+        
+        # 3. Generar el PDF pasando el DICCIONARIO (venta_data) y los detalles
+        from .pdf_utils import generar_comprobante_venta
+        pdf_content = generar_comprobante_venta(venta_data, detalles)
         
         if pdf_content:
             print("✅ VISTA: PDF generado, enviando respuesta")
             response = HttpResponse(pdf_content, content_type='application/pdf')
-            response['Content-Disposition'] = f'attachment; filename="comprobante_venta_{venta_id}.pdf"'
+            # Nombre del archivo para descarga
+            filename = f"Comprobante_HairSoft_Venta_{venta.id}.pdf"
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
             return response
         else:
             print("❌ VISTA: pdf_content es None")
@@ -2036,8 +2121,47 @@ def generar_comprobante_pdf(request, venta_id):
         print(f"❌ VISTA: Traceback: {traceback.format_exc()}")
         return HttpResponse(f"Error: {str(e)}", status=500)
 
-#----para anular una venta
-# En usuarios/views.py - Agregar esta función
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def generar_comprobante_pdf(request, venta_id):
+    """
+    Vista para generar y descargar el comprobante PDF de una venta
+    """
+    try:
+        print(f"🔍 VISTA: Iniciando generación PDF para venta {venta_id}")
+        
+        # 1. Obtener el objeto de base de datos
+        venta = get_object_or_404(Venta, id=venta_id)
+        detalles = DetalleVenta.objects.filter(venta=venta)
+        
+        print(f"✅ VISTA: Venta {venta.id} encontrada")
+        
+        # 2. 🚨 EL PASO QUE FALTABA: SERIALIZAR (Convertir Objeto a Diccionario)
+        # Importamos el serializador aquí mismo para asegurar que lo encuentre
+        from .serializers import VentaSerializer
+        serializer = VentaSerializer(venta)
+        venta_data = serializer.data  # <--- ESTO CONVIERTE EL OBJETO EN DICCIONARIO
+        
+        # 3. Generar el PDF pasando el DICCIONARIO
+        from .pdf_utils import generar_comprobante_venta
+        
+        # Ahora le pasamos 'venta_data' (el diccionario) en vez de 'venta' (el objeto)
+        pdf_content = generar_comprobante_venta(venta_data, detalles)
+        
+        if pdf_content:
+            print("✅ VISTA: PDF generado, enviando respuesta")
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="Comprobante_Venta_{venta.id}.pdf"'
+            return response
+        else:
+            return HttpResponse("Error al generar el PDF", status=500)
+            
+    except Exception as e:
+        print(f"❌ VISTA Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return HttpResponse(f"Error: {str(e)}", status=500)
+
 @api_view(['POST'])
 def anular_venta(request, venta_id):
     """
@@ -2935,3 +3059,472 @@ def dashboard_data(request):
         print(f"🔍 Traceback: {traceback.format_exc()}")
         return Response({'error': str(e)}, status=500)
 
+# ================================
+# CONFIGURACIÓN REOFERTA AUTOMÁTICA
+# ================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def obtener_configuracion_reoferta(request):
+    """Obtiene la configuración actual del módulo de reoferta"""
+    try:
+        from .models import ConfiguracionReoferta
+        config = ConfiguracionReoferta.get_configuracion()
+        
+        return Response({
+            'id': config.id,
+            'descuento_por_defecto': float(config.descuento_por_defecto),
+            'tiempo_limite_respuesta': config.tiempo_limite_respuesta,
+            'max_intentos_notificacion': config.max_intentos_notificacion,
+            'activo': config.activo,
+            'notificar_email': config.notificar_email,
+            'notificar_whatsapp': config.notificar_whatsapp,
+            'fecha_actualizacion': config.fecha_actualizacion
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def actualizar_configuracion_reoferta(request):
+    """Actualiza la configuración del módulo de reoferta"""
+    try:
+        from .models import ConfiguracionReoferta
+        
+        config = ConfiguracionReoferta.get_configuracion()
+        
+        # Actualizar campos
+        if 'descuento_por_defecto' in request.data:
+            config.descuento_por_defecto = request.data['descuento_por_defecto']
+        if 'tiempo_limite_respuesta' in request.data:
+            config.tiempo_limite_respuesta = request.data['tiempo_limite_respuesta']
+        if 'max_intentos_notificacion' in request.data:
+            config.max_intentos_notificacion = request.data['max_intentos_notificacion']
+        if 'activo' in request.data:
+            config.activo = request.data['activo']
+        if 'notificar_email' in request.data:
+            config.notificar_email = request.data['notificar_email']
+        if 'notificar_whatsapp' in request.data:
+            config.notificar_whatsapp = request.data['notificar_whatsapp']
+        
+        config.save()
+        
+        return Response({
+            'message': 'Configuración actualizada correctamente',
+            'configuracion': {
+                'id': config.id,
+                'descuento_por_defecto': float(config.descuento_por_defecto),
+                'tiempo_limite_respuesta': config.tiempo_limite_respuesta,
+                'activo': config.activo
+            }
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def estadisticas_reoferta(request):
+    """Obtiene estadísticas del módulo de reoferta"""
+    try:
+        from .models import InteresTurnoLiberado
+        from django.db.models import Count, Q
+        from datetime import datetime, timedelta
+        
+        # Estadísticas generales
+        total_interesados = InteresTurnoLiberado.objects.count()
+        total_ofertas_enviadas = InteresTurnoLiberado.objects.filter(oferta_enviada=True).count()
+        total_ofertas_aceptadas = InteresTurnoLiberado.objects.filter(oferta_aceptada=True).count()
+        
+        # Tasa de conversión
+        tasa_conversion = 0
+        if total_ofertas_enviadas > 0:
+            tasa_conversion = (total_ofertas_aceptadas / total_ofertas_enviadas) * 100
+        
+        # Estadísticas del último mes
+        ultimo_mes = datetime.now() - timedelta(days=30)
+        ofertas_ultimo_mes = InteresTurnoLiberado.objects.filter(
+            fecha_oferta_enviada__gte=ultimo_mes
+        ).count()
+        
+        aceptadas_ultimo_mes = InteresTurnoLiberado.objects.filter(
+            fecha_respuesta__gte=ultimo_mes,
+            oferta_aceptada=True
+        ).count()
+        
+        return Response({
+            'estadisticas_generales': {
+                'total_interesados': total_interesados,
+                'total_ofertas_enviadas': total_ofertas_enviadas,
+                'total_ofertas_aceptadas': total_ofertas_aceptadas,
+                'tasa_conversion': round(tasa_conversion, 2),
+                'ofertas_ultimo_mes': ofertas_ultimo_mes,
+                'aceptadas_ultimo_mes': aceptadas_ultimo_mes
+            }
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def forzar_reoferta(request, turno_id):
+    """Fuerza el proceso de reoferta para un turno específico"""
+    try:
+        from .turno_service import TurnoService
+        
+        resultado = TurnoService.procesar_reoferta_automatica(turno_id)
+        
+        return Response({
+            'success': resultado,
+            'message': 'Proceso de reoferta ejecutado correctamente' if resultado else 'No se pudo ejecutar la reoferta'
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def procesar_respuesta_oferta(request, interes_id):
+    """Webhook para procesar respuestas de clientes a ofertas de reoferta"""
+    try:
+        from .models import InteresTurnoLiberado, Turno
+        from django.utils import timezone
+        
+        interes = get_object_or_404(InteresTurnoLiberado, id=interes_id)
+        accion = request.data.get('accion')  # 'aceptar' o 'rechazar'
+        
+        if accion == 'aceptar':
+            # Marcar como aceptada
+            interes.aceptar_oferta()
+            
+            # Buscar turno cancelado relacionado
+            turno_cancelado = Turno.objects.filter(
+                fecha=interes.fecha_deseada,
+                hora=interes.hora_deseada,
+                peluquero=interes.peluquero,
+                estado='CANCELADO'
+            ).first()
+            
+            if turno_cancelado:
+                # Crear nuevo turno para el cliente
+                nuevo_turno = Turno.objects.create(
+                    fecha=interes.fecha_deseada,
+                    hora=interes.hora_deseada,
+                    estado='RESERVADO',
+                    canal='WEB',
+                    tipo_pago='PENDIENTE',
+                    medio_pago='PENDIENTE',
+                    monto_seña=0,
+                    monto_total=interes.servicio.precio * (1 - interes.descuento_aplicado / 100),
+                    cliente=interes.cliente,
+                    peluquero=interes.peluquero
+                )
+                nuevo_turno.servicios.add(interes.servicio)
+                
+                return Response({
+                    'success': True,
+                    'message': 'Oferta aceptada. Turno reservado exitosamente.',
+                    'turno_id': nuevo_turno.id
+                })
+            else:
+                return Response({
+                    'success': False,
+                    'message': 'No se encontró el turno cancelado relacionado.'
+                }, status=400)
+                
+        elif accion == 'rechazar':
+            interes.rechazar_oferta()
+            return Response({
+                'success': True,
+                'message': 'Oferta rechazada.'
+            })
+        else:
+            return Response({
+                'success': False,
+                'message': 'Acción no válida. Use "aceptar" o "rechazar".'
+            }, status=400)
+            
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error procesando respuesta: {str(e)}'
+        }, status=500)
+
+# Listar todas las marcas
+def listar_marcas(request):
+    if request.method != "GET":
+        return JsonResponse({'message': 'Método no permitido'}, status=405)
+
+    marcas = Marca.objects.all()
+
+    data = []
+    for marca in marcas:
+        # Cantidad de productos asociados a esa marca
+        cantidad_productos = Producto.objects.filter(marca=marca).count()
+
+        # Cantidad de proveedores que venden productos de esa marca
+        cantidad_proveedores = Proveedor.objects.filter(
+            productos__marca=marca
+        ).distinct().count()
+
+        data.append({
+            "id": marca.id,
+            "nombre": marca.nombre,
+            "cantidad_productos": cantidad_productos,
+            "cantidad_proveedores": cantidad_proveedores
+        })
+
+    return JsonResponse(data, safe=False)
+
+# Crear una nueva marca
+@csrf_exempt
+def crear_marca(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'message': 'JSON inválido'}, status=400)
+        
+        nombre = data.get('nombre')
+        if not nombre:
+            return JsonResponse({'message': 'El nombre es obligatorio'}, status=400)
+        
+        if Marca.objects.filter(nombre=nombre).exists():
+            return JsonResponse({'message': 'La marca ya existe'}, status=400)
+        
+        marca = Marca.objects.create(nombre=nombre)
+        return JsonResponse({'id': marca.id, 'nombre': marca.nombre})
+    
+    return JsonResponse({'message': 'Método no permitido'}, status=405)
+
+# ================================
+# REOFERTA MASIVA - NUEVAS VISTAS
+# ================================
+@csrf_exempt
+def cancelar_turno_con_reoferta(request, turno_id):
+    """
+    Cancela un turno e inicia proceso de reoferta masiva - VERSIÓN DEBUG COMPLETA
+    """
+    print(f"🔥🔥🔥 CANCELACIÓN CON REOFERTA LLAMADA - Turno: {turno_id}")
+    print(f"🔥🔥🔥 Método: {request.method}")
+    
+    # Verificar que sea POST
+    if request.method != 'POST':
+        print(f"🔥🔥🔥 ERROR: Método no permitido - {request.method}")
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+    
+    try:
+        # 1. OBTENER EL TURNO
+        turno = Turno.objects.get(id=turno_id)
+        print(f"🔥🔥🔥 Turno encontrado: ID {turno.id} - {turno.fecha} {turno.hora} - {turno.peluquero.nombre} - Estado actual: {turno.estado}")
+        
+        # 2. CAMBIAR ESTADO A CANCELADO
+        turno.estado = 'CANCELADO'
+        turno.oferta_activa = True
+        
+        # Configurar expiración (1 hora)
+        from django.utils import timezone
+        from datetime import timedelta
+        turno.fecha_expiracion_oferta = timezone.now() + timedelta(hours=1)
+        
+        turno.save()
+        print("✅✅✅ Turno marcado como CANCELADO con oferta activa")
+
+        # 3. BUSCAR INTERESADOS
+        print("🔎🔎🔎 Buscando interesados...")
+        interesados = turno.obtener_interesados()
+        print(f"👥👥👥 Interesados encontrados: {interesados.count()}")
+        
+        for i, interes in enumerate(interesados):
+            print(f"   {i+1}. {interes.cliente.nombre} - {interes.fecha_deseada} {interes.hora_deseada} - Estado: {interes.estado_oferta}")
+
+        # 4. INICIAR REOFERTA SI HAY INTERESADOS
+# En ./usuarios/views.py (función cancelar_turno_con_reoferta)
+
+# ...
+
+# 4. INICIAR REOFERTA SI HAY INTERESADOS
+        if interesados.count() > 0:
+            print(f"🚀🚀🚀 INICIANDO REOFERTA para {interesados.count()} interesados")
+            
+            # ⚠️ CAMBIO RECOMENDADO para producción: Usar .delay() para Celery
+            from .tasks import procesar_reoferta_masiva
+            try:
+                # 🟢 CAMBIO: Usa .delay() para que Celery lo ejecute en segundo plano
+                procesar_reoferta_masiva.delay(turno_id) 
+                print(f"🔥🔥🔥 Tarea de reoferta encolada en Celery para turno {turno_id}")
+            except Exception as task_error:
+                print(f"🔥🔥🔥 ERROR en encolar tarea Celery: {task_error}")
+                # Manejo de error si Celery no está funcionando          
+            return JsonResponse({
+                'status': 'ok',
+                'message': f'Turno cancelado. Reoferta iniciada para {interesados.count()} interesados.',
+                'reoferta_iniciada': True,
+                'interesados': interesados.count()
+            })
+        else:
+            print("ℹ️ℹ️ℹ️ No hay interesados, marcando como DISPONIBLE")
+            turno.estado = 'DISPONIBLE'
+            turno.oferta_activa = False
+            turno.save()
+            
+            return JsonResponse({
+                'status': 'ok', 
+                'message': 'Turno cancelado. No hay interesados en este horario.',
+                'reoferta_iniciada': False,
+                'interesados': 0
+            })
+
+    except Turno.DoesNotExist:
+        print(f"🔥🔥🔥 ERROR: Turno {turno_id} no encontrado")
+        return JsonResponse({'error': 'Turno no encontrado'}, status=404)
+    except Exception as e:
+        print(f"💥💥💥 ERROR GENERAL: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=500)
+    
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def aceptar_oferta_turno(request, turno_id, token):
+    """
+    Acepta una oferta de reoferta - CORREGIDO
+    """
+    try:
+        turno = Turno.objects.get(id=turno_id)
+        
+        # ✅ CONSULTA CORREGIDA - Buscar por token y turno_liberado
+        interes = InteresTurnoLiberado.objects.get(
+            token_oferta=token,
+            turno_liberado_id=turno_id,  # ✅ AHORA SÍ EXISTE ESTE CAMPO
+            estado_oferta='enviada'
+        )
+        
+        # Verificar que la oferta sigue activa
+        if interes.oferta_expirada():
+            return Response({
+                'error': 'La oferta ha expirado o ya no está disponible'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verificar que el turno sigue cancelado
+        if turno.estado != 'CANCELADO' or not turno.oferta_activa:
+            return Response({
+                'error': 'El turno ya no está disponible'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        with transaction.atomic():
+            # Asignar turno al cliente
+            turno.estado = 'RESERVADO'
+            turno.cliente = interes.cliente
+            turno.oferta_activa = False
+            turno.cliente_asignado_reoferta = interes.cliente
+            turno.monto_total = interes.servicio.precio * (1 - interes.descuento_aplicado / 100)
+            turno.tipo_pago = 'PENDIENTE'
+            turno.save()
+            
+            # Limpiar servicios y asignar solo el servicio de la oferta
+            turno.servicios.clear()
+            turno.servicios.add(interes.servicio)
+            
+            # Marcar oferta como aceptada
+            interes.aceptar_oferta(ip_address=get_client_ip(request))
+            
+            # ✅ CORREGIR CONSULTA - Rechazar otras ofertas usando turno_liberado
+            InteresTurnoLiberado.objects.filter(
+                turno_liberado=turno,
+                estado_oferta='enviada'
+            ).exclude(id=interes.id).update(estado_oferta='rechazada')
+        
+        # Notificar a otros interesados
+        from .tasks import notificar_turno_asignado
+        notificar_turno_asignado.delay(turno.id)
+        
+        return Response({
+            'success': True,
+            'message': '¡Felicidades! Turno asignado exitosamente.',
+            'turno_id': turno.id,
+            'fecha': turno.fecha.strftime('%d/%m/%Y'),
+            'hora': turno.hora.strftime('%H:%M'),
+            'profesional': f"{turno.peluquero.nombre} {turno.peluquero.apellido}",
+            'servicio': interes.servicio.nombre,
+            'precio_final': float(turno.monto_total)
+        })
+        
+    except (Turno.DoesNotExist, InteresTurnoLiberado.DoesNotExist):
+        return Response({
+            'error': 'Oferta no válida o ya utilizada'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error aceptando oferta: {str(e)}")
+        return Response({
+            'error': 'Error al procesar la aceptación'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listar_intereses_usuario(request):
+    """
+    Lista intereses del usuario autenticado
+    """
+    try:
+        intereses = InteresTurnoLiberado.objects.filter(
+            cliente=request.user
+        ).select_related('servicio', 'peluquero').order_by('-fecha_registro')
+        
+        data = []
+        for interes in intereses:
+            data.append({
+                'id': interes.id,
+                'servicio_nombre': interes.servicio.nombre,
+                'peluquero_nombre': f"{interes.peluquero.nombre} {interes.peluquero.apellido}",
+                'fecha_deseada': interes.fecha_deseada.strftime('%d/%m/%Y'),
+                'hora_deseada': interes.hora_deseada.strftime('%H:%M'),
+                'fecha_registro': interes.fecha_registro.strftime('%d/%m/%Y %H:%M'),
+                'estado_oferta': interes.estado_oferta,
+                'descuento_aplicado': float(interes.descuento_aplicado)
+            })
+        
+        return Response(data)
+        
+    except Exception as e:
+        logger.error(f"Error listando intereses: {str(e)}")
+        return Response({
+            'error': 'Error al cargar los intereses'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def eliminar_interes_turno(request, interes_id):
+    """
+    Elimina un interés en turnos
+    """
+    try:
+        interes = InteresTurnoLiberado.objects.get(id=interes_id, cliente=request.user)
+        interes.delete()
+        
+        return Response({
+            'success': True,
+            'message': 'Interés eliminado correctamente'
+        })
+        
+    except InteresTurnoLiberado.DoesNotExist:
+        return Response({
+            'error': 'Interés no encontrado'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error eliminando interés: {str(e)}")
+        return Response({
+            'error': 'Error al eliminar el interés'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Función auxiliar para obtener IP del cliente
+def get_client_ip(request):
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip

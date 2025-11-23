@@ -145,6 +145,7 @@ const menuSections = {
     { name: 'Pedidos', path: '/pedidos', icon: 'ri-shopping-cart-2-line' },
     { name: 'Proveedores', path: '/proveedores', icon: 'ri-truck-line' },
     { name: 'Categorías', path: '/categorias', icon: 'ri-list-settings-line' },
+    { name: 'Marcas', path: '/marcas', icon: 'ri-price-tag-2-line' },
   ],
   admin: [
     { name: 'Usuarios', path: '/usuarios', icon: 'ri-team-line' },
