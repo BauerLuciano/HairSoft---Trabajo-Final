@@ -1,11 +1,10 @@
 <template>
-  <div class="turnos-container">
+  <div class="list-container">
     <div class="list-card">
       <!-- Header -->
       <div class="list-header">
         <div class="header-content">
           <h1>
-            <Calendar class="header-icon" />
             Lista de Turnos
           </h1>
           <p>Gestión y administración de turnos de la barbería</p>
@@ -24,13 +23,23 @@
             <input 
               v-model="filtros.busqueda" 
               placeholder="Nombre o apellido..." 
-              class="filter-input standard-height"
+              class="filter-input"
             />
           </div>
 
           <div class="filter-group">
+            <label>Fecha desde</label>
+            <input type="date" v-model="filtros.fechaDesde" class="filter-input"/>
+          </div>
+
+          <div class="filter-group">
+            <label>Fecha hasta</label>
+            <input type="date" v-model="filtros.fechaHasta" class="filter-input"/>
+          </div>
+
+          <div class="filter-group">
             <label>Peluquero</label>
-            <select v-model="filtros.peluquero" class="filter-input standard-height">
+            <select v-model="filtros.peluquero" class="filter-input">
               <option value="">Todos</option>
               <option v-for="p in peluqueros" :key="p.id" :value="p.id">
                 {{ p.nombre }} {{ p.apellido }}
@@ -40,7 +49,7 @@
 
           <div class="filter-group">
             <label>Estado</label>
-            <select v-model="filtros.estado" class="filter-input standard-height">
+            <select v-model="filtros.estado" class="filter-input">
               <option value="">Todos</option>
               <option v-for="estado in estadosDisponibles" :key="estado" :value="estado">
                 {{ formatearEstado(estado) }}
@@ -50,7 +59,7 @@
 
           <div class="filter-group">
             <label>Canal</label>
-            <select v-model="filtros.canal" class="filter-input standard-height">
+            <select v-model="filtros.canal" class="filter-input">
               <option value="">Todos</option>
               <option value="WEB">Web</option>
               <option value="PRESENCIAL">Presencial</option>
@@ -58,20 +67,10 @@
           </div>
 
           <div class="filter-group">
-            <label>Fecha desde</label>
-            <input type="date" v-model="filtros.fechaDesde" class="filter-input standard-height"/>
-          </div>
-
-          <div class="filter-group">
-            <label>Fecha hasta</label>
-            <input type="date" v-model="filtros.fechaHasta" class="filter-input standard-height"/>
-          </div>
-
-          <div class="filter-group">
             <label>&nbsp;</label>
-            <button @click="limpiarFiltros" class="clear-filters-btn standard-height">
+            <button @click="limpiarFiltros" class="clear-filters-btn">
               <Trash2 :size="16" />
-              Limpiar
+              Limpiar filtros
             </button>
           </div>
         </div>
@@ -144,45 +143,45 @@
                 </div>
               </td>
               <td>
-                <div class="action-buttons-compact">
+                <div class="action-buttons">
                   <!-- Botón Editar -->
                   <button 
                     v-if="turno.puede_modificar"
                     @click="modificarTurno(turno.id)"
-                    class="btn-action-icon edit"
+                    class="action-button edit"
                     title="Modificar turno"
                   >
-                    <Edit3 :size="16" />
+                    <Edit3 :size="14" />
                   </button>
 
                   <!-- Botón Señar -->
                   <button 
                     v-if="turno.estado === 'RESERVADO' && turno.tipo_pago === 'PENDIENTE'"
                     @click="procesarSena(turno)"
-                    class="btn-action-icon sena"
+                    class="action-button sena"
                     title="Procesar seña"
                   >
-                    <DollarSign :size="16" />
+                    <DollarSign :size="14" />
                   </button>
 
                   <!-- Botón Cancelar CON REOFERTA -->
                   <button 
                     v-if="turno.puede_cancelar"
                     @click="cancelarTurnoConReoferta(turno)"
-                    class="btn-action-icon delete"
+                    class="action-button delete"
                     title="Cancelar turno"
                   >
-                    <Trash2 :size="16" />
+                    <Trash2 :size="14" />
                   </button>
 
                   <!-- Botón Completar -->
                   <button 
                     v-if="turno.puede_completar"
                     @click="completarTurno(turno.id)"
-                    class="btn-action-icon complete"
+                    class="action-button complete"
                     title="Marcar como completado"
                   >
-                    <Check :size="16" />
+                    <Check :size="14" />
                   </button>
 
                   <span 
@@ -198,7 +197,7 @@
         </table>
 
         <div v-if="turnosFiltradosPaginados.length === 0" class="no-results">
-          <SearchX class="no-resultados-icon" :size="48" />
+          <SearchX class="no-results-icon" :size="48" />
           <p>No se encontraron turnos</p>
           <small>Intenta con otros términos de búsqueda</small>
           <button @click="limpiarFiltros" class="btn-reintentar">
@@ -210,27 +209,28 @@
 
       <!-- Resumen y paginación -->
       <div class="usuarios-count">
-        <div class="resumen-info">
-          <span>
-            <Calendar :size="16" />
-            Mostrando {{ turnosFiltradosPaginados.length }} de {{ turnosFiltrados.length }} turnos
-          </span>
-          <span v-if="turnosConReoferta > 0" class="info-reoferta-count">
+        <p>
+          <Calendar :size="16" />
+          Mostrando {{ turnosFiltradosPaginados.length }} de {{ turnosFiltrados.length }} turnos
+        </p>
+        <div class="alertas-container">
+          <span v-if="turnosConReoferta > 0" class="alerta-reoferta">
             🔥 {{ turnosConReoferta }} con reoferta activa
           </span>
         </div>
-        
-        <div class="pagination">
-          <button @click="paginaAnterior" :disabled="pagina === 1" class="btn-pagination">
-            <ChevronLeft :size="16" />
-            Anterior
-          </button>
-          <span class="pagination-info">Página {{ pagina }} de {{ totalPaginas }}</span>
-          <button @click="paginaSiguiente" :disabled="pagina === totalPaginas" class="btn-pagination">
-            Siguiente
-            <ChevronRight :size="16" />
-          </button>
-        </div>
+      </div>
+
+      <!-- Paginación -->
+      <div class="pagination">
+        <button @click="paginaAnterior" :disabled="pagina === 1">
+          <ChevronLeft :size="16" />
+          Anterior
+        </button>
+        <span>Página {{ pagina }} de {{ totalPaginas }}</span>
+        <button @click="paginaSiguiente" :disabled="pagina === totalPaginas">
+          Siguiente
+          <ChevronRight :size="16" />
+        </button>
       </div>
     </div>
   </div>
@@ -709,6 +709,9 @@ const cargarTodo = async () => {
 </script>
 
 <style scoped>
+/* ========================================
+   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE - TURNOS
+   ======================================== */
 
 /* Tarjeta principal - CON VARIABLES */
 .list-card {
@@ -930,20 +933,6 @@ const cargarTodo = async () => {
   box-shadow: var(--shadow-sm);
 }
 
-.standard-height {
-  height: 44px !important;
-  min-height: 44px;
-  box-sizing: border-box;
-}
-
-.filter-input.standard-height {
-  padding: 12px 14px;
-}
-
-.clear-filters-btn.standard-height {
-  padding: 12px 18px;
-}
-
 /* TABLA - CON VARIABLES */
 .table-container {
   overflow-x: auto;
@@ -1028,6 +1017,23 @@ const cargarTodo = async () => {
   border: 1px solid #8b5cf6;
 }
 
+.badge-reoferta {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
 .monto-info {
   font-size: 0.85rem;
   color: var(--text-secondary);
@@ -1082,18 +1088,26 @@ const cargarTodo = async () => {
   display: inline-block;
 }
 
-/* BOTONES DE ACCIÓN - CON VARIABLES */
-.action-buttons-compact {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  flex-wrap: wrap;
+.info-reoferta {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: #f59e0b;
+  font-weight: 600;
 }
 
-.btn-action-icon {
+/* BOTONES DE ACCIÓN - CON VARIABLES */
+.action-buttons { 
+  display: flex; 
+  gap: 8px; 
+  flex-wrap: wrap; 
+}
+
+.action-button {
   padding: 8px;
   border: none;
   border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 800;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1103,55 +1117,55 @@ const cargarTodo = async () => {
   height: 40px;
 }
 
-.btn-action-icon.edit {
+.action-button.edit {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
 }
 
-.btn-action-icon.edit:hover {
+.action-button.edit:hover {
   background: var(--hover-bg);
   transform: translateY(-2px);
   box-shadow: var(--shadow-sm);
 }
 
-.btn-action-icon.sena {
+.action-button.sena {
   background: var(--bg-tertiary);
   border: 1px solid #f59e0b;
   color: #f59e0b;
 }
 
-.btn-action-icon.sena:hover {
+.action-button.sena:hover {
   background: var(--hover-bg);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
   border-color: #f59e0b;
 }
 
-.btn-action-icon.delete {
+.action-button.delete {
   background: var(--bg-tertiary);
   border: 1px solid var(--error-color);
   color: var(--error-color);
 }
 
-.btn-action-icon.delete:hover {
+.action-button.delete:hover {
   background: var(--hover-bg);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
   border-color: var(--error-color);
 }
 
-.btn-action-icon.complete {
+.action-button.complete {
   background: var(--bg-tertiary);
-  border: 1px solid #059669;
-  color: #059669;
+  border: 1px solid #10b981;
+  color: #10b981;
 }
 
-.btn-action-icon.complete:hover {
+.action-button.complete:hover {
   background: var(--hover-bg);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.4);
-  border-color: #059669;
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+  border-color: #10b981;
 }
 
 .sin-acciones {
@@ -1160,47 +1174,72 @@ const cargarTodo = async () => {
   font-style: italic;
 }
 
-/* NUEVOS ESTILOS PARA REOFERTA */
-.badge-reoferta {
-  background: linear-gradient(135deg, #ff6b6b, #ee5a24);
-  color: white;
-  padding: 4px 8px;
+/* CONTADOR Y MENSAJES - CON VARIABLES */
+.usuarios-count {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 25px 0;
+  padding: 18px;
+  background: var(--hover-bg);
   border-radius: 12px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  animation: pulse 2s infinite;
+  flex-wrap: wrap;
+  gap: 15px;
+  border: 1px solid var(--border-color);
 }
 
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.7; }
-  100% { opacity: 1; }
-}
-
-.info-reoferta {
-  margin-top: 4px;
-  font-size: 0.75rem;
-  color: #f59e0b;
+.usuarios-count p {
+  color: var(--text-secondary);
   font-weight: 600;
+  letter-spacing: 0.5px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.info-reoferta-count {
-  background: rgba(255, 107, 107, 0.1);
+.alertas-container {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.alerta-reoferta {
+  background: var(--bg-tertiary);
   color: #ff6b6b;
-  padding: 6px 12px;
-  border-radius: 8px;
+  border: 2px solid #ff6b6b;
+  padding: 8px 16px;
+  border-radius: 20px;
   font-weight: 700;
-  font-size: 0.85rem;
-  border: 1px solid #ff6b6b;
+  letter-spacing: 0.5px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
-
 
 /* ESTADOS DE CARGA - CON VARIABLES */
 .no-results {
   text-align: center;
   padding: 80px;
   color: var(--text-secondary);
+}
+
+.no-results-icon {
+  margin-bottom: 15px;
+  opacity: 0.5;
+  color: var(--text-tertiary);
+}
+
+.no-results p {
+  margin: 0 0 8px 0;
+  font-size: 1.1em;
+  color: var(--text-primary);
+}
+
+.no-results small {
+  font-size: 0.9em;
+  color: var(--text-tertiary);
 }
 
 .btn-reintentar {
@@ -1228,35 +1267,13 @@ const cargarTodo = async () => {
   box-shadow: 0 8px 25px rgba(14, 165, 233, 0.5);
 }
 
-/* CONTADOR Y MENSAJES - CON VARIABLES */
-.usuarios-count {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: 25px 0;
-  padding: 18px;
-  background: var(--hover-bg);
-  border-radius: 12px;
-  flex-wrap: wrap;
-  gap: 15px;
-  border: 1px solid var(--border-color);
-}
-
-.resumen-info {
-  color: var(--text-secondary);
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 /* PAGINACIÓN - CON VARIABLES */
 .pagination {
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 20px;
+  margin-top: 25px;
 }
 
 .pagination button {
@@ -1291,7 +1308,7 @@ const cargarTodo = async () => {
   opacity: 0.5;
 }
 
-.pagination-info {
+.pagination span {
   color: var(--text-primary);
   font-weight: 700;
   letter-spacing: 0.8px;
@@ -1327,7 +1344,7 @@ const cargarTodo = async () => {
     padding: 14px 10px;
   }
   
-  .action-buttons-compact {
+  .action-buttons {
     flex-direction: column;
     gap: 6px;
   }
@@ -1335,6 +1352,12 @@ const cargarTodo = async () => {
   .usuarios-count {
     flex-direction: column;
     align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .alertas-container {
+    flex-direction: column;
+    width: 100%;
   }
   
   .pagination {
@@ -1368,7 +1391,7 @@ const cargarTodo = async () => {
     padding: 5px 10px;
   }
   
-  .btn-action-icon {
+  .action-button {
     width: 36px;
     height: 36px;
   }

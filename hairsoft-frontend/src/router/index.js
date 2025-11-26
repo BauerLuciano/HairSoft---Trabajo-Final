@@ -4,7 +4,7 @@ const routes = [
   { path: '/', redirect: '/login' },
   
   // Auth - login está directamente en views/
-  { path: '/login', name: 'Login', component: () => import('@/views/login.vue') },
+  { path: '/login', name: 'Login', component: () => import('@/views/login.vue'), meta:{hideNavbar: true} },
   
   // Usuarios
   { path: '/usuarios', name: 'ListadoUsuarios', component: () => import('@/views/usuarios/ListadoUsuarios.vue') },

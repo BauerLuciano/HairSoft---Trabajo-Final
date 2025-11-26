@@ -1,14 +1,19 @@
 <template>
   <div class="list-container">
     <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarEditar }">
+      <!-- Header -->
       <div class="list-header">
         <div class="header-content">
           <h1>Ventas Registradas</h1>
           <p>Gestión de ventas del sistema</p>
         </div>
-        <button @click="mostrarRegistrar = true" class="register-button">➕ Registrar Venta</button>
+        <button @click="mostrarRegistrar = true" class="register-button">
+          <Plus :size="18" />
+          Registrar Venta
+        </button>
       </div>
 
+      <!-- Filtros Mejorados -->
       <div class="filters-container">
         <div class="filters-grid">
           <div class="filter-group">
@@ -26,17 +31,53 @@
             <input type="date" v-model="filtros.fechaHasta" class="filter-input"/>
           </div>
 
+          <!-- NUEVOS FILTROS -->
+          <div class="filter-group">
+            <label>Método Pago</label>
+            <select v-model="filtros.metodoPago" class="filter-input">
+              <option value="">Todos</option>
+              <option value="EFECTIVO">Efectivo</option>
+              <option value="TARJETA">Tarjeta</option>
+              <option value="TRANSFERENCIA">Transferencia</option>
+              <option value="MERCADO_PAGO">Mercado Pago</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>Tipo</label>
+            <select v-model="filtros.tipo" class="filter-input">
+              <option value="">Todos</option>
+              <option value="PRODUCTO">Producto</option>
+              <option value="TURNO">Turno</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>Estado</label>
+            <select v-model="filtros.estado" class="filter-input">
+              <option value="">Todos</option>
+              <option value="activa">Activa</option>
+              <option value="anulada">Anulada</option>
+            </select>
+          </div>
+
           <div class="filter-group">
             <label>&nbsp;</label>
-            <button @click="limpiarFiltros" class="clear-filters-btn">🗑️ Limpiar filtros</button>
+            <button @click="limpiarFiltros" class="clear-filters-btn">
+              <Trash2 :size="16" />
+              Limpiar filtros
+            </button>
           </div>
         </div>
       </div>
 
+      <!-- Estados de carga -->
       <div v-if="cargando" class="loading-state">
-        <p>🔄 Cargando ventas...</p>
+        <div class="loading-spinner"></div>
+        <p>Cargando ventas...</p>
       </div>
 
+      <!-- Tabla de ventas -->
       <div v-else class="table-container">
         <table class="users-table">
           <thead>
@@ -54,7 +95,8 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="venta in ventasPaginadas" :key="venta.id">
+            <tr v-for="venta in ventasPaginadas" :key="venta.id" 
+                :class="{'venta-anulada-row': venta.anulada}">
               <td><strong>#{{ venta.id }}</strong></td>
               <td>{{ venta.cliente_nombre || 'Venta Rápida' }}</td>
               <td>{{ venta.usuario_nombre || '–' }}</td>
@@ -66,15 +108,12 @@
                 </span>
               </td>
               <td>
-                <span class="badge-tipo" :class="venta.tipo?.toLowerCase()">
+                <span class="badge-tipo" :class="getClaseTipoVenta(venta.tipo)">
                   {{ venta.tipo || '–' }}
                 </span>
               </td>
               <td>
-                <span class="badge-estado" :class="{
-                  'estado-activa': !venta.anulada,
-                  'estado-anulada': venta.anulada
-                }">
+                <span class="badge-estado" :class="getClaseEstadoVenta(venta.anulada)">
                   {{ venta.anulada ? '❌ ANULADA' : '✅ ACTIVA' }}
                 </span>
               </td>
@@ -85,55 +124,91 @@
                   :title="`Descargar comprobante PDF venta #${venta.id}`"
                   :disabled="generandoPDF === venta.id || venta.anulada"
                 >
-                  {{ generandoPDF === venta.id ? '⏳' : '📄' }} 
+                  <FileText :size="14" v-if="generandoPDF !== venta.id" />
+                  <Loader :size="14" v-else />
                   {{ generandoPDF === venta.id ? 'Generando...' : 'PDF' }}
                 </button>
               </td>
-              <td class="action-buttons">
-                <button 
-                  @click="editarVenta(venta)" 
-                  class="action-button edit" 
-                  :disabled="venta.anulada"
-                  :title="venta.anulada ? 'No se puede editar venta anulada' : 'Editar venta'"
-                >
-                  ✏️
-                </button>
-                <button 
-                  @click="anularVenta(venta)" 
-                  class="action-button delete" 
-                  :disabled="venta.anulada"
-                  :title="venta.anulada ? 'Venta ya anulada' : 'Anular venta'"
-                >
-                  🗑️
-                </button>
+              <td>
+                <div class="action-buttons">
+                  <button 
+                    @click="editarVenta(venta)" 
+                    class="action-button edit" 
+                    :disabled="venta.anulada"
+                    :title="venta.anulada ? 'No se puede editar venta anulada' : 'Editar venta'"
+                  >
+                    <Edit3 :size="14" />
+                  </button>
+                  <button 
+                    @click="anularVenta(venta)" 
+                    class="action-button delete" 
+                    :disabled="venta.anulada"
+                    :title="venta.anulada ? 'Venta ya anulada' : 'Anular venta'"
+                  >
+                    <Trash2 :size="14" />
+                  </button>
+                  <button 
+                    @click="verDetallesVenta(venta)" 
+                    class="action-button info"
+                    title="Ver detalles de venta"
+                  >
+                    <Eye :size="14" />
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
         </table>
 
         <div v-if="ventasPaginadas.length === 0 && !cargando" class="no-results">
-          <p>📭 No se encontraron ventas</p>
-          <button @click="cargarVentas" class="btn-reintentar">🔄 Reintentar</button>
+          <PackageX class="no-results-icon" :size="48" />
+          <p>No se encontraron ventas</p>
+          <small>Intenta con otros términos de búsqueda</small>
+          <button @click="cargarVentas" class="btn-reintentar">
+            <RefreshCw :size="16" />
+            Reintentar
+          </button>
         </div>
       </div>
 
+      <!-- Contador y mensajes -->
       <div v-if="!cargando" class="usuarios-count">
-        <p>📊 Mostrando {{ ventasPaginadas.length }} de {{ ventasFiltradas.length }} ventas</p>
-        <p v-if="ventaRecienCreada" class="venta-reciente">
-          ✅ <strong>Venta #{{ ventaRecienCreada }}</strong> registrada exitosamente
+        <p>
+          <Package :size="16" />
+          Mostrando {{ ventasPaginadas.length }} de {{ ventasFiltradas.length }} ventas
         </p>
+        <div class="alertas-container">
+          <span v-if="ventasAnuladas > 0" class="alerta-anulada">
+            <AlertTriangle :size="14" />
+            {{ ventasAnuladas }} anuladas
+          </span>
+          <span v-if="ventaRecienCreada" class="venta-reciente">
+            <CheckCircle :size="14" />
+            Venta #{{ ventaRecienCreada }} registrada
+          </span>
+        </div>
       </div>
 
+      <!-- Paginación -->
       <div v-if="!cargando && ventasFiltradas.length > 0" class="pagination">
-        <button @click="paginaAnterior" :disabled="pagina === 1">← Anterior</button>
+        <button @click="paginaAnterior" :disabled="pagina === 1">
+          <ChevronLeft :size="16" />
+          Anterior
+        </button>
         <span>Página {{ pagina }} de {{ totalPaginas }}</span>
-        <button @click="paginaSiguiente" :disabled="pagina === totalPaginas">Siguiente →</button>
+        <button @click="paginaSiguiente" :disabled="pagina === totalPaginas">
+          Siguiente
+          <ChevronRight :size="16" />
+        </button>
       </div>
     </div>
 
-    <div v-if="mostrarRegistrar" class="modal-overlay">
+    <!-- Modales -->
+    <div v-if="mostrarRegistrar" class="modal-overlay" @click.self="cerrarModal">
       <div class="modal-content">
-        <button class="modal-close" @click="cerrarModal" title="Cerrar formulario">✖️</button>
+        <button class="modal-close" @click="cerrarModal" title="Cerrar formulario">
+          <X :size="20" />
+        </button>
         <RegistrarVenta 
           @venta-registrada="procesarVentaRegistrada" 
           @venta-completada="cerrarModal"
@@ -144,6 +219,9 @@
 
     <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
       <div class="modal-content">
+        <button class="modal-close" @click="cerrarModalEditar" title="Cerrar formulario">
+          <X :size="20" />
+        </button>
         <ModificarVenta 
           :venta-id="ventaEditando?.id" 
           @venta-actualizada="ventaActualizada"
@@ -155,18 +233,29 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import Swal from 'sweetalert2'
 import RegistrarVenta from './RegistrarVenta.vue'
 import ModificarVenta from './ModificarVenta.vue'
+import { 
+  Plus, Trash2, Edit3, Eye, FileText, Loader, Package, PackageX,
+  ChevronLeft, ChevronRight, X, AlertTriangle, CheckCircle, RefreshCw
+} from 'lucide-vue-next'
 
 const router = useRouter()
 const API_BASE = 'http://127.0.0.1:8000'
 
 const ventas = ref([])
-const filtros = ref({ busqueda: '', fechaDesde: '', fechaHasta: '' })
+const filtros = ref({ 
+  busqueda: '', 
+  fechaDesde: '', 
+  fechaHasta: '',
+  metodoPago: '',
+  tipo: '',
+  estado: ''
+})
 const pagina = ref(1)
 const itemsPorPagina = 8
 const mostrarRegistrar = ref(false)
@@ -208,46 +297,45 @@ onMounted(() => {
   cargarVentas()
 })
 
-const filtrarPorFecha = (venta) => {
-  const fecha = venta.fecha ? new Date(venta.fecha) : null
-  if (!fecha) return true
-  if (filtros.value.fechaDesde && fecha < new Date(filtros.value.fechaDesde)) return false
-  if (filtros.value.fechaHasta) {
-    const hasta = new Date(filtros.value.fechaHasta)
-    hasta.setDate(hasta.getDate() + 1)
-    if (fecha >= hasta) return false
-  }
-  return true
-}
-
+// Computed properties
 const ventasFiltradas = computed(() => {
   const busca = filtros.value.busqueda.toLowerCase()
   return ventas.value.filter(v => {
+    // Filtro de búsqueda
     const matchBusqueda = !busca || 
       (v.cliente_nombre?.toLowerCase().includes(busca) || 
        v.usuario_nombre?.toLowerCase().includes(busca) ||
        v.medio_pago_nombre?.toLowerCase().includes(busca) ||
        v.id.toString().includes(busca))
-    const matchFecha = filtrarPorFecha(v)
-    return matchBusqueda && matchFecha
+    
+    // Filtro de fecha
+    const fecha = v.fecha ? new Date(v.fecha) : null
+    const matchFechaDesde = !filtros.value.fechaDesde || (fecha && fecha >= new Date(filtros.value.fechaDesde))
+    const matchFechaHasta = !filtros.value.fechaHasta || (fecha && fecha <= new Date(filtros.value.fechaHasta + 'T23:59:59'))
+    
+    // Nuevos filtros
+    const matchMetodoPago = !filtros.value.metodoPago || v.medio_pago_tipo === filtros.value.metodoPago
+    const matchTipo = !filtros.value.tipo || v.tipo?.toLowerCase() === filtros.value.tipo.toLowerCase()
+    const matchEstado = !filtros.value.estado || 
+      (filtros.value.estado === 'activa' && !v.anulada) ||
+      (filtros.value.estado === 'anulada' && v.anulada)
+    
+    return matchBusqueda && matchFechaDesde && matchFechaHasta && matchMetodoPago && matchTipo && matchEstado
   })
 })
 
+const ventasAnuladas = computed(() => ventasFiltradas.value.filter(v => v.anulada).length)
 const totalPaginas = computed(() => Math.max(1, Math.ceil(ventasFiltradas.value.length / itemsPorPagina)))
-
 const ventasPaginadas = computed(() => {
   const inicio = (pagina.value - 1) * itemsPorPagina
   return ventasFiltradas.value.slice(inicio, inicio + itemsPorPagina)
 })
 
-const paginaAnterior = () => { 
-  if (pagina.value > 1) pagina.value-- 
-}
+// Funciones de paginación
+const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
+const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 
-const paginaSiguiente = () => { 
-  if (pagina.value < totalPaginas.value) pagina.value++ 
-}
-
+// Funciones de ventas
 const editarVenta = (venta) => {
   if (venta.anulada) {
     Swal.fire({
@@ -260,6 +348,25 @@ const editarVenta = (venta) => {
   }
   ventaEditando.value = venta
   mostrarEditar.value = true
+}
+
+const verDetallesVenta = (venta) => {
+  Swal.fire({
+    title: `Detalles Venta #${venta.id}`,
+    html: `
+      <div style="text-align: left;">
+        <p><strong>Cliente:</strong> ${venta.cliente_nombre || 'Venta Rápida'}</p>
+        <p><strong>Usuario:</strong> ${venta.usuario_nombre || '–'}</p>
+        <p><strong>Fecha:</strong> ${formatFecha(venta.fecha)}</p>
+        <p><strong>Total:</strong> $${formatPrecio(venta.total)}</p>
+        <p><strong>Método Pago:</strong> ${venta.medio_pago_nombre || '–'}</p>
+        <p><strong>Tipo:</strong> ${venta.tipo || '–'}</p>
+        <p><strong>Estado:</strong> ${venta.anulada ? '❌ ANULADA' : '✅ ACTIVA'}</p>
+      </div>
+    `,
+    icon: 'info',
+    confirmButtonText: 'Cerrar'
+  })
 }
 
 const generarComprobantePDF = async (venta) => {
@@ -399,14 +506,9 @@ const anularVenta = async (venta) => {
   }
 }
 
-const cerrarModal = () => {
-  mostrarRegistrar.value = false
-}
-
-const cerrarModalEditar = () => { 
-  mostrarEditar.value = false
-  ventaEditando.value = null 
-}
+// Funciones de modal
+const cerrarModal = () => { mostrarRegistrar.value = false }
+const cerrarModalEditar = () => { mostrarEditar.value = false; ventaEditando.value = null }
 
 const procesarVentaRegistrada = async (ventaData) => {
   console.log('🎯 EVENTO RECIBIDO - Venta registrada:', ventaData)
@@ -419,7 +521,6 @@ const procesarVentaRegistrada = async (ventaData) => {
       medio_pago_nombre: 'Efectivo',
       tipo: 'PRODUCTO',
       anulada: false,
-      // 🚨 FIX: Si el backend no devuelve fecha, usamos la actual para la tabla
       fecha: ventaData.fecha || new Date().toISOString()
     }
     
@@ -447,20 +548,23 @@ const ventaActualizada = async () => {
 }
 
 const limpiarFiltros = () => {
-  filtros.value = { busqueda: '', fechaDesde: '', fechaHasta: '' }
+  filtros.value = { 
+    busqueda: '', 
+    fechaDesde: '', 
+    fechaHasta: '',
+    metodoPago: '',
+    tipo: '',
+    estado: ''
+  }
   pagina.value = 1
 }
 
-// 🚨 FUNCIÓN FORMATFECHA MEJORADA Y BLINDADA
+// Funciones de utilidad
 const formatFecha = (fecha) => {
   if (!fecha) return '–'
   try {
     const dateObj = new Date(fecha)
-    // Verificar si es válida
-    if (isNaN(dateObj.getTime())) {
-      return 'Fecha inválida'
-    }
-    // Formato amigable: DD/MM/YYYY HH:mm
+    if (isNaN(dateObj.getTime())) return 'Fecha inválida'
     return dateObj.toLocaleString('es-AR', {
       day: '2-digit',
       month: '2-digit',
@@ -489,12 +593,22 @@ const getClaseTipoPago = (tipoPago) => {
   }
   return tipos[tipoPago] || 'default'
 }
+
+const getClaseTipoVenta = (tipo) => {
+  const tipos = {
+    'PRODUCTO': 'producto',
+    'TURNO': 'turno',
+    'MIXTO': 'mixto'
+  }
+  return tipos[tipo] || 'default'
+}
+
+const getClaseEstadoVenta = (anulada) => {
+  return anulada ? 'estado-anulada' : 'estado-activa'
+}
 </script>
 
 <style scoped>
-/* ========================================
-   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE
-   ======================================== */
 
 /* Tarjeta principal - CON VARIABLES */
 .list-card {
@@ -578,6 +692,231 @@ const getClaseTipoPago = (tipoPago) => {
   letter-spacing: 0.5px;
 }
 
+/* BOTONES DE ACCIÓN - tamaño similar a Registrar Producto */
+.action-button {
+  padding: 12px 16px;           /* espacio interno más amplio */
+  width: auto;                  /* ancho automático según contenido */
+  height: 44px;                 /* altura parecida al register-button */
+  font-size: 0.9rem;            /* texto más visible */
+  border-radius: 12px;          /* bordes redondeados */
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+/* Editar */
+.action-button.edit {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+.action-button.edit:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Eliminar */
+.action-button.delete {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--error-color);
+  color: var(--error-color);
+}
+.action-button.delete:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+  border-color: var(--error-color);
+}
+
+/* Éxito */
+.action-button.success {
+  background: var(--bg-tertiary);
+  border: 1px solid #10b981;
+  color: #10b981;
+}
+.action-button.success:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+  border-color: #10b981;
+}
+/* Botón Detalle de venta */
+.action-button.detalle {
+  background: var(--bg-tertiary); /* mismo fondo que los demás */
+  border: 1px solid #0ea5e9;     /* borde azul, como info */
+  color: #0ea5e9;                 /* texto azul */
+}
+
+.action-button.detalle:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(14, 165, 233, 0.4);
+  border-color: #0ea5e9;
+}
+
+/* BOTÓN DE COMPROBANTE PDF MEJORADO */
+.btn-comprobante {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 800;
+  transition: all 0.3s ease;
+  min-width: 80px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: center;
+}
+
+.btn-comprobante:hover:not(:disabled) {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+  border-color: #0ea5e9;
+  color: #0ea5e9;
+}
+
+.btn-comprobante:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.5;
+  border: 1px solid var(--border-color);
+}
+
+/* NUEVOS BADGES PARA TIPOS DE VENTA */
+.badge-tipo.mixto {
+  background: var(--bg-tertiary);
+  color: #8b5cf6;
+  border: 2px solid #8b5cf6;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.2);
+}
+
+/* ESTILO PARA FILA DE VENTA ANULADA */
+.venta-anulada-row {
+  background: rgba(239, 68, 68, 0.05);
+  opacity: 0.7;
+}
+
+.venta-anulada-row:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* ALERTAS MEJORADAS */
+.alerta-anulada {
+  background: var(--bg-tertiary);
+  color: #ef4444;
+  border: 2px solid #ef4444;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.venta-reciente {
+  background: var(--bg-tertiary);
+  color: #10b981;
+  border: 2px solid #10b981;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: fadeIn 0.5s ease;
+}
+
+/* LOADING STATE MEJORADO */
+.loading-state {
+  text-align: center;
+  padding: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* NO RESULTS MEJORADO */
+.no-results {
+  text-align: center;
+  padding: 80px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.no-results-icon {
+  margin-bottom: 0;
+  opacity: 0.5;
+  color: var(--text-tertiary);
+}
+
+.no-results p {
+  margin: 0;
+  font-size: 1.1em;
+  color: var(--text-primary);
+}
+
+.no-results small {
+  font-size: 0.9em;
+  color: var(--text-tertiary);
+}
+
+.btn-reintentar {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 800;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.btn-reintentar:hover {
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(14, 165, 233, 0.5);
+}
+
+
 /* Botones azules pueden quedar igual */
 .register-button {
   background: linear-gradient(135deg, #0ea5e9, #0284c7);
@@ -648,6 +987,7 @@ const getClaseTipoPago = (tipoPago) => {
 }
 
 .filter-input {
+  width: 100%;
   padding: 12px 14px;
   border: 2px solid var(--border-color);
   border-radius: 10px;
@@ -656,6 +996,7 @@ const getClaseTipoPago = (tipoPago) => {
   transition: all 0.3s ease;
   font-weight: 500;
   font-size: 0.95rem;
+  box-sizing: border-box; /* importante para que width funcione correctamente */
 }
 
 .filter-input:focus {
@@ -794,7 +1135,7 @@ const getClaseTipoPago = (tipoPago) => {
   transition: all 0.2s ease;
 }
 
-/* BOTONES DE ACCIÓN - CON VARIABLES */
+/* BOTONES DE ACCIÓN - tamaño similar a Registrar Producto */
 .action-buttons { 
   display: flex; 
   gap: 8px; 
@@ -802,39 +1143,40 @@ const getClaseTipoPago = (tipoPago) => {
 }
 
 .action-button {
-  padding: 8px 14px;
-  border: none;
-  border-radius: 10px;
-  font-size: 0.8rem;
+  padding: 12px 16px;
+  width: auto;
+  height: 44px;
+  font-size: 0.9rem;
+  border-radius: 12px;
   font-weight: 800;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 4px;
-  color: white;
+  justify-content: center;
   transition: all 0.3s ease;
+  gap: 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
+/* Editar */
 .action-button.edit {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
 }
-
 .action-button.edit:hover {
   background: var(--hover-bg);
   transform: translateY(-2px);
   box-shadow: var(--shadow-sm);
 }
 
+/* Eliminar */
 .action-button.delete {
   background: var(--bg-tertiary);
   border: 1px solid var(--error-color);
   color: var(--error-color);
 }
-
 .action-button.delete:hover {
   background: var(--hover-bg);
   transform: translateY(-2px);
@@ -842,15 +1184,31 @@ const getClaseTipoPago = (tipoPago) => {
   border-color: var(--error-color);
 }
 
-.action-button.delete:disabled {
+/* Éxito */
+.action-button.success {
   background: var(--bg-tertiary);
-  color: var(--text-tertiary);
-  cursor: not-allowed;
-  transform: none;
-  border: 1px solid var(--border-color);
-  opacity: 0.5;
+  border: 1px solid #10b981;
+  color: #10b981;
+}
+.action-button.success:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+  border-color: #10b981;
 }
 
+/* Detalle de venta */
+.action-button.detalle {
+  background: var(--bg-tertiary);
+  border: 1px solid #0ea5e9;
+  color: #0ea5e9;
+}
+.action-button.detalle:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(14, 165, 233, 0.4);
+  border-color: #0ea5e9;
+}
 /* BOTÓN DE COMPROBANTE PDF - CON VARIABLES */
 .btn-comprobante {
   background: var(--bg-tertiary);

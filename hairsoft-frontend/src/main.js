@@ -12,7 +12,6 @@ import axios from 'axios'; // 🛑 1. Importar Axios
 import './styles/reset.css';
 import './styles/base.css';
 import './styles/formularios.css';
-import './styles/login.css';
 import './styles/modos.css';
 import './styles/themes.css';
 

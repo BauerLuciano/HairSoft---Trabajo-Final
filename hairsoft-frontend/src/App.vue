@@ -1,9 +1,9 @@
 <template>
   <div class="app-layout">
-    <Sidebar /> 
+    <Sidebar v-if="!route.meta.hideNavbar" /> 
     
     <div class="main-content-wrapper">
-      <Header /> 
+      <Header v-if="!route.meta.hideNavbar" /> 
       
       <main class="page-content">
         <router-view />
@@ -13,9 +13,11 @@
 </template>
 
 <script setup>
-// Importamos los dos componentes separados
+import { useRoute } from 'vue-router';
 import Sidebar from './components/Sidebar.vue'; 
 import Header from './components/Header.vue'; 
+
+const route = useRoute();
 // La lógica de tema se ejecuta en Header.vue
 </script>
 
@@ -94,7 +96,6 @@ body {
 
 .page-content {
   flex: 1; /* Toma el espacio restante después del header */
-  padding: 30px;
   background-color: var(--bg-primary);
   overflow-y: auto; /* AQUÍ está el scroll - solo el contenido scrollea */
   overflow-x: hidden;

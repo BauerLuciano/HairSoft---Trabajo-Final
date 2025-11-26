@@ -226,7 +226,10 @@ def login_auth(request):
                 'status': 'ok',
                 'message': 'Login exitoso',
                 'user_id': user.id,
-                'rol': rol_nombre
+                'rol': rol_nombre,
+                # 🚨 AQUÍ ESTÁ EL CAMBIO: Agregamos nombre y apellido
+                'nombre': user.nombre,
+                'apellido': user.apellido,
             }, status=status.HTTP_200_OK)
         else:
             raise Usuario.DoesNotExist
