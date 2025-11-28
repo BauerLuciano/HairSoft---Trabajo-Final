@@ -7,14 +7,6 @@
       </div>
 
       <div class="form-content">
-        <!-- DEBUG INFO -->
-        <div class="debug-info" style="background: #f0f0f0; padding: 10px; margin-bottom: 10px; border-radius: 8px;">
-          <p><strong>Debug:</strong></p>
-          <p>Peluquero: {{ form.peluquero }}</p>
-          <p>Fecha: {{ form.fecha }}</p>
-          <p>Turnos ocupados: {{ turnosOcupados.length }}</p>
-        </div>
-
         <div class="input-group cliente-section">
           <label class="section-label">👤 Tus Datos</label>
           <div class="cliente-info-card">
@@ -292,59 +284,52 @@
         </div>
         <div class="modal-body">
           
-          <!-- DEBUG URGENTE -->
-          <div class="debug-urgente" style="background: red; color: white; padding: 10px; margin: 10px;">
-            <p><strong>🚨 DEBUG URGENTE</strong></p>
-            <p>Peluquero ID: {{ form.peluquero }}</p>
-            <p>Fecha: {{ form.fecha }}</p>
-            <p>Total turnos ocupados: {{ turnosOcupados.length }}</p>
-            <p>Horario 08:00 disponible: {{ estaHorarioDisponible('08:00') }}</p>
-            <p>Horario 09:00 disponible: {{ estaHorarioDisponible('09:00') }}</p>
-          </div>
-          
-          <!-- GRID DE HORARIOS -->
-          <div class="horarios-grid-nuevo">
+          <!-- GRID DE HORARIOS - ESTILOS IGUAL AL PRESENCIAL -->
+          <div class="quick-time-grid-modal-mejorado">
             
             <!-- CADA HORARIO -->
             <div 
               v-for="hora in horariosDisponibles" 
               :key="hora"
-              class="horario-card-nuevo"
+              class="quick-time-option-modal-mejorado"
+              :class="{ 
+                selected: form.hora === hora,
+                disabled: !estaHorarioDisponible(hora)
+              }"
             >
               
               <!-- SI ESTÁ DISPONIBLE -->
               <div 
                 v-if="estaHorarioDisponible(hora)"
-                class="horario-disponible-card"
-                :class="{ seleccionado: form.hora === hora }"
+                class="hora-content-disponible"
                 @click="seleccionarHoraRapida(hora)"
               >
-                <div class="horario-header">
-                  <span class="horario-icono">✅</span>
-                  <span class="horario-hora">{{ hora }}</span>
+                <div class="hora-icon">✅</div>
+                <div class="hora-texto">
+                  <span class="hora-hora">{{ hora }}</span>
+                  <span class="hora-estado">Disponible</span>
                 </div>
-                <div class="horario-estado-texto">Disponible</div>
               </div>
               
               <!-- SI ESTÁ OCUPADO -->
               <div 
                 v-else
-                class="horario-ocupado-card"
+                class="hora-content-ocupado"
               >
-                <div class="horario-header">
-                  <span class="horario-icono">❌</span>
-                  <span class="horario-hora">{{ hora }}</span>
+                <div class="hora-icon">❌</div>
+                <div class="hora-texto">
+                  <span class="hora-hora">{{ hora }}</span>
+                  <span class="hora-estado">Ocupado</span>
                 </div>
-                <div class="horario-estado-texto">Ocupado</div>
                 
                 <!-- BOTÓN "AVÍSAME" - SIEMPRE VISIBLE -->
-                <div class="horario-accion">
+                <div class="horario-ocupado-actions-mejorado">
                   <button 
-                    @click="registrarInteresHorario(hora)"
-                    class="btn-avisar-nuevo"
+                    @click.stop="registrarInteresHorario(hora)"
+                    class="btn-avisar-liberado-mejorado"
                     :disabled="estaInteresRegistrado(hora)"
                   >
-                    {{ estaInteresRegistrado(hora) ? '✅ Ya estás en lista' : '🔔 Avísame si se libera' }}
+                    {{ estaInteresRegistrado(hora) ? '✅ En lista' : '🔔 Avísame' }}
                   </button>
                 </div>
               </div>
@@ -353,10 +338,10 @@
           </div>
           
           <!-- INFORMACIÓN ADICIONAL -->
-          <div class="info-box-nuevo">
+          <div class="info-avisos-horarios">
             <p><strong>💡 ¿El horario está ocupado?</strong></p>
-            <p>Tocá "Avísame si se libera" y te notificaremos si alguien cancela.</p>
-            <p>Tendrás <strong>PRIORIDAD</strong> (primer registrado = primero avisado) + <strong>15% descuento</strong>.</p>
+            <p>Tocá "Avísame" y te notificaremos si alguien cancela.</p>
+            <p>Tendrás <strong>15% descuento</strong>.</p>
           </div>
           
         </div>
@@ -402,6 +387,7 @@
 
 <script>
 import axios from 'axios';
+import Swal from 'sweetalert2'; // ✅ Importamos Swal
 
 export default {
   data() {
@@ -427,7 +413,7 @@ export default {
       servicios: [],
       categorias: [],
       turnosOcupados: [],
-      mensaje: "",
+      mensaje: "", // Ya no lo usaremos visualmente, pero lo dejo por compatibilidad
       cargando: false,
       categoriasSeleccionadas: [],
       busquedaServicio: "",
@@ -451,40 +437,31 @@ export default {
     fechasDisponibles() {
       const dates = [];
       const today = new Date();
-      
       for (let i = 0; i < 14; i++) {
         const date = new Date(today);
         date.setDate(today.getDate() + i);
-        
         if (date.getDay() !== 0) {
           dates.push(this.formatDate(date));
           if (dates.length === 7) break;
         }
       }
-      
       return dates;
     },
 
     serviciosFiltrados() {
       let filtrados = this.servicios;
-      
       if (this.categoriasSeleccionadas.length > 0) {
         filtrados = filtrados.filter(servicio => {
           const categoriaSeleccionada = this.categorias.find(cat => 
             cat.id === this.categoriasSeleccionadas[0]
           );
-          
           return servicio.categoria === categoriaSeleccionada.nombre;
         });
       }
-      
       if (this.busquedaServicio) {
         const termino = this.busquedaServicio.toLowerCase();
-        filtrados = filtrados.filter(s => 
-          s.nombre.toLowerCase().includes(termino)
-        );
+        filtrados = filtrados.filter(s => s.nombre.toLowerCase().includes(termino));
       }
-      
       return filtrados;
     },
 
@@ -497,16 +474,11 @@ export default {
     
     horariosDisponibles() {
       const horariosBase = [];
-      const bloques = [
-        { inicio: 8, fin: 12 },
-        { inicio: 15, fin: 20 }
-      ];
-
+      const bloques = [{ inicio: 8, fin: 12 }, { inicio: 15, fin: 20 }];
       const ahora = new Date();
       const horaActual = ahora.getHours();
       const minutoActual = ahora.getMinutes();
       
-      // CORRECCIÓN: Comparar fechas sin zona horaria
       const hoy = new Date();
       const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
       const esHoy = this.form.fecha === hoyFormateado;
@@ -515,18 +487,13 @@ export default {
         for (let h = b.inicio; h < b.fin; h++) {
           for (let m = 0; m < 60; m += 30) {
             const horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-            
             if (esHoy) {
-              if (h < horaActual || (h === horaActual && m <= minutoActual)) {
-                continue; // Saltar horarios pasados
-              }
+              if (h < horaActual || (h === horaActual && m <= minutoActual)) continue;
             }
-            
             horariosBase.push(horaStr);
           }
         }
       });
-      
       return horariosBase;
     }
   },
@@ -537,29 +504,22 @@ export default {
         this.cargarPeluqueros(),
         this.cargarServicios(),
         this.cargarCategorias(),
-        this.cargarTurnosOcupados(),
-        this.cargarInteresesUsuario()
+        this.cargarTurnosOcupados()
       ]);
+      // Cargar intereses DESPUÉS de tener el usuario asegurado
+      await this.cargarInteresesUsuario();
     },
 
     async cargarUsuarioLogueado() {
           try {
-            // 🚨 CAMBIO AQUI: Obtener el ID del storage, no solo de /api/me/
             const storedUserId = localStorage.getItem('user_id') || sessionStorage.getItem('user_id');
-            
-            // 1. Cargar datos generales (incluir token/headers)
             const token = localStorage.getItem('token') || sessionStorage.getItem('token');
             const config = token ? { headers: { 'Authorization': `Bearer ${token}` } } : {};
             
-            // Intentar obtener info completa del usuario por su ID (usando el ID del storage)
             if (storedUserId) {
                 const res = await axios.get(`http://localhost:8000/usuarios/api/usuarios/${storedUserId}/`, config); 
-                
-                // Asignar los datos recibidos
                 this.usuario = res.data; 
-                this.usuario.id = parseInt(storedUserId); // Asegurar el ID
-
-                // 2. Cargar estadísticas
+                this.usuario.id = parseInt(storedUserId);
                 try {
                   const statsRes = await axios.get(`http://localhost:8000/usuarios/api/turnos/cliente/${this.usuario.id}/estadisticas/`, config);
                   this.usuario.turnosCount = statsRes.data.total_turnos || 0;
@@ -567,94 +527,60 @@ export default {
                   this.usuario.turnosCount = 0;
                 }
             } else {
-                // Si no hay ID en storage (no logueado)
-                this.usuario = { 
-                    nombre: 'Invitado', apellido: '', dni: 'No identificado', telefono: 'No registrado', turnosCount: 0, id: null
-                };
+                this.usuario = { nombre: 'Invitado', apellido: '', dni: 'No identificado', telefono: 'No registrado', turnosCount: 0, id: null };
             }
-
           } catch (err) {
-            console.error("Error al cargar usuario logueado:", err);
-            // Fallback robusto si la API de /api/usuarios/{id} falla
-            const storedUserId = localStorage.getItem('user_id') || sessionStorage.getItem('user_id');
+            console.error("Error usuario:", err);
+            const storedUserId = localStorage.getItem('user_id');
             this.usuario = { 
               nombre: localStorage.getItem('user_nombre') || 'Invitado', 
-              apellido: localStorage.getItem('user_apellido') || '', 
+              apellido: '', 
               dni: 'No disponible', 
-              telefono: '',
-              turnosCount: 0,
-              id: storedUserId ? parseInt(storedUserId) : null // Asegura que el ID existe
+              id: storedUserId ? parseInt(storedUserId) : null
             };
           }
-        },
+    },
     
     async cargarPeluqueros() {
       try {
         const res = await axios.get("http://localhost:8000/usuarios/api/peluqueros/");
-        
-        // CORRECCIÓN: Asegurar que los apellidos no sean undefined
-        this.peluqueros = res.data.map(peluquero => ({
-          ...peluquero,
-          apellido: peluquero.apellido || '' // Si es undefined, convertir a string vacío
-        }));
-        
-        console.log("👨‍💼 Peluqueros cargados (corregidos):", this.peluqueros);
-      } catch (err) {
-        console.error("Error al cargar peluqueros:", err);
-        this.peluqueros = [];
-      }
+        this.peluqueros = res.data.map(p => ({ ...p, apellido: p.apellido || '' }));
+      } catch (err) { this.peluqueros = []; }
     },
 
     async cargarServicios() {
       try {
         const res = await axios.get("http://localhost:8000/usuarios/api/servicios/");
         this.servicios = res.data;
-      } catch (err) {
-        console.error("Error al cargar servicios:", err);
-      }
+      } catch (err) { console.error(err); }
     },
 
     async cargarCategorias() {
       try {
         const res = await axios.get("http://localhost:8000/usuarios/api/categorias/servicios/");
         this.categorias = res.data;
-      } catch (err) {
-        console.error("Error al cargar categorías:", err);
-      }
+      } catch (err) { console.error(err); }
     },
 
     async cargarTurnosOcupados(fecha = null) {
       try {
         let url = "http://localhost:8000/usuarios/api/turnos/?estado__in=RESERVADO,CONFIRMADO";
-        
-        // SI HAY FECHA, FILTRAR DIRECTAMENTE
-        if (fecha) {
-          url += `&fecha=${fecha}`;
-        }
-        
-        console.log("📡 Cargando turnos ocupados para fecha:", fecha);
-        
+        if (fecha) url += `&fecha=${fecha}`;
         const res = await axios.get(url);
-        let turnos = res.data.results || res.data;
-                
-        this.turnosOcupados = turnos;
-        console.log("📋 Turnos ocupados cargados:", this.turnosOcupados.length);
-        
-      } catch (err) {
-        console.error("❌ Error al cargar turnos:", err);
-        this.turnosOcupados = [];
-      }
+        this.turnosOcupados = res.data.results || res.data;
+      } catch (err) { this.turnosOcupados = []; }
     },
 
     async cargarInteresesUsuario() {
       try {
         if (this.usuario.id) {
-          const res = await axios.get(`http://localhost:8000/usuarios/api/intereses-turno/cliente/${this.usuario.id}/`);
+          // Asegúrate de que la URL coincida con tu urls.py (singular o plural)
+          const res = await axios.get(`http://localhost:8000/usuarios/api/turnos/mis-intereses/`, {
+             headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
+          });
           this.interesesRegistrados = res.data;
         }
-      } catch (err) {
-        console.error("Error al cargar intereses:", err);
-      }
+      } catch (err) { console.error("Error intereses:", err); }
     },
     
     montoAPagarAhora() {
@@ -666,11 +592,8 @@ export default {
 
     toggleCategoria(categoriaId) {
       const index = this.categoriasSeleccionadas.indexOf(categoriaId);
-      if (index === -1) {
-        this.categoriasSeleccionadas.push(categoriaId);
-      } else {
-        this.categoriasSeleccionadas.splice(index, 1);
-      }
+      if (index === -1) this.categoriasSeleccionadas.push(categoriaId);
+      else this.categoriasSeleccionadas.splice(index, 1);
     },
 
     toggleServicio(servicio) {
@@ -679,63 +602,40 @@ export default {
       else this.form.servicios_ids.splice(index, 1);
     },
 
-    getServicioNombre(id) {
-      const s = this.servicios.find(x => x.id === id);
-      return s ? s.nombre : '';
-    },
-
-    getServiciosNombres() {
-      return this.form.servicios_ids.map(id => this.getServicioNombre(id)).join(', ');
-    },
-
-    getServicioPrecio(id) {
-      const s = this.servicios.find(x => x.id === id);
-      return s ? s.precio : 0;
-    },
-
-    getCategoriaNombre(categoria) {
-      if (!categoria) return 'General';
-      return categoria;
-    },
+    getServicioNombre(id) { return this.servicios.find(x => x.id === id)?.nombre || ''; },
+    getServiciosNombres() { return this.form.servicios_ids.map(id => this.getServicioNombre(id)).join(', '); },
+    getServicioPrecio(id) { return this.servicios.find(x => x.id === id)?.precio || 0; },
+    getCategoriaNombre(categoria) { return categoria || 'General'; },
 
     calcularTotal() {
       return this.form.servicios_ids.reduce((total, id) => total + parseFloat(this.getServicioPrecio(id) || 0), 0).toFixed(2);
     },
-
-    calcularSena() {
-      return (this.calcularTotal() * 0.5).toFixed(2);
-    },
+    calcularSena() { return (this.calcularTotal() * 0.5).toFixed(2); },
 
     formatDate(date) {
       const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
       const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
       const today = new Date();
-      
-      // CORRECCIÓN: Usar toLocaleDateString para evitar problemas de zona horaria
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
       const fullDate = `${year}-${month}-${day}`;
-      
-      // Verificar si es hoy comparando día, mes y año
-      const isToday = date.getDate() === today.getDate() && 
-                      date.getMonth() === today.getMonth() && 
-                      date.getFullYear() === today.getFullYear();
+      const isToday = date.toDateString() === today.toDateString();
       
       return {
         dayName: days[date.getDay()],
         dayNum: date.getDate(),
         month: months[date.getMonth()],
-        fullDate: fullDate, // ← ESTA ES LA LÍNEA CLAVE CORREGIDA
+        fullDate: fullDate,
         isToday: isToday,
         dateObj: date
       };
     },
 
     formatoFechaLegible(fechaStr) {
-      // CORRECCIÓN: Parsear la fecha correctamente
+      if(!fechaStr) return '';
       const [year, month, day] = fechaStr.split('-');
-      const fecha = new Date(year, month - 1, day); // Mes es 0-based
+      const fecha = new Date(year, month - 1, day);
       return fecha.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
     },
 
@@ -753,43 +653,14 @@ export default {
 
     estaHorarioDisponible(horario) {
       if (!this.form.fecha || !this.form.peluquero) return true;
-
       const peluqueroSeleccionado = this.peluqueros.find(p => p.id == this.form.peluquero);
       if (!peluqueroSeleccionado) return true;
 
-      // COMPARACIÓN SUPER ROBUSTA - USANDO NOMBRE COMPLETO
       const turnoOcupado = this.turnosOcupados.find(turno => {
-        // Normalizar nombres COMPLETAMENTE - nombre + apellido
-        const nombreCompletoSeleccionado = `${peluqueroSeleccionado.nombre} ${peluqueroSeleccionado.apellido || ''}`
-          .toLowerCase()
-          .replace(/\s+/g, ' ')
-          .trim();
-        
-        const nombreCompletoTurno = `${turno.peluquero_nombre || ''} ${turno.peluquero_apellido || ''}`
-          .toLowerCase()
-          .replace(/\s+/g, ' ')
-          .trim();
-        
-        // Comparaciones exactas
-        const mismaFecha = turno.fecha === this.form.fecha;
-        const mismaHora = turno.hora === horario;
-        const mismoPeluquero = nombreCompletoSeleccionado === nombreCompletoTurno;
-        
-        // DEBUG DETALLADO
-        if (mismaFecha && mismaHora && mismoPeluquero) {
-          console.log(`🎯 HORARIO OCUPADO ENCONTRADO: ${horario} | Peluquero: "${nombreCompletoSeleccionado}"`);
-        }
-        
-        return mismoPeluquero && mismaFecha && mismaHora;
+        const mismoPeluquero = turno.peluquero_id == this.form.peluquero; // ID vs ID es más seguro
+        return mismoPeluquero && turno.fecha === this.form.fecha && turno.hora === horario;
       });
-
-      const disponible = !turnoOcupado;
-      
-      if (!disponible) {
-        console.log(`🚫 HORARIO OCUPADO: ${horario} - No se puede seleccionar`);
-      }
-      
-      return disponible;
+      return !turnoOcupado;
     },
 
     estaInteresRegistrado(horario) {
@@ -813,13 +684,8 @@ export default {
       this.categoriasSeleccionadas = [];
     },
 
-    abrirModalHora() {
-      this.mostrarModalHora = true;
-    },
-    
-    cerrarModalHora() {
-      this.mostrarModalHora = false;
-    },
+    abrirModalHora() { this.mostrarModalHora = true; },
+    cerrarModalHora() { this.mostrarModalHora = false; },
 
     seleccionarHoraRapida(hora) {
       if (this.estaHorarioDisponible(hora)) {
@@ -830,16 +696,12 @@ export default {
     },
 
     registrarInteresHorario(horario) {
-      // SOLO permitir registrar interés si el horario está OCUPADO
       if (this.estaHorarioDisponible(horario)) {
-        console.log("❌ No se puede registrar interés en horario disponible");
-        this.mensajeInteres = "❌ Este horario está disponible, puedes reservarlo directamente";
+        Swal.fire('Atención', 'Este horario está disponible, puedes reservarlo directamente.', 'info');
         return;
       }
-      
       this.horarioSeleccionadoInteres = horario;
       this.mostrarModalInteres = true;
-      this.mensajeInteres = "";
     },
 
     cancelarRegistroInteres() {
@@ -847,42 +709,25 @@ export default {
       this.horarioSeleccionadoInteres = null;
     },
 
-    // En ./hairsoft-frontend/src/views/turnos/RegistrarTurnoWeb.vue
-
     async confirmarRegistroInteres() {
-        if (!this.horarioSeleccionadoInteres || !this.form.fecha || !this.form.peluquero || this.form.servicios_ids.length === 0) {
-            this.mensajeInteres = "Error: Faltan datos para registrar el interés";
-            return;
-        }
-
-        // 🚨 VERIFICACIÓN FINAL: Usa this.usuario.id, que ahora está garantizado por cargarUsuarioLogueado
         if (!this.usuario.id) { 
-            this.mensajeInteres = "❌ Error: ID de usuario no disponible. Recarga la página o revisa el login.";
+            Swal.fire('Error', 'Debes iniciar sesión para registrarte.', 'error');
             return; 
         }
 
         this.registrandoInteres = true;
-        this.mensajeInteres = "Registrando tu interés...";
 
         try {
-            const servicioId = this.form.servicios_ids[0];
-            
-            // ID ya es correcto porque se forzó en cargarUsuarioLogueado
-            const clienteFinalId = this.usuario.id; 
+            const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+            const config = token ? { headers: { 'Authorization': `Token ${token}` } } : {};
 
             const payload = {
-                cliente_id: clienteFinalId, // Correcto
-                servicio_id: servicioId,
+                cliente_id: this.usuario.id,
+                servicio_id: this.form.servicios_ids[0],
                 peluquero_id: this.form.peluquero,
                 fecha_deseada: this.form.fecha,
                 hora_deseada: this.horarioSeleccionadoInteres
             };
-
-            console.log("📤 Enviando payload:", payload); 
-
-            // Configurar HEAEDRS con TOKEN
-            const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-            const config = token ? { headers: { 'Authorization': `Bearer ${token}` } } : {};
 
             const res = await axios.post(
                 "http://localhost:8000/usuarios/api/turnos/registrar-interes/",
@@ -890,18 +735,23 @@ export default {
                 config
             );
             
+            // ✅ EXITO: SWAL + REFRESCO
             if (res.data.success) {
-                this.mensajeInteres = "✅ " + res.data.message;
                 this.mostrarModalInteres = false;
-                await this.cargarInteresesUsuario();
+                await this.cargarInteresesUsuario(); // <--- ESTO ACTUALIZA EL BOTÓN "YA REGISTRADO"
+                
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Listo!',
+                    text: 'Te avisaremos por WhatsApp si el turno se libera.',
+                    timer: 3000,
+                    showConfirmButton: false
+                });
             } else {
-                this.mensajeInteres = "❌ " + (res.data.error || "Error al registrar interés");
+                Swal.fire('Atención', res.data.error || "Ya estás registrado.", 'warning');
             }
         } catch (err) {
-            console.error("Error registrando interés:", err);
-            const errorMsg = err.response?.data?.error || "Error al registrar tu interés. Intenta nuevamente.";
-            this.mensajeInteres = "❌ " + errorMsg;
-            
+            Swal.fire('Error', err.response?.data?.error || "Error al conectar.", 'error');
         } finally {
             this.registrandoInteres = false;
         }
@@ -909,13 +759,11 @@ export default {
     
     async reservarTurno() {
       if (!this.formularioValido) {
-        this.mensaje = "Error: Completa todos los campos y selecciona una opción de pago.";
+        Swal.fire('Faltan datos', 'Completa todos los campos y selecciona el pago.', 'warning');
         return;
       }
 
       this.cargando = true;
-      this.mensaje = "Reservando turno y generando link de pago con Mercado Pago...";
-
       const payload = {
         peluquero_id: this.form.peluquero, 
         servicios_ids: this.form.servicios_ids,
@@ -927,44 +775,60 @@ export default {
       };
 
       try {
-        const res = await axios.post("http://localhost:8000/usuarios/api/turnos/crear/", payload);
+        const token = localStorage.getItem('token');
+        const config = token ? { headers: { 'Authorization': `Token ${token}` } } : {};
+
+        const res = await axios.post("http://localhost:8000/usuarios/api/turnos/crear/", payload, config);
         const data = res.data;
         this.cargando = false;
-        this.mensaje = "";
 
-        if (data.status === 'ok' && data.procesar_pago && data.mp_data?.init_point) {
-          this.mensaje = "Turno pre-reservado. Redirigiendo a Mercado Pago...";
-          
-          setTimeout(() => {
-            this.$router.push('/turnos');
-          }, 2000);
-          
-          this.iniciarPagoMercadoPago(data.mp_data.init_point);
+        if (data.status === 'ok') {
+          if (data.procesar_pago && data.mp_data?.init_point) {
+            
+            // ✅ ÉXITO CON PAGO: SWAL CON CONFIRMACIÓN
+            Swal.fire({
+                icon: 'success',
+                title: 'Reserva Iniciada',
+                text: 'Te redirigiremos a Mercado Pago para completar el pago.',
+                timer: 2000,
+                showConfirmButton: false
+            }).then(() => {
+                window.open(data.mp_data.init_point, '_blank');
+                this.$router.push('/turnos');
+            });
+
+          } else {
+            // ✅ ÉXITO SIN PAGO (LOCAL): SWAL SIMPLE
+            Swal.fire({
+                icon: 'success',
+                title: '¡Turno Reservado!',
+                text: 'Te esperamos en el local.',
+                timer: 2000,
+                showConfirmButton: false
+            }).then(() => {
+                this.$router.push('/turnos');
+            });
+          }
         } else {
-          this.mensaje = `Error: ${data.message || "Error al reservar el turno."}`;
+          Swal.fire('Error', data.message || "No se pudo reservar.", 'error');
         }
       } catch (err) {
-        console.error("Error de red/servidor:", err);
         this.cargando = false;
-        const msg = err.response?.data?.message || err.message || "Error de conexión con el servidor.";
-        this.mensaje = `Error de reserva: ${msg}`;
+        if (err.response && err.response.status === 401) {
+            Swal.fire('Sesión Expirada', 'Por favor inicia sesión nuevamente.', 'error');
+        } else {
+            Swal.fire('Error', err.response?.data?.message || 'Error de conexión', 'error');
+        }
       }
     },
 
     iniciarPagoMercadoPago(initPointUrl) {
-      console.log("🔗 Redirigiendo a Mercado Pago:", initPointUrl);
-      if (!initPointUrl || !initPointUrl.includes('mercadopago.com')) {
-        console.error("❌ URL inválida:", initPointUrl);
-        this.mensaje = "Error: Enlace de pago no válido.";
-        return;
-      }
-      window.open(initPointUrl, '_blank');
+      if (initPointUrl) window.open(initPointUrl, '_blank');
     }
   },
 
   mounted() {
     this.cargarDatosIniciales();
-    this.cargarTurnosOcupados();
   }
 };
 </script>
@@ -1400,6 +1264,11 @@ export default {
   font-size: 1.1em;
 }
 
+.time-arrow {
+  color: #6c757d;
+  transition: transform 0.3s ease;
+}
+
 /* MODAL */
 .modal-overlay {
   position: fixed;
@@ -1468,7 +1337,7 @@ export default {
   padding: 30px;
 }
 
-/* GRID DE HORARIOS MEJORADO */
+/* GRID DE HORARIOS MEJORADO - ESTILOS IGUAL AL PRESENCIAL */
 .quick-time-grid-modal-mejorado {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -1503,6 +1372,16 @@ export default {
   background: linear-gradient(135deg, #c3e6cb, #b1dfbb);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+}
+
+.quick-time-option-modal-mejorado.selected .hora-content-disponible {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  border-color: #1e7e34;
+}
+
+.quick-time-option-modal-mejorado.selected .hora-hora,
+.quick-time-option-modal-mejorado.selected .hora-estado {
+  color: white;
 }
 
 /* HORARIOS OCUPADOS */
@@ -1573,24 +1452,15 @@ export default {
   font-size: 0.9em;
 }
 
-.btn-avisar-liberado-mejorado:hover {
+.btn-avisar-liberado-mejorado:hover:not(:disabled) {
   background: linear-gradient(135deg, #0984e3, #074a8f);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(116, 185, 255, 0.4);
 }
 
-.ya-registrado-mejorado {
-  width: 100%;
+.btn-avisar-liberado-mejorado:disabled {
   background: linear-gradient(135deg, #00b894, #00a085);
-  color: white;
-  padding: 10px 15px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 0.9em;
+  cursor: not-allowed;
 }
 
 /* INFO AVISOS */
@@ -1607,17 +1477,6 @@ export default {
   margin: 5px 0;
   color: #1565c0;
   font-size: 0.9em;
-}
-
-/* ESTADO SELECCIONADO */
-.quick-time-option-modal-mejorado.selected .hora-content-disponible {
-  background: linear-gradient(135deg, #28a745, #20c997);
-  border-color: #1e7e34;
-}
-
-.quick-time-option-modal-mejorado.selected .hora-hora,
-.quick-time-option-modal-mejorado.selected .hora-estado {
-  color: white;
 }
 
 /* MODAL DE INTERÉS */
@@ -1957,6 +1816,23 @@ export default {
 .bounce-leave-active {
   animation: bounce-in 0.5s reverse;
 }
+
+/* ESTILO PARA EL BOTÓN "YA REGISTRADO" */
+.btn-avisar-nuevo:disabled {
+  background: linear-gradient(135deg, #2ecc71, #27ae60) !important; /* Verde éxito */
+  color: white !important;
+  opacity: 0.9;
+  cursor: default;
+  box-shadow: none;
+  transform: none;
+  border: 1px solid #2ecc71;
+}
+
+/* Ajuste visual para que se note que es un estado final */
+.btn-avisar-nuevo:disabled::before {
+  content: ""; 
+}
+
 @keyframes bounce-in {
   0% { transform: scale(0); }
   50% { transform: scale(1.05); }

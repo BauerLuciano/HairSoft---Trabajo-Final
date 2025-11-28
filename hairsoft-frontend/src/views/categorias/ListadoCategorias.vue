@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="list-header">
         <div class="header-content">
-          <h1>Lista de Categorías</h1>
+          <h1>Gestión de categorías</h1>
           <p>Gestión completa de categorías de servicios y productos</p>
         </div>
         <button @click="abrirModalCrear" class="register-button">

@@ -1,5 +1,4 @@
 import { fileURLToPath, URL } from 'node:url'
-
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
@@ -16,6 +15,8 @@ export default defineConfig({
     },
   },
   server: {
+    host: true, // <--- AGREGA ESTO: Obliga a escuchar en la red (0.0.0.0)
+    port: 5173, // <--- Aseguramos el puerto
     proxy: {
       '/usuarios': {
         target: 'http://localhost:8000',

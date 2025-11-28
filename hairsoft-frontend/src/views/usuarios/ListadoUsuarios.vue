@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="list-header">
         <div class="header-content">
-          <h1>Usuarios Registrados</h1>
+          <h1>Gestión de Usuarios</h1>
           <p>Gestión de usuarios del sistema</p>
         </div>
         <button @click="mostrarRegistrar = true" class="register-button">
@@ -22,16 +22,6 @@
           </div>
 
           <div class="filter-group">
-            <label>Rol</label>
-            <select v-model="filtros.rol" class="filter-input">
-              <option value="">Todos</option>
-              <option v-for="rol in roles" :key="rol.id" :value="rol.id">
-                {{ rol.nombre }}
-              </option>
-            </select>
-          </div>
-
-          <div class="filter-group">
             <label>Fecha desde</label>
             <input type="date" v-model="filtros.fechaDesde" class="filter-input"/>
           </div>
@@ -41,6 +31,16 @@
             <input type="date" v-model="filtros.fechaHasta" class="filter-input"/>
           </div>
 
+                    <div class="filter-group">
+            <label>Rol</label>
+            <select v-model="filtros.rol" class="filter-input">
+              <option value="">Todos</option>
+              <option v-for="rol in roles" :key="rol.id" :value="rol.id">
+                {{ rol.nombre }}
+              </option>
+            </select>
+          </div>
+          
           <div class="filter-group">
             <label>&nbsp;</label>
             <button @click="limpiarFiltros" class="clear-filters-btn">

@@ -9,6 +9,7 @@ from django.contrib.auth.hashers import make_password
 # 🛑 CORRECCIÓN APLICADA: Importar authenticate y login
 from django.contrib.auth import authenticate, login 
 from rest_framework import viewsets, status, generics 
+from rest_framework.authtoken.models import Token
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response 
@@ -23,6 +24,7 @@ from django.contrib.auth.hashers import check_password
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from .pdf_utils import generar_comprobante_venta
+from decimal import Decimal
 import secrets, logging
 
 # Configuración del logger
@@ -195,52 +197,32 @@ def crear_usuario(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_auth(request):
-    print("LOGIN ENDPOINT HIT")
     serializer = LoginSerializer(data=request.data)
-    
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     validated_data = serializer.validated_data
     correo = validated_data.get('username')
-    contrasena_ingresada = validated_data.get('password')
-    
-    print(f"Data Validada - Correo: {correo}")
+    contrasena = validated_data.get('password')
 
-    try:
-        user = Usuario.objects.get(correo=correo)
+    user = authenticate(username=correo, password=contrasena) # Django usa 'username' interno
+
+    if user:
+        # ✅ Generar o recuperar token
+        token, created = Token.objects.get_or_create(user=user)
         
-        if user and check_password(contrasena_ingresada, user.contrasena):
-            # 🔧 FIX: indicar backend manualmente
-            from django.contrib.auth import get_backends, login
-            backend = get_backends()[0]
-            user.backend = f"{backend.__module__}.{backend.__class__.__name__}"
-            login(request, user)
-            
-            print(f"✅ Login successful - User ID: {user.id}")
-            
-            user_rol = getattr(user, 'rol', None)
-            rol_nombre = user_rol.nombre.upper() if user_rol else 'SIN_ROL'
-            
-            return Response({
-                'status': 'ok',
-                'message': 'Login exitoso',
-                'user_id': user.id,
-                'rol': rol_nombre,
-                # 🚨 AQUÍ ESTÁ EL CAMBIO: Agregamos nombre y apellido
-                'nombre': user.nombre,
-                'apellido': user.apellido,
-            }, status=status.HTTP_200_OK)
-        else:
-            raise Usuario.DoesNotExist
-
-    except Usuario.DoesNotExist:
-        print("Login failed - Credenciales inválidas")
-        return Response(
-            {'status': 'error', 'message': 'Credenciales inválidas. Usuario no registrado o contraseña incorrecta.'}, 
-            status=status.HTTP_401_UNAUTHORIZED
-        )
-
+        return Response({
+            'status': 'ok',
+            'message': 'Login exitoso',
+            'token': token.key,  # <--- ¡AQUÍ ESTÁ LA CLAVE! 🔑
+            'user_id': user.id,
+            'nombre': user.nombre,
+            'apellido': user.apellido,
+            'rol': user.rol.nombre.upper() if user.rol else 'SIN_ROL',
+        })
+    else:
+        return Response({'error': 'Credenciales inválidas'}, status=401)
+    
 @csrf_exempt
 def editar_usuario(request, pk):
     usuario = get_object_or_404(Usuario, pk=pk)
@@ -491,7 +473,6 @@ def listado_peluqueros(request):
 # ================================
 # Turnos
 # ================================
-
 @csrf_exempt
 def listado_turnos(request):
     if request.method != 'GET':
@@ -504,37 +485,41 @@ def listado_turnos(request):
         canal = request.GET.get('canal')
         fecha_desde = request.GET.get('fecha_desde')
         fecha_hasta = request.GET.get('fecha_hasta')
+        fecha_exacta = request.GET.get('fecha') # <--- NUEVO: Para filtrar por día exacto
 
         # ===== Query base =====
         turnos = Turno.objects.all().select_related('cliente', 'peluquero').prefetch_related('servicios').order_by('fecha', 'hora')
 
-        # ===== Filtro por peluquero =====
+        # ===== Filtros =====
         if peluquero_id:
             turnos = turnos.filter(peluquero__id=peluquero_id)
 
-        # ===== Filtro por estado =====
         if estado:
-            # Mapear estados del frontend a estados de BD
-            estado_map_frontend_to_db = {
-                'RESERVADO': 'RESERVADO',
-                'CONFIRMADO': 'CONFIRMADO', 
-                'CANCELADO': 'CANCELADO',
-                'COMPLETADO': 'COMPLETADO',
-                # Para compatibilidad con viejo sistema
-                'PENDIENTE': 'RESERVADO',
-                'PEND': 'RESERVADO',
-                'CONF': 'CONFIRMADO',
-                'CANC': 'CANCELADO',
-                'COMP': 'COMPLETADO'
+            # Mapeo de estados
+            estado_map = {
+                'RESERVADO': 'RESERVADO', 'CONFIRMADO': 'CONFIRMADO', 
+                'CANCELADO': 'CANCELADO', 'COMPLETADO': 'COMPLETADO',
+                'PENDIENTE': 'RESERVADO'
             }
-            estado_bd = estado_map_frontend_to_db.get(estado.upper(), estado.upper())
-            turnos = turnos.filter(estado=estado_bd)
+            # Soporte para filtrar múltiples estados (ej: RESERVADO,CONFIRMADO)
+            if ',' in estado:
+                estados_lista = [estado_map.get(e.strip().upper(), e.strip().upper()) for e in estado.split(',')]
+                turnos = turnos.filter(estado__in=estados_lista)
+            else:
+                estado_bd = estado_map.get(estado.upper(), estado.upper())
+                turnos = turnos.filter(estado=estado_bd)
 
-        # ===== Filtro por canal =====
-        if canal and hasattr(Turno, 'canal'):
+        if canal:
             turnos = turnos.filter(canal=canal.upper())
 
-        # ===== Filtro por fechas =====
+        # Filtro de fecha exacta (Optimización)
+        if fecha_exacta:
+            try:
+                fecha_e = datetime.strptime(fecha_exacta, "%Y-%m-%d").date()
+                turnos = turnos.filter(fecha=fecha_e)
+            except ValueError:
+                pass
+
         if fecha_desde:
             try:
                 fecha_d = datetime.strptime(fecha_desde, "%Y-%m-%d").date()
@@ -548,8 +533,17 @@ def listado_turnos(request):
             except ValueError:
                 pass
 
+        # ===== Lógica de Permisos =====
+        es_admin_o_recep = False
+        if request.user.is_authenticated:
+            rol_nombre = request.user.rol.nombre.upper() if request.user.rol else ''
+            if request.user.is_staff or rol_nombre in ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC']:
+                es_admin_o_recep = True
+
         # ===== Construcción del resultado =====
         data = []
+        ahora = timezone.now()
+
         for t in turnos:
             servicios_list = []
             duracion_total = 0
@@ -560,237 +554,195 @@ def listado_turnos(request):
                     'nombre': servicio.nombre,
                     'precio': float(servicio.precio),
                     'duracion': servicio.duracion,
-                    'categoria': servicio.categoria.id if servicio.categoria else None  # ← CORREGIDO
+                    'categoria': servicio.categoria.id if servicio.categoria else None
                 })
                 duracion_total += servicio.duracion
 
-            # Calcular si puede ser modificado/cancelado - CORREGIDO
-            puede_modificar = False
-            puede_cancelar = False
-            
+            # Reglas de negocio
             try:
-                ahora = timezone.now()
-                # CORRECCIÓN: Crear datetime naive primero y luego hacerlo aware
                 fecha_turno_naive = datetime.combine(t.fecha, t.hora)
                 fecha_turno = timezone.make_aware(fecha_turno_naive)
                 tres_horas_antes = fecha_turno - timedelta(hours=3)
                 
-                puede_modificar = (t.estado in ['RESERVADO', 'CONFIRMADO'] and 
-                                  ahora < tres_horas_antes)
+                cumple_tiempo = ahora < tres_horas_antes
+                puede_modificar = (t.estado in ['RESERVADO', 'CONFIRMADO'] and (cumple_tiempo or es_admin_o_recep))
                 puede_cancelar = puede_modificar
-                
-                print(f"Turno {t.id}: {t.estado} - {fecha_turno} - Puede modificar: {puede_modificar}")
-                
-            except Exception as e:
-                print(f"Error en cálculo de permisos turno {t.id}: {e}")
-                puede_modificar = False
-                puede_cancelar = False
+                puede_completar = (t.estado == 'CONFIRMADO' and es_admin_o_recep)
 
-            # ✅✅✅ CORRECCIÓN DEFINITIVA: Formatear fecha manualmente
-            fecha_turno_corregida = t.fecha.strftime("%Y-%m-%d")
-            
-            # DEBUG: Ver qué fecha tenemos realmente
-            print(f"🔍 Turno {t.id}: Fecha en BD: {t.fecha} -> Formateada: {fecha_turno_corregida}")
+            except Exception as e:
+                # Fallback seguro
+                puede_modificar = es_admin_o_recep
+                puede_cancelar = es_admin_o_recep
+                puede_completar = False
 
             data.append({
                 'id': t.id,
-                # ✅✅✅ FECHA CORREGIDA: Formateada manualmente
-                'fecha_turno': fecha_turno_corregida,
+                'fecha': t.fecha.strftime("%Y-%m-%d"),
+                'fecha_turno': t.fecha.strftime("%Y-%m-%d"),
+                'hora': t.hora.strftime("%H:%M"),
                 'hora_turno': t.hora.strftime("%H:%M"),
-                
-                # ✅ FECHA Y HORA REALES DEL REGISTRO (automáticas del sistema)
-                'fecha_registro_real': t.fecha_creacion.date().isoformat(),
-                'hora_registro_real': t.fecha_creacion.time().strftime("%H:%M:%S"),
-                'fecha_hora_completa_registro': t.fecha_creacion.isoformat(),
-                
-                # ✅ Campos para compatibilidad (mantener por si acaso)
-                'fecha': fecha_turno_corregida,  # ✅ Usar la fecha corregida
-                'hora': t.hora.strftime("%H:%M"),  # Mantener para compatibilidad
-                
                 'estado': t.estado,
+                
+                # ✅ AQUÍ ESTÁ EL ARREGLO: AGREGAMOS LOS IDs
+                'peluquero_id': t.peluquero.id,       # <--- ¡FALTABA ESTO!
+                'cliente_id': t.cliente.id,           # <--- Útil también
+                
                 'canal': getattr(t, 'canal', 'PRESENCIAL'),
                 'tipo_pago': getattr(t, 'tipo_pago', 'PENDIENTE'),
                 'monto_seña': float(getattr(t, 'monto_seña', 0)),
                 'monto_total': float(getattr(t, 'monto_total', 0)),
-                'reembolsado': getattr(t, 'reembolsado', False),
-                # Datos del cliente
                 'cliente_nombre': t.cliente.nombre,
                 'cliente_apellido': t.cliente.apellido,
-                'cliente_telefono': t.cliente.telefono or '',
-                'cliente_dni': t.cliente.dni,
-                # Datos del peluquero
                 'peluquero_nombre': t.peluquero.nombre,
                 'peluquero_apellido': t.peluquero.apellido,
-                # Servicios
                 'servicios': servicios_list,
                 'duracion_total': duracion_total,
-                # Permisos calculados
                 'puede_modificar': puede_modificar,
                 'puede_cancelar': puede_cancelar,
+                'puede_completar': puede_completar,
+                'oferta_activa': getattr(t, 'oferta_activa', False),
+                'fecha_expiracion_oferta': t.fecha_expiracion_oferta.isoformat() if getattr(t, 'fecha_expiracion_oferta', None) else None
             })
 
         return JsonResponse(data, safe=False)
 
     except Exception as e:
-        print(f"Error en listado_turnos: {str(e)}")
-        return JsonResponse({'error': f'Error interno del servidor: {str(e)}'}, status=500)
+        print(f"Error crítico en listado_turnos: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
     
-@csrf_exempt
+
+@api_view(['POST'])
+@permission_classes([AllowAny]) 
 def crear_turno(request):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
-
     try:
-        data = json.loads(request.body)
-
-        # 🔧 DETECTAR CANAL Y APLICAR LÓGICA CORRESPONDIENTE
-        canal = data.get('canal', 'WEB')
+        print(f"🚀 CREAR TURNO: Iniciando proceso...")
+        data = request.data
         
+        # 1. IDENTIFICAR USUARIO (LÓGICA CORREGIDA)
+        cliente = None
+        canal = data.get('canal', 'WEB')
+
+        # 🟢 CAMBIO IMPORTANTE: Preguntamos PRIMERO por el canal
         if canal == 'PRESENCIAL':
-            # 🔧 MODO PRESENCIAL: Sin autenticación, cliente viene en el request
+            # Si es presencial, mandan el ID explícitamente (aunque yo sea Admin)
             cliente_id = data.get('cliente_id')
-            if not cliente_id:
-                return JsonResponse({
-                    'status': 'error', 
-                    'message': "En modo presencial debe especificar un cliente."
-                }, status=400)
-            
-            try:
-                cliente = Usuario.objects.get(pk=cliente_id)
-            except Usuario.DoesNotExist:
-                return JsonResponse({
-                    'status': 'error', 
-                    'message': "Cliente no encontrado."
-                }, status=400)
-                
-        else:  # CANAL WEB
-            # 🔧 MODO WEB: Requiere autenticación del cliente
-            if not request.user.is_authenticated:
-                return JsonResponse({
-                    'status': 'error', 
-                    'message': "Debe iniciar sesión para reservar turnos online."
-                }, status=401)
+            if cliente_id:
+                try:
+                    cliente = Usuario.objects.get(pk=cliente_id)
+                    print(f"✅ Cliente asignado manualmente (Presencial): {cliente.nombre}")
+                except Usuario.DoesNotExist:
+                    return Response({'status': 'error', 'message': "Cliente no encontrado"}, status=400)
+            else:
+                return Response({'status': 'error', 'message': "Falta seleccionar un cliente."}, status=400)
+
+        elif request.user.is_authenticated:
+            # Si es WEB y hay token, el cliente es el usuario logueado
             cliente = request.user
+            print(f"✅ Usuario Token (Web): {cliente.nombre} (ID: {cliente.id})")
+        
+        # Si llegamos aquí sin cliente...
+        if not cliente:
+            return Response({'status': 'error', 'message': "Debes iniciar sesión."}, status=401)
 
-        # 2️⃣ Datos del formulario
-        peluquero_id = data.get('peluquero_id')
-        servicios_ids = data.get('servicios_ids', [])
-        fecha = data.get('fecha')
-        hora = data.get('hora')
-        tipo_pago_seleccionado = data.get('tipo_pago')  # SENA_50 o TOTAL
-        medio_pago = data.get('medio_pago', 'EFECTIVO')
-
-        if tipo_pago_seleccionado not in ['SENA_50', 'TOTAL']:
-            return JsonResponse({'status': 'error', 'message': "Debe seleccionar una opción de pago válida (Seña o Total)."}, status=400)
-
-        if not all([peluquero_id, servicios_ids, fecha, hora]):
-            return JsonResponse({'status': 'error', 'message': "Faltan datos requeridos (peluquero, servicios, fecha y hora)"}, status=400)
-
-        # 3️⃣ Obtener peluquero y servicios
+        # 2. DATOS
         try:
-            peluquero = Usuario.objects.get(pk=peluquero_id)
-            servicios = Servicio.objects.filter(pk__in=servicios_ids)
-        except Usuario.DoesNotExist:
-            return JsonResponse({'status': 'error', 'message': "Peluquero no encontrado"}, status=400)
+            peluquero_id = int(data.get('peluquero_id'))
+            servicios_ids = data.get('servicios_ids', [])
+            fecha_str = data.get('fecha')
+            hora_str = data.get('hora')
+            
+            if len(hora_str) > 5: 
+                hora_str = hora_str[:5]
+            
+            fecha_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+            hora_obj = datetime.strptime(hora_str, "%H:%M").time()
+            
+        except (ValueError, TypeError) as e:
+            return Response({'status': 'error', 'message': "Datos inválidos"}, status=400)
 
-        if not servicios.exists():
-            return JsonResponse({'status': 'error', 'message': "No se encontraron los servicios especificados"}, status=400)
+        # 3. VALIDAR DISPONIBILIDAD
+        ocupado = Turno.objects.filter(
+            fecha=fecha_obj, 
+            hora=hora_obj, 
+            peluquero_id=peluquero_id, 
+            estado__in=['RESERVADO', 'CONFIRMADO']
+        ).exists()
 
-        # 4️⃣ Validar fecha y hora
-        try:
-            fecha_obj = datetime.strptime(fecha, "%Y-%m-%d").date()
-            hora_obj = datetime.strptime(hora, "%H:%M").time()
-        except ValueError:
-            return JsonResponse({'status': 'error', 'message': "Formato de fecha u hora inválido"}, status=400)
+        if ocupado:
+            return Response({'status': 'error', 'message': 'Horario ya ocupado.'}, status=400)
 
-        if fecha_obj < timezone.now().date():
-            return JsonResponse({'status': 'error', 'message': "No se pueden agendar turnos en fechas pasadas"}, status=400)
-
-        # Validación disponibilidad
-        if Turno.objects.filter(
+        # 4. LIMPIEZA DE ZOMBIES
+        zombies = Turno.objects.filter(
             fecha=fecha_obj,
             hora=hora_obj,
-            peluquero=peluquero,
-            estado__in=['RESERVADO', 'CONFIRMADO']
-        ).exists():
-            return JsonResponse({'status': 'error', 'message': 'El peluquero no está disponible en la fecha y hora solicitada.'}, status=400)
+            peluquero_id=peluquero_id,
+            oferta_activa=True
+        )
+        if zombies.exists():
+            zombies.update(oferta_activa=False, estado='CANCELADO')
+            from .models import InteresTurnoLiberado
+            InteresTurnoLiberado.objects.filter(turno_liberado__in=zombies).update(estado_oferta='rechazada')
 
-        # 5️⃣ Calcular montos
+        # 5. CREAR TURNO
+        peluquero = Usuario.objects.get(pk=peluquero_id)
+        servicios = Servicio.objects.filter(pk__in=servicios_ids)
         monto_total = sum(float(s.precio) for s in servicios)
-        if tipo_pago_seleccionado == 'TOTAL':
-            monto_pago_a_enviar_mp = monto_total
-            monto_seña_a_guardar = monto_total
-        else:
-            monto_pago_a_enviar_mp = monto_total * 0.5
-            monto_seña_a_guardar = monto_pago_a_enviar_mp
+        
+        tipo_pago = data.get('tipo_pago')
+        monto_seña = monto_total * 0.5 if tipo_pago == 'SENA_50' else monto_total
 
-        # 6️⃣ Crear turno
         turno = Turno.objects.create(
             cliente=cliente,
             peluquero=peluquero,
             fecha=fecha_obj,
             hora=hora_obj,
-            canal=canal,
-            tipo_pago=tipo_pago_seleccionado,
-            medio_pago=medio_pago,
-            monto_seña=monto_seña_a_guardar,
+            canal=canal, # <--- AHORA SÍ TOMA EL CORRECTO
+            tipo_pago=tipo_pago,
+            medio_pago=data.get('medio_pago', 'EFECTIVO'),
+            monto_seña=monto_seña,
             monto_total=monto_total,
             estado='RESERVADO'
         )
         turno.servicios.set(servicios)
-
-        print(f"✅ Turno creado: {turno.id} - Fecha: {turno.fecha} - Canal: {canal} - Cliente: {cliente.nombre}")
-
-        # 7️⃣ Si es Mercado Pago, procesar pago
-        if medio_pago == 'MERCADO_PAGO':
-            mp_service = MercadoPagoService()
-            es_pago_total = (tipo_pago_seleccionado == 'TOTAL')
-
-            turno_data = {
-                'turno_id': turno.id,
-                'monto_pago': float(monto_pago_a_enviar_mp),
-                'cliente_nombre': f"{cliente.nombre} {cliente.apellido}",
-                'cliente_correo': "test_user_6205179917708892357@testuser.com",
-                'peluquero_nombre': f"{peluquero.nombre} {peluquero.apellido}",
-                'es_pago_total': es_pago_total
-            }
-
-            resultado_mp = mp_service.crear_preferencia_seña(turno_data)
-
-            if resultado_mp['success']:
-                init_point = resultado_mp.get('init_point')
-                return JsonResponse({
-                    'status': 'ok',
+        
+        # 6. MERCADO PAGO
+        mp_data = None
+        procesar_pago = False
+        
+        if data.get('medio_pago') == 'MERCADO_PAGO':
+            try:
+                from .mercadopago_service import MercadoPagoService
+                mp_service = MercadoPagoService()
+                preference_data = {
                     'turno_id': turno.id,
-                    'message': 'Turno pre-reservado. Redirigiendo a pago sandbox',
-                    'procesar_pago': True,
-                    'mp_data': {
-                        'init_point': init_point,
-                        'preference_id': resultado_mp['preference_id'],
+                    'monto_pago': float(monto_seña),
+                    'cliente_nombre': f"{cliente.nombre} {cliente.apellido}",
+                    'cliente_correo': cliente.correo or "cliente@test.com",
+                    'peluquero_nombre': f"{peluquero.nombre} {peluquero.apellido}",
+                    'es_pago_total': (tipo_pago == 'TOTAL')
+                }
+                
+                resultado_mp = mp_service.crear_preferencia_seña(preference_data)
+                if resultado_mp['success']:
+                    procesar_pago = True
+                    mp_data = {
+                        'init_point': resultado_mp.get('init_point'), 
+                        'preference_id': resultado_mp['preference_id']
                     }
-                })
-            else:
-                turno.estado = 'CANCELADO_ERROR_MP'
-                turno.save()
-                error_msg = resultado_mp.get('error', 'Error desconocido al generar el enlace de pago.')
-                return JsonResponse({
-                    'status': 'error',
-                    'message': f'Error al generar pago con Mercado Pago: {error_msg}. El turno fue cancelado.',
-                    'turno_id': turno.id
-                }, status=400)
-        else:
-            return JsonResponse({
-                'status': 'ok',
-                'turno_id': turno.id,
-                'message': 'Turno registrado correctamente',
-                'procesar_pago': False
-            })
+            except Exception as e:
+                print(f"❌ Error MP: {e}")
 
-    except json.JSONDecodeError:
-        return JsonResponse({'status': 'error', 'message': "Error en el formato JSON"}, status=400)
+        return Response({
+            'status': 'ok',
+            'turno_id': turno.id,
+            'message': 'Turno reservado correctamente',
+            'procesar_pago': procesar_pago,
+            'mp_data': mp_data
+        })
+
     except Exception as e:
-        print(f"❌ Error interno al crear turno: {e}")
-        return JsonResponse({'status': 'error', 'message': f"Error interno del servidor: {str(e)}"}, status=500)
+        print(f"💥 EXCEPCIÓN: {str(e)}")
+        return Response({'status': 'error', 'message': str(e)}, status=500)
     
 @csrf_exempt
 def verificar_disponibilidad(request):
@@ -989,11 +941,6 @@ def modificar_turno(request, turno_id):
 @csrf_exempt
 @permission_classes([AllowAny]) 
 def registrar_interes_turno(request):
-    """
-    *** MODO DEPURACIÓN ***
-    Verifica que el cliente_id esté llegando correctamente.
-    Si cliente_id NO está llegando en el cuerpo del request, este endpoint falla.
-    """
     print("-------------------------------------------------------")
     print("🔥 DEBUG: Intentando registrar interés (Ignorando Sesión)")
     print("Datos crudos recibidos:", request.data)
@@ -1101,7 +1048,7 @@ def listar_intereses_cliente(request, cliente_id=None):
                 'fecha_deseada': interes.fecha_deseada.isoformat(),
                 'hora_deseada': interes.hora_deseada.strftime("%H:%M"),
                 'fecha_registro': interes.fecha_registro.isoformat(),
-                'notificado': interes.notificado,
+                'notificado': (interes.estado_oferta == 'enviada'),
                 'fecha_notificacion': interes.fecha_notificacion.isoformat() if interes.fecha_notificacion else None
             })
 
@@ -3389,82 +3336,164 @@ def cancelar_turno_con_reoferta(request, turno_id):
         traceback.print_exc()
         return JsonResponse({'error': str(e)}, status=500)
     
+# EN: usuarios/views.py
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def aceptar_oferta_turno(request, turno_id, token):
     """
-    Acepta una oferta de reoferta - CORREGIDO
+    Acepta oferta, gestiona canje y GENERA PAGO MP.
     """
     try:
-        turno = Turno.objects.get(id=turno_id)
+        turno_nuevo = Turno.objects.get(id=turno_id)
+        tipo_pago = request.data.get('tipo_pago', 'SENA_50') 
         
-        # ✅ CONSULTA CORREGIDA - Buscar por token y turno_liberado
         interes = InteresTurnoLiberado.objects.get(
             token_oferta=token,
-            turno_liberado_id=turno_id,  # ✅ AHORA SÍ EXISTE ESTE CAMPO
+            turno_liberado=turno_nuevo,
             estado_oferta='enviada'
         )
         
-        # Verificar que la oferta sigue activa
         if interes.oferta_expirada():
-            return Response({
-                'error': 'La oferta ha expirado o ya no está disponible'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'La oferta ha expirado.'}, status=400)
         
-        # Verificar que el turno sigue cancelado
-        if turno.estado != 'CANCELADO' or not turno.oferta_activa:
-            return Response({
-                'error': 'El turno ya no está disponible'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
+        if turno_nuevo.estado != 'CANCELADO' or not turno_nuevo.oferta_activa:
+            return Response({'error': 'El turno ya no está disponible.'}, status=400)
+
         with transaction.atomic():
-            # Asignar turno al cliente
-            turno.estado = 'RESERVADO'
-            turno.cliente = interes.cliente
-            turno.oferta_activa = False
-            turno.cliente_asignado_reoferta = interes.cliente
-            turno.monto_total = interes.servicio.precio * (1 - interes.descuento_aplicado / 100)
-            turno.tipo_pago = 'PENDIENTE'
-            turno.save()
+            # 1. CANJE (Si tenía turno viejo, chau)
+            turno_viejo = Turno.objects.filter(
+                cliente=interes.cliente,
+                fecha=turno_nuevo.fecha,
+                estado__in=['RESERVADO', 'CONFIRMADO']
+            ).exclude(id=turno_nuevo.id).first()
+
+            if turno_viejo:
+                turno_viejo.estado = 'CANCELADO'
+                turno_viejo.save()
+
+            # 2. CONFIGURAR NUEVO TURNO
+            # Calculamos precio con descuento usando Decimal para precisión
+            precio_original = interes.servicio.precio
+            descuento = Decimal(interes.descuento_aplicado)
+            factor = Decimal('1') - (descuento / Decimal('100'))
+            precio_final = precio_original * factor
             
-            # Limpiar servicios y asignar solo el servicio de la oferta
-            turno.servicios.clear()
-            turno.servicios.add(interes.servicio)
+            # --- AQUÍ ESTABA EL ERROR ---
+            turno_nuevo.cliente = interes.cliente  # ✅ Cliente va con Cliente (Usuario)
+            turno_nuevo.canal = 'WEB'              # ✅ Canal va con 'WEB' (Texto)
+            # ----------------------------
             
-            # Marcar oferta como aceptada
+            turno_nuevo.estado = 'RESERVADO'
+            turno_nuevo.oferta_activa = False
+            turno_nuevo.cliente_asignado_reoferta = interes.cliente
+            turno_nuevo.monto_total = precio_final
+            
+            # Configurar pagos
+            turno_nuevo.tipo_pago = tipo_pago
+            turno_nuevo.medio_pago = 'MERCADO_PAGO'
+            
+            # Cálculo de seña (50% o 100%)
+            if tipo_pago == 'SENA_50':
+                turno_nuevo.monto_seña = precio_final * Decimal('0.5')
+            else:
+                turno_nuevo.monto_seña = precio_final
+            
+            turno_nuevo.save()
+            turno_nuevo.servicios.clear()
+            turno_nuevo.servicios.add(interes.servicio)
+            
             interes.aceptar_oferta(ip_address=get_client_ip(request))
             
-            # ✅ CORREGIR CONSULTA - Rechazar otras ofertas usando turno_liberado
+            # Limpiar otros interesados
             InteresTurnoLiberado.objects.filter(
-                turno_liberado=turno,
+                turno_liberado=turno_nuevo,
                 estado_oferta='enviada'
             ).exclude(id=interes.id).update(estado_oferta='rechazada')
-        
-        # Notificar a otros interesados
+
+        # 3. GENERAR LINK MERCADO PAGO 💳
+        mp_link = None
+        try:
+            from .mercadopago_service import MercadoPagoService
+            mp_service = MercadoPagoService()
+            
+            monto_a_cobrar = float(turno_nuevo.monto_seña) 
+            
+            pref_data = {
+                'turno_id': turno_nuevo.id,
+                'monto_pago': monto_a_cobrar,
+                'cliente_nombre': f"{interes.cliente.nombre} {interes.cliente.apellido}",
+                'cliente_correo': interes.cliente.correo or "cliente@hairsoft.com",
+                'peluquero_nombre': f"{turno_nuevo.peluquero.nombre} {turno_nuevo.peluquero.apellido}",
+                'es_pago_total': (tipo_pago == 'TOTAL')
+            }
+            
+            resultado = mp_service.crear_preferencia_seña(pref_data)
+            if resultado['success']:
+                mp_link = resultado.get('init_point') or resultado.get('sandbox_init_point')
+                
+        except Exception as e:
+            print(f"⚠️ Error generando MP en oferta: {e}")
+
+        # Notificar a los perdedores (Background)
         from .tasks import notificar_turno_asignado
-        notificar_turno_asignado.delay(turno.id)
+        notificar_turno_asignado.delay(turno_nuevo.id)
         
         return Response({
             'success': True,
-            'message': '¡Felicidades! Turno asignado exitosamente.',
-            'turno_id': turno.id,
+            'mp_link': mp_link,
+            'message': 'Turno confirmado. Redirigiendo a pago...'
+        })
+        
+    except Exception as e:
+        print(f"❌ Error crítico en aceptar_oferta: {e}")
+        return Response({'error': f'Error interno: {str(e)}'}, status=500)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def obtener_info_oferta(request, turno_id, token):
+    try:
+        turno = Turno.objects.get(id=turno_id)
+        interes = InteresTurnoLiberado.objects.get(
+            token_oferta=token,
+            turno_liberado=turno,
+            estado_oferta='enviada'
+        )
+
+        if interes.oferta_expirada():
+            return Response({'error': 'La oferta ha expirado.'}, status=400)
+
+        # ✅ CÁLCULOS CORREGIDOS (TODO A DECIMAL)
+        # Convertimos los números fijos a Decimal para que Python no se queje
+        precio_original = interes.servicio.precio
+        descuento = interes.descuento_aplicado
+        
+        # Usamos Decimal('1') y Decimal('100') para mantener el tipo de dato
+        factor_descuento = Decimal('1') - (descuento / Decimal('100'))
+        precio_final = precio_original * factor_descuento
+        
+        # Aquí estaba el error: cambiamos 0.5 por Decimal('0.5')
+        monto_sena = precio_final * Decimal('0.5') 
+
+        return Response({
             'fecha': turno.fecha.strftime('%d/%m/%Y'),
             'hora': turno.hora.strftime('%H:%M'),
             'profesional': f"{turno.peluquero.nombre} {turno.peluquero.apellido}",
             'servicio': interes.servicio.nombre,
-            'precio_final': float(turno.monto_total)
+            'precio_original': float(precio_original),
+            'descuento': float(descuento),
+            'precio_final': float(precio_final),
+            'monto_sena': float(monto_sena),
+            'cliente': interes.cliente.nombre
         })
-        
-    except (Turno.DoesNotExist, InteresTurnoLiberado.DoesNotExist):
-        return Response({
-            'error': 'Oferta no válida o ya utilizada'
-        }, status=status.HTTP_404_NOT_FOUND)
-    except Exception as e:
-        logger.error(f"Error aceptando oferta: {str(e)}")
-        return Response({
-            'error': 'Error al procesar la aceptación'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    except (Turno.DoesNotExist, InteresTurnoLiberado.DoesNotExist):
+        return Response({'error': 'Oferta inválida o no encontrada.'}, status=404)
+    except Exception as e:
+        # Agregamos print para ver el error real si pasa otra cosa
+        print(f"❌ Error en obtener_info_oferta: {e}") 
+        return Response({'error': f'Error interno: {str(e)}'}, status=500)
+    
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -3531,3 +3560,50 @@ def get_client_ip(request):
     else:
         ip = request.META.get('REMOTE_ADDR')
     return ip
+
+# usuarios/views.py (Agregar al final o junto a las funciones de turnos)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated]) # Requiere login
+def cancelar_mi_turno(request, turno_id):
+    """
+    Permite al cliente cancelar SU PROPIO turno.
+    """
+    try:
+        turno = Turno.objects.get(id=turno_id)
+        
+        # 1. Verificar propiedad (¿Es mi turno?)
+        if turno.cliente != request.user:
+            # Si no es el dueño, verificamos si es admin por si acaso
+            es_admin = request.user.rol and request.user.rol.nombre.upper() in ['ADMINISTRADOR', 'RECEPCIONISTA']
+            if not es_admin:
+                return Response({'error': 'No tienes permiso para cancelar este turno. No te pertenece.'}, status=403)
+
+        # 2. Verificar tiempo (Regla de 3 horas para clientes)
+        # Nota: Si quieres que el admin saltee esto, usa la variable es_admin de arriba
+        ahora = timezone.now()
+        fecha_turno = timezone.make_aware(datetime.combine(turno.fecha, turno.hora))
+        tres_horas_antes = fecha_turno - timedelta(hours=3)
+        
+        if ahora > tres_horas_antes:
+             return Response({'error': 'Ya es tarde para cancelar (menos de 3hs). Debes llamar al local.'}, status=400)
+        
+        # Lógica directa aquí para simplificar:
+        turno.estado = 'CANCELADO'
+        turno.oferta_activa = True 
+        turno.fecha_expiracion_oferta = fecha_turno - timedelta(minutes=30) # Expira 30 min antes del turno
+        turno.save()
+        
+        # Disparar Celery para reoferta
+        from .tasks import procesar_reoferta_masiva
+        procesar_reoferta_masiva.delay(turno.id)
+        
+        return Response({
+            'status': 'ok',
+            'message': 'Tu turno ha sido cancelado correctamente.'
+        })
+
+    except Turno.DoesNotExist:
+        return Response({'error': 'Turno no encontrado'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)

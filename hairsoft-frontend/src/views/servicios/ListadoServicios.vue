@@ -3,7 +3,7 @@
     <div class="list-card">
       <div class="list-header">
         <div class="header-content">
-          <h1>Lista de Servicios</h1>
+          <h1>Gestión de servicios</h1>
           <p>Gestión completa de servicios de la peluquería</p>
         </div>
         <button @click="irARegistrar" class="register-button">

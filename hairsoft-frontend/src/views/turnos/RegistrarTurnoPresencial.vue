@@ -310,7 +310,7 @@
       </div>
     </div>
 
-    <!-- Modal de Hora COMPLETADO -->
+    <!-- Modal de Hora CORREGIDO -->
     <div v-if="mostrarModalHora" class="modal-overlay" @click="cerrarModalHora">
       <div class="modal-content" @click.stop>
         <div class="modal-header">
@@ -325,8 +325,14 @@
                 <label class="input-label-modal">HORA</label>
                 <select v-model="horaSeleccionada" class="time-select-modal">
                   <option value="">--</option>
-                  <option v-for="h in horasDisponibles" :key="h" :value="h">
+                  <option 
+                    v-for="h in horasDisponibles" 
+                    :key="h" 
+                    :value="h"
+                    :disabled="!estaHoraDisponible(h)"
+                  >
                     {{ h.toString().padStart(2, '0') }}
+                    {{ !estaHoraDisponible(h) ? ' (Ocupado)' : '' }}
                   </option>
                 </select>
               </div>
@@ -337,8 +343,14 @@
                 <label class="input-label-modal">MINUTOS</label>
                 <select v-model="minutoSeleccionado" class="time-select-modal">
                   <option value="">--</option>
-                  <option v-for="m in minutosDisponibles" :key="m" :value="m">
+                  <option 
+                    v-for="m in minutosDisponibles" 
+                    :key="m" 
+                    :value="m"
+                    :disabled="!estaMinutoDisponible(m)"
+                  >
                     {{ m.toString().padStart(2, '0') }}
+                    {{ !estaMinutoDisponible(m) ? ' (Ocupado)' : '' }}
                   </option>
                 </select>
               </div>
@@ -353,6 +365,9 @@
                   <div class="display-time-modal">
                     {{ horaSeleccionada.toString().padStart(2, '0') }}:{{ minutoSeleccionado.toString().padStart(2, '0') }}
                   </div>
+                  <div v-if="!horaValida" class="time-error-modal">
+                    ⚠️ Este horario está ocupado
+                  </div>
                 </div>
               </div>
               <button 
@@ -362,13 +377,9 @@
               >
                 {{ horaValida ? '✅ Confirmar Horario' : '❌ Horario No Disponible' }}
               </button>
-              
-              <div v-if="!horaValida && horaSeleccionada && minutoSeleccionado" class="time-error-modal">
-                Este horario no está disponible. Por favor selecciona otro.
-              </div>
             </div>
 
-            <!-- Horarios rápidos -->
+            <!-- Horarios rápidos - CORREGIDO -->
             <div class="quick-times-modal">
               <h4>🕐 Horarios Disponibles</h4>
               <div class="quick-time-grid-modal">
@@ -378,12 +389,19 @@
                   class="quick-time-option-modal"
                   :class="{ 
                     selected: form.hora === hora,
-                    disabled: !estaHorarioDisponible(hora)
+                    disabled: !estaHorarioDisponible(hora),
+                    occupied: !estaHorarioDisponible(hora)
                   }"
-                  @click="seleccionarHoraRapida(hora)"
+                  @click="estaHorarioDisponible(hora) ? seleccionarHoraRapida(hora) : null"
                 >
                   {{ hora }}
+                  <span v-if="!estaHorarioDisponible(hora)" class="occupied-badge">OCUPADO</span>
                 </div>
+              </div>
+              
+              <!-- Mensaje informativo -->
+              <div v-if="horariosOcupados.length > 0" class="ocupados-info">
+                <p>❌ Horarios ocupados: {{ horariosOcupados.join(', ') }}</p>
               </div>
             </div>
           </div>
@@ -485,18 +503,28 @@ export default {
       
       const horaStr = `${this.horaSeleccionada.toString().padStart(2, '0')}:${this.minutoSeleccionado.toString().padStart(2, '0')}`;
       return this.estaHorarioDisponible(horaStr);
+    },
+    // NUEVO: Lista de horarios ocupados para mostrar
+    horariosOcupados() {
+      if (!this.form.fecha || !this.form.peluquero) return [];
+      
+      return this.turnosOcupados
+        .filter(t => 
+          t.fecha === this.form.fecha && 
+          t.peluquero_id == this.form.peluquero &&
+          t.estado !== 'CANCELADO'
+        )
+        .map(t => t.hora)
+        .sort();
     }
   },
   methods: {
-    // CORREGIDO: Eliminar "undefined" del nombre del cliente
     seleccionarCliente(cliente) {
       this.form.cliente = cliente.id;
-      // CORRECCIÓN: Solo nombre y apellido, sin undefined
       this.form.clienteNombre = `${cliente.nombre || ''} ${cliente.apellido || ''}`.trim();
       this.clientesSugeridos = [];
     },
 
-    // NUEVO MÉTODO: Toggle para categorías
     toggleCategoria(categoriaId) {
       const index = this.categoriasSeleccionadas.indexOf(categoriaId);
       if (index === -1) {
@@ -521,7 +549,6 @@ export default {
       const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
       const today = new Date();
       
-      // CORRECCIÓN: Formatear la fecha manualmente en hora local
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
@@ -530,7 +557,7 @@ export default {
         dayName: days[date.getDay()],
         dayNum: date.getDate(),
         month: months[date.getMonth()],
-        fullDate: `${year}-${month}-${day}`,  // ← Fecha en formato local
+        fullDate: `${year}-${month}-${day}`,
         isToday: date.toDateString() === today.toDateString(),
         dateObj: date
       };
@@ -694,20 +721,36 @@ export default {
       return !turnoOcupado;
     },
 
+    // NUEVOS MÉTODOS: Verificar hora y minuto individualmente
+    estaHoraDisponible(hora) {
+      if (!this.form.fecha || !this.form.peluquero) return false;
+      
+      // Verificar si existe algún horario ocupado en esa hora
+      const horaStr = hora.toString().padStart(2, '0');
+      const horariosEnEstaHora = this.horariosOcupados.filter(h => 
+        h.startsWith(horaStr)
+      );
+      
+      return horariosEnEstaHora.length < 4; // Máximo 4 horarios por hora (00, 15, 30, 45)
+    },
+
+    estaMinutoDisponible(minuto) {
+      if (!this.horaSeleccionada || !this.form.fecha || !this.form.peluquero) return true;
+      
+      const horaCompleta = `${this.horaSeleccionada.toString().padStart(2, '0')}:${minuto.toString().padStart(2, '0')}`;
+      return this.estaHorarioDisponible(horaCompleta);
+    },
+
     limpiarFechaHora() {
       this.form.hora = "";
       this.form.fecha = "";
     },
 
-    seleccionarHora(hora) {
+    seleccionarHoraRapida(hora) {
       if (this.estaHorarioDisponible(hora)) {
         this.form.hora = hora;
         this.cerrarModalHora();
       }
-    },
-    
-    seleccionarHoraRapida(hora) {
-      this.seleccionarHora(hora);
     },
     
     abrirModalHora() {
@@ -730,46 +773,56 @@ export default {
     },
     
     async crearTurno() {
-      if (!this.formularioValido) {
-        this.mensaje = "❌ Completa todos los campos obligatorios.";
-        return;
-      }
+          if (!this.formularioValido) {
+            this.mensaje = "❌ Completa todos los campos obligatorios.";
+            return;
+          }
 
-      const payload = {
-        cliente_id: this.form.cliente,
-        peluquero_id: this.form.peluquero,
-        servicios_ids: this.form.servicios_ids,
-        fecha: this.form.fecha,
-        hora: this.form.hora,
-        canal: 'PRESENCIAL',
-        tipo_pago: this.form.tipo_pago,
-        medio_pago: this.form.medio_pago,
-        monto_total: this.calcularTotal(),
-        monto_seña: this.form.tipo_pago === 'SENA_50' ? this.calcularSena() : 0
-      };
+          const payload = {
+            cliente_id: this.form.cliente,
+            peluquero_id: this.form.peluquero,
+            servicios_ids: this.form.servicios_ids,
+            fecha: this.form.fecha,
+            hora: this.form.hora,
+            canal: 'PRESENCIAL',
+            tipo_pago: this.form.tipo_pago,
+            medio_pago: this.form.medio_pago,
+            monto_total: this.calcularTotal(),
+            monto_seña: this.form.tipo_pago === 'SENA_50' ? this.calcularSena() : 0
+          };
 
-      try {
-        this.mensaje = "🔄 Creando turno...";
-        
-        const res = await fetch("http://localhost:8000/usuarios/api/turnos/crear/", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        
-        const data = await res.json();
-        
-        if (res.ok && data.status === 'ok') {
-          this.mensaje = "✅ Turno registrado correctamente.";
-          this.limpiarFormulario();
-        } else {
-          this.mensaje = data.message || "❌ Error al registrar el turno.";
-        }
-      } catch (err) {
-        console.error("Error:", err);
-        this.mensaje = "❌ No se pudo conectar con el servidor.";
-      }
-    },
+          try {
+            this.mensaje = "🔄 Creando turno...";
+            
+            const token = localStorage.getItem('token');
+            const headers = { 
+              "Content-Type": "application/json",
+              "Authorization": token ? `Token ${token}` : ''
+            };
+
+            const res = await fetch("http://localhost:8000/usuarios/api/turnos/crear/", {
+              method: "POST",
+              headers: headers,
+              body: JSON.stringify(payload),
+            });
+            
+            const data = await res.json();
+            
+            if (res.ok && data.status === 'ok') {
+              this.mensaje = "✅ Turno registrado correctamente. Redirigiendo...";
+              
+              setTimeout(() => {
+                this.$router.push('/turnos');
+              }, 1500);
+              
+            } else {
+              this.mensaje = data.message || "❌ Error al registrar el turno.";
+            }
+          } catch (err) {
+            console.error("Error:", err);
+            this.mensaje = "❌ No se pudo conectar con el servidor.";
+          }
+        },
     
     limpiarFormulario() {
       this.form = {
@@ -801,6 +854,72 @@ export default {
 </script>
 
 <style scoped>
+/* ESTILOS NUEVOS PARA HORARIOS OCUPADOS */
+
+/* Estilo para opciones deshabilitadas en selects */
+.time-select-modal option:disabled {
+  background-color: #f8d7da;
+  color: #721c24;
+  opacity: 0.6;
+}
+
+/* Estilo mejorado para horarios ocupados en el grid */
+.quick-time-option-modal.occupied {
+  background: #f8d7da !important;
+  color: #721c24 !important;
+  border-color: #f5c6cb !important;
+  cursor: not-allowed !important;
+  opacity: 0.7;
+}
+
+.quick-time-option-modal.disabled {
+  background: #f8f9fa !important;
+  color: #6c757d !important;
+  border-color: #e9ecef !important;
+  cursor: not-allowed !important;
+  opacity: 0.6;
+}
+
+.occupied-badge {
+  display: block;
+  font-size: 0.7em;
+  background: #dc3545;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 8px;
+  margin-top: 5px;
+  font-weight: bold;
+}
+
+.ocupados-info {
+  margin-top: 15px;
+  padding: 12px;
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 8px;
+  color: #856404;
+  font-size: 0.9em;
+}
+
+.ocupados-info p {
+  margin: 0;
+}
+
+/* Mejorar el estilo del botón deshabilitado */
+.confirm-time-btn-modal:disabled {
+  background: #6c757d !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Efecto hover solo para horarios disponibles */
+.quick-time-option-modal:not(.disabled):not(.occupied):hover {
+  border-color: #007bff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
+}
+
 /* CORRECCIÓN: Campo cliente ligeramente a la derecha */
 .cliente-section {
   margin-left: 10px;
@@ -888,9 +1007,6 @@ export default {
   font-size: 0.8em;
   color: #6c757d;
 }
-
-/* Mantener todos los otros estilos existentes del código anterior... */
-/* [Aquí van todos los otros estilos que ya tenías] */
 
 .pedido-container {
   max-width: 1000px;
@@ -1695,7 +1811,7 @@ export default {
   font-size: 1em;
 }
 
-.quick-time-option-modal:hover:not(.disabled) {
+.quick-time-option-modal:hover:not(.disabled):not(.occupied) {
   border-color: #007bff;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);

@@ -66,6 +66,7 @@ import Swal from 'sweetalert2';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-vue-next';
 
 const router = useRouter();
+// Asegúrate que este puerto sea el correcto (normalmente 8000 para Django)
 const API_BASE = 'http://127.0.0.1:8000/usuarios';
 
 const credentials = ref({
@@ -89,25 +90,24 @@ const handleLogin = async () => {
     const response = await axios.post(`${API_BASE}/api/auth/login/`, credentials.value);
     
     if (response.data.status === 'ok') {
-      // Guardar sesión COMPLETA
+      // ✅ 1. GUARDAR TOKEN (¡CRUCIAL!)
+      localStorage.setItem('token', response.data.token);
+      
+      // Guardar resto de la sesión
       localStorage.setItem('user_id', response.data.user_id);
       localStorage.setItem('user_rol', response.data.rol);
-      localStorage.setItem('user_nombre', response.data.nombre || 'Usuario'); // 🔥 NUEVO
-      localStorage.setItem('user_apellido', response.data.apellido || ''); // 🔥 NUEVO
+      localStorage.setItem('user_nombre', response.data.nombre || 'Usuario');
+      localStorage.setItem('user_apellido', response.data.apellido || '');
       
-      // Configurar headers globales
+      // ✅ 2. Configurar headers globales para Axios
+      // Esto ayuda a que otras peticiones simples ya tengan el token
+      axios.defaults.headers.common['Authorization'] = `Token ${response.data.token}`;
       axios.defaults.headers.common['User-Id'] = response.data.user_id;
       axios.defaults.headers.common['User-Rol'] = response.data.rol;
 
       // Notificar a todos los componentes que el usuario cambió
       window.dispatchEvent(new Event('userChanged'));
       
-      // Forzar actualización del storage
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: 'user_id',
-        newValue: response.data.user_id
-      }));
-
       const Toast = Swal.mixin({
         toast: true,
         position: 'top-end',
@@ -138,7 +138,7 @@ const handleLogin = async () => {
     Swal.fire({
       icon: 'error',
       title: 'Acceso denegado',
-      text: error.response?.data?.message || 'Credenciales incorrectas o servidor no disponible',
+      text: error.response?.data?.message || error.response?.data?.error || 'Credenciales incorrectas',
       confirmButtonColor: '#007bff'
     });
   } finally {
@@ -364,14 +364,14 @@ const handleLogin = async () => {
 
 .footer-text {
   text-align: center;
-  color: #64748b;          
-  font-size: 13px;         
-  margin-top: 30px;       
-  padding-top: 15px;      
-  border-top: 1px solid #d1d5db; 
-  font-weight: 400;        
-  letter-spacing: 0.3px;   
-  line-height: 1.6;        
+  color: #64748b;
+  font-size: 13px;
+  margin-top: 30px;
+  padding-top: 15px;
+  border-top: 1px solid #d1d5db;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+  line-height: 1.6;
 }
 
 @media (max-width: 480px) {

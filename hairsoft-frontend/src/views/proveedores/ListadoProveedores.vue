@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="list-header">
         <div class="header-content">
-          <h1>Proveedores Registrados</h1>
+          <h1>Gestión de Proveedores</h1>
           <p>Gestión de proveedores del sistema</p>
         </div>
         <div class="header-buttons">

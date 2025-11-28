@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="list-header">
         <div class="header-content">
-          <h1>Lista de Roles</h1>
+          <h1>Gestión de Roles</h1>
           <p>Gestión completa de los roles del sistema</p>
         </div>
         <div class="header-buttons" style="display: flex; gap: 12px;">

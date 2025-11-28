@@ -97,6 +97,7 @@ urlpatterns = [
     path('api/turnos/<int:turno_id>/modificar/', func_views.modificar_turno, name='modificar_turno'),
     path('api/turnos/<int:turno_id>/procesar-sena/', func_views.procesar_sena_turno, name='procesar_sena_turno'),
     path('api/turnos/verificar-disponibilidad/', func_views.verificar_disponibilidad, name='verificar_disponibilidad'),
+    path('api/turnos/cancelar-propio/<int:turno_id>/', func_views.cancelar_mi_turno, name='cancelar_mi_turno'),
 
     # ================================
     # ✅✅✅ RUTA CRÍTICA FALTANTE - REGISTRAR INTERÉS
@@ -226,7 +227,8 @@ urlpatterns = [
     path('api/reoferta/forzar/<int:turno_id>/', func_views.forzar_reoferta, name='forzar-reoferta'),
     path('api/intereses-turnos/cliente/<int:cliente_id>/', func_views.listar_intereses_cliente, name='listar-intereses-cliente'),
     path('api/reoferta/respuesta/<int:interes_id>/', func_views.procesar_respuesta_oferta, name='procesar-respuesta-oferta'),
-
+    path('api/turnos/<int:turno_id>/oferta-info/<str:token>/', func_views.obtener_info_oferta, name='oferta_info'),
+    
     # ================================
     # OTRAS RUTAS
     # ================================

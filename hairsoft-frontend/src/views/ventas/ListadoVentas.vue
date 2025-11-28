@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="list-header">
         <div class="header-content">
-          <h1>Ventas Registradas</h1>
+          <h1>Gestión de ventas</h1>
           <p>Gestión de ventas del sistema</p>
         </div>
         <button @click="mostrarRegistrar = true" class="register-button">

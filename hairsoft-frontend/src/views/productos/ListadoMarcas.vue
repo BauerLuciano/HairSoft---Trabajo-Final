@@ -1,17 +1,61 @@
 <template>
   <div class="list-container">
-    <div class="list-card">
+    <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarEditar }">
+      <!-- Header -->
       <div class="list-header">
         <div class="header-content">
-          <h1>Marcas</h1>
-          <p>Listado de marcas con productos y proveedores asociados</p>
+          <h1>Gestión de Marcas</h1>
+          <p>Administración y control de marcas del sistema</p>
         </div>
-        <div style="display:flex; gap:12px;">
-          <router-link to="/marcas/crear" class="register-button">➕ Registrar Marca</router-link>
-          <router-link to="/productos" class="register-button">← Volver a Productos</router-link>
+        <div class="header-buttons" style="display: flex; gap: 12px;">
+          <button @click="mostrarRegistrar = true" class="register-button">
+            <Plus :size="18" />
+            Registrar Marca
+          </button>
+          <router-link to="/productos" class="register-button secondary">
+            <ArrowLeft :size="18" />
+            Volver a Productos
+          </router-link>
         </div>
       </div>
 
+      <!-- Filtros -->
+      <div class="filters-container">
+        <div class="filters-grid">
+          <div class="filter-group">
+            <label>Buscar</label>
+            <input v-model="filtros.busqueda" placeholder="Nombre de marca..." class="filter-input"/>
+          </div>
+
+          <div class="filter-group">
+            <label>Estado</label>
+            <select v-model="filtros.estado" class="filter-input">
+              <option value="">Todos</option>
+              <option value="ACTIVO">Activos</option>
+              <option value="INACTIVO">Inactivos</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>Productos</label>
+            <select v-model="filtros.productos" class="filter-input">
+              <option value="">Todos</option>
+              <option value="con">Con productos</option>
+              <option value="sin">Sin productos</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>&nbsp;</label>
+            <button @click="limpiarFiltros" class="clear-filters-btn">
+              <Trash2 :size="16" />
+              Limpiar filtros
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabla de marcas -->
       <div class="table-container">
         <table class="users-table">
           <thead>
@@ -20,76 +64,370 @@
               <th>Nombre</th>
               <th>Productos asociados</th>
               <th>Proveedores asociados</th>
+              <th>Estado</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="marca in marcas" :key="marca.id">
-              <td>{{ marca.id }}</td>
-              <td>{{ marca.nombre }}</td>
-              <td>{{ marca.productos_count }}</td>
-              <td>{{ marca.proveedores_count }}</td>
+            <tr v-for="marca in marcasPaginados" :key="marca.id">
+              <td><strong>#{{ marca.id }}</strong></td>
               <td>
-                <router-link :to="`/marcas/modificar/${marca.id}`" class="action-button edit">✏️</router-link>
-                <button @click="eliminarMarca(marca)" class="action-button delete">🗑️</button>
+                <div class="marca-info">
+                  <strong>{{ marca.nombre || '–' }}</strong>
+                </div>
+              </td>
+              <td>
+                <span class="badge-estado" :class="getProductosClass(marca.productos_count)">
+                  {{ marca.productos_count || 0 }} productos
+                </span>
+              </td>
+              <td>
+                <div class="proveedores-lista">
+                  <div v-for="(proveedor, index) in marca.proveedores_nombres || []" :key="index" 
+                       class="proveedor-item">
+                    <span class="proveedor-nombre">{{ proveedor }}</span>
+                  </div>
+                  <div v-if="marca.total_proveedores > 3" class="mas-proveedores">
+                    +{{ marca.total_proveedores - 3 }} más...
+                  </div>
+                  <div v-else-if="!marca.proveedores_count || marca.proveedores_count === 0" class="sin-proveedores">
+                    Sin proveedor
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span class="badge-estado" :class="getEstadoClass(marca.estado)">
+                  {{ marca.estado === 'ACTIVO' ? 'Activo' : 'Inactivo' }}
+                </span>
+              </td>
+              <td>
+                <div class="action-buttons">
+                  <button @click="editarMarca(marca)" class="action-button edit" title="Editar marca">
+                    <Edit3 :size="14" />
+                  </button>
+                  <button @click="cambiarEstadoMarca(marca)" class="action-button" 
+                          :class="marca.estado === 'ACTIVO' ? 'delete' : 'success'" 
+                          :title="marca.estado === 'ACTIVO' ? 'Desactivar marca' : 'Activar marca'">
+                    <Power :size="14" v-if="marca.estado === 'ACTIVO'" />
+                    <CheckCircle :size="14" v-else />
+                  </button>
+                  <button @click="eliminarMarca(marca)" class="action-button delete" title="Eliminar marca">
+                    <Trash2 :size="14" />
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
         </table>
 
-        <div v-if="marcas.length === 0" class="no-results">
-          No hay marcas registradas
+        <div v-if="marcasPaginados.length === 0" class="no-results">
+          <PackageX class="no-results-icon" :size="48" />
+          <p>No se encontraron marcas</p>
+          <small>Intenta con otros términos de búsqueda</small>
         </div>
+      </div>
+
+      <!-- Mostrando cantidad -->
+      <div class="usuarios-count">
+        <p>
+          <Package :size="16" />
+          Mostrando {{ marcasPaginados.length }} de {{ marcasFiltradas.length }} marcas
+        </p>
+        <div class="alertas-container">
+          <span v-if="marcasInactivas > 0" class="alerta-inactivo">
+            <PowerOff :size="14" />
+            {{ marcasInactivas }} inactivas
+          </span>
+          <span v-if="marcasSinProductos > 0" class="alerta-stock">
+            <PackageX :size="14" />
+            {{ marcasSinProductos }} sin productos
+          </span>
+        </div>
+      </div>
+
+      <!-- Paginación -->
+      <div class="pagination">
+        <button @click="paginaAnterior" :disabled="pagina === 1">
+          <ChevronLeft :size="16" />
+          Anterior
+        </button>
+        <span>Página {{ pagina }} de {{ totalPaginas }}</span>
+        <button @click="paginaSiguiente" :disabled="pagina === totalPaginas">
+          Siguiente
+          <ChevronRight :size="16" />
+        </button>
+      </div>
+    </div>
+
+    <!-- Modal Registrar Marca -->
+    <div v-if="mostrarRegistrar" class="modal-overlay" @click.self="cerrarModal">
+      <div class="modal-content">
+        <RegistrarMarca 
+          @marca-registrada="marcaRegistrada"
+          @cancelar="cerrarModal"
+        />
+      </div>
+    </div>
+
+    <!-- Modal Editar Marca -->
+    <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
+      <div class="modal-content">
+        <button class="modal-close" @click="cerrarModalEditar" title="Cerrar formulario">
+          <X :size="20" />
+        </button>
+        <ModificarMarca 
+          :marca-id="marcaEditando?.id" 
+          @marca-actualizada="marcaActualizada"
+          @cancelar="cerrarModalEditar"
+        />
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import axios from "axios";
+import { ref, computed, onMounted, watch } from 'vue'
+import axios from 'axios'
+import Swal from 'sweetalert2'
+import RegistrarMarca from './RegistrarMarca.vue'
+import ModificarMarca from './ModificarMarca.vue'
+import { 
+  Package, PackageX, Plus, Edit3, Power, CheckCircle, PowerOff,
+  ChevronLeft, ChevronRight, Trash2, ArrowLeft, X
+} from 'lucide-vue-next'
+
+const API_BASE = 'http://127.0.0.1:8000'
 
 export default {
   name: "ListadoMarcas",
-  data() {
+  components: {
+    RegistrarMarca,
+    ModificarMarca
+  },
+  setup() {
+    const marcas = ref([])
+    const filtros = ref({ 
+      busqueda: '', 
+      estado: '', 
+      productos: '' 
+    })
+
+    const pagina = ref(1)
+    const itemsPorPagina = 8
+    const mostrarRegistrar = ref(false)
+    const mostrarEditar = ref(false)
+    const marcaEditando = ref(null)
+
+    const cargarMarcas = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/usuarios/api/marcas/`)
+        marcas.value = res.data.sort((a, b) => b.id - a.id)
+        console.log('Marcas cargadas:', marcas.value)
+      } catch (err) {
+        console.error('❌ Error al cargar marcas:', err)
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: 'No se pudo cargar la lista de marcas',
+          confirmButtonColor: '#0ea5e9'
+        })
+      }
+    }
+
+    const getEstadoClass = (estado) => {
+      if (estado === 'ACTIVO') return 'estado-success'
+      if (estado === 'INACTIVO') return 'estado-danger'
+      return 'estado-secondary'
+    }
+
+    const getProductosClass = (cantidad) => {
+      if (cantidad === 0) return 'estado-danger'
+      if (cantidad <= 3) return 'estado-warning'
+      return 'estado-success'
+    }
+
+    onMounted(async () => {
+      await cargarMarcas()
+    })
+
+    const marcasFiltradas = computed(() => {
+      return marcas.value.filter(m => {
+        const busca = filtros.value.busqueda.toLowerCase()
+        const matchBusqueda = !busca || (m.nombre?.toLowerCase().includes(busca))
+        
+        const matchEstado = !filtros.value.estado || m.estado === filtros.value.estado
+        
+        const matchProductos = !filtros.value.productos || 
+          (filtros.value.productos === 'con' && m.productos_count > 0) ||
+          (filtros.value.productos === 'sin' && (!m.productos_count || m.productos_count === 0))
+
+        return matchBusqueda && matchEstado && matchProductos
+      })
+    })
+
+    const marcasInactivas = computed(() => 
+      marcasFiltradas.value.filter(m => m.estado === 'INACTIVO').length
+    )
+
+    const marcasSinProductos = computed(() => 
+      marcasFiltradas.value.filter(m => !m.productos_count || m.productos_count === 0).length
+    )
+
+    const totalPaginas = computed(() => 
+      Math.max(1, Math.ceil(marcasFiltradas.value.length / itemsPorPagina))
+    )
+
+    const marcasPaginados = computed(() => {
+      const inicio = (pagina.value - 1) * itemsPorPagina
+      return marcasFiltradas.value.slice(inicio, inicio + itemsPorPagina)
+    })
+
+    const paginaAnterior = () => { 
+      if (pagina.value > 1) pagina.value-- 
+    }
+
+    const paginaSiguiente = () => { 
+      if (pagina.value < totalPaginas.value) pagina.value++ 
+    }
+
+    const editarMarca = (marca) => { 
+      marcaEditando.value = marca; 
+      mostrarEditar.value = true 
+    }
+
+    const marcaRegistrada = async () => { 
+      await cargarMarcas(); 
+      cerrarModal(); 
+      pagina.value = 1 
+    }
+
+    const marcaActualizada = async () => { 
+      await cargarMarcas(); 
+      cerrarModalEditar() 
+    }
+
+    const cambiarEstadoMarca = async (marca) => {
+      const nuevoEstado = marca.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO'
+      const accion = nuevoEstado === 'ACTIVO' ? 'activar' : 'desactivar'
+      
+      const result = await Swal.fire({
+        title: `¿${accion.charAt(0).toUpperCase() + accion.slice(1)} marca?`,
+        text: `¿Está seguro de ${accion} la marca "${marca.nombre}"?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#0ea5e9',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: `Sí, ${accion}`,
+        cancelButtonText: 'Cancelar'
+      })
+      
+      if (!result.isConfirmed) return
+      
+      try {
+        const res = await axios.post(`${API_BASE}/usuarios/api/marcas/cambiar-estado/${marca.id}/`)
+        
+        if (res.data.status === 'ok') {
+          // Actualizar el estado localmente
+          marca.estado = nuevoEstado
+          
+          Swal.fire({
+            icon: 'success',
+            title: '¡Éxito!',
+            text: res.data.message,
+            confirmButtonColor: '#0ea5e9'
+          })
+        }
+      } catch (err) { 
+        console.error(err)
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: `No se pudo ${accion} la marca`,
+          confirmButtonColor: '#0ea5e9'
+        })
+      }
+    }
+
+    const eliminarMarca = async (marca) => {
+      const result = await Swal.fire({
+        title: '¿Eliminar marca?',
+        text: `¿Está seguro de eliminar la marca "${marca.nombre}"?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#0ea5e9',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+      })
+      
+      if (!result.isConfirmed) return
+
+      try {
+        await axios.delete(`${API_BASE}/usuarios/api/marcas/eliminar/${marca.id}/`)
+        marcas.value = marcas.value.filter(m => m.id !== marca.id)
+        Swal.fire({
+          icon: 'success',
+          title: '¡Éxito!',
+          text: 'Marca eliminada correctamente',
+          confirmButtonColor: '#0ea5e9'
+        })
+      } catch (error) {
+        console.error("Error al eliminar marca:", error)
+        const errorMsg = error.response?.data?.error || "No se pudo eliminar la marca"
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: errorMsg,
+          confirmButtonColor: '#0ea5e9'
+        })
+      }
+    }
+
+    const limpiarFiltros = () => { 
+      filtros.value = { busqueda: '', estado: '', productos: '' }
+      pagina.value = 1 
+    }
+
+    const cerrarModal = () => { mostrarRegistrar.value = false }
+    const cerrarModalEditar = () => { mostrarEditar.value = false; marcaEditando.value = null }
+
+    watch(filtros, () => { pagina.value = 1 }, { deep: true })
+
     return {
-      marcas: [],
-    };
-  },
-  mounted() {
-    this.cargarMarcas();
-  },
-  methods: {
-    async cargarMarcas() {
-      try {
-        const response = await axios.get("http://localhost:8000/usuarios/api/marcas/");
-        this.marcas = response.data;
-      } catch (error) {
-        console.error("Error al cargar marcas:", error);
-        alert("Error al cargar las marcas.");
-      }
-    },
-
-    async eliminarMarca(marca) {
-      if (!confirm(`¿Seguro que deseas eliminar la marca "${marca.nombre}"?`)) {
-        return;
-      }
-
-      try {
-        await axios.delete(`http://localhost:8000/usuarios/api/marcas/${marca.id}/`);
-        this.marcas = this.marcas.filter(m => m.id !== marca.id);
-      } catch (error) {
-        console.error("Error al eliminar marca:", error);
-        alert("No se pudo eliminar la marca.");
-      }
-    },
-  },
-};
+      marcas,
+      filtros,
+      pagina,
+      itemsPorPagina,
+      mostrarRegistrar,
+      mostrarEditar,
+      marcaEditando,
+      marcasFiltradas,
+      marcasPaginados,
+      marcasInactivas,
+      marcasSinProductos,
+      totalPaginas,
+      cargarMarcas,
+      getEstadoClass,
+      getProductosClass,
+      editarMarca,
+      cambiarEstadoMarca,
+      eliminarMarca,
+      paginaAnterior,
+      paginaSiguiente,
+      limpiarFiltros,
+      marcaRegistrada,
+      marcaActualizada,
+      cerrarModal,
+      cerrarModalEditar
+    }
+  }
+}
 </script>
 
 
 <style scoped>
 /* ========================================
-   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE - PRODUCTOS
+   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE - MARCAS
    ======================================== */
 
 /* Tarjeta principal - CON VARIABLES */
@@ -117,10 +455,54 @@ export default {
   border-radius: 24px 24px 0 0;
 }
 
-.list-card { padding: 24px; }
-.users-table { width:100%; border-collapse: collapse; }
-.users-table th, .users-table td { padding: 10px; border-bottom: 1px solid #eee; text-align:left }
-.action-button { margin-right:8px; }
+/* BADGES DE ESTADO - CON VARIABLES */
+.badge-estado {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.estado-warning {
+  background: var(--bg-tertiary);
+  color: #f59e0b;
+  border: 2px solid #f59e0b;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+}
+
+.estado-info {
+  background: var(--bg-tertiary);
+  color: #0ea5e9;
+  border: 2px solid #0ea5e9;
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.3);
+}
+
+.estado-success {
+  background: var(--bg-tertiary);
+  color: #10b981;
+  border: 2px solid #10b981;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+}
+
+.estado-danger {
+  background: var(--bg-tertiary);
+  color: var(--error-color);
+  border: 2px solid var(--error-color);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+.estado-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  border: 2px solid var(--text-tertiary);
+  box-shadow: 0 0 8px rgba(156, 163, 175, 0.2);
+}
 
 /* HEADER - CON VARIABLES */
 .list-header {
@@ -168,6 +550,19 @@ export default {
   box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35);
   position: relative;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.register-button.secondary {
+  background: linear-gradient(135deg, #6b7280, #4b5563);
+  box-shadow: 0 6px 20px rgba(107, 114, 128, 0.35);
+}
+
+.register-button.secondary:hover {
+  background: linear-gradient(135deg, #4b5563, #374151);
 }
 
 .register-button::before {
@@ -251,6 +646,9 @@ export default {
   text-transform: uppercase;
   font-size: 0.85rem;
   letter-spacing: 0.8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .clear-filters-btn:hover {
@@ -309,37 +707,11 @@ export default {
   transition: all 0.2s ease;
 }
 
-/* Estilos específicos de productos */
-.descripcion-cell {
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stock-bajo {
-  color: #f59e0b;
-  font-weight: bold;
-  background: rgba(245, 158, 11, 0.1);
-  padding: 4px 8px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
+/* Información de la marca */
+.marca-info {
+  display: flex;
+  flex-direction: column;
   gap: 4px;
-}
-
-.stock-critico {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.stock-bajo-row {
-  background: rgba(245, 158, 11, 0.05);
-  border-left: 3px solid #f59e0b;
-}
-
-.alerta-icon {
-  font-size: 12px;
 }
 
 /* ESTILOS PARA LA LISTA DE PROVEEDORES EN LA TABLA */
@@ -396,7 +768,7 @@ export default {
 }
 
 .action-button {
-  padding: 8px 14px;
+  padding: 8px;
   border: none;
   border-radius: 10px;
   font-size: 0.8rem;
@@ -404,11 +776,11 @@ export default {
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 4px;
-  color: white;
+  justify-content: center;
   transition: all 0.3s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  width: 40px;
+  height: 40px;
+  text-decoration: none;
 }
 
 .action-button.edit {
@@ -436,11 +808,17 @@ export default {
   border-color: var(--error-color);
 }
 
-/* ESTADOS DE CARGA - CON VARIABLES */
-.no-results {
-  text-align: center;
-  padding: 80px;
-  color: var(--text-secondary);
+.action-button.success {
+  background: var(--bg-tertiary);
+  border: 1px solid #10b981;
+  color: #10b981;
+}
+
+.action-button.success:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+  border-color: #10b981;
 }
 
 /* CONTADOR Y MENSAJES - CON VARIABLES */
@@ -462,17 +840,67 @@ export default {
   font-weight: 600;
   letter-spacing: 0.5px;
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alertas-container {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .alerta-stock {
   background: var(--bg-tertiary);
   color: #f59e0b;
   border: 2px solid #f59e0b;
-  padding: 10px 18px;
+  padding: 8px 16px;
   border-radius: 20px;
-  font-weight: 800;
-  letter-spacing: 0.8px;
-  box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alerta-inactivo {
+  background: var(--bg-tertiary);
+  color: #ef4444;
+  border: 2px solid #ef4444;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ESTADOS DE CARGA - CON VARIABLES */
+.no-results {
+  text-align: center;
+  padding: 80px;
+  color: var(--text-secondary);
+}
+
+.no-results-icon {
+  margin-bottom: 15px;
+  opacity: 0.5;
+  color: var(--text-tertiary);
+}
+
+.no-results p {
+  margin: 0 0 8px 0;
+  font-size: 1.1em;
+  color: var(--text-primary);
+}
+
+.no-results small {
+  font-size: 0.9em;
+  color: var(--text-tertiary);
 }
 
 /* PAGINACIÓN - CON VARIABLES */
@@ -496,6 +924,9 @@ export default {
   text-transform: uppercase;
   letter-spacing: 1px;
   font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .pagination button:hover:not(:disabled) {
@@ -520,103 +951,6 @@ export default {
   font-size: 0.95rem;
 }
 
-/* OVERLAY Y MODALES - CON VARIABLES */
-.overlay-activo {
-  opacity: 0.3;
-  filter: blur(5px);
-  pointer-events: none;
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.88);
-  backdrop-filter: blur(12px);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-  animation: fadeInModal 0.3s ease;
-}
-
-@keyframes fadeInModal {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.modal-content {
-  position: relative;
-  animation: slideUp 0.3s ease;
-  max-height: 85vh;
-  max-width: 90vw;
-  width: auto;
-  overflow-y: auto;
-  border-radius: 16px;
-  background: var(--bg-secondary);
-  box-shadow: var(--shadow-lg);
-  border: 2px solid var(--border-color);
-  padding: 0;
-  margin: 20px;
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(40px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.modal-close {
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  background: var(--bg-tertiary);
-  border: 2px solid var(--error-color);
-  border-radius: 12px;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--error-color);
-  box-shadow: var(--shadow-md);
-  transition: all 0.3s ease;
-  z-index: 1001;
-  font-weight: 900;
-  font-size: 1.2rem;
-}
-
-.modal-close:hover {
-  transform: scale(1.15) rotate(90deg);
-  box-shadow: 0 6px 25px rgba(239, 68, 68, 0.6);
-  background: var(--hover-bg);
-  border-color: var(--error-color);
-}
-
-/* SCROLLBAR PERSONALIZADO - CON VARIABLES */
-.modal-content::-webkit-scrollbar,
-.table-container::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
-}
-
-.modal-content::-webkit-scrollbar-track,
-.table-container::-webkit-scrollbar-track {
-  background: var(--bg-primary);
-  border-radius: 6px;
-}
-
-.modal-content::-webkit-scrollbar-thumb,
-.table-container::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 6px;
-  border: 2px solid var(--bg-primary);
-}
-
-.modal-content::-webkit-scrollbar-thumb:hover,
-.table-container::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-color);
-}
-
 /* RESPONSIVE */
 @media (max-width: 768px) {
   .list-card {
@@ -637,12 +971,6 @@ export default {
     grid-template-columns: 1fr;
   }
   
-  .modal-content {
-    max-width: 95vw;
-    margin: 12px;
-    border-radius: 12px;
-  }
-  
   .users-table {
     font-size: 0.85rem;
   }
@@ -660,6 +988,12 @@ export default {
   .usuarios-count {
     flex-direction: column;
     align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .alertas-container {
+    flex-direction: column;
+    width: 100%;
   }
   
   .pagination {
@@ -686,6 +1020,26 @@ export default {
   
   .filter-input, .filter-select {
     font-size: 0.9rem;
+  }
+  
+  .badge-estado {
+    font-size: 0.65rem;
+    padding: 5px 10px;
+  }
+  
+  .action-button {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .header-buttons {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .register-button {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>

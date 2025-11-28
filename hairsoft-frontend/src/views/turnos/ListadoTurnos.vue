@@ -5,7 +5,7 @@
       <div class="list-header">
         <div class="header-content">
           <h1>
-            Lista de Turnos
+            Gestión de turnos
           </h1>
           <p>Gestión y administración de turnos de la barbería</p>
         </div>

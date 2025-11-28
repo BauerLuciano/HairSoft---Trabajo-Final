@@ -16,6 +16,7 @@ const routes = [
   { path: '/turnos/crear-presencial', name: 'RegistrarTurnoPresencial', component: () => import('@/views/turnos/RegistrarTurnoPresencial.vue') },
   { path: '/turnos/crear-web', name: 'RegistrarTurnoWeb', component: () => import('@/views/turnos/RegistrarTurnoWeb.vue') },
   { path: '/turnos/modificar/:id', name: 'ModificarTurno', component: () => import('@/views/turnos/ModificarTurno.vue') },
+  { path: '/aceptar-oferta/:turno_id/:token', name: 'AceptarOferta', component: () => import('@/views/turnos/AceptarOferta.vue') },
 
   // Servicios
   { path: '/servicios', name: 'ListadoServicios', component: () => import('@/views/servicios/ListadoServicios.vue') },
