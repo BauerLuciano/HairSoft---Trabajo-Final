@@ -3,7 +3,7 @@ from celery import shared_task
 from django.utils import timezone
 from datetime import timedelta
 import logging
-from .models import Turno, InteresTurnoLiberado, ConfiguracionReoferta
+from .models import Turno, InteresTurnoLiberado, ConfiguracionReoferta, Cotizacion
 import requests
 from django.core.mail import send_mail
 from django.conf import settings
@@ -179,3 +179,39 @@ def notificar_turno_asignado(turno_id):
 @shared_task
 def expirar_reoferta(turno_id):
     pass # Simplificado para que no de error si se llama
+
+
+#PROVEEDORES Y COTIZACIONES
+
+@shared_task
+def enviar_email_cotizacion_proveedor(cotizacion_id):
+    try:
+        cotizacion = Cotizacion.objects.get(id=cotizacion_id)
+        if not cotizacion.proveedor.email:
+            return False
+
+        # Link al frontend público (ajusta tu URL base)
+        link = f"http://localhost:5173/proveedor/cotizar/{cotizacion.token}"
+        
+        mensaje = f"""
+        Estimado {cotizacion.proveedor.nombre},
+        
+        Desde HairSoft requerimos presupuesto para reponer stock:
+        
+        Producto: {cotizacion.solicitud.producto.nombre}
+        Cantidad: {cotizacion.solicitud.cantidad_requerida} unidades.
+        
+        Por favor, ingrese su precio y tiempo de entrega aquí:
+        {link}
+        """
+        
+        send_mail(
+            subject=f"Solicitud de Cotización #{cotizacion.solicitud.id}",
+            message=mensaje,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[cotizacion.proveedor.email]
+        )
+        return True
+    except Exception as e:
+        print(f"Error email proveedor: {e}")
+        return False

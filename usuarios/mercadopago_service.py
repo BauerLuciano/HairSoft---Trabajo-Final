@@ -79,3 +79,33 @@ class MercadoPagoService:
                 }
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+def devolver_pago(self, payment_id):
+        """
+        Realiza un reembolso total de un pago específico.
+        Requiere el payment_id (no el preference_id).
+        """
+        try:
+            # El endpoint de reembolso necesita un idempotency key para evitar duplicados (opcional pero recomendado)
+            request_options = mercadopago.config.RequestOptions()
+            request_options.custom_headers = {
+                'X-Idempotency-Key': str(uuid.uuid4())
+            }
+            
+            # Llamada a la API de reembolso
+            refund_data = self.sdk.refund().create(payment_id, request_options)
+            response = refund_data["response"]
+            
+            print(f"🔄 Respuesta Reembolso MP: {response}")
+            
+            if response.get("status") == "approved" or response.get("status") == "refunded":
+                return {"success": True, "status": "refunded"}
+            else:
+                return {
+                    "success": False, 
+                    "error": response.get("message", "Error desconocido en reembolso")
+                }
+                
+        except Exception as e:
+            print(f"❌ Error en devolver_pago: {str(e)}")
+            return {"success": False, "error": str(e)}

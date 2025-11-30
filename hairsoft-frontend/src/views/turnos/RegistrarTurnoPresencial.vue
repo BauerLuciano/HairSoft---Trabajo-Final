@@ -1,22 +1,20 @@
 <template>
   <div class="pedido-container">
     <div class="card-modern">
-      <!-- Header -->
+
+      <!-- =============================== -->
+      <!-- 1) CLIENTE -->
+      <!-- =============================== -->
       <div class="header-section">
-        <h2>
-          Registrar Turno Presencial
-        </h2>
+        <h2>Registrar Turno Presencial</h2>
         <p class="subtitle">Sistema de reservas en local</p>
       </div>
 
       <div class="form-content">
-        <!-- ==================== -->
-        <!-- SECCIÓN CLIENTE -->
-        <!-- ==================== -->
+
+        <!-- CLIENTE -->
         <div class="input-group cliente-section">
-          <label class="section-label">
-            Buscar Cliente:   
-          </label>
+          <label class="section-label">Buscar Cliente:</label>
           <div class="search-box-improved">
             <span class="search-icon">🔍</span>
             <input
@@ -27,6 +25,7 @@
               class="input-modern-improved"
             />
           </div>
+
           <transition name="slide-fade">
             <ul v-if="clientesSugeridos.length" class="sugerencias-list-improved">
               <li 
@@ -45,14 +44,16 @@
           </transition>
         </div>
 
-        <!-- ==================== -->
-        <!-- SECCIÓN PELUQUERO -->
-        <!-- ==================== -->
+        <!-- =============================== -->
+        <!-- 2) PELUQUERO -->
+        <!-- =============================== -->
         <div class="input-group">
-          <label class="section-label">
-            Peluquero:
-          </label>
-          <select v-model="form.peluquero" @change="limpiarFechaHora" class="select-modern-rounded">
+          <label class="section-label">Peluquero:</label>
+          <select 
+            v-model="form.peluquero" 
+            @change="limpiarFechaHora" 
+            class="select-modern-rounded"
+          >
             <option value="">Seleccione un peluquero</option>
             <option v-for="p in peluqueros" :key="p.id" :value="p.id">
               {{ p.nombre }} {{ p.apellido }}
@@ -60,13 +61,12 @@
           </select>
         </div>
 
-        <!-- ==================== -->
-        <!-- SECCIÓN CATEGORÍAS (HORIZONTAL) -->
-        <!-- ==================== -->
+        <!-- =============================== -->
+        <!-- 3) CATEGORÍAS -->
+        <!-- =============================== -->
         <div class="input-group">
-          <label class="section-label">
-            Seleccionar Categorías
-          </label>
+          <label class="section-label">Seleccionar Categorías</label>
+          
           <div class="categorias-container-horizontal">
             <div class="categorias-grid-horizontal">
               <div 
@@ -77,45 +77,41 @@
                 @click="toggleCategoria(categoria.id)"
               >
                 <div class="categoria-checkbox-horizontal">
-                  <span class="checkmark-horizontal" :class="{ checked: categoriasSeleccionadas.includes(categoria.id) }">
+                  <span 
+                    class="checkmark-horizontal" 
+                    :class="{ checked: categoriasSeleccionadas.includes(categoria.id) }"
+                  >
                     ✓
                   </span>
                 </div>
                 <div class="categoria-content-horizontal">
                   <span class="categoria-nombre-horizontal">{{ categoria.nombre }}</span>
-                  <span class="categoria-desc-horizontal">{{ categoria.descripcion || 'Servicios de calidad' }}</span>
                 </div>
               </div>
             </div>
           </div>
-          
-          <div v-if="categoriasSeleccionadas.length === 0" class="no-selection">
-            <span>📝</span>
-            <p>Selecciona al menos una categoría para ver los servicios</p>
-          </div>
         </div>
 
-        <!-- ==================== -->
-        <!-- SECCIÓN SERVICIOS -->
-        <!-- ==================== -->
+        <!-- =============================== -->
+        <!-- 4) SERVICIOS POR CATEGORÍA -->
+        <!-- =============================== -->
         <transition name="scale-fade">
           <div v-if="categoriasSeleccionadas.length > 0" class="input-group">
+
             <label class="section-label">
               Servicios Disponibles
               <span class="selected-categories">({{ categoriasSeleccionadasNombres }})</span>
             </label>
-            
-            <!-- Búsqueda de servicios -->
+
             <div class="busqueda-servicios">
-              <input
-                type="text"
-                v-model="busquedaServicio"
-                placeholder="Buscar servicio..."
-                class="input-busqueda"
+              <input 
+                type="text" 
+                v-model="busquedaServicio" 
+                placeholder="Buscar servicio..." 
+                class="input-busqueda" 
               />
             </div>
-            
-            <!-- Grid de Servicios Filtrados -->
+
             <div class="servicios-grid-horizontal" v-if="serviciosFiltrados.length > 0">
               <div 
                 v-for="servicio in serviciosFiltrados" 
@@ -125,7 +121,10 @@
                 @click="toggleServicio(servicio)"
               >
                 <div class="servicio-checkbox">
-                  <span class="checkmark" :class="{ checked: form.servicios_ids.includes(servicio.id) }">
+                  <span 
+                    class="checkmark" 
+                    :class="{ checked: form.servicios_ids.includes(servicio.id) }"
+                  >
                     ✓
                   </span>
                 </div>
@@ -135,28 +134,19 @@
                     <span class="servicio-precio">${{ servicio.precio }}</span>
                     <span class="servicio-duracion">{{ servicio.duracion }}min</span>
                   </div>
-                  <span class="servicio-categoria">{{ getCategoriaNombre(servicio.categoria) }}</span>
                 </div>
               </div>
             </div>
-            
-            <div v-else class="no-servicios">
-              <p v-if="busquedaServicio">No se encontraron servicios con "{{ busquedaServicio }}"</p>
-              <p v-else>No hay servicios en las categorías seleccionadas</p>
-            </div>
+
           </div>
         </transition>
 
-        <!-- ==================== -->
-        <!-- RESUMEN -->
-        <!-- ==================== -->
+        <!-- =============================== -->
+        <!-- 5) RESUMEN -->
+        <!-- =============================== -->
         <transition name="scale-fade">
           <div v-if="form.servicios_ids.length > 0" class="resumen-pedido">
             <div class="resumen-grid">
-              <div class="resumen-item" v-for="servicioId in form.servicios_ids" :key="servicioId">
-                <span>{{ getServicioNombre(servicioId) }}</span>
-                <span>${{ getServicioPrecio(servicioId) }}</span>
-              </div>
               <div class="resumen-item total">
                 <span>Total</span>
                 <span>${{ calcularTotal() }}</span>
@@ -165,25 +155,21 @@
           </div>
         </transition>
 
-        <!-- ==================== -->
-        <!-- CALENDARIO -->
-        <!-- ==================== -->
+        <!-- =============================== -->
+        <!-- 6) FECHA -->
+        <!-- =============================== -->
         <transition name="scale-fade">
           <div v-if="form.servicios_ids.length > 0 && form.peluquero" class="input-group">
-            <label class="section-label">
-              Seleccionar Fecha
-            </label>
-            
+            <label class="section-label">Seleccionar Fecha</label>
+
             <div class="calendar-container-horizontal">
               <div class="calendar-grid-horizontal">
+
                 <div 
                   v-for="dateInfo in fechasDisponibles" 
                   :key="dateInfo.fullDate"
                   class="date-card-horizontal"
-                  :class="{ 
-                    selected: form.fecha === dateInfo.fullDate,
-                    today: dateInfo.isToday 
-                  }"
+                  :class="{ selected: form.fecha === dateInfo.fullDate, today: dateInfo.isToday }"
                   @click="seleccionarFecha(dateInfo)"
                 >
                   <div v-if="dateInfo.isToday" class="today-badge">Hoy</div>
@@ -192,22 +178,20 @@
                     <span class="day-number">{{ dateInfo.dayNum }}</span>
                     <span class="month-name">{{ dateInfo.month }}</span>
                   </div>
-                  <div class="shine-effect"></div>
                 </div>
+
               </div>
             </div>
           </div>
         </transition>
 
-        <!-- ==================== -->
-        <!-- HORARIO -->
-        <!-- ==================== -->
+        <!-- =============================== -->
+        <!-- 7) HORA -->
+        <!-- =============================== -->
         <transition name="scale-fade">
           <div v-if="form.fecha" class="input-group">
-            <label class="section-label">
-              Seleccionar Horario
-            </label>
-            
+            <label class="section-label">Seleccionar Horario</label>
+
             <div class="time-picker-trigger" @click="abrirModalHora">
               <div class="time-display">
                 <span class="time-icon">⏰</span>
@@ -215,199 +199,158 @@
                 <span class="time-arrow">▼</span>
               </div>
             </div>
+
           </div>
         </transition>
 
-        <!-- ==================== -->
-        <!-- FORMA DE PAGO -->
-        <!-- ==================== -->
+        <!-- =============================== -->
+        <!-- 8) FORMA DE PAGO -->
+        <!-- =============================== -->
         <transition name="scale-fade">
           <div v-if="form.hora" class="input-group">
+
             <label class="section-label">
-              <span class="label-icon">💳</span>
-              Forma de Pago
+              <span class="label-icon">💳</span> Forma de Pago
             </label>
-            
+
             <div class="pago-container-horizontal">
               <div class="pago-options-horizontal">
-                <label class="pago-option-horizontal" :class="{ selected: form.tipo_pago === 'SENA_50' }">
+
+                <label 
+                  class="pago-option-horizontal" 
+                  :class="{ selected: form.tipo_pago === 'SENA_50' }"
+                >
                   <input type="radio" v-model="form.tipo_pago" value="SENA_50" />
                   <div class="pago-content-horizontal">
                     <span class="pago-nombre-horizontal">Seña 50%</span>
                     <span class="pago-monto-horizontal">${{ calcularSena() }}</span>
-                    <span class="pago-desc-horizontal">Cliente paga seña ahora</span>
                   </div>
                 </label>
 
-                <label class="pago-option-horizontal" :class="{ selected: form.tipo_pago === 'TOTAL' }">
+                <label 
+                  class="pago-option-horizontal" 
+                  :class="{ selected: form.tipo_pago === 'TOTAL' }"
+                >
                   <input type="radio" v-model="form.tipo_pago" value="TOTAL" />
                   <div class="pago-content-horizontal">
                     <span class="pago-nombre-horizontal">Pago Total</span>
                     <span class="pago-monto-horizontal">${{ calcularTotal() }}</span>
-                    <span class="pago-desc-horizontal">Cliente paga todo ahora</span>
                   </div>
                 </label>
+
               </div>
 
+              <!-- ======================= -->
+              <!-- 9) MEDIO DE PAGO -->
+              <!-- ======================= -->
               <transition name="slide-fade">
                 <div v-if="form.tipo_pago" class="medio-pago-section-horizontal">
+
                   <label class="section-label">Medio de Pago</label>
+
                   <div class="medio-pago-options-horizontal">
                     <button 
                       class="medio-pago-btn-horizontal" 
                       :class="{ active: form.medio_pago === 'EFECTIVO' }"
                       @click="form.medio_pago = 'EFECTIVO'"
                     >
-                      <span class="medio-icon-horizontal">💵</span>
-                      <span class="medio-text-horizontal">Efectivo</span>
+                      💵 Efectivo
                     </button>
+
                     <button 
-                      class="medio-pago-btn-horizontal"
+                      class="medio-pago-btn-horizontal" 
                       :class="{ active: form.medio_pago === 'TARJETA' }"
                       @click="form.medio_pago = 'TARJETA'"
                     >
-                      <span class="medio-icon-horizontal">💳</span>
-                      <span class="medio-text-horizontal">Tarjeta</span>
+                      💳 Tarjeta
                     </button>
+
                     <button 
-                      class="medio-pago-btn-horizontal"
+                      class="medio-pago-btn-horizontal" 
                       :class="{ active: form.medio_pago === 'TRANSFERENCIA' }"
                       @click="form.medio_pago = 'TRANSFERENCIA'"
                     >
-                      <span class="medio-icon-horizontal">📱</span>
-                      <span class="medio-text-horizontal">Transferencia</span>
+                      📱 Transferencia
                     </button>
                   </div>
+
+                  <transition name="scale-fade">
+                    <div v-if="form.medio_pago !== 'EFECTIVO'" class="input-comprobante">
+                      <label class="section-label small">🧾 Nro. Operación (Opcional)</label>
+                      <div class="search-box-improved">
+                        <span class="search-icon">#</span>
+                        <input
+                          type="text"
+                          v-model="form.comprobante_id"
+                          placeholder="Ej: 1234567890"
+                          class="input-modern-improved"
+                        />
+                      </div>
+                    </div>
+                  </transition>
+
                 </div>
               </transition>
+
             </div>
           </div>
         </transition>
 
-        <!-- ==================== -->
-        <!-- BOTÓN REGISTRAR -->
-        <!-- ==================== -->
+        <!-- BOTÓN -->
         <button 
           @click="crearTurno" 
           class="btn-registrar-premium"
           :disabled="!formularioValido"
         >
-          <span class="btn-content">
-            <span>✨</span>
-            {{ textoBoton }}
-          </span>
+          <span class="btn-content"><span>✨</span> {{ textoBoton }}</span>
         </button>
 
-        <!-- ==================== -->
-        <!-- MENSAJES -->
-        <!-- ==================== -->
         <transition name="bounce">
           <div v-if="mensaje" class="mensaje-premium" :class="{ error: mensaje.includes('❌') }">
             <span class="mensaje-icon">{{ mensaje.includes('❌') ? '❌' : '✅' }}</span>
             <span class="mensaje-text">{{ mensaje }}</span>
           </div>
         </transition>
+
       </div>
     </div>
 
-    <!-- Modal de Hora CORREGIDO -->
+    <!-- MODAL HORARIO -->
     <div v-if="mostrarModalHora" class="modal-overlay" @click="cerrarModalHora">
       <div class="modal-content" @click.stop>
         <div class="modal-header">
           <h3>🕐 Seleccionar Horario</h3>
           <button class="modal-close-btn" @click="cerrarModalHora">×</button>
         </div>
+
         <div class="modal-body">
-          <div class="time-selector-modal-content">
-            <!-- Selector de hora manual -->
-            <div class="time-inputs-modal">
-              <div class="input-group-modal">
-                <label class="input-label-modal">HORA</label>
-                <select v-model="horaSeleccionada" class="time-select-modal">
-                  <option value="">--</option>
-                  <option 
-                    v-for="h in horasDisponibles" 
-                    :key="h" 
-                    :value="h"
-                    :disabled="!estaHoraDisponible(h)"
-                  >
-                    {{ h.toString().padStart(2, '0') }}
-                    {{ !estaHoraDisponible(h) ? ' (Ocupado)' : '' }}
-                  </option>
-                </select>
-              </div>
-              
-              <div class="separator-modal">:</div>
-              
-              <div class="input-group-modal">
-                <label class="input-label-modal">MINUTOS</label>
-                <select v-model="minutoSeleccionado" class="time-select-modal">
-                  <option value="">--</option>
-                  <option 
-                    v-for="m in minutosDisponibles" 
-                    :key="m" 
-                    :value="m"
-                    :disabled="!estaMinutoDisponible(m)"
-                  >
-                    {{ m.toString().padStart(2, '0') }}
-                    {{ !estaMinutoDisponible(m) ? ' (Ocupado)' : '' }}
-                  </option>
-                </select>
-              </div>
-            </div>
+          <div class="quick-times-modal">
+            <h4>🕐 Horarios Disponibles</h4>
 
-            <!-- Hora seleccionada -->
-            <div v-if="horaSeleccionada && minutoSeleccionado" class="selected-time-display-modal">
-              <div class="display-content-modal">
-                <div class="display-icon-modal">⏰</div>
-                <div class="display-text-modal">
-                  <div class="display-label-modal">Horario Seleccionado</div>
-                  <div class="display-time-modal">
-                    {{ horaSeleccionada.toString().padStart(2, '0') }}:{{ minutoSeleccionado.toString().padStart(2, '0') }}
-                  </div>
-                  <div v-if="!horaValida" class="time-error-modal">
-                    ⚠️ Este horario está ocupado
-                  </div>
-                </div>
-              </div>
-              <button 
-                class="confirm-time-btn-modal" 
-                @click="confirmarHora"
-                :disabled="!horaValida"
+            <div class="quick-time-grid-modal">
+              <div 
+                v-for="hora in horariosDisponibles" 
+                :key="hora" 
+                class="quick-time-option-modal"
+                :class="{ selected: form.hora === hora, disabled: !estaHorarioDisponible(hora) }"
+                @click="estaHorarioDisponible(hora) ? seleccionarHoraRapida(hora) : null"
               >
-                {{ horaValida ? '✅ Confirmar Horario' : '❌ Horario No Disponible' }}
-              </button>
-            </div>
-
-            <!-- Horarios rápidos - CORREGIDO -->
-            <div class="quick-times-modal">
-              <h4>🕐 Horarios Disponibles</h4>
-              <div class="quick-time-grid-modal">
-                <div 
-                  v-for="hora in horariosDisponibles" 
-                  :key="hora"
-                  class="quick-time-option-modal"
-                  :class="{ 
-                    selected: form.hora === hora,
-                    disabled: !estaHorarioDisponible(hora),
-                    occupied: !estaHorarioDisponible(hora)
-                  }"
-                  @click="estaHorarioDisponible(hora) ? seleccionarHoraRapida(hora) : null"
+                {{ hora }}
+                <span 
+                  v-if="!estaHorarioDisponible(hora)" 
+                  class="occupied-badge"
                 >
-                  {{ hora }}
-                  <span v-if="!estaHorarioDisponible(hora)" class="occupied-badge">OCUPADO</span>
-                </div>
+                  OCUPADO
+                </span>
               </div>
-              
-              <!-- Mensaje informativo -->
-              <div v-if="horariosOcupados.length > 0" class="ocupados-info">
-                <p>❌ Horarios ocupados: {{ horariosOcupados.join(', ') }}</p>
-              </div>
+
             </div>
           </div>
         </div>
+
       </div>
     </div>
+
   </div>
 </template>
 
@@ -423,6 +366,7 @@ export default {
         servicios_ids: [],
         tipo_pago: "SENA_50",
         medio_pago: "EFECTIVO",
+        comprobante_id: "", // <--- NUEVO CAMPO
         hora: "",
         fecha: ""
       },
@@ -436,11 +380,7 @@ export default {
       horariosDisponibles: [],
       categoriasSeleccionadas: [],
       busquedaServicio: "",
-      mostrarModalHora: false,
-      horaSeleccionada: "",
-      minutoSeleccionado: "",
-      horasDisponibles: Array.from({length: 13}, (_, i) => i + 8),
-      minutosDisponibles: [0, 15, 30, 45]
+      mostrarModalHora: false
     };
   },
   computed: {
@@ -455,114 +395,69 @@ export default {
     },
     textoBoton() {
       const monto = this.form.tipo_pago === 'SENA_50' ? this.calcularSena() : this.calcularTotal();
-      const medio = this.getMedioPagoTexto();
-      
-      if (this.form.tipo_pago === 'SENA_50') {
-        return `Registrar Seña - $${monto} (${medio})`;
-      } else {
-        return `Registrar Pago Total - $${monto} (${medio})`;
-      }
+      return `Confirmar Reserva ($${monto})`;
     },
     fechasDisponibles() {
       const dates = [];
       const today = new Date();
-      
       for (let i = 0; i < 14; i++) {
         const date = new Date(today);
         date.setDate(today.getDate() + i);
-        
         if (date.getDay() !== 0) {
           dates.push(this.formatDate(date));
           if (dates.length === 7) break;
         }
       }
-      
       return dates;
     },
     serviciosFiltrados() {
       let filtrados = this.serviciosFiltradosPorCategoria;
-      
       if (this.busquedaServicio) {
         const termino = this.busquedaServicio.toLowerCase();
-        filtrados = filtrados.filter(s => 
-          s.nombre.toLowerCase().includes(termino) ||
-          s.descripcion?.toLowerCase().includes(termino)
-        );
+        filtrados = filtrados.filter(s => s.nombre.toLowerCase().includes(termino));
       }
-      
       return filtrados;
     },
     categoriasSeleccionadasNombres() {
       return this.categoriasSeleccionadas.map(catId => {
-        const categoria = this.categorias.find(c => c.id === catId);
-        return categoria ? categoria.nombre : '';
+        const cat = this.categorias.find(c => c.id === catId);
+        return cat ? cat.nombre : '';
       }).join(', ');
-    },
-    horaValida() {
-      if (!this.horaSeleccionada || !this.minutoSeleccionado) return false;
-      
-      const horaStr = `${this.horaSeleccionada.toString().padStart(2, '0')}:${this.minutoSeleccionado.toString().padStart(2, '0')}`;
-      return this.estaHorarioDisponible(horaStr);
-    },
-    // NUEVO: Lista de horarios ocupados para mostrar
-    horariosOcupados() {
-      if (!this.form.fecha || !this.form.peluquero) return [];
-      
-      return this.turnosOcupados
-        .filter(t => 
-          t.fecha === this.form.fecha && 
-          t.peluquero_id == this.form.peluquero &&
-          t.estado !== 'CANCELADO'
-        )
-        .map(t => t.hora)
-        .sort();
     }
   },
   methods: {
     seleccionarCliente(cliente) {
       this.form.cliente = cliente.id;
-      this.form.clienteNombre = `${cliente.nombre || ''} ${cliente.apellido || ''}`.trim();
+      this.form.clienteNombre = `${cliente.nombre} ${cliente.apellido}`;
       this.clientesSugeridos = [];
     },
-
     toggleCategoria(categoriaId) {
       const index = this.categoriasSeleccionadas.indexOf(categoriaId);
-      if (index === -1) {
-        this.categoriasSeleccionadas.push(categoriaId);
-      } else {
-        this.categoriasSeleccionadas.splice(index, 1);
-      }
+      if (index === -1) this.categoriasSeleccionadas.push(categoriaId);
+      else this.categoriasSeleccionadas.splice(index, 1);
       this.cargarServiciosPorCategorias();
     },
-
-    getMedioPagoTexto() {
-      switch(this.form.medio_pago) {
-        case 'EFECTIVO': return 'Efectivo';
-        case 'TARJETA': return 'Tarjeta';
-        case 'TRANSFERENCIA': return 'Transferencia';
-        default: return 'Efectivo';
-      }
-    },
-
     formatDate(date) {
       const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
       const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-      const today = new Date();
-      
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
-      
+      const today = new Date();
       return {
         dayName: days[date.getDay()],
         dayNum: date.getDate(),
         month: months[date.getMonth()],
         fullDate: `${year}-${month}-${day}`,
-        isToday: date.toDateString() === today.toDateString(),
-        dateObj: date
+        isToday: date.toDateString() === today.toDateString()
       };
     },
-
+    formatoFechaLegible(fechaStr) {
+      if(!fechaStr) return '';
+      const [year, month, day] = fechaStr.split('-');
+      const fecha = new Date(year, month - 1, day);
+      return fecha.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+    },
     async buscarCliente() {
       const termino = this.form.clienteNombre.trim();
       if (!termino) {
@@ -572,278 +467,123 @@ export default {
       }
       try {
         const res = await fetch(`http://localhost:8000/usuarios/api/clientes/?q=${encodeURIComponent(termino)}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        this.clientesSugeridos = Array.isArray(data.results) ? data.results : [];
-      } catch (err) {
-        console.error('Error al buscar clientes:', err);
-        this.clientesSugeridos = [];
-      }
+        this.clientesSugeridos = data.results || [];
+      } catch (err) { this.clientesSugeridos = []; }
     },
-    
     async cargarServicios() {
       try {
         const res = await fetch("http://localhost:8000/usuarios/api/servicios/");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        this.servicios = data || [];
+        this.servicios = await res.json();
         this.serviciosFiltradosPorCategoria = [...this.servicios];
-      } catch (err) {
-        console.error("Error al cargar servicios:", err);
-      }
+      } catch (err) {}
     },
-    
     async cargarCategorias() {
       try {
         const res = await fetch("http://localhost:8000/usuarios/api/categorias/servicios/");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        this.categorias = data || [];
-      } catch (err) {
-        console.error("Error al cargar categorías:", err);
-      }
+        this.categorias = await res.json();
+      } catch (err) {}
     },
-    
     async cargarPeluqueros() {
       try {
         const res = await fetch("http://localhost:8000/usuarios/api/peluqueros/");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        this.peluqueros = data || [];
-      } catch (err) {
-        console.error("Error al cargar peluqueros:", err);
-        this.peluqueros = [];
-      }
+        this.peluqueros = await res.json();
+      } catch (err) {}
     },
-    
     async cargarTurnosOcupados() {
       try {
         const res = await fetch("http://localhost:8000/usuarios/api/turnos/");
-        if (res.ok) {
-          const data = await res.json();
-          this.turnosOcupados = data;
-        }
-      } catch (err) {
-        console.error("Error al cargar turnos ocupados:", err);
-      }
+        this.turnosOcupados = await res.json();
+      } catch (err) {}
     },
-    
     cargarServiciosPorCategorias() {
       if (this.categoriasSeleccionadas.length === 0) {
         this.serviciosFiltradosPorCategoria = [...this.servicios];
       } else {
-        const nombresCategoriasSeleccionadas = this.categoriasSeleccionadas.map(catId => {
-          const categoria = this.categorias.find(c => c.id === parseInt(catId));
-          return categoria ? categoria.nombre : null;
-        }).filter(nombre => nombre !== null);
-        
-        this.serviciosFiltradosPorCategoria = this.servicios.filter(servicio => {
-          if (!servicio.categoria) return false;
-          const servicioCategoriaNombre = servicio.categoria;
-          return nombresCategoriasSeleccionadas.includes(servicioCategoriaNombre);
-        });
+        const nombres = this.categoriasSeleccionadas.map(id => this.categorias.find(c => c.id === id)?.nombre);
+        this.serviciosFiltradosPorCategoria = this.servicios.filter(s => nombres.includes(s.categoria));
       }
-      
       this.form.servicios_ids = [];
     },
-
     toggleServicio(servicio) {
       const index = this.form.servicios_ids.indexOf(servicio.id);
-      if (index === -1) {
-        this.form.servicios_ids.push(servicio.id);
-      } else {
-        this.form.servicios_ids.splice(index, 1);
-      }
+      if (index === -1) this.form.servicios_ids.push(servicio.id);
+      else this.form.servicios_ids.splice(index, 1);
     },
-    
-    getServicioNombre(servicioId) {
-      const servicio = this.servicios.find(s => s.id === servicioId);
-      return servicio ? servicio.nombre : '';
-    },
-    
-    getServicioPrecio(servicioId) {
-      const servicio = this.servicios.find(s => s.id === servicioId);
-      return servicio ? servicio.precio : 0;
-    },
-    
-    getCategoriaNombre(categoria) {
-      if (!categoria) return 'General';
-      
-      if (typeof categoria === 'object' && categoria.nombre) {
-        return categoria.nombre;
-      }
-      
-      const cat = this.categorias.find(c => c.id === categoria);
-      return cat ? cat.nombre : 'General';
-    },
-        
-    calcularTotal() {
-      return this.form.servicios_ids.reduce((total, servicioId) => {
-        return total + parseFloat(this.getServicioPrecio(servicioId) || 0);
-      }, 0);
-    },
-    
-    calcularSena() {
-      return this.calcularTotal() * 0.5;
-    },
-    
-    seleccionarFecha(dateInfo) {
-      this.form.fecha = dateInfo.fullDate;
+    getServicioNombre(id) { return this.servicios.find(s => s.id === id)?.nombre || ''; },
+    getServicioPrecio(id) { return this.servicios.find(s => s.id === id)?.precio || 0; },
+    getCategoriaNombre(cat) { return cat || 'General'; },
+    calcularTotal() { return this.form.servicios_ids.reduce((t, id) => t + parseFloat(this.getServicioPrecio(id)), 0); },
+    calcularSena() { return this.calcularTotal() * 0.5; },
+    seleccionarFecha(info) {
+      this.form.fecha = info.fullDate;
       this.form.hora = "";
       this.generarHorarios();
     },
-    
     generarHorarios() {
-      const horarios = [];
-      for (let h = 8; h < 12; h++) {
-        for (let m = 0; m < 60; m += 20) {
-          horarios.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
-        }
-      }
-      for (let h = 15; h < 20; h++) {
-        for (let m = 0; m < 60; m += 20) {
-          horarios.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
-        }
-      }
-      this.horariosDisponibles = horarios;
+      const h = [];
+      for(let i=8; i<12; i++) for(let m=0; m<60; m+=20) h.push(`${String(i).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+      for(let i=15; i<20; i++) for(let m=0; m<60; m+=20) h.push(`${String(i).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+      this.horariosDisponibles = h;
     },
-    
-    estaHorarioDisponible(horario) {
-      if (!this.form.fecha || !this.form.peluquero) return false;
-      
-      const turnoOcupado = this.turnosOcupados.find(t => 
-        t.fecha === this.form.fecha && 
-        t.hora === horario && 
-        t.peluquero_id == this.form.peluquero &&
-        t.estado !== 'CANCELADO'
-      );
-      
-      return !turnoOcupado;
+    estaHorarioDisponible(hora) {
+      if(!this.form.fecha || !this.form.peluquero) return false;
+      return !this.turnosOcupados.find(t => t.fecha === this.form.fecha && t.hora === hora && t.peluquero_id == this.form.peluquero && t.estado !== 'CANCELADO');
     },
+    limpiarFechaHora() { this.form.fecha = ""; this.form.hora = ""; },
+    seleccionarHoraRapida(h) { this.form.hora = h; this.cerrarModalHora(); },
+    abrirModalHora() { this.mostrarModalHora = true; },
+    cerrarModalHora() { this.mostrarModalHora = false; },
 
-    // NUEVOS MÉTODOS: Verificar hora y minuto individualmente
-    estaHoraDisponible(hora) {
-      if (!this.form.fecha || !this.form.peluquero) return false;
-      
-      // Verificar si existe algún horario ocupado en esa hora
-      const horaStr = hora.toString().padStart(2, '0');
-      const horariosEnEstaHora = this.horariosOcupados.filter(h => 
-        h.startsWith(horaStr)
-      );
-      
-      return horariosEnEstaHora.length < 4; // Máximo 4 horarios por hora (00, 15, 30, 45)
-    },
-
-    estaMinutoDisponible(minuto) {
-      if (!this.horaSeleccionada || !this.form.fecha || !this.form.peluquero) return true;
-      
-      const horaCompleta = `${this.horaSeleccionada.toString().padStart(2, '0')}:${minuto.toString().padStart(2, '0')}`;
-      return this.estaHorarioDisponible(horaCompleta);
-    },
-
-    limpiarFechaHora() {
-      this.form.hora = "";
-      this.form.fecha = "";
-    },
-
-    seleccionarHoraRapida(hora) {
-      if (this.estaHorarioDisponible(hora)) {
-        this.form.hora = hora;
-        this.cerrarModalHora();
-      }
-    },
-    
-    abrirModalHora() {
-      this.mostrarModalHora = true;
-      this.horaSeleccionada = "";
-      this.minutoSeleccionado = "";
-    },
-    
-    cerrarModalHora() {
-      this.mostrarModalHora = false;
-      this.horaSeleccionada = "";
-      this.minutoSeleccionado = "";
-    },
-    
-    confirmarHora() {
-      if (this.horaValida) {
-        this.form.hora = `${this.horaSeleccionada.toString().padStart(2, '0')}:${this.minutoSeleccionado.toString().padStart(2, '0')}`;
-        this.cerrarModalHora();
-      }
-    },
-    
     async crearTurno() {
-          if (!this.formularioValido) {
-            this.mensaje = "❌ Completa todos los campos obligatorios.";
-            return;
-          }
+      if (!this.formularioValido) return;
+      
+      const payload = {
+        cliente_id: this.form.cliente,
+        peluquero_id: this.form.peluquero,
+        servicios_ids: this.form.servicios_ids,
+        fecha: this.form.fecha,
+        hora: this.form.hora,
+        canal: 'PRESENCIAL',
+        tipo_pago: this.form.tipo_pago,
+        medio_pago: this.form.medio_pago,
+        // ✅ AQUÍ ENVIAMOS EL CAMPO CLAVE
+        mp_payment_id: (this.form.medio_pago !== 'EFECTIVO') ? this.form.comprobante_id : null,
+        monto_total: this.calcularTotal(),
+        monto_seña: this.form.tipo_pago === 'SENA_50' ? this.calcularSena() : 0
+      };
 
-          const payload = {
-            cliente_id: this.form.cliente,
-            peluquero_id: this.form.peluquero,
-            servicios_ids: this.form.servicios_ids,
-            fecha: this.form.fecha,
-            hora: this.form.hora,
-            canal: 'PRESENCIAL',
-            tipo_pago: this.form.tipo_pago,
-            medio_pago: this.form.medio_pago,
-            monto_total: this.calcularTotal(),
-            monto_seña: this.form.tipo_pago === 'SENA_50' ? this.calcularSena() : 0
-          };
+      try {
+        this.mensaje = "🔄 Registrando...";
+        const token = localStorage.getItem('token');
+        const headers = { 
+          "Content-Type": "application/json",
+          "Authorization": token ? `Token ${token}` : ''
+        };
 
-          try {
-            this.mensaje = "🔄 Creando turno...";
-            
-            const token = localStorage.getItem('token');
-            const headers = { 
-              "Content-Type": "application/json",
-              "Authorization": token ? `Token ${token}` : ''
-            };
-
-            const res = await fetch("http://localhost:8000/usuarios/api/turnos/crear/", {
-              method: "POST",
-              headers: headers,
-              body: JSON.stringify(payload),
-            });
-            
-            const data = await res.json();
-            
-            if (res.ok && data.status === 'ok') {
-              this.mensaje = "✅ Turno registrado correctamente. Redirigiendo...";
-              
-              setTimeout(() => {
-                this.$router.push('/turnos');
-              }, 1500);
-              
-            } else {
-              this.mensaje = data.message || "❌ Error al registrar el turno.";
-            }
-          } catch (err) {
-            console.error("Error:", err);
-            this.mensaje = "❌ No se pudo conectar con el servidor.";
-          }
-        },
+        const res = await fetch("http://localhost:8000/usuarios/api/turnos/crear/", {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify(payload),
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok && data.status === 'ok') {
+          this.mensaje = "✅ ¡Turno registrado!";
+          setTimeout(() => { this.$router.push('/turnos'); }, 1500);
+        } else {
+          this.mensaje = data.message || "Error";
+        }
+      } catch (err) {
+        this.mensaje = "Error de conexión";
+      }
+    },
     
     limpiarFormulario() {
-      this.form = {
-        canal: 'PRESENCIAL',
-        cliente: null,
-        clienteNombre: "",
-        peluquero: "",
-        servicios_ids: [],
-        tipo_pago: "SENA_50",
-        medio_pago: "EFECTIVO",
-        hora: "",
-        fecha: ""
-      };
-      this.clientesSugeridos = [];
-      this.categoriasSeleccionadas = [];
-      this.serviciosFiltradosPorCategoria = [...this.servicios];
-      this.busquedaServicio = "";
-      this.mostrarModalHora = false;
+      this.form = { canal: 'PRESENCIAL', cliente: null, peluquero: "", servicios_ids: [], tipo_pago: "SENA_50", medio_pago: "EFECTIVO", comprobante_id: "", hora: "", fecha: "" };
     }
   },
-  
   mounted() {
     this.cargarServicios();
     this.cargarCategorias();
@@ -1711,6 +1451,9 @@ export default {
   margin-bottom: 20px;
 }
 
+.info-pago {
+  color: grey
+}
 .display-icon-modal {
   background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   border-radius: 12px;

@@ -1,3 +1,4 @@
+import GestionListasPrecios from '@/views/proveedores/GestionListasPrecios.vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
@@ -62,6 +63,15 @@ const routes = [
 
   // ✅ NUEVA RUTA: GESTIÓN DE LISTAS DE PRECIOS
   { path: '/proveedores/listas-precios', name: 'GestionListasPrecios', component: () => import('@/views/proveedores/GestionListasPrecios.vue') },
+
+  { path: '/proveedores/evaluacion', name: 'EvaluacionPresupuestos', component: () => import('@/views/proveedores/EvaluacionPresupuestos.vue') },
+
+  // ✅✅✅ NUEVA RUTA PÚBLICA PARA COTIZACIÓN (Módulo Inteligente)
+  // hideNavbar: true es crucial para que el proveedor no vea el menú
+  { 
+    path: '/proveedor/cotizar/:token', name: 'CotizarExterno', component: () => import('@/views/proveedores/CotizarExterno.vue'),
+    meta: { hideNavbar: true, public: true } 
+  },
 
   // ================================
   // Ventas

@@ -535,6 +535,7 @@ onMounted(() => cargarDatos())
 /* Inputs y selects */
 .input-group {
   margin-bottom: 20px;
+  color: rgb(63, 63, 63);
 }
 
 .select-modern, .input-modern {

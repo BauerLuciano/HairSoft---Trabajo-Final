@@ -3,13 +3,14 @@
     <div class="header-content">
       <!-- Título Principal -->
       <div class="brand-section">
-        <h1 class="app-title">Los Últimos Serán Los Primeros</h1>
+        <h1 class="app-title">Los Ultimos Serán los primeros</h1>
+        <div class="title-underline"></div>
       </div>
 
       <!-- Acciones del Header -->
       <div class="header-actions">
 
-        <!-- NUEVO SWITCH MODERNO DE TEMA -->
+        <!-- SWITCH MODERNO DE TEMA (sin cambios) -->
         <label class="theme-switch-modern" title="Cambiar tema">
           <input 
             type="checkbox"
@@ -49,7 +50,7 @@
           </div>
         </label>
 
-        <!-- Perfil de Usuario con Dropdown -->
+        <!-- Perfil de Usuario con Dropdown Mejorado -->
         <div class="user-profile-wrapper" ref="profileRef">
           <div class="user-profile" @click="toggleDropdown" :class="{ 'active': showDropdown }">
             <div class="user-info">
@@ -58,26 +59,42 @@
             </div>
             <div class="user-avatar">
               <div class="avatar-circle">
-                {{ userInitials }}
+                <span class="avatar-initials">{{ userInitials }}</span>
               </div>
               <span class="online-indicator"></span>
             </div>
-            <span class="dropdown-arrow">▼</span>
+            <span class="dropdown-arrow">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
           </div>
 
-          <!-- Menú Desplegable -->
-          <transition name="fade">
+          <!-- Menú Desplegable Mejorado -->
+          <transition name="dropdown">
             <div v-if="showDropdown" class="profile-dropdown">
               <div class="dropdown-header">
-                <span class="dropdown-greeting">Hola,</span>
-                <span class="dropdown-username">{{ userName }}</span>
+                <div class="dropdown-avatar">
+                  <div class="avatar-circle-large">
+                    {{ userInitials }}
+                  </div>
+                </div>
+                <div class="dropdown-user-info">
+                  <span class="dropdown-greeting">Hola,</span>
+                  <span class="dropdown-username">{{ userName }}</span>
+                  <span class="dropdown-role">{{ formattedRole }}</span>
+                </div>
               </div>
               
               <div class="dropdown-divider"></div>
               
               <button @click="handleLogout" class="dropdown-item logout">
-                <span class="icon">🚪</span>
-                Cerrar Sesión
+                <svg class="item-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Cerrar Sesión</span>
               </button>
             </div>
           </transition>
@@ -157,7 +174,6 @@ const handleClickOutside = (event) => {
 
 // Función de Cerrar Sesión
 const handleLogout = () => {
-  // Cerrar dropdown
   showDropdown.value = false;
 
   Swal.fire({
@@ -173,21 +189,14 @@ const handleLogout = () => {
     color: isDarkTheme.value ? '#fff' : '#000'
   }).then((result) => {
     if (result.isConfirmed) {
-      // 1. Limpiar LocalStorage (Auth)
       localStorage.removeItem('user_id');
       localStorage.removeItem('user_rol');
       localStorage.removeItem('user_nombre');
       localStorage.removeItem('user_apellido');
       
-      // Nota: No borramos 'theme' para mantener la preferencia del usuario
-
-      // 2. Notificar Logout (opcional, para limpiar estados globales)
       window.dispatchEvent(new Event('userLoggedOut'));
-
-      // 3. Redirigir al Login
       router.push('/login');
 
-      // 4. Toast de despedida
       const Toast = Swal.mixin({
         toast: true,
         position: 'top-end',
@@ -251,16 +260,27 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* Header Principal - Colores del Sidebar */
 .app-header {
   position: sticky;
   top: 0;
   width: 100%;
-  background: var(--bg-secondary);
+  background: linear-gradient(135deg, #0f172a 0%, #111827 100%);
   backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--border-color);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   z-index: 1000;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 32px;
+  right: 32px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #3b82f6, transparent);
 }
 
 .header-content {
@@ -269,29 +289,52 @@ onUnmounted(() => {
   align-items: center;
   max-width: 100%;
   margin: 0 auto;
-  padding: 16px 32px;
-  height: 70px;
+  padding: 18px 36px;
+  height: 75px;
 }
 
-.brand-section { flex: 1; }
+.brand-section {
+  flex: 1;
+  position: relative;
+}
 
 .app-title {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--text-primary);
+  font-size: 1.8rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #fff 0%, #e0e7ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 1px;
+  text-transform: uppercase;
   margin: 0;
   line-height: 1.2;
+  text-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+}
+
+.title-underline {
+  position: absolute;
+  bottom: -6px;
+  left: 0;
+  width: 60px;
+  height: 2px;
+  background: linear-gradient(90deg, #3b82f6, transparent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.brand-section:hover .title-underline {
+  width: 100px;
 }
 
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 24px;
 }
 
 /* ============================================
-   NUEVO SWITCH MODERNO DE TEMA
+   SWITCH MODERNO DE TEMA (sin cambios)
    ============================================ */
 
 .theme-switch-modern {
@@ -357,7 +400,6 @@ onUnmounted(() => {
   fill: #e2e8f0;
 }
 
-/* Efecto de switch deslizante */
 .switch-background::before {
   content: '';
   position: absolute;
@@ -380,7 +422,7 @@ onUnmounted(() => {
 }
 
 /* ============================================
-   PERFIL Y DROPDOWN (MANTENIDO)
+   PERFIL Y DROPDOWN - Estilo Sidebar
    ============================================ */
 
 .user-profile-wrapper {
@@ -391,41 +433,63 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 6px 12px;
+  padding: 8px 14px;
   background: transparent;
   border-radius: 12px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border: 1px solid transparent;
+  position: relative;
 }
 
-.user-profile:hover, .user-profile.active {
-  background: var(--hover-bg);
-  border-color: var(--border-color);
+.user-profile::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #3b82f6;
+  transform: scaleY(0);
+  transition: transform 0.3s ease;
+  border-radius: 0 2px 2px 0;
+}
+
+.user-profile:hover,
+.user-profile.active {
+  background: rgba(31, 41, 55, 0.8);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.user-profile:hover::before,
+.user-profile.active::before {
+  transform: scaleY(0.6);
 }
 
 .user-info {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 2px;
+  gap: 3px;
 }
 
 .user-name {
-  font-size: 0.9rem;
+  font-size: 1.05rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: #d1d5db;
+  letter-spacing: 0.3px;
 }
 
 .user-role {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: #9ca3af;
+  font-weight: 500;
 }
 
 .user-avatar {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
 }
 
@@ -433,73 +497,178 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid #3b82f6;
+  box-shadow: 
+    0 0 20px rgba(59, 130, 246, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.avatar-circle::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border-radius: 50%;
+  background: linear-gradient(45deg, #3b82f6, #60a5fa);
+  z-index: -1;
+  opacity: 0.3;
+  filter: blur(4px);
+}
+
+.user-profile:hover .avatar-circle {
+  transform: scale(1.05);
+}
+
+.avatar-initials {
+  color: white;
+  font-weight: bold;
+  font-size: 1.05rem;
+  z-index: 1;
+}
+
+.online-indicator {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 11px;
+  height: 11px;
+  background: #22c55e;
+  border: 2.5px solid #111827;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+}
+
+.dropdown-arrow {
+  display: flex;
+  align-items: center;
+  color: #9ca3af;
+  margin-left: 2px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.user-profile.active .dropdown-arrow {
+  transform: rotate(180deg);
+  color: #60a5fa;
+}
+
+/* Menú Desplegable - Estilo Sidebar */
+.profile-dropdown {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  min-width: 280px;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 12px;
+  box-shadow: 
+    0 20px 40px rgba(0, 0, 0, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 12px;
+  z-index: 1001;
+  transform-origin: top right;
+  overflow: hidden;
+}
+
+.dropdown-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  position: relative;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+  margin-bottom: 8px;
+}
+
+.dropdown-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 16px;
+  right: 16px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+}
+
+.dropdown-avatar {
+  flex-shrink: 0;
+}
+
+.avatar-circle-large {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-weight: bold;
-  font-size: 1rem;
-  border: 2px solid var(--border-color);
+  font-size: 1.4rem;
+  border: 3px solid #3b82f6;
+  box-shadow: 
+    0 0 20px rgba(59, 130, 246, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+  position: relative;
 }
 
-.online-indicator {
+.avatar-circle-large::before {
+  content: '';
   position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 10px;
-  height: 10px;
-  background: #22c55e;
-  border: 2px solid var(--bg-secondary);
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
   border-radius: 50%;
+  background: linear-gradient(45deg, #3b82f6, #60a5fa);
+  z-index: -1;
+  opacity: 0.3;
+  filter: blur(4px);
 }
 
-.dropdown-arrow {
-  font-size: 0.7rem;
-  color: var(--text-secondary);
-  margin-left: 4px;
-  transition: transform 0.3s ease;
-}
-
-.user-profile.active .dropdown-arrow {
-  transform: rotate(180deg);
-}
-
-/* Estilos del Menú Desplegable */
-.profile-dropdown {
-  position: absolute;
-  top: 120%;
-  right: 0;
-  width: 220px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-  padding: 8px;
-  z-index: 1001;
-  transform-origin: top right;
-}
-
-.dropdown-header {
-  padding: 12px 16px;
+.dropdown-user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
 }
 
 .dropdown-greeting {
-  display: block;
   font-size: 0.8rem;
-  color: var(--text-secondary);
+  color: #94a3b8;
+  font-weight: 600;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
 }
 
 .dropdown-username {
-  display: block;
-  font-weight: 700;
-  color: var(--text-primary);
-  font-size: 1rem;
+  font-weight: 800;
+  font-size: 1.1rem;
+  letter-spacing: 0.3px;
+  background: linear-gradient(135deg, #fff 0%, #e0e7ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.dropdown-role {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  font-weight: 500;
+  letter-spacing: 0.2px;
 }
 
 .dropdown-divider {
   height: 1px;
-  background: var(--border-color);
+  background: rgba(59, 130, 246, 0.1);
   margin: 8px 0;
 }
 
@@ -507,24 +676,55 @@ onUnmounted(() => {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
+  gap: 12px;
+  padding: 13px 16px;
   border: none;
   background: transparent;
-  color: var(--text-primary);
+  color: #d1d5db;
   font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
-  border-radius: 8px;
-  transition: all 0.2s ease;
+  border-radius: 10px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   text-align: left;
+  position: relative;
+}
+
+.dropdown-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #3b82f6;
+  transform: scaleY(0);
+  transition: transform 0.2s ease;
+  border-radius: 0 2px 2px 0;
+}
+
+.dropdown-item:hover::before {
+  transform: scaleY(1);
 }
 
 .dropdown-item:hover {
-  background: var(--hover-bg);
+  background: rgba(31, 41, 55, 0.8);
+  transform: translateX(3px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.item-icon {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.dropdown-item:hover .item-icon {
+  transform: scale(1.1);
 }
 
 .dropdown-item.logout {
   color: #ef4444;
+  margin-top: 4px;
 }
 
 .dropdown-item.logout:hover {
@@ -532,23 +732,55 @@ onUnmounted(() => {
 }
 
 /* Animación de entrada */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+.dropdown-enter-active {
+  animation: dropdown-in 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
+.dropdown-leave-active {
+  animation: dropdown-out 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes dropdown-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-15px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dropdown-out {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.97);
+  }
 }
 
 /* Responsive */
 @media (max-width: 768px) {
-  .user-info { display: none; }
-  .header-content { padding: 12px 16px; }
+  .user-info {
+    display: none;
+  }
   
-  /* Ajuste del switch en móvil */
+  .header-content {
+    padding: 14px 20px;
+    height: 68px;
+  }
+  
+  .app-title {
+    font-size: 1.5rem;
+  }
+  
+  .header-actions {
+    gap: 16px;
+  }
+  
   .theme-switch-modern .switch-background {
     width: 60px;
     height: 30px;
@@ -568,6 +800,10 @@ onUnmounted(() => {
   .theme-switch-modern input:checked + .switch-background::before {
     left: calc(100% - 26px);
   }
+  
+  .profile-dropdown {
+    min-width: 260px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -577,6 +813,24 @@ onUnmounted(() => {
   
   .app-title {
     font-size: 1.2rem;
+  }
+  
+  .header-content {
+    padding: 12px 16px;
+  }
+  
+  .user-profile {
+    padding: 6px 10px;
+  }
+  
+  .user-avatar {
+    width: 38px;
+    height: 38px;
+  }
+  
+  .profile-dropdown {
+    min-width: 240px;
+    right: -8px;
   }
 }
 </style>

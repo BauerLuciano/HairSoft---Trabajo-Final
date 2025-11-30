@@ -1,389 +1,253 @@
 <template>
-  <div class="container">
-    <div class="header">
-      <h2>Registrar Recepción de Pedido #{{ pedidoId }}</h2>
-      <button @click="volverAlListado" class="btn btn-secondary">
-        <i class="fas fa-arrow-left"></i> Volver al Listado
-      </button>
-    </div>
-
-    <div v-if="cargandoDatos" class="loading-full">
-      <div class="spinner"></div>
-      <span>Cargando datos del pedido...</span>
-    </div>
-
-    <div v-else-if="!puedeRecibir" class="error-card">
-      <i class="fas fa-exclamation-triangle"></i>
-      <h3>No se puede recibir el pedido</h3>
-      <p>El pedido #{{ pedidoId }} no está en estado PENDIENTE o PARCIAL, o no existe.</p>
-      <button @click="volverAlListado" class="btn btn-primary">
-        Volver al Listado
-      </button>
-    </div>
-
-    <div v-else class="form-container">
-      <!-- Información del Pedido -->
-      <div class="info-card">
-        <h3>Información del Pedido</h3>
-        <div class="info-grid">
-          <div class="info-item">
-            <label>Proveedor:</label>
-            <span>{{ pedido.proveedor_nombre }}</span>
-          </div>
-          <div class="info-item">
-            <label>Fecha del Pedido:</label>
-            <span>{{ formatFecha(pedido.fecha_pedido) }}</span>
-          </div>
-          <div class="info-item">
-            <label>Estado Actual:</label>
-            <span :class="`badge badge-${getEstadoClass(pedido.estado)}`">
-              {{ getEstadoTexto(pedido.estado) }}
-            </span>
-          </div>
-          <div class="info-item">
-            <label>Total del Pedido:</label>
-            <span class="price">${{ pedido.total_calculado }}</span>
-          </div>
-        </div>
+  <div class="recepcion-container">
+    <div class="recepcion-card">
+      <div class="recepcion-header">
+        <h1>📦 Recepción de Pedido #{{ pedidoId }}</h1>
+        <p>Confirmar recepción completa de productos y actualizar stock</p>
       </div>
 
-      <!-- Formulario de Recepción -->
-      <form @submit.prevent="registrarRecepcion" class="recepcion-form">
-        <div class="form-section">
-          <h3>Registrar Cantidades Recibidas</h3>
-          <p class="form-help">
-            Ingrese las cantidades efectivamente recibidas de cada producto. 
-            El stock se actualizará automáticamente.
-          </p>
+      <!-- Estado de carga -->
+      <div v-if="cargando" class="loading-state">
+        <p>🔄 Cargando detalles del pedido...</p>
+      </div>
 
-          <div class="productos-recepcion">
-            <div 
-              v-for="(detalle, index) in pedido.detalles" 
-              :key="detalle.id"
-              class="producto-recepcion-item"
-              :class="{'completo': detalle.cantidad_recibida === detalle.cantidad, 'parcial': detalle.cantidad_recibida > 0 && detalle.cantidad_recibida < detalle.cantidad}"
-            >
-              <div class="producto-info">
-                <div class="producto-header">
-                  <strong>{{ detalle.producto_nombre }}</strong>
-                  <span class="producto-codigo">Código: {{ detalle.producto_codigo || 'N/A' }}</span>
-                </div>
-                <div class="producto-stock">
-                  Stock actual: <strong>{{ detalle.producto_stock_actual }}</strong>
-                </div>
-              </div>
+      <!-- Error al cargar -->
+      <div v-else-if="error" class="error-state">
+        <p>❌ {{ error }}</p>
+        <button @click="volverAlListado" class="btn-volver">← Volver al listado</button>
+      </div>
 
-              <div class="recepcion-controls">
-                <div class="cantidad-info">
-                  <div class="cantidad-item">
-                    <label>Solicitado:</label>
-                    <span class="cantidad-solicitada">{{ detalle.cantidad }}</span>
-                  </div>
-                  <div class="cantidad-item">
-                    <label>Ya Recibido:</label>
-                    <span class="cantidad-recibida">{{ detalle.cantidad_recibida }}</span>
-                  </div>
-                  <div class="cantidad-item">
-                    <label>Pendiente:</label>
-                    <span class="cantidad-pendiente">{{ detalle.cantidad - detalle.cantidad_recibida }}</span>
-                  </div>
-                </div>
-
-                <div class="recepcion-input">
-                  <label for="`cantidad-${index}`">Cantidad Recibida *</label>
-                  <input
-                    :id="`cantidad-${index}`"
-                    v-model.number="detalle.cantidad_recibida_nueva"
-                    type="number"
-                    :min="0"
-                    :max="detalle.cantidad - detalle.cantidad_recibida"
-                    class="form-input"
-                    required
-                    @change="validarCantidad(detalle)"
-                  />
-                  <small class="form-help">
-                    Máximo: {{ detalle.cantidad - detalle.cantidad_recibida }} unidades
-                  </small>
-                </div>
-
-                <div class="recepcion-resultado">
-                  <div class="resultado-item">
-                    <span>Nuevo stock:</span>
-                    <strong :class="{'stock-aumento': detalle.cantidad_recibida_nueva > 0}">
-                      {{ detalle.producto_stock_actual + detalle.cantidad_recibida_nueva }}
-                    </strong>
-                  </div>
-                  <div class="resultado-item" v-if="detalle.cantidad_recibida_nueva > 0">
-                    <span>Incremento:</span>
-                    <span class="incremento">+{{ detalle.cantidad_recibida_nueva }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Barra de progreso -->
-              <div class="progreso-recepcion">
-                <div class="progreso-labels">
-                  <span>Progreso de recepción:</span>
-                  <span>{{ calcularPorcentaje(detalle) }}%</span>
-                </div>
-                <div class="progreso-bar">
-                  <div 
-                    class="progreso-fill"
-                    :style="{ width: `${calcularPorcentaje(detalle)}%` }"
-                    :class="{'completo': calcularPorcentaje(detalle) === 100}"
-                  ></div>
-                </div>
-              </div>
+      <!-- Formulario de recepción -->
+      <div v-else-if="pedido" class="recepcion-form">
+        <!-- Información del pedido -->
+        <div class="pedido-info">
+          <div class="info-grid">
+            <div class="info-item">
+              <label>Proveedor:</label>
+              <strong>{{ pedido.proveedor_nombre }}</strong>
             </div>
-          </div>
-
-          <!-- Resumen de la recepción -->
-          <div class="resumen-recepcion">
-            <h4>Resumen de la Recepción</h4>
-            <div class="resumen-grid">
-              <div class="resumen-item">
-                <span>Productos en el pedido:</span>
-                <strong>{{ pedido.detalles.length }}</strong>
-              </div>
-              <div class="resumen-item">
-                <span>Productos completos:</span>
-                <strong class="text-success">{{ productosCompletos }}</strong>
-              </div>
-              <div class="resumen-item">
-                <span>Productos parciales:</span>
-                <strong class="text-warning">{{ productosParciales }}</strong>
-              </div>
-              <div class="resumen-item">
-                <span>Productos pendientes:</span>
-                <strong class="text-danger">{{ productosPendientes }}</strong>
-              </div>
-              <div class="resumen-item total">
-                <span>Total recibido en esta entrega:</span>
-                <strong class="total-recibido">{{ totalUnidadesRecibidas }} unidades</strong>
-              </div>
+            <div class="info-item">
+              <label>Estado:</label>
+              <span :class="`badge-estado estado-${getEstadoClass(pedido.estado)}`">
+                {{ getEstadoTexto(pedido.estado) }}
+              </span>
+            </div>
+            <div class="info-item">
+              <label>Fecha Pedido:</label>
+              <span>{{ formatFecha(pedido.fecha_pedido) }}</span>
+            </div>
+            <div class="info-item">
+              <label>Total:</label>
+              <strong>${{ formatPrecio(pedido.total || pedido.total_calculado || 0) }}</strong>
             </div>
           </div>
         </div>
 
-        <!-- Observaciones -->
-        <div class="form-section">
-          <h3>Observaciones de la Recepción</h3>
-          <div class="form-group">
-            <label for="observaciones">Observaciones (Opcional)</label>
-            <textarea
-              id="observaciones"
-              v-model="observaciones"
-              rows="3"
-              placeholder="Observaciones sobre la recepción, estado de los productos, etc."
-              class="form-textarea"
-            ></textarea>
+        <!-- Productos a recibir - SOLO LECTURA -->
+        <div class="productos-section">
+          <h3>Productos a Recibir</h3>
+          <div class="productos-list">
+            <div v-for="detalle in pedido.detalles" :key="detalle.id" class="producto-item">
+              <div class="producto-info">
+                <h4>{{ detalle.producto_nombre }}</h4>
+                <div class="producto-details">
+                  <span>Código: {{ detalle.producto_codigo || 'N/A' }}</span>
+                  <span>Stock actual: {{ detalle.producto_stock_actual || 0 }}</span>
+                </div>
+              </div>
+              
+              <div class="cantidades-container">
+                <div class="cantidad-info">
+                  <label>Cantidad Solicitada:</label>
+                  <span class="cantidad-solicitada">{{ detalle.cantidad }}</span>
+                </div>
+                
+                <div class="cantidad-info">
+                  <label>Será recibido:</label>
+                  <span class="cantidad-recibida">{{ detalle.cantidad }}</span>
+                  <small style="color: #059669; font-weight: 600;">✓ Cantidad confirmada</small>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
         <!-- Botones de acción -->
-        <div class="form-actions">
-          <button type="button" @click="volverAlListado" class="btn btn-secondary">
-            Cancelar
+        <div class="action-buttons">
+          <button @click="volverAlListado" class="btn-cancelar">
+            ← Cancelar
           </button>
-          <div class="action-buttons">
-            <button 
-              type="button" 
-              @click="marcarTodoComoRecibido" 
-              class="btn btn-outline"
-              :disabled="todoRecibido"
-            >
-              <i class="fas fa-check-double"></i> Marcar Todo como Recibido
-            </button>
-            <button 
-              type="submit" 
-              :disabled="!puedeRegistrarRecepcion || cargando" 
-              class="btn btn-success"
-            >
-              <span v-if="cargando">
-                <i class="fas fa-spinner fa-spin"></i> Procesando...
-              </span>
-              <span v-else>
-                <i class="fas fa-check-circle"></i> Registrar Recepción
-              </span>
-            </button>
-          </div>
+          <button 
+            @click="confirmarRecepcion" 
+            :disabled="procesando"
+            class="btn-confirmar"
+          >
+            {{ procesando ? '🔄 Procesando...' : '✅ Confirmar Recepción Completa' }}
+          </button>
         </div>
-      </form>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
+import Swal from 'sweetalert2'
 
-const router = useRouter()
 const route = useRoute()
+const router = useRouter()
 const API_BASE = 'http://127.0.0.1:8000'
 
-const pedidoId = route.params.id
-
 // Estados
-const pedido = ref({
-  proveedor_nombre: '',
-  fecha_pedido: '',
-  estado: '',
-  total_calculado: 0,
-  detalles: []
-})
-
-const observaciones = ref('')
+const pedidoId = ref(null)
+const pedido = ref(null)
 const cargando = ref(false)
-const cargandoDatos = ref(true)
+const error = ref(null)
+const procesando = ref(false)
 
-// Computed
-const puedeRecibir = computed(() => {
-  return pedido.value.estado && ['PENDIENTE', 'PARCIAL'].includes(pedido.value.estado)
+// Computed - SIEMPRE puede confirmar (no hay validación de cantidades)
+const puedeConfirmar = computed(() => {
+  return pedido.value && pedido.value.detalles && pedido.value.detalles.length > 0
 })
 
-const productosCompletos = computed(() => {
-  return pedido.value.detalles.filter(d => 
-    d.cantidad_recibida_nueva === (d.cantidad - d.cantidad_recibida)
-  ).length
-})
-
-const productosParciales = computed(() => {
-  return pedido.value.detalles.filter(d => 
-    d.cantidad_recibida_nueva > 0 && 
-    d.cantidad_recibida_nueva < (d.cantidad - d.cantidad_recibida)
-  ).length
-})
-
-const productosPendientes = computed(() => {
-  return pedido.value.detalles.filter(d => d.cantidad_recibida_nueva === 0).length
-})
-
-const totalUnidadesRecibidas = computed(() => {
-  return pedido.value.detalles.reduce((total, detalle) => total + detalle.cantidad_recibida_nueva, 0)
-})
-
-const todoRecibido = computed(() => {
-  return pedido.value.detalles.every(d => 
-    d.cantidad_recibida_nueva === (d.cantidad - d.cantidad_recibida)
-  )
-})
-
-const puedeRegistrarRecepcion = computed(() => {
-  return totalUnidadesRecibidas.value > 0 && 
-         pedido.value.detalles.every(d => 
-           d.cantidad_recibida_nueva >= 0 && 
-           d.cantidad_recibida_nueva <= (d.cantidad - d.cantidad_recibida)
-         )
+// Ciclo de vida
+onMounted(() => {
+  pedidoId.value = route.params.id
+  cargarPedido()
 })
 
 // Métodos
-const cargarDatos = async () => {
-  try {
-    cargandoDatos.value = true
-    
-    // Cargar pedido existente
-    const response = await axios.get(`${API_BASE}/usuarios/api/pedidos/${pedidoId}/`)
-    pedido.value = { ...response.data }
-    
-    // Preparar datos para recepción
-    pedido.value.detalles = pedido.value.detalles.map(detalle => ({
-      ...detalle,
-      cantidad_recibida_nueva: 0 // Inicializar en 0 para la nueva recepción
-    }))
-    
-  } catch (error) {
-    console.error('Error cargando datos:', error)
-    if (error.response?.status === 404) {
-      alert('Pedido no encontrado')
-    } else {
-      alert('Error al cargar los datos del pedido')
-    }
-    volverAlListado()
-  } finally {
-    cargandoDatos.value = false
-  }
-}
-
-const validarCantidad = (detalle) => {
-  const maximo = detalle.cantidad - detalle.cantidad_recibida
-  if (detalle.cantidad_recibida_nueva > maximo) {
-    detalle.cantidad_recibida_nueva = maximo
-    alert(`La cantidad no puede superar las ${maximo} unidades pendientes`)
-  }
-  
-  if (detalle.cantidad_recibida_nueva < 0) {
-    detalle.cantidad_recibida_nueva = 0
-  }
-}
-
-const marcarTodoComoRecibido = () => {
-  if (confirm('¿Marcar todas las cantidades pendientes como recibidas?')) {
-    pedido.value.detalles.forEach(detalle => {
-      detalle.cantidad_recibida_nueva = detalle.cantidad - detalle.cantidad_recibida
-    })
-  }
-}
-
-const calcularPorcentaje = (detalle) => {
-  const totalRecibido = detalle.cantidad_recibida + detalle.cantidad_recibida_nueva
-  return Math.round((totalRecibido / detalle.cantidad) * 100)
-}
-
-const registrarRecepcion = async () => {
-  if (!puedeRegistrarRecepcion.value) {
-    alert('Ingrese al menos una cantidad recibida válida')
-    return
-  }
-
-  if (!confirm('¿Confirmar la recepción de los productos? El stock se actualizará automáticamente.')) {
-    return
-  }
-
+const cargarPedido = async () => {
   try {
     cargando.value = true
+    error.value = null
     
-    const payload = {
-      detalles_recepcion: pedido.value.detalles.map(detalle => ({
-        id: detalle.id,
-        cantidad_recibida: detalle.cantidad_recibida_nueva
-      }))
+    const token = localStorage.getItem('token')
+    if (!token) {
+      throw new Error('No hay token de autenticación')
     }
 
-    const response = await axios.post(
-      `${API_BASE}/usuarios/api/pedidos/${pedidoId}/recibir/`, 
-      payload
-    )
+    console.log('🔍 Cargando pedido:', pedidoId.value)
+
+    const response = await axios.get(`${API_BASE}/usuarios/api/pedidos/${pedidoId.value}/`, {
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    console.log('✅ Pedido cargado:', response.data)
+    pedido.value = response.data
+
+  } catch (err) {
+    console.error('❌ Error cargando pedido:', err)
     
-    const nuevoEstado = response.data.estado
-    let mensaje = `✅ Recepción registrada exitosamente. `
-    
-    if (nuevoEstado === 'RECIBIDO') {
-      mensaje += 'El pedido ha sido COMPLETADO.'
-    } else if (nuevoEstado === 'PARCIAL') {
-      mensaje += 'El pedido queda como RECEPCIÓN PARCIAL.'
-    }
-    
-    alert(mensaje)
-    router.push('/pedidos')
-    
-  } catch (error) {
-    console.error('Error registrando recepción:', error)
-    
-    if (error.response?.status === 400) {
-      const errors = error.response.data
-      let errorMessage = 'Errores en la recepción:\n'
-      
-      Object.entries(errors).forEach(([field, messages]) => {
-        errorMessage += `• ${field}: ${messages.join(', ')}\n`
-      })
-      
-      alert(errorMessage)
+    if (err.response?.status === 401) {
+      error.value = 'No autorizado. Su sesión ha expirado.'
+      // Redirigir al login después de 2 segundos
+      setTimeout(() => {
+        router.push('/login')
+      }, 2000)
+    } else if (err.response?.status === 404) {
+      error.value = 'Pedido no encontrado'
     } else {
-      alert('Error al registrar la recepción: ' + (error.response?.data?.error || error.message))
+      error.value = 'Error al cargar el pedido: ' + (err.response?.data?.detail || err.message)
     }
   } finally {
     cargando.value = false
+  }
+}
+
+const confirmarRecepcion = async () => {
+  const result = await Swal.fire({
+    title: '¿Confirmar Recepción Completa?',
+    html: `
+      <div style="text-align: left;">
+        <p>Se recibirán <strong>TODAS</strong> las cantidades solicitadas:</p>
+        <ul style="margin: 10px 0; padding-left: 20px;">
+          ${pedido.value.detalles.map(d => 
+            `<li><strong>${d.cantidad} x</strong> ${d.producto_nombre}</li>`
+          ).join('')}
+        </ul>
+        <p>El stock se actualizará y el pedido se marcará como <strong>ENTREGADO</strong></p>
+      </div>
+    `,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#059669',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: 'Sí, confirmar recepción completa',
+    cancelButtonText: 'Cancelar',
+    reverseButtons: true
+  })
+
+  if (!result.isConfirmed) return
+
+  try {
+    procesando.value = true
+
+    const token = localStorage.getItem('token')
+    
+    // ✅ ESTO ES LO QUE TENÉS QUE MANDAR:
+    const datosRecepcion = {
+      detalles_recepcion: pedido.value.detalles.map(detalle => ({
+        id: detalle.id,
+        cantidad_recibida: detalle.cantidad  // Usar la cantidad ORIGINAL
+      }))
+    }
+
+    console.log('📤 Enviando recepción:', datosRecepcion)
+
+    const response = await axios.post(
+      `${API_BASE}/usuarios/api/pedidos/${pedidoId.value}/recibir/`,
+      datosRecepcion,
+      {
+        headers: {
+          'Authorization': `Token ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    )
+
+    console.log('✅ Recepción confirmada:', response.data)
+
+    Swal.fire({
+      icon: 'success',
+      title: '¡Recepción Exitosa!',
+      html: `
+        <div style="text-align: left;">
+          <p>✅ Pedido marcado como <strong>ENTREGADO</strong></p>
+          <p>✅ Stock actualizado correctamente</p>
+          <p>Será redirigido al listado de pedidos...</p>
+        </div>
+      `,
+      timer: 3000,
+      showConfirmButton: false
+    })
+
+    setTimeout(() => router.push('/pedidos'), 3000)
+
+  } catch (err) {
+    console.error('❌ Error confirmando recepción:', err)
+    
+    let mensajeError = 'Error al confirmar la recepción'
+    
+    if (err.response?.status === 401) {
+      mensajeError = 'No autorizado. Su sesión ha expirado.'
+    } else if (err.response?.data) {
+      mensajeError = JSON.stringify(err.response.data)
+    }
+
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: mensajeError,
+      confirmButtonText: 'Entendido'
+    })
+  } finally {
+    procesando.value = false
   }
 }
 
@@ -391,18 +255,32 @@ const volverAlListado = () => {
   router.push('/pedidos')
 }
 
+// Utilidades
 const formatFecha = (fechaString) => {
   if (!fechaString) return '-'
-  const fecha = new Date(fechaString)
-  return fecha.toLocaleDateString('es-AR')
+  try {
+    const fecha = new Date(fechaString)
+    return fecha.toLocaleDateString('es-AR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    })
+  } catch (error) {
+    return fechaString
+  }
+}
+
+const formatPrecio = (precio) => {
+  if (!precio) return '0.00'
+  return parseFloat(precio).toFixed(2)
 }
 
 const getEstadoClass = (estado) => {
   const clases = {
     'PENDIENTE': 'warning',
-    'RECIBIDO': 'success',
-    'CANCELADO': 'danger',
-    'PARCIAL': 'info'
+    'CONFIRMADO': 'info',
+    'ENTREGADO': 'success',
+    'CANCELADO': 'danger'
   }
   return clases[estado] || 'secondary'
 }
@@ -410,229 +288,328 @@ const getEstadoClass = (estado) => {
 const getEstadoTexto = (estado) => {
   const textos = {
     'PENDIENTE': 'Pendiente',
-    'RECIBIDO': 'Recibido',
-    'CANCELADO': 'Cancelado',
-    'PARCIAL': 'Parcial'
+    'CONFIRMADO': 'Confirmado',
+    'ENTREGADO': 'Entregado',
+    'CANCELADO': 'Cancelado'
   }
   return textos[estado] || estado
 }
 </script>
 
 <style scoped>
-.info-card {
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
-  border-radius: 10px;
+.recepcion-container {
   padding: 20px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.recepcion-card {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-radius: 24px;
+  padding: 40px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
+}
+
+.recepcion-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #059669, #047857, #065f46, #047857, #059669);
+  border-radius: 24px 24px 0 0;
+}
+
+.recepcion-header {
+  text-align: center;
+  margin-bottom: 30px;
+  border-bottom: 2px solid var(--border-color);
+  padding-bottom: 20px;
+}
+
+.recepcion-header h1 {
+  margin: 0;
+  font-size: 2.2rem;
+  background: linear-gradient(135deg, var(--text-primary), #059669);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+}
+
+.recepcion-header p {
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-top: 8px;
+  letter-spacing: 0.5px;
+}
+
+/* Estados */
+.loading-state, .error-state {
+  text-align: center;
+  padding: 60px;
+  font-size: 1.2em;
+}
+
+.error-state {
+  color: var(--error-color);
+}
+
+/* Información del pedido */
+.pedido-info {
+  background: var(--hover-bg);
+  padding: 24px;
+  border-radius: 16px;
+  margin-bottom: 30px;
+  border: 1px solid var(--border-color);
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-item label {
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+}
+
+/* Productos */
+.productos-section {
   margin-bottom: 30px;
 }
 
-.info-card h3 {
-  color: #0369a1;
-  margin-bottom: 15px;
-}
-
-.producto-recepcion-item {
-  background: white;
-  border: 2px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 20px;
+.productos-section h3 {
+  color: var(--text-primary);
   margin-bottom: 20px;
-  transition: all 0.3s ease;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
-.producto-recepcion-item.completo {
-  border-color: #10b981;
-  background: #f0fdf4;
+.productos-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.producto-recepcion-item.parcial {
-  border-color: #f59e0b;
-  background: #fffbeb;
-}
-
-.producto-header {
+.producto-item {
+  background: var(--bg-primary);
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  gap: 20px;
 }
 
-.producto-codigo {
-  color: #6b7280;
-  font-size: 0.875rem;
+.producto-info {
+  flex: 1;
 }
 
-.producto-stock {
-  color: #374151;
-  font-size: 0.875rem;
+.producto-info h4 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary);
+  font-weight: 700;
 }
 
-.recepcion-controls {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
+.producto-details {
+  display: flex;
+  gap: 15px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.cantidades-container {
+  display: flex;
   gap: 30px;
-  align-items: start;
-  margin: 15px 0;
+  align-items: center;
 }
 
 .cantidad-info {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.cantidad-item {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px solid #f3f4f6;
+  gap: 6px;
+  min-width: 120px;
 }
 
-.cantidad-item:last-child {
-  border-bottom: none;
+.cantidad-info label {
+  font-weight: 700;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  text-transform: uppercase;
 }
 
-.cantidad-solicitada {
-  font-weight: 600;
-  color: #374151;
+.cantidad-solicitada, .cantidad-recibida {
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 1.1rem;
 }
 
 .cantidad-recibida {
-  font-weight: 600;
-  color: #10b981;
+  color: #059669;
 }
 
-.cantidad-pendiente {
-  font-weight: 600;
-  color: #f59e0b;
-}
-
-.recepcion-input {
-  min-width: 150px;
-}
-
-.recepcion-resultado {
+/* Botones */
+.action-buttons {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 30px;
+}
+
+.btn-cancelar, .btn-confirmar, .btn-volver {
+  padding: 14px 28px;
+  border: none;
+  border-radius: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
   gap: 8px;
-  min-width: 140px;
 }
 
-.resultado-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.875rem;
+.btn-cancelar {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
 }
 
-.stock-aumento {
+.btn-cancelar:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+}
+
+.btn-confirmar {
+  background: linear-gradient(135deg, #059669, #047857);
+  color: white;
+  box-shadow: 0 6px 20px rgba(5, 150, 105, 0.35);
+}
+
+.btn-confirmar:hover:not(:disabled) {
+  background: linear-gradient(135deg, #047857, #065f46);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgba(5, 150, 105, 0.5);
+}
+
+.btn-confirmar:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.btn-volver {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: white;
+  margin: 0 auto;
+}
+
+/* Badges */
+.badge-estado {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+  letter-spacing: 0.5px;
+}
+
+.estado-warning {
+  background: var(--bg-tertiary);
+  color: #f59e0b;
+  border: 2px solid #f59e0b;
+}
+
+.estado-info {
+  background: var(--bg-tertiary);
+  color: #0ea5e9;
+  border: 2px solid #0ea5e9;
+}
+
+.estado-success {
+  background: var(--bg-tertiary);
   color: #10b981;
-  font-weight: 600;
+  border: 2px solid #10b981;
 }
 
-.incremento {
-  color: #10b981;
-  font-weight: 600;
-}
-
-.progreso-recepcion {
-  margin-top: 15px;
-  padding-top: 15px;
-  border-top: 1px solid #e5e7eb;
-}
-
-.progreso-labels {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  font-size: 0.875rem;
-  color: #6b7280;
-}
-
-.progreso-bar {
-  height: 8px;
-  background: #e5e7eb;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.progreso-fill {
-  height: 100%;
-  background: #3b82f6;
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.progreso-fill.completo {
-  background: #10b981;
-}
-
-.resumen-recepcion {
-  background: white;
-  border: 2px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 20px;
-  margin-top: 20px;
-}
-
-.resumen-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 15px;
-}
-
-.resumen-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid #f3f4f6;
-}
-
-.resumen-item.total {
-  border-top: 2px solid #e5e7eb;
-  border-bottom: none;
-  font-size: 1.1rem;
-  margin-top: 10px;
-  padding-top: 15px;
-}
-
-.total-recibido {
-  color: #10b981;
-  font-weight: 600;
-}
-
-.text-success { color: #10b981; }
-.text-warning { color: #f59e0b; }
-.text-danger { color: #ef4444; }
-
-.btn-success {
-  background: #10b981;
-  border-color: #10b981;
-}
-
-.btn-success:hover:not(:disabled) {
-  background: #059669;
-  border-color: #059669;
+.estado-danger {
+  background: var(--bg-tertiary);
+  color: var(--error-color);
+  border: 2px solid var(--error-color);
 }
 
 /* Responsive */
 @media (max-width: 768px) {
-  .recepcion-controls {
-    grid-template-columns: 1fr;
+  .recepcion-container {
+    padding: 15px;
+  }
+  
+  .recepcion-card {
+    padding: 25px;
+    border-radius: 20px;
+  }
+  
+  .producto-item {
+    flex-direction: column;
+    align-items: flex-start;
     gap: 15px;
   }
   
-  .resumen-grid {
-    grid-template-columns: 1fr;
+  .cantidades-container {
+    width: 100%;
+    justify-content: space-between;
   }
   
   .action-buttons {
     flex-direction: column;
-    gap: 10px;
+  }
+  
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .recepcion-card {
+    padding: 20px;
+    border-radius: 16px;
+  }
+  
+  .recepcion-header h1 {
+    font-size: 1.6rem;
+  }
+  
+  .cantidades-container {
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+  }
+  
+  .cantidad-info {
+    min-width: auto;
+    width: 100%;
+    flex-direction: row;
+    justify-content: space-between;
   }
 }
 </style>

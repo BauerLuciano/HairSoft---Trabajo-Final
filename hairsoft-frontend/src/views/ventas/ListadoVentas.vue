@@ -219,9 +219,6 @@
 
     <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
       <div class="modal-content">
-        <button class="modal-close" @click="cerrarModalEditar" title="Cerrar formulario">
-          <X :size="20" />
-        </button>
         <ModificarVenta 
           :venta-id="ventaEditando?.id" 
           @venta-actualizada="ventaActualizada"

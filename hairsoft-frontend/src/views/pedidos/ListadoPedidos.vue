@@ -135,13 +135,16 @@
                   🗑️
                 </button>
                 
-                <!-- Check para recibir -->
+                <!-- Check para recibir - MEJORADO -->
                 <button 
-                  v-if="pedido.puede_recibir" 
+                  v-if="puedeRecibirPedido(pedido.estado)" 
                   @click="recibirPedido(pedido)" 
                   class="action-button receive" 
-                  title="Recibir pedido">
-                  ✅
+                  title="Recibir pedido"
+                  :disabled="recibiendoPedido === pedido.id"
+                >
+                  {{ recibiendoPedido === pedido.id ? '⏳' : '✅' }}
+                  {{ recibiendoPedido === pedido.id ? 'Procesando...' : 'Recibir' }}
                 </button>
               </td>
             </tr>
@@ -273,6 +276,7 @@ const proveedores = ref([])
 const cargando = ref(false)
 const mostrarModalDetalle = ref(false)
 const pedidoSeleccionado = ref(null)
+const recibiendoPedido = ref(null) // ✅ NUEVO: Control de estado de recepción
 
 // Estados del pedido
 const estadosPedido = ref([
@@ -324,6 +328,9 @@ const buscarPedidos = async () => {
   try {
     cargando.value = true
     
+    // ✅ CORRECCIÓN: Agregar token
+    const token = localStorage.getItem('token');
+    
     // ✅ SOLO ENVIAR PARÁMETROS QUE TIENEN VALOR
     const params = new URLSearchParams()
     
@@ -335,17 +342,55 @@ const buscarPedidos = async () => {
     
     console.log('🔍 Parámetros enviados:', params.toString())
     
-    const response = await axios.get(`${API_BASE}/usuarios/api/pedidos/buscar/?${params}`)
-    pedidos.value = response.data
+    const response = await axios.get(`${API_BASE}/usuarios/api/pedidos/buscar/?${params}`, {
+      headers: {
+        'Authorization': `Token ${token}`
+      }
+    })
+    
+    // ✅ PROCESAR PEDIDOS PARA AGREGAR PROPIEDADES DINÁMICAS
+    pedidos.value = procesarPedidos(response.data)
     console.log('✅ Pedidos cargados:', pedidos.value.length)
     
   } catch (error) {
     console.error('❌ Error buscando pedidos:', error)
     console.error('📄 Respuesta del error:', error.response?.data)
-    alert('Error al cargar pedidos: ' + (error.response?.data?.error || error.message))
+    
+    // ✅ CORRECCIÓN: Manejo de error 401
+    if (error.response?.status === 401) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Sesión expirada',
+        text: 'Por favor, inicie sesión nuevamente.',
+        confirmButtonText: 'Entendido'
+      }).then(() => {
+        router.push('/login');
+      });
+    } else {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'Error al cargar pedidos: ' + (error.response?.data?.error || error.message),
+        confirmButtonText: 'Entendido'
+      });
+    }
   } finally {
     cargando.value = false
   }
+}
+
+// ✅ NUEVA FUNCIÓN: Procesar pedidos para agregar propiedades dinámicas
+const procesarPedidos = (pedidosData) => {
+  return pedidosData.map(pedido => ({
+    ...pedido,
+    puede_recibir: puedeRecibirPedido(pedido.estado),
+    puede_cancelar: pedido.estado === 'PENDIENTE' || pedido.estado === 'CONFIRMADO'
+  }))
+}
+
+// ✅ NUEVA FUNCIÓN: Verificar si un pedido puede ser recibido
+const puedeRecibirPedido = (estado) => {
+  return estado === 'PENDIENTE' || estado === 'CONFIRMADO'
 }
 
 // Aplicar filtros automáticamente
@@ -442,26 +487,111 @@ const cancelarPedido = async (pedido) => {
   }
 }
 
-const recibirPedido = (pedido) => {
-  if (pedido.estado === 'PENDIENTE' || pedido.estado === 'CONFIRMADO') {
-    router.push(`/pedidos/recibir/${pedido.id}`)
-  } else {
+const recibirPedido = async (pedido) => {
+  console.log('🔄 Iniciando proceso de recepción para pedido:', pedido.id);
+  
+  if (recibiendoPedido.value) return;
+  
+  // Verificar si el pedido puede ser recibido
+  if (!puedeRecibirPedido(pedido.estado)) {
     Swal.fire({
       icon: 'warning',
       title: 'No recibible',
       text: 'Solo se pueden recibir pedidos en estado PENDIENTE o CONFIRMADO',
       confirmButtonText: 'Entendido'
-    })
+    });
+    return;
   }
-}
+  
+  // Confirmación antes de proceder
+  const result = await Swal.fire({
+    title: '¿Recibir Pedido?',
+    html: `
+      <div style="text-align: left;">
+        <p><strong>Pedido #${pedido.id}</strong></p>
+        <p><strong>Proveedor:</strong> ${pedido.proveedor_nombre}</p>
+        <p><strong>Total:</strong> $${formatPrecio(pedido.total || pedido.total_calculado || 0)}</p>
+        <p><strong>Productos:</strong> ${pedido.detalles?.length || 0} items</p>
+        <hr style="margin: 15px 0;">
+        <p style="color: #059669; font-weight: bold;">
+          ✅ Serás redirigido a la pantalla de recepción para confirmar cantidades
+        </p>
+      </div>
+    `,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#059669',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: 'Sí, recibir pedido',
+    cancelButtonText: 'Cancelar',
+    reverseButtons: true
+  });
+  
+  if (!result.isConfirmed) return;
+  
+  console.log('✅ Confirmado, redirigiendo a recepción...');
+  
+  try {
+    recibiendoPedido.value = pedido.id;
+    
+    // ✅ CORRECCIÓN: Agregar token de autenticación
+    const token = localStorage.getItem('token');
+    
+    // Verificar que el endpoint de recepción existe
+    const testResponse = await axios.get(`${API_BASE}/usuarios/api/pedidos/${pedido.id}/`, {
+      headers: {
+        'Authorization': `Token ${token}`
+      }
+    });
+    console.log('📦 Pedido verificado:', testResponse.data);
+    
+    // Redirigir a la pantalla de recepción
+    router.push(`/pedidos/recibir/${pedido.id}`);
+    
+  } catch (error) {
+    console.error('❌ Error verificando pedido:', error);
+    
+    // ✅ CORRECCIÓN: Manejo de error 401 específico
+    if (error.response?.status === 401) {
+      Swal.fire({
+        icon: 'error',
+        title: 'No autorizado',
+        text: 'Su sesión ha expirado. Por favor, inicie sesión nuevamente.',
+        confirmButtonText: 'Entendido'
+      }).then(() => {
+        // Redirigir al login o recargar la página
+        router.push('/login');
+      });
+    } else {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'No se pudo acceder al pedido. Verifique que existe.',
+        confirmButtonText: 'Entendido'
+      });
+    }
+  } finally {
+    // Resetear después de un breve delay para permitir la navegación
+    setTimeout(() => {
+      recibiendoPedido.value = null;
+    }, 1000);
+  }
+};
 
 // Modal de detalle - VERSIÓN MEJORADA
 const verDetalle = async (pedido) => {
   try {
     console.log('🔍 Cargando detalles del pedido:', pedido.id)
     
+    // ✅ CORRECCIÓN: Agregar token
+    const token = localStorage.getItem('token');
+    
     // Intentar cargar detalles completos del pedido
-    const response = await axios.get(`${API_BASE}/usuarios/api/pedidos/${pedido.id}/`)
+    const response = await axios.get(`${API_BASE}/usuarios/api/pedidos/${pedido.id}/`, {
+      headers: {
+        'Authorization': `Token ${token}`
+      }
+    })
     pedidoSeleccionado.value = response.data
     
     console.log('📦 Respuesta completa del pedido:', response.data)
@@ -485,6 +615,17 @@ const verDetalle = async (pedido) => {
   } catch (error) {
     console.error('❌ Error cargando detalle del pedido:', error)
     console.error('🔍 Detalles del error:', error.response?.data)
+    
+    // ✅ CORRECCIÓN: Manejo de error 401
+    if (error.response?.status === 401) {
+      Swal.fire({
+        icon: 'error',
+        title: 'No autorizado',
+        text: 'Su sesión ha expirado. Por favor, inicie sesión nuevamente.',
+        confirmButtonText: 'Entendido'
+      });
+      return;
+    }
     
     // Si falla, mostrar al menos los datos básicos con los detalles que ya tenemos
     pedidoSeleccionado.value = { ...pedido }
@@ -1010,17 +1151,40 @@ onMounted(() => {
   border-color: var(--error-color);
 }
 
+/* ✅ ESTILO MEJORADO PARA BOTÓN RECIBIR */
 .action-button.receive {
-  background: var(--bg-tertiary);
-  border: 1px solid #059669;
-  color: #004f36;
+  background: linear-gradient(135deg, #059669, #047857);
+  color: white;
+  border: 2px solid #059669;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
 }
 
-.action-button.receive:hover {
-  background: var(--hover-bg);
+.action-button.receive:hover:not(:disabled) {
+  background: linear-gradient(135deg, #047857, #065f46);
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(5, 150, 105, 0.4);
-  border-color: #059669;
+  box-shadow: 0 6px 20px rgba(5, 150, 105, 0.5);
+  border-color: #047857;
+}
+
+.action-button.receive:active {
+  transform: translateY(0);
+}
+
+.action-button.receive:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
 }
 
 /* Altura estándar para inputs */

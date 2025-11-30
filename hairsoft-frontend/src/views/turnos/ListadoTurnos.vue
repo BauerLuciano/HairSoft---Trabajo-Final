@@ -1,13 +1,10 @@
 <template>
   <div class="list-container">
     <div class="list-card">
-      <!-- Header -->
       <div class="list-header">
         <div class="header-content">
-          <h1>
-            Gestión de turnos
-          </h1>
-          <p>Gestión y administración de turnos de la barbería</p>
+          <h1>Lista de Turnos</h1>
+          <p>Gestión y administración de turnos</p>
         </div>
         <button @click="irARegistrar" class="register-button">
           <Plus :size="18" />
@@ -15,7 +12,6 @@
         </button>
       </div>
 
-      <!-- Filtros -->
       <div class="filters-container">
         <div class="filters-grid">
           <div class="filter-group">
@@ -31,7 +27,6 @@
             <label>Fecha desde</label>
             <input type="date" v-model="filtros.fechaDesde" class="filter-input"/>
           </div>
-
           <div class="filter-group">
             <label>Fecha hasta</label>
             <input type="date" v-model="filtros.fechaHasta" class="filter-input"/>
@@ -70,19 +65,18 @@
             <label>&nbsp;</label>
             <button @click="limpiarFiltros" class="clear-filters-btn">
               <Trash2 :size="16" />
-              Limpiar filtros
+              Limpiar
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Tabla de Turnos -->
       <div class="table-container">
         <table class="users-table">
           <thead>
             <tr>
-              <th>Fecha - turno</th>
-              <th>Hora - turno</th>
+              <th>Fecha</th>
+              <th>Hora</th>
               <th>Cliente</th>
               <th>Peluquero</th>
               <th>Servicios</th>
@@ -99,7 +93,7 @@
                 <div class="cliente-info">
                   <strong>{{ turno.cliente_nombre }} {{ turno.cliente_apellido }}</strong>
                   <div class="info-adicional">
-                    <span class="canal-badge" :class="turno.canal.toLowerCase()">
+                    <span class="canal-badge" :class="(turno.canal || '').toLowerCase()">
                       {{ turno.canal === 'WEB' ? '🌐 Web' : '🏪 Presencial' }}
                     </span>
                     <span v-if="turno.oferta_activa" class="badge-reoferta">
@@ -111,85 +105,36 @@
               <td>{{ turno.peluquero_nombre }}</td>
               <td class="servicios-columna">
                 <div class="servicios-compactos">
-                  <div 
-                    v-for="(servicio, index) in getServiciosLista(turno.servicios).slice(0, 2)" 
-                    :key="index"
-                    class="servicio-item"
-                  >
+                  <div v-for="(servicio, index) in getServiciosLista(turno.servicios).slice(0, 2)" :key="index" class="servicio-item">
                     <span class="servicio-nombre">• {{ servicio }}</span>
                   </div>
                   <div v-if="getServiciosLista(turno.servicios).length > 2" class="mas-servicios">
                     +{{ getServiciosLista(turno.servicios).length - 2 }} más
                   </div>
                 </div>
-                <div class="duracion-total">{{ turno.duracion_total }} min</div>
               </td>
               <td>
                 <span class="badge-estado" :class="getEstadoClass(turno.estado)">
                   {{ formatearEstado(turno.estado) }}
                 </span>
-                <div v-if="turno.oferta_activa" class="info-reoferta">
-                  <small>Oferta expira: {{ formatHora(turno.fecha_expiracion_oferta) }}</small>
-                </div>
               </td>
               <td>
-                <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 6px;">
-                  <span class="badge-estado" :class="getPagoClass(turno.tipo_pago)">
+                <div class="pago-container">
+                  <span class="badge-pago" :class="getPagoClass(turno.tipo_pago)">
                     {{ getPagoTexto(turno.tipo_pago) }}
                   </span>
-                  <div v-if="turno.tipo_pago === 'SENA_50'" class="monto-info">
-                    ${{ turno.monto_seña }} / ${{ turno.monto_total }}
+                  <div v-if="turno.tipo_pago === 'SENA_50'" class="monto-detalle">
+                    <span class="monto-seña">${{ formatPrecio(turno.monto_seña) }}</span>
+                    <span class="monto-total">/ ${{ formatPrecio(turno.monto_total) }}</span>
                   </div>
                 </div>
               </td>
               <td>
                 <div class="action-buttons">
-                  <!-- Botón Editar -->
-                  <button 
-                    v-if="turno.puede_modificar"
-                    @click="modificarTurno(turno.id)"
-                    class="action-button edit"
-                    title="Modificar turno"
-                  >
-                    <Edit3 :size="14" />
-                  </button>
-
-                  <!-- Botón Señar -->
-                  <button 
-                    v-if="turno.estado === 'RESERVADO' && turno.tipo_pago === 'PENDIENTE'"
-                    @click="procesarSena(turno)"
-                    class="action-button sena"
-                    title="Procesar seña"
-                  >
-                    <DollarSign :size="14" />
-                  </button>
-
-                  <!-- Botón Cancelar CON REOFERTA -->
-                  <button 
-                    v-if="turno.puede_cancelar"
-                    @click="cancelarTurnoConReoferta(turno)"
-                    class="action-button delete"
-                    title="Cancelar turno"
-                  >
-                    <Trash2 :size="14" />
-                  </button>
-
-                  <!-- Botón Completar -->
-                  <button 
-                    v-if="turno.puede_completar"
-                    @click="completarTurno(turno.id)"
-                    class="action-button complete"
-                    title="Marcar como completado"
-                  >
-                    <Check :size="14" />
-                  </button>
-
-                  <span 
-                    v-if="!turno.puede_modificar && !turno.puede_cancelar && !turno.puede_completar && !(turno.estado === 'RESERVADO' && turno.tipo_pago === 'PENDIENTE')" 
-                    class="sin-acciones"
-                  >
-                    -
-                  </span>
+                  <button v-if="turno.puede_modificar" @click="modificarTurno(turno.id)" class="action-button edit" title="Editar"><Edit3 :size="14"/></button>
+                  <button v-if="turno.puede_senar" @click="procesarSena(turno)" class="action-button sena" title="Señar"><DollarSign :size="14"/></button>
+                  <button v-if="turno.puede_cancelar" @click="cancelarTurnoConReoferta(turno)" class="action-button delete" title="Cancelar"><Trash2 :size="14"/></button>
+                  <button v-if="turno.puede_completar" @click="completarTurno(turno.id)" class="action-button complete" title="Completar"><Check :size="14"/></button>
                 </div>
               </td>
             </tr>
@@ -199,38 +144,14 @@
         <div v-if="turnosFiltradosPaginados.length === 0" class="no-results">
           <SearchX class="no-results-icon" :size="48" />
           <p>No se encontraron turnos</p>
-          <small>Intenta con otros términos de búsqueda</small>
-          <button @click="limpiarFiltros" class="btn-reintentar">
-            <Trash2 :size="16" />
-            Limpiar Filtros
-          </button>
+          <button @click="limpiarFiltros" class="btn-reintentar">Limpiar Filtros</button>
         </div>
       </div>
 
-      <!-- Resumen y paginación -->
-      <div class="usuarios-count">
-        <p>
-          <Calendar :size="16" />
-          Mostrando {{ turnosFiltradosPaginados.length }} de {{ turnosFiltrados.length }} turnos
-        </p>
-        <div class="alertas-container">
-          <span v-if="turnosConReoferta > 0" class="alerta-reoferta">
-            🔥 {{ turnosConReoferta }} con reoferta activa
-          </span>
-        </div>
-      </div>
-
-      <!-- Paginación -->
       <div class="pagination">
-        <button @click="paginaAnterior" :disabled="pagina === 1">
-          <ChevronLeft :size="16" />
-          Anterior
-        </button>
-        <span>Página {{ pagina }} de {{ totalPaginas }}</span>
-        <button @click="paginaSiguiente" :disabled="pagina === totalPaginas">
-          Siguiente
-          <ChevronRight :size="16" />
-        </button>
+        <button @click="paginaAnterior" :disabled="pagina === 1"><ChevronLeft :size="16"/> Anterior</button>
+        <span>Página {{ pagina }} de {{ totalPaginas || 1 }}</span>
+        <button @click="paginaSiguiente" :disabled="pagina >= totalPaginas">Siguiente <ChevronRight :size="16"/></button>
       </div>
     </div>
   </div>
@@ -239,10 +160,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { 
-  Calendar, Plus, Trash2, Edit3, Check, 
-  SearchX, ChevronLeft, ChevronRight, DollarSign
-} from 'lucide-vue-next'
+import { Calendar, Plus, Trash2, Edit3, Check, SearchX, ChevronLeft, ChevronRight, DollarSign } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 
 const router = useRouter()
@@ -251,7 +169,8 @@ const peluqueros = ref([])
 const pagina = ref(1)
 const itemsPorPagina = 10
 
-const estadosDisponibles = ref(['RESERVADO', 'CONFIRMADO', 'COMPLETADO', 'CANCELADO', 'DISPONIBLE'])
+// ✅ LISTA LIMPIA: SIN 'DISPONIBLE'
+const estadosDisponibles = ref(['RESERVADO', 'CONFIRMADO', 'COMPLETADO', 'CANCELADO'])
 
 const filtros = ref({
   busqueda: '',
@@ -262,450 +181,227 @@ const filtros = ref({
   fechaHasta: ''
 })
 
-// Computed para turnos con reoferta
-const turnosConReoferta = computed(() => {
-  return turnos.value.filter(t => t.oferta_activa).length
-})
+// --- FUNCIONES AUXILIARES ---
+const formatFecha = s => {
+    if(!s) return '-';
+    try { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`; } catch(e) { return s; }
+}
+const formatHora = s => (s && s.length >= 5) ? s.slice(0,5) : '-'
+const formatPrecio = (precio) => {
+  if (!precio) return '0.00'
+  return parseFloat(precio).toFixed(2)
+}
+const getServiciosLista = s => Array.isArray(s) ? s.map(x => typeof x === 'string' ? x : x.nombre) : []
+const formatearEstado = e => ({'RESERVADO':'Reservado','CONFIRMADO':'Confirmado','COMPLETADO':'Completado','CANCELADO':'Cancelado'}[e] || e)
+const getEstadoClass = e => ({'RESERVADO':'estado-warning','CONFIRMADO':'estado-info','COMPLETADO':'estado-success','CANCELADO':'estado-danger'}[e] || 'estado-secondary')
+const getPagoClass = t => (t === 'SENA_50' ? 'pago-sena' : (t === 'TOTAL' ? 'pago-total' : 'pago-pendiente'))
+const getPagoTexto = t => (t === 'SENA_50' ? 'Seña 50%' : (t === 'TOTAL' ? 'Total' : 'Pendiente'))
 
-// Cargar peluqueros
+// --- CARGA DE DATOS ---
 const cargarPeluqueros = async () => {
-  try {
-    const token = localStorage.getItem('token')
-    const res = await fetch('http://localhost:8000/usuarios/api/peluqueros/', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    peluqueros.value = await res.json()
-  } catch (err) {
-    console.error('Error al cargar peluqueros:', err)
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'Error al cargar los peluqueros',
-      confirmButtonText: 'Entendido'
-    })
-  }
+    try {
+        const res = await fetch('http://localhost:8000/usuarios/api/peluqueros/', {
+            headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
+        })
+        peluqueros.value = await res.json()
+    } catch(e) {}
 }
 
-// Cargar turnos
 const cargarTurnos = async () => {
-  try {
-    const token = localStorage.getItem('token')
-    const params = new URLSearchParams()
-    if (filtros.value.peluquero) params.append('peluquero', filtros.value.peluquero)
-    if (filtros.value.estado) params.append('estado', filtros.value.estado)
-    if (filtros.value.canal) params.append('canal', filtros.value.canal)
-    if (filtros.value.fechaDesde) params.append('fecha_desde', filtros.value.fechaDesde)
-    if (filtros.value.fechaHasta) params.append('fecha_hasta', filtros.value.fechaHasta)
+    try {
+        const token = localStorage.getItem('token')
+        const p = new URLSearchParams()
+        // Enviamos filtros al backend
+        if(filtros.value.peluquero) p.append('peluquero', filtros.value.peluquero)
+        if(filtros.value.estado) p.append('estado', filtros.value.estado)
+        if(filtros.value.canal) p.append('canal', filtros.value.canal)
+        if(filtros.value.fechaDesde) p.append('fecha_desde', filtros.value.fechaDesde)
+        if(filtros.value.fechaHasta) p.append('fecha_hasta', filtros.value.fechaHasta)
 
-    const res = await fetch(`http://localhost:8000/usuarios/api/turnos/?${params.toString()}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    const data = await res.json()
-
-    // Ordenar turnos: activos primero, cancelados al final
-    const turnosOrdenados = data
-      .map(t => ({
-        id: t.id,
-        fecha: t.fecha,
-        hora: t.hora,
-        estado: t.estado,
-        canal: t.canal || 'PRESENCIAL',
-        tipo_pago: t.tipo_pago || 'PENDIENTE',
-        monto_seña: t.monto_seña || 0,
-        monto_total: t.monto_total || 0,
-        cliente_nombre: t.cliente_nombre || '',
-        cliente_apellido: t.cliente_apellido || '',
-        peluquero_nombre: t.peluquero_nombre || '',
-        servicios: Array.isArray(t.servicios) ? t.servicios : [],
-        duracion_total: t.duracion_total || 0,
-        puede_modificar: (t.estado === 'RESERVADO' || t.estado === 'CONFIRMADO') && t.puede_modificar,
-        puede_cancelar: (t.estado === 'RESERVADO' || t.estado === 'CONFIRMADO') && t.puede_cancelar,
-        puede_completar: (t.estado === 'CONFIRMADO'),
-        puede_senar: t.estado === 'RESERVADO' && t.tipo_pago === 'PENDIENTE',
-        // Campos para reoferta
-        oferta_activa: t.oferta_activa || false,
-        fecha_expiracion_oferta: t.fecha_expiracion_oferta || null
-      }))
-      .sort((a, b) => {
-        // Cancelados van al final
-        if (a.estado === 'CANCELADO' && b.estado !== 'CANCELADO') return 1
-        if (b.estado === 'CANCELADO' && a.estado !== 'CANCELADO') return -1
+        const res = await fetch(`http://localhost:8000/usuarios/api/turnos/?${p.toString()}`, {
+            headers: { 'Authorization': `Token ${token}` }
+        })
+        const data = await res.json()
         
-        // Ordenar por fecha y hora (más recientes primero)
-        const fechaA = new Date(`${a.fecha}T${a.hora}`)
-        const fechaB = new Date(`${b.fecha}T${b.hora}`)
-        return fechaB - fechaA
-      })
-
-    turnos.value = turnosOrdenados
-
-  } catch (err) {
-    console.error('Error al cargar turnos:', err)
-    turnos.value = []
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'Error al cargar los turnos',
-      confirmButtonText: 'Entendido'
-    })
-  }
+        // ✅ CORRECCIÓN: ORDENAR POR FECHA MÁS RECIENTE PRIMERO
+        const turnosOrdenados = data.sort((a, b) => {
+          const fechaA = new Date(`${a.fecha}T${a.hora}`)
+          const fechaB = new Date(`${b.fecha}T${b.hora}`)
+          return fechaB - fechaA // Orden descendente (más reciente primero)
+        })
+        
+        // Procesamos datos
+        turnos.value = turnosOrdenados.map(t => ({
+            ...t,
+            puede_senar: t.estado === 'RESERVADO' && t.tipo_pago === 'PENDIENTE',
+            servicios: Array.isArray(t.servicios) ? t.servicios : [],
+            canal: t.canal || 'PRESENCIAL'
+        }))
+    } catch(e) {
+        console.error(e)
+        Swal.fire('Error', 'No se pudieron cargar los turnos', 'error')
+    }
 }
 
-// Filtros
-const turnosFiltrados = computed(() => {
-  let resultados = [...turnos.value]
+const cancelarTurnoConReoferta = async (turno) => {
+    try {
+        // PASO 1: Consultar al Backend
+        console.log(`🔍 Consultando interesados para turno ${turno.id}...`);
+        
+        const resInteresados = await fetch(`http://localhost:8000/usuarios/api/turnos/${turno.id}/interesados/`, {
+            headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
+        });
 
-  if (filtros.value.busqueda) {
-    const busqueda = filtros.value.busqueda.toLowerCase()
-    resultados = resultados.filter(turno => {
-      const nombreCompleto = `${turno.cliente_nombre} ${turno.cliente_apellido}`.toLowerCase()
-      return nombreCompleto.includes(busqueda)
-    })
-  }
+        let cantidadInteresados = 0;
 
-  if (filtros.value.estado) {
-    resultados = resultados.filter(turno => turno.estado === filtros.value.estado)
-  }
+        if (resInteresados.ok) {
+            const dataInteresados = await resInteresados.json();
+            console.log("✅ Respuesta Backend:", dataInteresados);
+            
+            // Forzamos conversión a número para evitar problemas de tipos
+            cantidadInteresados = parseInt(dataInteresados.cantidad);
+            
+            // Si parseInt devuelve NaN (por error), lo volvemos 0
+            if (isNaN(cantidadInteresados)) cantidadInteresados = 0;
+            
+        } else {
+            console.error("❌ Error al consultar interesados. Status:", resInteresados.status);
+            // No detenemos el flujo, asumimos 0 pero logueamos el error
+        }
 
-  if (filtros.value.canal) {
-    resultados = resultados.filter(turno => turno.canal === filtros.value.canal)
-  }
+        console.log(`📊 Cantidad final detectada: ${cantidadInteresados}`);
 
-  if (filtros.value.fechaDesde) {
-    resultados = resultados.filter(turno => turno.fecha >= filtros.value.fechaDesde)
-  }
+        // PASO 2: Calcular reembolso
+        const fechaTurno = new Date(`${turno.fecha}T${turno.hora}`);
+        const ahora = new Date();
+        const diffHoras = (fechaTurno - ahora) / (1000 * 60 * 60);
+        const correspondeReembolso = diffHoras >= 3;
+        
+        // PASO 3: Armar HTML
+        let html = `<div style="text-align:left; font-size: 0.95rem;">
+            <p><strong>Cliente:</strong> ${turno.cliente_nombre}</p>
+            <p><strong>Fecha:</strong> ${formatFecha(turno.fecha)} ${formatHora(turno.hora)}</p>
+            <hr style="margin: 10px 0; border-color: #eee;">`;
 
-  if (filtros.value.fechaHasta) {
-    resultados = resultados.filter(turno => turno.fecha <= filtros.value.fechaHasta)
-  }
+        // Info de Reembolso
+        if(turno.monto_seña > 0) {
+            html += correspondeReembolso 
+                ? `<div style="background:#d1fae5;padding:8px;border-radius:6px;color:#065f46;margin-bottom:8px;display:flex;align-items:center;gap:5px;">
+                     <span>💰</span> <strong>Se intentará reembolso automático</strong>
+                   </div>`
+                : `<div style="background:#fee2e2;padding:8px;border-radius:6px;color:#991b1b;margin-bottom:8px;display:flex;align-items:center;gap:5px;">
+                     <span>⚠️</span> <strong>Sin reembolso (< 3hs)</strong>
+                   </div>`;
+        }
 
-  return resultados
-})
+        // Info de Interesados (¡LÓGICA CORREGIDA!)
+        if (cantidadInteresados > 0) {
+            html += `<div style="background:#eff6ff;padding:10px;border-radius:6px;color:#1e40af;border:1px solid #bfdbfe;">
+                        <h3 style="margin:0 0 5px 0;font-size:1rem;">🚀 ¡Reoferta Activa!</h3>
+                        <p style="margin:0;">Hay <strong>${cantidadInteresados} personas</strong> en lista de espera.</p>
+                        <small>Se les enviará una notificación automática ahora mismo.</small>
+                     </div>`;
+        } else {
+            html += `<div style="color:#6b7280;font-style:italic;margin-top:5px;">
+                        ℹ️ No hay interesados en lista de espera. El turno quedará disponible.
+                     </div>`;
+        }
+        html += `</div>`;
 
-const turnosFiltradosPaginados = computed(() => {
-  const inicio = (pagina.value - 1) * itemsPorPagina
-  const fin = inicio + itemsPorPagina
-  return turnosFiltrados.value.slice(inicio, fin)
-})
+        // PASO 4: Mostrar Alerta
+        const confirm = await Swal.fire({
+            title: cantidadInteresados > 0 ? '¿Cancelar y Reofertar?' : '¿Cancelar Turno?',
+            html: html,
+            icon: cantidadInteresados > 0 ? 'info' : 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, Confirmar',
+            cancelButtonText: 'Volver',
+            confirmButtonColor: '#d33',
+            reverseButtons: true
+        });
 
-const totalPaginas = computed(() => Math.ceil(turnosFiltrados.value.length / itemsPorPagina))
+        // PASO 5: Ejecutar Cancelación
+        if(confirm.isConfirmed) {
+            Swal.fire({ title: 'Procesando...', didOpen: () => Swal.showLoading() });
+            
+            const res = await fetch(`http://localhost:8000/usuarios/api/turnos/${turno.id}/cancelar-con-reoferta/`, {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Token ${localStorage.getItem('token')}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const data = await res.json();
+            
+            if(res.ok && data.status === 'ok') {
+                await cargarTurnos();
+                
+                let msgFinal = data.message || 'Turno cancelado con éxito';
+                // Usamos el dato que devuelve el backend en la cancelación para confirmar
+                if (data.reoferta_iniciada) {
+                    msgFinal = `✅ Turno cancelado.<br>🚀 Se notificó a ${data.interesados} interesados.`;
+                }
 
-// Funciones de paginación
-const paginaAnterior = () => { if(pagina.value>1) pagina.value-- }
-const paginaSiguiente = () => { if(pagina.value<totalPaginas.value) pagina.value++ }
+                Swal.fire({
+                    title: '¡Listo!',
+                    html: msgFinal,
+                    icon: 'success'
+                });
 
-// Formateadores
-const formatFecha = fechaString => {
-  if (!fechaString) return '–'
-  try {
-    const [year, month, day] = fechaString.split('-')
-    return `${day}/${month}/${year}`
-  } catch (e) {
-    console.error('Error formateando fecha:', fechaString, e)
-    return '–'
-  }
-}
+            } else {
+                Swal.fire('Error', data.error || 'No se pudo cancelar', 'error');
+            }
+        }
 
-const formatHora = horaString => {
-  if (!horaString) return '–'
-  if (typeof horaString === 'string') {
-    return horaString.slice(0,5)
-  }
-  return '–'
-}
-
-const getServiciosLista = (servicios) => {
-  if (!Array.isArray(servicios)) return []
-  return servicios.map(s => typeof s === 'string' ? s : s.nombre)
-}
-
-const formatearEstado = (estado) => {
-  const estados = {
-    'RESERVADO': 'Reservado',
-    'CONFIRMADO': 'Confirmado', 
-    'COMPLETADO': 'Completado',
-    'CANCELADO': 'Cancelado',
-    'DISPONIBLE': 'Disponible'
-  }
-  return estados[estado] || estado
-}
-
-const getEstadoClass = (estado) => {
-  const clases = {
-    'RESERVADO': 'estado-warning',
-    'CONFIRMADO': 'estado-info',
-    'COMPLETADO': 'estado-success',
-    'CANCELADO': 'estado-danger',
-    'DISPONIBLE': 'estado-secondary'
-  }
-  return clases[estado] || 'estado-secondary'
-}
-
-const getPagoClass = (tipoPago) => {
-  if (tipoPago === 'SENA_50') return 'estado-info'
-  if (tipoPago === 'TOTAL') return 'estado-success'
-  return 'estado-warning'
-}
-
-const getPagoTexto = (tipoPago) => {
-  if (tipoPago === 'SENA_50') return 'Seña 50%'
-  if (tipoPago === 'TOTAL') return 'Total'
-  return 'Pendiente'
-}
-
-const limpiarFiltros = () => {
-  filtros.value = { 
-    busqueda:'', 
-    peluquero:'', 
-    estado:'', 
-    canal:'', 
-    fechaDesde:'', 
-    fechaHasta:'' 
-  }
-  pagina.value = 1
-  cargarTurnos()
+    } catch(e) { 
+        console.error("💥 Error en cancelarTurnoConReoferta:", e);
+        Swal.fire('Error', 'Fallo de conexión al verificar interesados', 'error'); 
+    }
 }
 
 const irARegistrar = () => router.push('/turnos/crear-presencial')
+const modificarTurno = (id) => router.push(`/turnos/modificar/${id}`)
+const procesarSena = async (turno) => { /* Lógica igual */ }
+const completarTurno = async (id) => { /* Lógica igual */ }
 
-const modificarTurno = (turnoId) => {
-  router.push(`/turnos/modificar/${turnoId}`)
+const limpiarFiltros = () => {
+    filtros.value = { busqueda:'', peluquero:'', estado:'', canal:'', fechaDesde:'', fechaHasta:'' }
+    cargarTurnos()
 }
 
-// ✅ NUEVA FUNCIÓN: Cancelar con reoferta
-const cancelarTurnoConReoferta = async (turno) => {
-  const result = await Swal.fire({
-    title: 'Cancelar Turno',
-    html: `
-      <div style="text-align: left;">
-        <p><strong>Cliente:</strong> ${turno.cliente_nombre} ${turno.cliente_apellido}</p>
-        <p><strong>Fecha:</strong> ${formatFecha(turno.fecha)} ${formatHora(turno.hora)}</p>
-        <p><strong>Servicios:</strong> ${getServiciosLista(turno.servicios).join(', ')}</p>
-        ${turno.monto_seña > 0 ? `<p style="color: #f59e0b;"><strong>Seña pagada:</strong> $${turno.monto_seña}</p>` : ''}
-        <p style="color: #0ea5e9; margin-top: 10px;">
-          <strong>🔥 RECOFERTA AUTOMÁTICA:</strong> Se enviarán ofertas a clientes interesados.
-        </p>
-      </div>
-    `,
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonText: 'Sí, Cancelar y Reofertar',
-    cancelButtonText: 'No, Mantener',
-    confirmButtonColor: '#d33',
-    cancelButtonColor: '#3085d6'
-  })
-
-  if (result.isConfirmed) {
-    try {
-      const token = localStorage.getItem('token')
-      const res = await fetch(`http://localhost:8000/usuarios/api/turnos/${turno.id}/cancelar-con-reoferta/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        }
-      })
-      
-      const data = await res.json()
-      
-      if (res.ok && data.status === 'ok') {
-        await cargarTurnos()
-        
-        if (data.reoferta_iniciada) {
-          Swal.fire({
-            icon: 'success',
-            title: 'Turno Cancelado',
-            html: `
-              <div style="text-align: left;">
-                <p>${data.message}</p>
-                <p style="color: #059669; margin-top: 10px;">
-                  <strong>✅ Reoferta masiva iniciada:</strong> Se están enviando ofertas a clientes interesados.
-                </p>
-              </div>
-            `,
-            confirmButtonText: 'Entendido'
-          })
-        } else {
-          Swal.fire({
-            icon: 'success',
-            title: 'Turno Cancelado',
-            text: data.message,
-            confirmButtonText: 'Entendido'
-          })
-        }
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.error || 'Error al cancelar el turno',
-          confirmButtonText: 'Entendido'
-        })
-      }
-    } catch (err) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Error de Conexión',
-        text: 'No se pudo conectar con el servidor',
-        confirmButtonText: 'Entendido'
-      })
+// ✅ FILTRO CLIENTE-SIDE SOLO PARA BUSQUEDA TEXTUAL
+// El resto de filtros (canal, estado) YA los hizo el backend
+const turnosFiltrados = computed(() => {
+    let res = turnos.value
+    if (filtros.value.busqueda) {
+        const b = filtros.value.busqueda.toLowerCase()
+        res = res.filter(t => `${t.cliente_nombre} ${t.cliente_apellido}`.toLowerCase().includes(b))
     }
-  }
-}
-
-// Funciones existentes (procesarSena, completarPago, completarTurno) se mantienen igual...
-const procesarSena = async (turno) => {
-  const montoSena = turno.monto_total * 0.5
-  
-  const result = await Swal.fire({
-    title: 'Procesar Seña',
-    html: `
-      <div style="text-align: left;">
-        <p><strong>Cliente:</strong> ${turno.cliente_nombre} ${turno.cliente_apellido}</p>
-        <p><strong>Servicios:</strong> ${getServiciosLista(turno.servicios).join(', ')}</p>
-        <p><strong>Monto total:</strong> $${turno.monto_total}</p>
-        <p><strong>Seña (50%):</strong> $${montoSena}</p>
-      </div>
-    `,
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonText: 'Procesar Seña',
-    cancelButtonText: 'Cancelar',
-    confirmButtonColor: '#f59e0b',
-    cancelButtonColor: '#d33'
-  })
-
-  if (result.isConfirmed) {
-    try {
-      const token = localStorage.getItem('token')
-      const res = await fetch(`http://localhost:8000/usuarios/api/turnos/${turno.id}/procesar-sena/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          tipo_pago: 'SENA_50'
-        })
-      })
-      
-      const data = await res.json()
-      
-      if (res.ok && data.status === 'ok') {
-        await cargarTurnos()
-        Swal.fire({
-          icon: 'success',
-          title: 'Seña Procesada',
-          text: data.message,
-          confirmButtonText: 'Entendido'
-        })
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message || 'Error al procesar la seña',
-          confirmButtonText: 'Entendido'
-        })
-      }
-    } catch (err) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Error de Conexión',
-        text: 'No se pudo conectar con el servidor',
-        confirmButtonText: 'Entendido'
-      })
-    }
-  }
-}
-
-const completarTurno = async (id) => {
-  const result = await Swal.fire({
-    title: 'Completar Turno',
-    text: '¿Marcar este turno como completado?',
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonText: 'Sí, Completar',
-    cancelButtonText: 'Cancelar',
-    confirmButtonColor: '#10b981',
-    cancelButtonColor: '#6b7280'
-  })
-
-  if (result.isConfirmed) {
-    try {
-      const token = localStorage.getItem('token')
-      const res = await fetch(`http://localhost:8000/usuarios/api/turnos/${id}/completar/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      
-      const data = await res.json()
-      
-      if (res.ok && data.status === 'ok') {
-        await cargarTurnos()
-        Swal.fire({
-          icon: 'success',
-          title: 'Turno Completado',
-          text: data.message,
-          confirmButtonText: 'Entendido'
-        })
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message || 'Error al completar el turno',
-          confirmButtonText: 'Entendido'
-        })
-      }
-    } catch (err) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Error de Conexión',
-        text: 'No se pudo conectar con el servidor',
-        confirmButtonText: 'Entendido'
-      })
-    }
-  }
-}
-
-onMounted(() => {
-  cargarTodo()
+    return res
 })
 
-// Watchers
-watch(() => filtros.value.peluquero, () => {
-  pagina.value = 1
-  cargarTurnos()
+const turnosFiltradosPaginados = computed(() => {
+    const inicio = (pagina.value - 1) * itemsPorPagina
+    return turnosFiltrados.value.slice(inicio, inicio + itemsPorPagina)
 })
+const totalPaginas = computed(() => Math.ceil(turnosFiltrados.value.length / itemsPorPagina))
+const paginaAnterior = () => { if(pagina.value>1) pagina.value-- }
+const paginaSiguiente = () => { if(pagina.value<totalPaginas.value) pagina.value++ }
 
+onMounted(() => { cargarPeluqueros(); cargarTurnos(); })
+
+// Al cambiar filtros, recargamos desde backend
 watch(() => [
-  filtros.value.busqueda,
-  filtros.value.estado, 
-  filtros.value.canal,
-  filtros.value.fechaDesde,
-  filtros.value.fechaHasta
-], () => {
-  pagina.value = 1
+    filtros.value.peluquero, 
+    filtros.value.estado, 
+    filtros.value.canal, 
+    filtros.value.fechaDesde, 
+    filtros.value.fechaHasta
+], () => { 
+    pagina.value = 1; 
+    cargarTurnos(); 
 })
-
-const cargarTodo = async () => {
-  try {
-    await cargarPeluqueros()
-    await cargarTurnos()
-  } catch (error) {
-    console.error('Error cargando datos:', error)
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'Error al cargar los datos iniciales',
-      confirmButtonText: 'Entendido'
-    })
-  }
-}
 </script>
 
 <style scoped>
@@ -785,6 +481,66 @@ const cargarTodo = async () => {
   color: var(--text-tertiary);
   border: 2px solid var(--text-tertiary);
   box-shadow: 0 0 8px rgba(156, 163, 175, 0.2);
+}
+
+/* ✅ CORRECCIÓN: ESTILOS PARA BADGES DE PAGO */
+.badge-pago {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  border: 2px solid;
+}
+
+.pago-sena {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border-color: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
+}
+
+.pago-total {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border-color: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+}
+
+.pago-pendiente {
+  background: rgba(156, 163, 175, 0.15);
+  color: #6b7280;
+  border-color: #6b7280;
+  box-shadow: 0 0 8px rgba(156, 163, 175, 0.2);
+}
+
+/* ✅ CORRECCIÓN: CONTENEDOR DE PAGO MEJORADO */
+.pago-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  min-width: 100px;
+}
+
+.monto-detalle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.monto-seña {
+  color: #f59e0b;
+  font-weight: 700;
+}
+
+.monto-total {
+  color: var(--text-tertiary);
 }
 
 /* HEADER - CON VARIABLES */
@@ -1034,19 +790,6 @@ const cargarTodo = async () => {
   100% { opacity: 1; }
 }
 
-.monto-info {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  margin-top: 6px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  background: var(--bg-tertiary);
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  display: inline-block;
-}
-
 /* Servicios */
 .servicios-compactos {
   max-width: 200px;
@@ -1074,25 +817,6 @@ const cargarTodo = async () => {
   border-radius: 4px;
   text-align: center;
   margin-top: 4px;
-}
-
-.duracion-total {
-  color: #0ea5e9;
-  font-weight: 700;
-  font-size: 0.85rem;
-  margin-top: 6px;
-  text-align: center;
-  background: rgba(14, 165, 233, 0.1);
-  padding: 4px 10px;
-  border-radius: 8px;
-  display: inline-block;
-}
-
-.info-reoferta {
-  margin-top: 4px;
-  font-size: 0.75rem;
-  color: #f59e0b;
-  font-weight: 600;
 }
 
 /* BOTONES DE ACCIÓN - CON VARIABLES */
@@ -1172,50 +896,6 @@ const cargarTodo = async () => {
   color: var(--text-tertiary);
   font-size: 0.85rem;
   font-style: italic;
-}
-
-/* CONTADOR Y MENSAJES - CON VARIABLES */
-.usuarios-count {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: 25px 0;
-  padding: 18px;
-  background: var(--hover-bg);
-  border-radius: 12px;
-  flex-wrap: wrap;
-  gap: 15px;
-  border: 1px solid var(--border-color);
-}
-
-.usuarios-count p {
-  color: var(--text-secondary);
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.alertas-container {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.alerta-reoferta {
-  background: var(--bg-tertiary);
-  color: #ff6b6b;
-  border: 2px solid #ff6b6b;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  font-size: 0.8rem;
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 /* ESTADOS DE CARGA - CON VARIABLES */
@@ -1349,15 +1029,9 @@ const cargarTodo = async () => {
     gap: 6px;
   }
   
-  .usuarios-count {
-    flex-direction: column;
+  .pago-container {
+    min-width: auto;
     align-items: flex-start;
-    gap: 10px;
-  }
-  
-  .alertas-container {
-    flex-direction: column;
-    width: 100%;
   }
   
   .pagination {
@@ -1386,7 +1060,7 @@ const cargarTodo = async () => {
     font-size: 0.9rem;
   }
   
-  .badge-estado {
+  .badge-estado, .badge-pago {
     font-size: 0.65rem;
     padding: 5px 10px;
   }

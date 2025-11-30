@@ -713,3 +713,62 @@ class MarcaSerializer(serializers.ModelSerializer):
     
     def get_total_proveedores(self, obj):
         return obj.proveedores.count() if hasattr(obj, 'proveedores') else 0
+    
+
+
+#Cotizacion proveedores
+# usuarios/serializers.py (al final)
+class CotizacionExternaSerializer(serializers.ModelSerializer):
+    producto_nombre = serializers.CharField(source='solicitud.producto.nombre', read_only=True)
+    cantidad_requerida = serializers.IntegerField(source='solicitud.cantidad_requerida', read_only=True)
+    proveedor_nombre = serializers.CharField(source='proveedor.nombre', read_only=True)
+
+    class Meta:
+        model = Cotizacion
+        fields = ['id', 'token', 'producto_nombre', 'cantidad_requerida', 'proveedor_nombre', 'precio_ofrecido', 'dias_entrega', 'comentarios']
+    
+# ==============================================================================
+# EVALUACIÓN DE PRESUPUESTOS (administrador)
+# ==============================================================================
+
+class CotizacionDetalleSerializer(serializers.ModelSerializer):
+    proveedor_nombre = serializers.CharField(source='proveedor.nombre', read_only=True)
+    score = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Cotizacion
+        fields = [
+            'id', 'proveedor', 'proveedor_nombre', 
+            'precio_ofrecido', 'dias_entrega', 
+            'comentarios', 'respondio', 'score', 'es_la_mejor'
+        ]
+    def get_score(self, obj):
+        # Si el score es infinito, devolvemos null (o 0, o un string "Pendiente")
+        if obj.score == float('inf'):
+            return None 
+        return obj.score
+
+class SolicitudPresupuestoSerializer(serializers.ModelSerializer):
+    producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
+    producto_stock = serializers.IntegerField(source='producto.stock_actual', read_only=True)
+    # Nested Serializer: Trae todas las cotizaciones de esta solicitud
+    cotizaciones = CotizacionDetalleSerializer(many=True, read_only=True)
+    
+    mejor_opcion_id = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SolicitudPresupuesto
+        fields = [
+            'id', 'producto', 'producto_nombre', 'producto_stock', 
+            'cantidad_requerida', 'fecha_creacion', 'estado', 
+            'cotizaciones', 'mejor_opcion_id'
+        ]
+
+    def get_mejor_opcion_id(self, obj):
+        """Devuelve el ID de la cotización con mejor puntaje (score)"""
+        candidatas = [c for c in obj.cotizaciones.all() if c.respondio and c.precio_ofrecido]
+        if not candidatas:
+            return None
+        # Ordenamos por score (menor es mejor)
+        mejor = sorted(candidatas, key=lambda x: x.score)[0]
+        return mejor.id

@@ -196,6 +196,7 @@ class Producto(models.Model):
     proveedores = models.ManyToManyField('Proveedor', blank=True, related_name='productos')
     marca = models.ForeignKey('Marca', on_delete=models.SET_NULL, null=True, blank=True, related_name='productos')
     stock_actual = models.IntegerField(default=0)
+    stock_minimo = models.IntegerField(default=5)
     codigo = models.CharField(max_length=20, unique=True, editable=False)
     estado = models.CharField(max_length=10, choices=ESTADOS, default='ACTIVO')
 
@@ -247,6 +248,52 @@ class Producto(models.Model):
     class Meta:
         db_table = "productos"
 
+#Solicitud  Reabastecimiento
+
+class SolicitudReabastecimiento(models.Model):
+    ESTADOS = (
+        ('PENDIENTE', 'Esperando Respuestas'),
+        ('CERRADA', 'Cerrada / Decisión Tomada'),
+    )
+    producto = models.ForeignKey(Producto, on_delete=models.CASCADE)
+    cantidad_solicitada = models.PositiveIntegerField(default=10) # Cantidad a pedir por defecto
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='PENDIENTE')
+
+    def __str__(self):
+        return f"Reabastecer {self.producto.nombre} - {self.fecha_creacion.date()}"
+
+class CotizacionProveedor(models.Model):
+    """
+    Esta es la 'tabla' que llena el proveedor desde el link.
+    """
+    solicitud = models.ForeignKey(SolicitudReabastecimiento, related_name='cotizaciones', on_delete=models.CASCADE)
+    proveedor = models.ForeignKey(Proveedor, on_delete=models.CASCADE)
+    
+    # EL SECRETO: Token único para que entre sin loguearse
+    token_acceso = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    
+    # Datos que completa el proveedor
+    precio_ofrecido = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    dias_entrega = models.PositiveIntegerField(null=True, blank=True, help_text="Días hábiles para entregar")
+    comentarios = models.TextField(blank=True, null=True)
+    
+    respondió = models.BooleanField(default=False)
+    fecha_respuesta = models.DateTimeField(null=True, blank=True)
+
+    # Lógica Inteligente: Calcular cuál es mejor
+    @property
+    def puntaje_sistema(self):
+        if not self.precio_ofrecido or not self.dias_entrega:
+            return 0
+        # Ejemplo de algoritmo: Menor precio suma más, menor tiempo suma más.
+        # Esto es simple, se puede complicar todo lo que quieras.
+        # Asumimos peso: 70% precio, 30% tiempo. (Valores inversos porque menor es mejor)
+        score_precio = 10000 / float(self.precio_ofrecido) 
+        score_tiempo = 100 / float(self.dias_entrega)
+        return (score_precio * 0.7) + (score_tiempo * 0.3)
+
+
 # ===============================
 # TURNOS - ACTUALIZADO CON REOFERTA
 # ===============================
@@ -261,7 +308,6 @@ class Turno(models.Model):
         ('CONFIRMADO', 'Confirmado'),
         ('COMPLETADO', 'Completado'),
         ('CANCELADO', 'Cancelado'),
-        ('DISPONIBLE', 'Disponible'), 
     ]
 
     TIPO_PAGO_CHOICES = [
@@ -285,6 +331,7 @@ class Turno(models.Model):
     monto_seña = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     monto_total = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     reembolsado = models.BooleanField(default=False)
+    mp_payment_id = models.CharField(max_length=50, blank=True, null=True)
     
     cliente = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="turnos_cliente")
     peluquero = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="turnos_peluquero")
@@ -670,7 +717,7 @@ class Pedido(models.Model):
     ESTADO_CHOICES = [
         ('PENDIENTE', 'Pendiente'),
         ('CONFIRMADO', 'Confirmado'),
-        ('COMPLETADO', 'Completado'),
+        ('ENTREGADO', 'Entregado'),
         ('CANCELADO', 'Cancelado'),
     ]
 
@@ -715,6 +762,10 @@ class Pedido(models.Model):
     def puede_ser_completado(self):
         """Solo si ya fue CONFIRMADO"""
         return self.estado == 'CONFIRMADO'
+    
+    def puede_ser_recibido(self):
+        """Solo se pueden recibir pedidos PENDIENTES o CONFIRMADOS"""
+        return self.estado in ['PENDIENTE', 'CONFIRMADO']
     
     def puede_ser_cancelado(self):
         """Solo se pueden cancelar pedidos PENDIENTES o CONFIRMADOS"""
@@ -915,3 +966,56 @@ class ConfiguracionReoferta(models.Model):
         if not config:
             config = cls.objects.create()
         return config
+
+# ==============================================================================
+# MÓDULO INTELIGENTE: REABASTECIMIENTO AUTOMÁTICO (PROVEEDORES)
+# ==============================================================================
+
+class SolicitudPresupuesto(models.Model):
+    ESTADOS = [
+        ('PENDIENTE', 'Esperando Respuestas'),
+        ('CERRADA', 'Cerrada / Decisión Tomada'),
+    ]
+    # Usamos 'Producto' entre comillas para evitar errores de orden de lectura
+    producto = models.ForeignKey('Producto', on_delete=models.CASCADE, related_name='solicitudes_presupuesto')
+    cantidad_requerida = models.PositiveIntegerField()
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_cierre = models.DateTimeField(null=True, blank=True)
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='PENDIENTE')
+    
+    # El pedido que se generó a partir de la mejor cotización (opcional)
+    pedido_generado = models.ForeignKey('Pedido', on_delete=models.SET_NULL, null=True, blank=True)
+
+    def __str__(self):
+        # Manejo de error por si el producto se borró
+        prod_nombre = self.producto.nombre if self.producto else "Producto Eliminado"
+        return f"Solicitud #{self.id} - {prod_nombre}"
+
+class Cotizacion(models.Model):
+    solicitud = models.ForeignKey(SolicitudPresupuesto, on_delete=models.CASCADE, related_name='cotizaciones')
+    proveedor = models.ForeignKey('Proveedor', on_delete=models.CASCADE)
+    
+    # Token para que el proveedor entre sin loguearse
+    token = models.CharField(max_length=100, unique=True, default=secrets.token_urlsafe)
+    
+    precio_ofrecido = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    dias_entrega = models.IntegerField(null=True, blank=True, help_text="Días hábiles")
+    comentarios = models.TextField(blank=True, null=True)
+    
+    fecha_email_enviado = models.DateTimeField(auto_now_add=True)
+    fecha_respuesta = models.DateTimeField(null=True, blank=True)
+    respondio = models.BooleanField(default=False)
+    es_la_mejor = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Cotización {self.proveedor.nombre} - {self.solicitud.id}"
+
+    @property
+    def score(self):
+        """Calcula qué tan buena es la oferta (Menor es mejor)"""
+        if not self.precio_ofrecido:
+            return float('inf')
+        # Algoritmo simple: (Precio * 0.7) + (Días * 10)
+        p = float(self.precio_ofrecido)
+        d = float(self.dias_entrega or 5) 
+        return (p * 0.7) + (d * 10)
