@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from django.utils.decorators import method_decorator
 from datetime import datetime, timedelta
 from django.utils import timezone
-from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto
+from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, PromocionReactivacion
 from .mercadopago_service import MercadoPagoService
 import json, re, requests
 from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer, ListaPrecioProveedorSerializer, HistorialPreciosSerializer, PrecioSugeridoSerializer, ActualizarListaPreciosSerializer, CotizacionExternaSerializer, SolicitudPresupuestoSerializer
@@ -610,7 +610,6 @@ def listado_turnos(request):
         print(f"Error crítico en listado_turnos: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
     
-
 @api_view(['POST'])
 @permission_classes([AllowAny]) 
 def crear_turno(request):
@@ -683,27 +682,57 @@ def crear_turno(request):
             from .models import InteresTurnoLiberado
             InteresTurnoLiberado.objects.filter(turno_liberado__in=zombies).update(estado_oferta='rechazada')
 
-        # 5. CREAR TURNO
+        # 5. CREAR TURNO (CON LÓGICA DE DESCUENTO) 🎁
         peluquero = Usuario.objects.get(pk=peluquero_id)
         servicios = Servicio.objects.filter(pk__in=servicios_ids)
-        monto_total = sum(float(s.precio) for s in servicios)
         
+        # A. Calcular Monto Original
+        monto_total_original = sum(float(s.precio) for s in servicios)
+        monto_final = monto_total_original # Por defecto es el original
+
+        # B. Verificar Cupón
+        cup_codigo = data.get('cup_codigo')
+        promo_usada = None
+
+        if cup_codigo:
+            try:
+                from .models import PromocionReactivacion
+                promo = PromocionReactivacion.objects.get(codigo=cup_codigo)
+                
+                if promo.esta_vigente:
+                    # Calcular descuento
+                    descuento_monto = monto_total_original * (float(promo.descuento_porcentaje) / 100)
+                    monto_final = monto_total_original - descuento_monto
+                    promo_usada = promo # Guardamos para marcar como usada después
+                    print(f"🎁 DESCUENTO APLICADO: -${descuento_monto} (Total: {monto_final})")
+                else:
+                    print(f"⚠️ Cupón {cup_codigo} vencido o inválido.")
+            except Exception as e:
+                print(f"⚠️ Error validando cupón: {e}")
+
+        # C. Calcular Seña sobre el monto FINAL (con descuento)
         tipo_pago = data.get('tipo_pago')
-        monto_seña = monto_total * 0.5 if tipo_pago == 'SENA_50' else monto_total
+        monto_seña = monto_final * 0.5 if tipo_pago == 'SENA_50' else monto_final
 
         turno = Turno.objects.create(
             cliente=cliente,
             peluquero=peluquero,
             fecha=fecha_obj,
             hora=hora_obj,
-            canal=canal, # <--- AHORA SÍ TOMA EL CORRECTO
+            canal=canal, 
             tipo_pago=tipo_pago,
             medio_pago=data.get('medio_pago', 'EFECTIVO'),
             monto_seña=monto_seña,
-            monto_total=monto_total,
+            monto_total=monto_final, # Guardamos el total YA DESCONTADO
             estado='RESERVADO'
         )
         turno.servicios.set(servicios)
+        
+        # D. Marcar promo como usada
+        if promo_usada:
+            promo_usada.estado = 'USADA'
+            promo_usada.turno_canje = turno
+            promo_usada.save()
         
         # 6. MERCADO PAGO
         mp_data = None
@@ -718,7 +747,7 @@ def crear_turno(request):
                     'monto_pago': float(monto_seña),
                     'cliente_nombre': f"{cliente.nombre} {cliente.apellido}",
                     'cliente_correo': cliente.correo or "cliente@test.com",
-                    'peluquero_nombre': f"{peluquero.nombre} {peluquero.apellido}",
+                    'peluquero_nombre': f"{peluquero.nombre}",
                     'es_pago_total': (tipo_pago == 'TOTAL')
                 }
                 
@@ -789,6 +818,98 @@ def verificar_disponibilidad(request):
         }, status=500)
 
 @csrf_exempt
+def cambiar_estado_turno(request, turno_id, nuevo_estado):
+    """
+    Vista para cambiar el estado de un turno desde el frontend
+    """
+    try:
+        # Obtener el turno
+        turno = get_object_or_404(Turno, id=turno_id)
+        
+        # Estados válidos (definidos en tu modelo)
+        estados_validos = ['RESERVADO', 'CONFIRMADO', 'COMPLETADO', 'CANCELADO']
+        
+        if nuevo_estado not in estados_validos:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Estado no válido'
+            }, status=400)
+        
+        # Guardar estado anterior para logs
+        estado_anterior = turno.estado
+        
+        # Validar transiciones según tu lógica de negocio
+        if estado_anterior == 'COMPLETADO' and nuevo_estado != 'COMPLETADO':
+            return JsonResponse({
+                'status': 'error',
+                'message': 'No se puede modificar un turno ya completado'
+            }, status=400)
+        
+        if estado_anterior == 'CANCELADO' and nuevo_estado != 'CANCELADO':
+            return JsonResponse({
+                'status': 'error',
+                'message': 'No se puede modificar un turno cancelado'
+            }, status=400)
+        
+        # Validar que solo se pueda completar un turno CONFIRMADO
+        if nuevo_estado == 'COMPLETADO' and estado_anterior not in ['CONFIRMADO']:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Solo se pueden completar turnos confirmados'
+            }, status=400)
+        
+        # Procesar datos adicionales si vienen
+        data = json.loads(request.body) if request.body else {}
+        
+        # Cambiar el estado
+        turno.estado = nuevo_estado
+        
+        # Actualizar tipo de pago si viene en la data
+        if 'tipo_pago' in data:
+            turno.tipo_pago = data['tipo_pago']
+        
+        # Actualizar monto de seña si viene en la data
+        if 'monto_seña' in data:
+            turno.monto_seña = Decimal(data['monto_seña'])
+        
+        # Si se completa automáticamente, calcular montos si no están definidos
+        if nuevo_estado == 'COMPLETADO':
+            # Calcular monto total si no está definido
+            if turno.monto_total == 0:
+                turno.monto_total = sum(
+                    servicio.precio for servicio in turno.servicios.all()
+                )
+            
+            # Si es seña 50% y no tiene monto de seña, calcularlo
+            if turno.tipo_pago == 'SENA_50' and turno.monto_seña == 0:
+                turno.monto_seña = turno.monto_total * Decimal('0.5')
+        
+        # Guardar los cambios (esto activará automáticamente crear_venta_turno() si cambia a COMPLETADO)
+        turno.save()
+        
+        return JsonResponse({
+            'status': 'ok',
+            'message': f'Estado cambiado de {estado_anterior} a {nuevo_estado}',
+            'turno_id': turno.id,
+            'estado_actual': turno.estado,
+            'cliente': turno.cliente.nombre,
+            'fecha': turno.fecha.strftime('%d/%m/%Y'),
+            'hora': turno.hora.strftime('%H:%M')
+        })
+        
+    except Turno.DoesNotExist:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Turno no encontrado'
+        }, status=404)
+    except Exception as e:
+        print(f"Error al cambiar estado del turno: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Error interno: {str(e)}'
+        }, status=500)
+    
+@csrf_exempt
 def completar_turno(request, turno_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'Método no permitido'}, status=405)
@@ -822,6 +943,46 @@ def completar_turno(request, turno_id):
             'status': 'error',
             'message': str(e)
         }, status=400)
+
+@csrf_exempt
+def actualizar_pago_turno(request, turno_id):
+    """
+    Actualiza el tipo de pago y monto total de un turno
+    """
+    try:
+        turno = get_object_or_404(Turno, id=turno_id)
+        data = json.loads(request.body)
+        
+        tipo_pago = data.get('tipo_pago')
+        monto_total = Decimal(data.get('monto_total', 0))
+        
+        if tipo_pago not in ['SENA_50', 'TOTAL']:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Tipo de pago no válido'
+            }, status=400)
+        
+        # Actualizar datos
+        turno.tipo_pago = tipo_pago
+        turno.monto_total = monto_total
+        
+        # Si es pago total, la seña es igual al total
+        if tipo_pago == 'TOTAL':
+            turno.monto_seña = monto_total
+        
+        turno.save()
+        
+        return JsonResponse({
+            'status': 'ok',
+            'message': f'Pago actualizado a {tipo_pago} - Total: ${monto_total}',
+            'turno_id': turno.id
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
 
 @csrf_exempt
 def modificar_turno(request, turno_id):
@@ -1060,6 +1221,47 @@ def listar_intereses_cliente(request, cliente_id=None):
         logger.error(f"Error en listar_intereses_cliente: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
 
+@csrf_exempt
+def registrar_pago_turno(request, turno_id):
+    """Registra un pago (seña o total) y actualiza estado"""
+    try:
+        turno = get_object_or_404(Turno, id=turno_id)
+        data = json.loads(request.body)
+        
+        tipo_pago = data.get('tipo_pago')
+        monto = Decimal(data.get('monto', 0))
+        
+        if tipo_pago not in ['SENA_50', 'TOTAL']:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Tipo de pago no válido'
+            }, status=400)
+        
+        # Actualizar datos de pago
+        turno.tipo_pago = tipo_pago
+        turno.monto_seña = monto
+        
+        # Si es pago total, el monto seña es igual al total
+        if tipo_pago == 'TOTAL':
+            turno.monto_total = monto
+        
+        # Cambiar estado a CONFIRMADO automáticamente
+        turno.estado = 'CONFIRMADO'
+        turno.save()
+        
+        return JsonResponse({
+            'status': 'ok',
+            'message': f'Pago registrado: {tipo_pago} - ${monto}',
+            'turno_id': turno.id,
+            'estado': turno.estado
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+    
 @csrf_exempt
 def procesar_sena_turno(request, turno_id):
     """Procesar seña de un turno"""
@@ -1722,6 +1924,7 @@ def crear_turno(request):
 
     except Exception as e:
         return Response({'status': 'error', 'message': str(e)}, status=500)
+    
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def me_api_view(request):
@@ -3859,3 +4062,28 @@ class SolicitudPresupuestoViewSet(viewsets.ReadOnlyModelViewSet):
             "mensaje": f"¡Orden de Compra #{nuevo_pedido.id} generada con éxito!",
             "pedido_id": nuevo_pedido.id
         })
+
+#CUPON DEL PROCESO AUTOMATIZADO - CLIENTES INACTIVOSPSSS
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def validar_cupon(request, codigo):
+    """Valida si un cupón existe y está vigente"""
+    # Importación local para evitar errores circulares si los hubiera
+    from .models import PromocionReactivacion
+    from django.utils import timezone
+
+    try:
+        promo = PromocionReactivacion.objects.get(codigo=codigo)
+        
+        if not promo.esta_vigente:
+            return Response({'valido': False, 'mensaje': 'Este cupón ya venció o fue usado.'})
+            
+        return Response({
+            'valido': True,
+            'descuento': float(promo.descuento_porcentaje),
+            'mensaje': f'¡Genial! Tenés un {promo.descuento_porcentaje}% de descuento.',
+            'promo_id': promo.id
+        })
+        
+    except PromocionReactivacion.DoesNotExist:
+        return Response({'valido': False, 'mensaje': 'Código de cupón inválido.'}, status=404)

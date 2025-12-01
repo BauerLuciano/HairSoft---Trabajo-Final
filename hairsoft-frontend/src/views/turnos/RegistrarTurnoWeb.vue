@@ -6,6 +6,16 @@
         <p class="subtitle">Reserva tu turno desde casa, con pago de seña o total</p>
       </div>
 
+      <transition name="bounce">
+        <div v-if="descuentoAplicado > 0" class="cup-alert">
+          <span class="cup-icon">🎉</span>
+          <div class="cup-info">
+            <strong>¡Descuento Activado!</strong>
+            <p>Tenés un {{ descuentoAplicado }}% OFF por reactivación.</p>
+          </div>
+        </div>
+      </transition>
+
       <div class="form-content">
         <div class="input-group cliente-section">
           <label class="section-label">👤 Tus Datos</label>
@@ -115,9 +125,20 @@
                 <span>{{ getServicioNombre(servicioId) }}</span>
                 <span>${{ getServicioPrecio(servicioId) }}</span>
               </div>
+              
+              <div class="resumen-item subtotal" v-if="descuentoAplicado > 0">
+                <span>Subtotal</span>
+                <span class="tachado">${{ calcularTotalOriginal() }}</span>
+              </div>
+
+              <div class="resumen-item descuento" v-if="descuentoAplicado > 0">
+                <span>🎁 Descuento ({{ descuentoAplicado }}%)</span>
+                <span class="text-success">- ${{ calcularMontoDescuento() }}</span>
+              </div>
+
               <div class="resumen-item total">
                 <span>Total del servicio</span>
-                <span><strong>${{ calcularTotal() }}</strong></span>
+                <span><strong>${{ calcularTotalConDescuento() }}</strong></span>
               </div>
             </div>
           </div>
@@ -180,7 +201,7 @@
                   <div class="pago-content-horizontal">
                     <span class="pago-nombre-horizontal">Seña (50%)</span>
                     <span class="pago-monto-horizontal">${{ calcularSena() }}</span>
-                    <span class="pago-desc-horizontal">Resto: ${{ (calcularTotal() * 0.5).toFixed(2) }} en el local</span>
+                    <span class="pago-desc-horizontal">Resto: ${{ (calcularTotalConDescuento() * 0.5).toFixed(2) }} en el local</span>
                   </div>
                 </div>
 
@@ -191,7 +212,7 @@
                 >
                   <div class="pago-content-horizontal">
                     <span class="pago-nombre-horizontal">Pago Total (100%)</span>
-                    <span class="pago-monto-horizontal">${{ calcularTotal() }}</span>
+                    <span class="pago-monto-horizontal">${{ calcularTotalConDescuento() }}</span>
                     <span class="pago-desc-horizontal">Pago completo online</span>
                   </div>
                 </div>
@@ -229,6 +250,12 @@
                   <span>Servicios:</span>
                   <span>{{ getServiciosNombres() }}</span>
                 </div>
+                
+                <div class="resumen-item" v-if="descuentoAplicado > 0">
+                  <span>Descuento aplicado:</span>
+                  <span class="text-success font-bold">{{ descuentoAplicado }}% OFF</span>
+                </div>
+
                 <div class="resumen-item total">
                   <span>Total a pagar ahora:</span>
                   <span class="monto-final-pago">${{ montoAPagarAhora() }}</span>
@@ -252,20 +279,6 @@
           </div>
         </transition>
 
-        <transition name="bounce">
-          <div v-if="mensajeInteres" class="mensaje-premium" :class="{ error: mensajeInteres.includes('Error') }">
-            <span class="mensaje-icon">{{ mensajeInteres.includes('Error') ? '❌' : '✅' }}</span>
-            <span class="mensaje-text">{{ mensajeInteres }}</span>
-          </div>
-        </transition>
-
-        <transition name="bounce">
-          <div v-if="mensaje" class="mensaje-premium" :class="{ error: mensaje.includes('Error') }">
-            <span class="mensaje-icon">{{ mensaje.includes('Error') ? '❌' : '✅' }}</span>
-            <span class="mensaje-text">{{ mensaje }}</span>
-          </div>
-        </transition>
-
         <div v-if="cargando" class="loading-overlay">
           <div class="loading-content">
             <span class="loading-spinner">🔄</span>
@@ -275,7 +288,6 @@
       </div>
     </div>
 
-    <!-- MODAL DE HORARIOS -->
     <div v-if="mostrarModalHora" class="modal-overlay" @click="cerrarModalHora">
       <div class="modal-content modal-horario-grande" @click.stop>
         <div class="modal-header">
@@ -283,72 +295,43 @@
           <button class="modal-close-btn" @click="cerrarModalHora">×</button>
         </div>
         <div class="modal-body">
-          
-          <!-- GRID DE HORARIOS - ESTILOS IGUAL AL PRESENCIAL -->
           <div class="quick-time-grid-modal-mejorado">
-            
-            <!-- CADA HORARIO -->
             <div 
               v-for="hora in horariosDisponibles" 
               :key="hora"
               class="quick-time-option-modal-mejorado"
-              :class="{ 
-                selected: form.hora === hora,
-                disabled: !estaHorarioDisponible(hora)
-              }"
+              :class="{ selected: form.hora === hora, disabled: !estaHorarioDisponible(hora) }"
             >
-              
-              <!-- SI ESTÁ DISPONIBLE -->
-              <div 
-                v-if="estaHorarioDisponible(hora)"
-                class="hora-content-disponible"
-                @click="seleccionarHoraRapida(hora)"
-              >
+              <div v-if="estaHorarioDisponible(hora)" class="hora-content-disponible" @click="seleccionarHoraRapida(hora)">
                 <div class="hora-icon">✅</div>
                 <div class="hora-texto">
                   <span class="hora-hora">{{ hora }}</span>
                   <span class="hora-estado">Disponible</span>
                 </div>
               </div>
-              
-              <!-- SI ESTÁ OCUPADO -->
-              <div 
-                v-else
-                class="hora-content-ocupado"
-              >
+              <div v-else class="hora-content-ocupado">
                 <div class="hora-icon">❌</div>
                 <div class="hora-texto">
                   <span class="hora-hora">{{ hora }}</span>
                   <span class="hora-estado">Ocupado</span>
                 </div>
-                
-                <!-- BOTÓN "AVÍSAME" - SIEMPRE VISIBLE -->
                 <div class="horario-ocupado-actions-mejorado">
-                  <button 
-                    @click.stop="registrarInteresHorario(hora)"
-                    class="btn-avisar-liberado-mejorado"
-                    :disabled="estaInteresRegistrado(hora)"
-                  >
+                  <button @click.stop="registrarInteresHorario(hora)" class="btn-avisar-liberado-mejorado" :disabled="estaInteresRegistrado(hora)">
                     {{ estaInteresRegistrado(hora) ? '✅ En lista' : '🔔 Avísame' }}
                   </button>
                 </div>
               </div>
-              
             </div>
           </div>
-          
-          <!-- INFORMACIÓN ADICIONAL -->
           <div class="info-avisos-horarios">
             <p><strong>💡 ¿El horario está ocupado?</strong></p>
             <p>Tocá "Avísame" y te notificaremos si alguien cancela.</p>
             <p>Tendrás <strong>15% descuento</strong>.</p>
           </div>
-          
         </div>
       </div>
     </div>
 
-    <!-- Modal de Confirmación de Interés -->
     <div v-if="mostrarModalInteres" class="modal-overlay">
       <div class="modal-content">
         <div class="modal-header">
@@ -365,16 +348,11 @@
             </div>
             <div class="beneficio-descuento">
               <span class="icono-descuento">🔥</span>
-              <strong>¡Beneficio exclusivo!</strong> Si se libera, tendrás <strong>PRIORIDAD</strong> (primer registrado = primer avisado), <strong>15% de descuento</strong> 
-              y 1 hora para confirmar el turno.
+              <strong>¡Beneficio exclusivo!</strong> Si se libera, tendrás <strong>PRIORIDAD</strong>, <strong>15% de descuento</strong> y 1 hora para confirmar.
             </div>
           </div>
           <div class="modal-actions">
-            <button 
-              @click="confirmarRegistroInteres" 
-              class="btn-confirmar-interes"
-              :disabled="registrandoInteres"
-            >
+            <button @click="confirmarRegistroInteres" class="btn-confirmar-interes" :disabled="registrandoInteres">
               {{ registrandoInteres ? 'Registrando...' : '✅ Sí, avisarme' }}
             </button>
             <button @click="cancelarRegistroInteres" class="btn-cancelar-interes">❌ Cancelar</button>
@@ -387,7 +365,8 @@
 
 <script>
 import axios from 'axios';
-import Swal from 'sweetalert2'; // ✅ Importamos Swal
+import Swal from 'sweetalert2';
+import { useRoute } from 'vue-router'; // Importar useRoute
 
 export default {
   data() {
@@ -401,19 +380,11 @@ export default {
         medio_pago: "MERCADO_PAGO",
         canal: "WEB"
       },
-      usuario: { 
-        id: null, 
-        nombre: 'Cargando', 
-        apellido: '...', 
-        dni: 'Cargando', 
-        telefono: '',
-        turnosCount: 0 
-      }, 
+      usuario: { id: null, nombre: 'Cargando', apellido: '...', dni: 'Cargando', telefono: '', turnosCount: 0 }, 
       peluqueros: [],
       servicios: [],
       categorias: [],
       turnosOcupados: [],
-      mensaje: "", // Ya no lo usaremos visualmente, pero lo dejo por compatibilidad
       cargando: false,
       categoriasSeleccionadas: [],
       busquedaServicio: "",
@@ -422,7 +393,12 @@ export default {
       horarioSeleccionadoInteres: null,
       registrandoInteres: false,
       mensajeInteres: "",
-      mostrarModalHora: false
+      mostrarModalHora: false,
+      
+      // 🆕 VARIABLES PARA CUPÓN DE DESCUENTO
+      cuponCodigo: null,
+      descuentoAplicado: 0,
+      mensajePromo: ""
     };
   },
   computed: {
@@ -452,9 +428,7 @@ export default {
       let filtrados = this.servicios;
       if (this.categoriasSeleccionadas.length > 0) {
         filtrados = filtrados.filter(servicio => {
-          const categoriaSeleccionada = this.categorias.find(cat => 
-            cat.id === this.categoriasSeleccionadas[0]
-          );
+          const categoriaSeleccionada = this.categorias.find(cat => cat.id === this.categoriasSeleccionadas[0]);
           return servicio.categoria === categoriaSeleccionada.nombre;
         });
       }
@@ -506,14 +480,63 @@ export default {
         this.cargarCategorias(),
         this.cargarTurnosOcupados()
       ]);
-      // Cargar intereses DESPUÉS de tener el usuario asegurado
+      // 🆕 Validar cupón al iniciar (si viene en URL)
+      this.validarCuponURL();
       await this.cargarInteresesUsuario();
+    },
+    
+// 🆕 FUNCIÓN PARA VALIDAR CUPÓN (Versión A Prueba de Balas 🛡️)
+    async validarCuponURL() {
+        // 1. Intentar leer desde Vue Router
+        let codigo = this.$route.query.cup;
+        
+        // 2. Si falla, intentar leer directo del navegador (Fallback nativo)
+        if (!codigo) {
+            const urlParams = new URLSearchParams(window.location.search);
+            codigo = urlParams.get('cup');
+        }
+
+        console.log("🔍 Buscando cupón en URL... Encontrado:", codigo); // <--- Mirá la consola (F12)
+
+        if (!codigo) return;
+
+        try {
+            console.log(`📡 Consultando API: http://localhost:8000/usuarios/api/promociones/validar/${codigo}/`);
+            const res = await axios.get(`http://localhost:8000/usuarios/api/promociones/validar/${codigo}/`);
+            
+            console.log("✅ Respuesta API:", res.data);
+
+            if (res.data.valido) {
+                this.cuponCodigo = codigo;
+                this.descuentoAplicado = parseFloat(res.data.descuento); // Asegurar número
+                this.mensajePromo = res.data.mensaje;
+                
+                // Guardar en variable reactiva para que el template se entere
+                // (A veces Vue 3 necesita un empujón si usas Options API mezclado)
+                this.$forceUpdate(); 
+
+                Swal.fire({
+                    title: '¡Descuento Activado! 🎉',
+                    text: res.data.mensaje,
+                    icon: 'success',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 4000
+                });
+            } else {
+                console.warn("⚠️ Cupón inválido según backend:", res.data.mensaje);
+                // Opcional: Avisar al usuario que el cupón expiró
+            }
+        } catch (e) {
+            console.error("❌ Error validando cupón (Axios):", e);
+        }
     },
 
     async cargarUsuarioLogueado() {
           try {
-            const storedUserId = localStorage.getItem('user_id') || sessionStorage.getItem('user_id');
-            const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+            const storedUserId = localStorage.getItem('user_id');
+            const token = localStorage.getItem('token');
             const config = token ? { headers: { 'Authorization': `Bearer ${token}` } } : {};
             
             if (storedUserId) {
@@ -523,21 +546,12 @@ export default {
                 try {
                   const statsRes = await axios.get(`http://localhost:8000/usuarios/api/turnos/cliente/${this.usuario.id}/estadisticas/`, config);
                   this.usuario.turnosCount = statsRes.data.total_turnos || 0;
-                } catch (statsErr) {
-                  this.usuario.turnosCount = 0;
-                }
+                } catch (statsErr) { this.usuario.turnosCount = 0; }
             } else {
                 this.usuario = { nombre: 'Invitado', apellido: '', dni: 'No identificado', telefono: 'No registrado', turnosCount: 0, id: null };
             }
           } catch (err) {
             console.error("Error usuario:", err);
-            const storedUserId = localStorage.getItem('user_id');
-            this.usuario = { 
-              nombre: localStorage.getItem('user_nombre') || 'Invitado', 
-              apellido: '', 
-              dni: 'No disponible', 
-              id: storedUserId ? parseInt(storedUserId) : null
-            };
           }
     },
     
@@ -574,7 +588,6 @@ export default {
     async cargarInteresesUsuario() {
       try {
         if (this.usuario.id) {
-          // Asegúrate de que la URL coincida con tu urls.py (singular o plural)
           const res = await axios.get(`http://localhost:8000/usuarios/api/turnos/mis-intereses/`, {
              headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
           });
@@ -583,13 +596,45 @@ export default {
       } catch (err) { console.error("Error intereses:", err); }
     },
     
+    // 🆕 MÉTODOS DE CÁLCULO CON DESCUENTO
+    calcularTotalOriginal() {
+      return this.form.servicios_ids.reduce((total, id) => total + parseFloat(this.getServicioPrecio(id) || 0), 0).toFixed(2);
+    },
+    
+    calcularTotal() {
+       // Alias para mantener compatibilidad
+       return this.calcularTotalOriginal();
+    },
+
+    calcularMontoDescuento() {
+        const total = parseFloat(this.calcularTotalOriginal());
+        if (this.descuentoAplicado > 0) {
+            return (total * (this.descuentoAplicado / 100)).toFixed(2);
+        }
+        return '0.00';
+    },
+
+    calcularTotalConDescuento() {
+        const total = parseFloat(this.calcularTotalOriginal());
+        if (this.descuentoAplicado > 0) {
+            return (total * (1 - this.descuentoAplicado / 100)).toFixed(2);
+        }
+        return total.toFixed(2);
+    },
+
+    calcularSena() {
+        const totalConDesc = parseFloat(this.calcularTotalConDescuento());
+        return (totalConDesc * 0.5).toFixed(2);
+    },
+    
     montoAPagarAhora() {
-      const total = parseFloat(this.calcularTotal());
+      const total = parseFloat(this.calcularTotalConDescuento());
       if (this.form.tipo_pago === 'TOTAL') return total.toFixed(2);
       if (this.form.tipo_pago === 'SENA_50') return (total * 0.5).toFixed(2);
       return '0.00';
     },
 
+    // ... Resto de métodos (toggleCategoria, toggleServicio, etc.) se mantienen igual ...
     toggleCategoria(categoriaId) {
       const index = this.categoriasSeleccionadas.indexOf(categoriaId);
       if (index === -1) this.categoriasSeleccionadas.push(categoriaId);
@@ -607,11 +652,6 @@ export default {
     getServicioPrecio(id) { return this.servicios.find(x => x.id === id)?.precio || 0; },
     getCategoriaNombre(categoria) { return categoria || 'General'; },
 
-    calcularTotal() {
-      return this.form.servicios_ids.reduce((total, id) => total + parseFloat(this.getServicioPrecio(id) || 0), 0).toFixed(2);
-    },
-    calcularSena() { return (this.calcularTotal() * 0.5).toFixed(2); },
-
     formatDate(date) {
       const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
       const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -621,15 +661,7 @@ export default {
       const day = String(date.getDate()).padStart(2, '0');
       const fullDate = `${year}-${month}-${day}`;
       const isToday = date.toDateString() === today.toDateString();
-      
-      return {
-        dayName: days[date.getDay()],
-        dayNum: date.getDate(),
-        month: months[date.getMonth()],
-        fullDate: fullDate,
-        isToday: isToday,
-        dateObj: date
-      };
+      return { dayName: days[date.getDay()], dayNum: date.getDate(), month: months[date.getMonth()], fullDate: fullDate, isToday: isToday, dateObj: date };
     },
 
     formatoFechaLegible(fechaStr) {
@@ -639,25 +671,15 @@ export default {
       return fecha.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
     },
 
-    onPeluqueroSeleccionado() {
-      this.limpiarSelecciones();
-      this.cargarTurnosOcupados(this.form.fecha);
-    },
-
-    seleccionarFecha(dateInfo) {
-      this.form.fecha = dateInfo.fullDate;
-      this.form.hora = "";
-      this.form.tipo_pago = null;
-      this.cargarTurnosOcupados(dateInfo.fullDate);
-    },
+    onPeluqueroSeleccionado() { this.limpiarSelecciones(); this.cargarTurnosOcupados(this.form.fecha); },
+    seleccionarFecha(dateInfo) { this.form.fecha = dateInfo.fullDate; this.form.hora = ""; this.form.tipo_pago = null; this.cargarTurnosOcupados(dateInfo.fullDate); },
 
     estaHorarioDisponible(horario) {
       if (!this.form.fecha || !this.form.peluquero) return true;
       const peluqueroSeleccionado = this.peluqueros.find(p => p.id == this.form.peluquero);
       if (!peluqueroSeleccionado) return true;
-
       const turnoOcupado = this.turnosOcupados.find(turno => {
-        const mismoPeluquero = turno.peluquero_id == this.form.peluquero; // ID vs ID es más seguro
+        const mismoPeluquero = turno.peluquero_id == this.form.peluquero;
         return mismoPeluquero && turno.fecha === this.form.fecha && turno.hora === horario;
       });
       return !turnoOcupado;
@@ -677,11 +699,8 @@ export default {
     },
 
     limpiarSelecciones() {
-      this.form.fecha = null;
-      this.form.hora = "";
-      this.form.servicios_ids = [];
-      this.form.tipo_pago = null;
-      this.categoriasSeleccionadas = [];
+      this.form.fecha = null; this.form.hora = ""; this.form.servicios_ids = [];
+      this.form.tipo_pago = null; this.categoriasSeleccionadas = [];
     },
 
     abrirModalHora() { this.mostrarModalHora = true; },
@@ -689,79 +708,39 @@ export default {
 
     seleccionarHoraRapida(hora) {
       if (this.estaHorarioDisponible(hora)) {
-        this.form.hora = hora;
-        this.form.tipo_pago = null;
-        this.cerrarModalHora();
+        this.form.hora = hora; this.form.tipo_pago = null; this.cerrarModalHora();
       }
     },
 
     registrarInteresHorario(horario) {
-      if (this.estaHorarioDisponible(horario)) {
-        Swal.fire('Atención', 'Este horario está disponible, puedes reservarlo directamente.', 'info');
-        return;
-      }
+      if (this.estaHorarioDisponible(horario)) { Swal.fire('Atención', 'Este horario está disponible.', 'info'); return; }
       this.horarioSeleccionadoInteres = horario;
       this.mostrarModalInteres = true;
     },
 
-    cancelarRegistroInteres() {
-      this.mostrarModalInteres = false;
-      this.horarioSeleccionadoInteres = null;
-    },
+    cancelarRegistroInteres() { this.mostrarModalInteres = false; this.horarioSeleccionadoInteres = null; },
 
     async confirmarRegistroInteres() {
-        if (!this.usuario.id) { 
-            Swal.fire('Error', 'Debes iniciar sesión para registrarte.', 'error');
-            return; 
-        }
-
+        if (!this.usuario.id) { Swal.fire('Error', 'Debes iniciar sesión.', 'error'); return; }
         this.registrandoInteres = true;
-
         try {
-            const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+            const token = localStorage.getItem('token');
             const config = token ? { headers: { 'Authorization': `Token ${token}` } } : {};
-
-            const payload = {
-                cliente_id: this.usuario.id,
-                servicio_id: this.form.servicios_ids[0],
-                peluquero_id: this.form.peluquero,
-                fecha_deseada: this.form.fecha,
-                hora_deseada: this.horarioSeleccionadoInteres
-            };
-
-            const res = await axios.post(
-                "http://localhost:8000/usuarios/api/turnos/registrar-interes/",
-                payload, 
-                config
-            );
-            
-            // ✅ EXITO: SWAL + REFRESCO
+            const payload = { cliente_id: this.usuario.id, servicio_id: this.form.servicios_ids[0], peluquero_id: this.form.peluquero, fecha_deseada: this.form.fecha, hora_deseada: this.horarioSeleccionadoInteres };
+            const res = await axios.post("http://localhost:8000/usuarios/api/turnos/registrar-interes/", payload, config);
             if (res.data.success) {
                 this.mostrarModalInteres = false;
-                await this.cargarInteresesUsuario(); // <--- ESTO ACTUALIZA EL BOTÓN "YA REGISTRADO"
-                
-                Swal.fire({
-                    icon: 'success',
-                    title: '¡Listo!',
-                    text: 'Te avisaremos por WhatsApp si el turno se libera.',
-                    timer: 3000,
-                    showConfirmButton: false
-                });
+                await this.cargarInteresesUsuario();
+                Swal.fire({ icon: 'success', title: '¡Listo!', text: 'Te avisaremos por WhatsApp.', timer: 3000, showConfirmButton: false });
             } else {
-                Swal.fire('Atención', res.data.error || "Ya estás registrado.", 'warning');
+                Swal.fire('Atención', res.data.error || "Ya registrado.", 'warning');
             }
-        } catch (err) {
-            Swal.fire('Error', err.response?.data?.error || "Error al conectar.", 'error');
-        } finally {
-            this.registrandoInteres = false;
-        }
+        } catch (err) { Swal.fire('Error', err.response?.data?.error || "Error al conectar.", 'error'); } 
+        finally { this.registrandoInteres = false; }
     },
     
     async reservarTurno() {
-      if (!this.formularioValido) {
-        Swal.fire('Faltan datos', 'Completa todos los campos y selecciona el pago.', 'warning');
-        return;
-      }
+      if (!this.formularioValido) { Swal.fire('Faltan datos', 'Completa todos los campos.', 'warning'); return; }
 
       this.cargando = true;
       const payload = {
@@ -771,7 +750,9 @@ export default {
         hora: this.form.hora,
         canal: 'WEB',
         tipo_pago: this.form.tipo_pago,
-        medio_pago: this.form.medio_pago
+        medio_pago: this.form.medio_pago,
+        // ✅ AGREGAMOS EL CUPÓN AL PAYLOAD PARA QUE EL BACKEND APLIQUE EL DESCUENTO
+        cup_codigo: this.cuponCodigo 
       };
 
       try {
@@ -784,51 +765,30 @@ export default {
 
         if (data.status === 'ok') {
           if (data.procesar_pago && data.mp_data?.init_point) {
-            
-            // ✅ ÉXITO CON PAGO: SWAL CON CONFIRMACIÓN
-            Swal.fire({
-                icon: 'success',
-                title: 'Reserva Iniciada',
-                text: 'Te redirigiremos a Mercado Pago para completar el pago.',
-                timer: 2000,
-                showConfirmButton: false
-            }).then(() => {
-                window.open(data.mp_data.init_point, '_blank');
-                this.$router.push('/turnos');
-            });
-
+            Swal.fire({ icon: 'success', title: 'Reserva Iniciada', text: 'Redirigiendo a Mercado Pago...', timer: 2000, showConfirmButton: false })
+              .then(() => { window.open(data.mp_data.init_point, '_blank'); this.$router.push('/turnos'); });
           } else {
-            // ✅ ÉXITO SIN PAGO (LOCAL): SWAL SIMPLE
-            Swal.fire({
-                icon: 'success',
-                title: '¡Turno Reservado!',
-                text: 'Te esperamos en el local.',
-                timer: 2000,
-                showConfirmButton: false
-            }).then(() => {
-                this.$router.push('/turnos');
-            });
+            Swal.fire({ icon: 'success', title: '¡Turno Reservado!', text: 'Te esperamos.', timer: 2000, showConfirmButton: false })
+              .then(() => { this.$router.push('/turnos'); });
           }
         } else {
           Swal.fire('Error', data.message || "No se pudo reservar.", 'error');
         }
       } catch (err) {
         this.cargando = false;
-        if (err.response && err.response.status === 401) {
-            Swal.fire('Sesión Expirada', 'Por favor inicia sesión nuevamente.', 'error');
-        } else {
-            Swal.fire('Error', err.response?.data?.message || 'Error de conexión', 'error');
-        }
+        if (err.response && err.response.status === 401) Swal.fire('Sesión Expirada', 'Inicia sesión.', 'error');
+        else Swal.fire('Error', err.response?.data?.message || 'Error de conexión', 'error');
       }
     },
 
-    iniciarPagoMercadoPago(initPointUrl) {
-      if (initPointUrl) window.open(initPointUrl, '_blank');
-    }
+    iniciarPagoMercadoPago(initPointUrl) { if (initPointUrl) window.open(initPointUrl, '_blank'); }
   },
 
   mounted() {
     this.cargarDatosIniciales();
+    setTimeout(() => {
+        this.validarCuponURL();
+    }, 500);
   }
 };
 </script>
@@ -1686,6 +1646,38 @@ export default {
   color: #28a745;
   font-weight: 800;
   font-size: 1.3em;
+}
+
+/* NUEVOS ESTILOS PARA EL CUPÓN */
+.cup-alert {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  padding: 15px 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+  animation: slideDown 0.5s ease;
+}
+.cup-icon { font-size: 2rem; }
+.cup-info strong { display: block; font-size: 1.1rem; margin-bottom: 2px; }
+.cup-info p { margin: 0; font-size: 0.9rem; opacity: 0.9; }
+
+.resumen-item.subtotal .tachado {
+  text-decoration: line-through;
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+.resumen-item.descuento {
+  color: #10b981;
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 5px 10px;
+  border-radius: 6px;
+  margin: 5px 0;
 }
 
 .btn-registrar-premium {

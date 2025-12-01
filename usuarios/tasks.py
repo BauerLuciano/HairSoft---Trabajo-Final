@@ -1,217 +1,208 @@
-# ARCHIVO: usuarios/tasks.py
 from celery import shared_task
 from django.utils import timezone
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
-from .models import Turno, InteresTurnoLiberado, ConfiguracionReoferta, Cotizacion
-import requests
-from django.core.mail import send_mail
+import time
+import secrets
+from django.db.models import Max, Q 
 from django.conf import settings
-from twilio.rest import Client
+
+from .models import (
+    Turno, 
+    InteresTurnoLiberado, 
+    ConfiguracionReoferta, 
+    Cotizacion, 
+    PromocionReactivacion, 
+    Usuario,
+    Producto, 
+    SolicitudPresupuesto
+)
 
 logger = logging.getLogger(__name__)
 
 # ==============================================================================
-# 1. TAREAS DE ENVÍO
+# 1. TAREAS DE ENVÍO (Auxiliares)
 # ==============================================================================
+
 @shared_task
 def enviar_whatsapp_oferta(numero, mensaje):
-    """
-    Envía el mensaje de WhatsApp usando las credenciales de settings.py
-    """
+    """Envía WhatsApp vía Twilio"""
     try:
+        from twilio.rest import Client
+        
         account_sid = settings.TWILIO_ACCOUNT_SID 
         auth_token = settings.TWILIO_AUTH_TOKEN
-        from_whatsapp_number = settings.TWILIO_WHATSAPP_NUMBER # Usamos el de settings
-        
-        # Formateo básico para asegurar compatibilidad
+        from_whatsapp_number = settings.TWILIO_WHATSAPP_NUMBER 
         to_whatsapp_number = f'whatsapp:{numero}'
         
-        print("=" * 60)
-        print(f"🚀 ENVIANDO WHATSAPP...")
-        print(f"➡️ De: {from_whatsapp_number}")
-        print(f"➡️ A: {to_whatsapp_number}")
-        print("=" * 60)
-        
         client = Client(account_sid, auth_token)
-        
-        message = client.messages.create(
-            body=mensaje,
-            from_=from_whatsapp_number,
-            to=to_whatsapp_number
-        )
-        
-        print(f"✅ MENSAJE ENVIADO. SID: {message.sid}")
+        message = client.messages.create(body=mensaje, from_=from_whatsapp_number, to=to_whatsapp_number)
+        print(f"✅ WhatsApp enviado a {numero}. SID: {message.sid}")
         return True
-        
     except Exception as e:
-        print(f"❌ ERROR TWILIO: {str(e)}")
+        print(f"❌ Error Twilio: {str(e)}")
         return False
 
 @shared_task
 def enviar_email_oferta(email, mensaje, fecha, hora):
+    """Envía Email (usado en reoferta de turnos)"""
     try:
+        from django.core.mail import send_mail
         subject = f"¡Turno disponible! {fecha} {hora} - HairSoft"
-        send_mail(
-            subject=subject,
-            message=mensaje,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email],
-            fail_silently=False,
-        )
+        send_mail(subject, mensaje, settings.DEFAULT_FROM_EMAIL, [email], fail_silently=False)
         return True
     except Exception as e:
         print(f"Error enviando email: {str(e)}")
         return False
 
 @shared_task
-def enviar_oferta_individual(interes_id, turno_id):
-    """
-    Construye el link y manda la oferta a un interesado específico.
-    """
+def enviar_email_cotizacion_proveedor(cotizacion_id):
+    """Envía solicitud de presupuesto a proveedores"""
     try:
-        config = ConfiguracionReoferta.get_configuracion()
-        interes = InteresTurnoLiberado.objects.get(id=interes_id)
-        turno = Turno.objects.get(id=turno_id)
+        from django.core.mail import send_mail
         
-        # Vincular el interés al turno actual
-        interes.turno_liberado = turno
-        interes.save()
-        
-        # ✅✅✅ AQUÍ ESTÁ LA MAGIA: TU IP REAL Y PUERTO VITE (5173)
-        # Esto hace que el celular abra tu página de Vue
-        base_url = "http://localhost:5173" 
-        
-        # Construimos el link limpio
-        link = f"{base_url}/aceptar-oferta/{turno.id}/{interes.token_oferta}"
-        
+        cotizacion = Cotizacion.objects.get(id=cotizacion_id)
+        if not cotizacion.proveedor.email: return False
+
+        link = f"http://localhost:5173/proveedor/cotizar/{cotizacion.token}"
         mensaje = f"""
-*¡HOLA! TENEMOS UNA OFERTA PARA VOS* 🎁
-
-Se liberó un turno para el *{turno.fecha.strftime('%d/%m')}* a las *{turno.hora.strftime('%H:%M')} hs*.
-💈 *Profesional:* {turno.peluquero.nombre} {turno.peluquero.apellido}
-
-👇 *TOCÁ EL LINK PARA ACEPTAR:*
-{link}
-
-⚠️ _Si el link no funciona, respondé "HOLA" a este mensaje y probá de nuevo._
-"""
-        
-        # Enviar WhatsApp
-        if config.notificar_whatsapp and interes.cliente.telefono:
-            enviar_whatsapp_oferta(interes.cliente.telefono, mensaje)
-        
-        # Enviar Email
-        if config.notificar_email and interes.cliente.correo: 
-            enviar_email_oferta(
-                interes.cliente.correo, 
-                mensaje, 
-                turno.fecha.strftime('%d/%m'),
-                turno.hora.strftime('%H:%M')
-            )
-        
-        # Marcar como enviada en la BD
-        interes.marcar_enviada()
+Estimado {cotizacion.proveedor.nombre},
+Requerimos presupuesto para: {cotizacion.solicitud.producto.nombre} (Cant: {cotizacion.solicitud.cantidad_requerida}).
+Ingrese su oferta aquí: {link}
+        """
+        send_mail(
+            f"Solicitud de Cotización #{cotizacion.solicitud.id}", 
+            mensaje, 
+            settings.DEFAULT_FROM_EMAIL, 
+            [cotizacion.proveedor.email], 
+            fail_silently=False
+        )
+        print(f"📧 Email enviado a proveedor {cotizacion.proveedor.nombre}")
         return True
-        
     except Exception as e:
-        print(f"❌ ERROR en enviar_oferta_individual: {str(e)}")
+        print(f"❌ Error email proveedor: {str(e)}")
         return False
 
+
 # ==============================================================================
-# 2. LOGICA DE REOFERTA MASIVA
+# 2. TAREAS DE NEGOCIO 
 # ==============================================================================
+
 @shared_task
 def procesar_reoferta_masiva(turno_id):
     try:
         turno = Turno.objects.get(id=turno_id)
-        
-        if not turno.oferta_activa or turno.estado != 'CANCELADO':
-            return False
+        if not turno.oferta_activa or turno.estado != 'CANCELADO': return False
         
         interesados = turno.obtener_interesados()
-        
         if not interesados.exists():
-            print(f"ℹ️ No hay interesados para el turno {turno_id}")
-            # Si no hay nadie, lo dejamos disponible para cualquiera
-            turno.estado = 'DISPONIBLE' 
-            turno.oferta_activa = False
-            turno.save()
+            turno.estado = 'DISPONIBLE'; turno.oferta_activa = False; turno.save()
             return True
         
-        print(f"🚀 Iniciando reoferta para {interesados.count()} personas...")
-        
         for interes in interesados:
-            enviar_oferta_individual(interes.id, turno_id)
-        
+            interes.turno_liberado = turno; interes.save()
+            link = f"http://localhost:5173/aceptar-oferta/{turno.id}/{interes.token_oferta}"
+            msg = f"*¡TURNO DISPONIBLE!* 🎁\n{turno.fecha} {turno.hora}\nReservá acá: {link}"
+            if interes.cliente.telefono: enviar_whatsapp_oferta.delay(interes.cliente.telefono, msg)
+            interes.marcar_enviada()
         return True
-        
     except Exception as e:
-        print(f"❌ Error en reoferta masiva: {str(e)}")
+        print(f"❌ Error reoferta: {e}")
         return False
 
-# ==============================================================================
-# 3. OTRAS TAREAS DE MANTENIMIENTO
-# ==============================================================================
 @shared_task
 def notificar_turno_asignado(turno_id):
-    """Avisa a los que llegaron tarde que el turno ya fue tomado"""
     try:
         turno = Turno.objects.get(id=turno_id)
-        
-        # Buscar a los que se les envió oferta pero NO son el cliente que ganó
-        perdieron = InteresTurnoLiberado.objects.filter(
-            turno_liberado=turno,
-            estado_oferta='enviada'
-        ).exclude(cliente=turno.cliente)
-        
-        mensaje_triste = f"❌ El turno del {turno.fecha.strftime('%d/%m')} ya fue tomado por otra persona. ¡La próxima será!"
-        
+        perdieron = InteresTurnoLiberado.objects.filter(turno_liberado=turno, estado_oferta='enviada').exclude(cliente=turno.cliente)
+        msg = f"❌ El turno del {turno.fecha} ya fue tomado."
         for p in perdieron:
             p.rechazar_oferta()
-            if p.cliente.telefono:
-                enviar_whatsapp_oferta.delay(p.cliente.telefono, mensaje_triste)
-                
+            if p.cliente.telefono: enviar_whatsapp_oferta.delay(p.cliente.telefono, msg)
         return True
-    except Exception:
-        return False
+    except Exception: return False
+
+
+# ==============================================================================
+# 3. MÓDULO DE FIDELIZACIÓN: REACTIVACIÓN AUTOMÁTICA (VERSIÓN FINAL REAL)
+# ==============================================================================
 
 @shared_task
-def expirar_reoferta(turno_id):
-    pass # Simplificado para que no de error si se llama
+def procesar_reactivacion_clientes_inactivos():
+    """
+    Tarea DIARIA REAL:
+    1. Busca clientes cuyo último turno fue hace más de 60 días.
+    2. Respeta el cooldown de 90 días.
+    3. Envía cupón de 15% OFF.
+    """
+    print("🕵️‍♂️ [FIDELIZACIÓN] Iniciando análisis diario de clientes inactivos...")
+    
+    DIAS_INACTIVIDAD = 60
+    DIAS_VALIDEZ = 7
+    DIAS_COOLDOWN = 90
+    
+    hoy = timezone.now()
+    # Fecha límite: Todo turno ANTERIOR a esto es "viejo"
+    fecha_limite = hoy - timedelta(days=DIAS_INACTIVIDAD)
+    fecha_limite_cooldown = hoy - timedelta(days=DIAS_COOLDOWN)
+    
+    # Traemos clientes y la fecha de su último turno
+    clientes = Usuario.objects.filter(rol__nombre__iexact='Cliente').annotate(
+        ultimo_turno=Max('turnos_cliente__fecha')
+    )
+    
+    enviados = 0
+    
+    for cliente in clientes:
+        # 1. Si nunca vino, no es reactivación
+        if not cliente.ultimo_turno: 
+            continue 
 
+        # 2. FILTRO DE FECHA REAL
+        # Si su último turno fue DESPUÉS de la fecha límite (ej: vino ayer), es ACTIVO -> Ignorar
+        ultimo_turno_dt = timezone.make_aware(datetime.combine(cliente.ultimo_turno, datetime.min.time()))
+        
+        if ultimo_turno_dt >= fecha_limite:
+            # Vino hace poco, no molestar
+            continue 
 
-#PROVEEDORES Y COTIZACIONES
+        # 3. Filtro Anti-Spam (Ya tiene promo activa o reciente?)
+        promo_reciente = PromocionReactivacion.objects.filter(
+            cliente=cliente,
+            fecha_creacion__gte=fecha_limite_cooldown
+        ).exists()
 
-@shared_task
-def enviar_email_cotizacion_proveedor(cotizacion_id):
-    try:
-        cotizacion = Cotizacion.objects.get(id=cotizacion_id)
-        if not cotizacion.proveedor.email:
-            return False
+        if promo_reciente:
+            continue
 
-        # Link al frontend público (ajusta tu URL base)
-        link = f"http://localhost:5173/proveedor/cotizar/{cotizacion.token}"
-        
-        mensaje = f"""
-        Estimado {cotizacion.proveedor.nombre},
-        
-        Desde HairSoft requerimos presupuesto para reponer stock:
-        
-        Producto: {cotizacion.solicitud.producto.nombre}
-        Cantidad: {cotizacion.solicitud.cantidad_requerida} unidades.
-        
-        Por favor, ingrese su precio y tiempo de entrega aquí:
-        {link}
-        """
-        
-        send_mail(
-            subject=f"Solicitud de Cotización #{cotizacion.solicitud.id}",
-            message=mensaje,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[cotizacion.proveedor.email]
-        )
-        return True
-    except Exception as e:
-        print(f"Error email proveedor: {e}")
-        return False
+        try:
+            if not cliente.telefono: continue
+
+            codigo = f"VOLVE-{secrets.token_hex(2).upper()}"
+            vencimiento = hoy + timedelta(days=DIAS_VALIDEZ)
+            
+            PromocionReactivacion.objects.create(
+                cliente=cliente, codigo=codigo, fecha_vencimiento=vencimiento
+            )
+            
+            link = f"http://localhost:5173/turnos/crear-web?cup={codigo}"
+            
+            mensaje = (
+                f"👋 ¡Hola {cliente.nombre}!\n\n"
+                f"Te extrañamos en Los Ultimos Serán Los Primeros ✂️.\n\n"
+                f"🎁 *15% OFF en tu próximo servicio*\n"
+                f"Válido por 7 días.\n\n"
+                f"Reservá acá con el descuento ya aplicado:\n"
+                f"{link}\n\n"
+                f"¡Te esperamos!"
+            )
+            
+            enviar_whatsapp_oferta.delay(cliente.telefono, mensaje)
+            print(f"   🚀 Cupón enviado a {cliente.nombre} (Inactivo desde {cliente.ultimo_turno})")
+            enviados += 1
+            time.sleep(2)
+
+        except Exception as e:
+            print(f"Error con cliente {cliente.nombre}: {e}")
+
+    return f"Proceso real finalizado. {enviados} enviados."

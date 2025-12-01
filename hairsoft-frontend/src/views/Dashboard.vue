@@ -4,10 +4,13 @@
     <header class="dashboard-header">
       <div class="header-container">
         <div class="header-left">
-          <h1 class="dashboard-title">
-            <span class="title-icon">📊</span>
-            Dashboard
-          </h1>
+          <div class="header-icon-wrapper">
+            <span class="header-icon">📊</span>
+          </div>
+          <div class="header-info">
+            <h1 class="dashboard-title">Dashboard</h1>
+            <p class="dashboard-subtitle">Análisis en tiempo real</p>
+          </div>
           <div class="period-selector">
             <select v-model="selectedPeriod" @change="fetchDashboardData" class="period-select">
               <option value="hoy">Hoy</option>
@@ -19,7 +22,7 @@
         <div class="header-right">
           <div class="last-update">
             <span class="update-icon">🕐</span>
-            {{ lastUpdate }}
+            <span class="update-time">{{ lastUpdate }}</span>
           </div>
         </div>
       </div>
@@ -47,6 +50,7 @@
       
       <!-- KPI Cards -->
       <section class="kpi-grid">
+        <!-- Ingresos Totales -->
         <div class="kpi-card">
           <div class="kpi-header">
             <div class="kpi-icon-wrapper green">
@@ -63,32 +67,35 @@
           </div>
         </div>
 
+        <!-- Servicios Realizados -->
         <div class="kpi-card">
           <div class="kpi-header">
             <div class="kpi-icon-wrapper blue">
               <span class="kpi-icon">✂️</span>
             </div>
-            <div class="kpi-badge">⚡ Hot</div>
+            <div class="kpi-badge hot">⚡ Hot</div>
           </div>
           <div class="kpi-body">
-            <h3 class="kpi-value">{{ dashboardData.serviciosRealizados }}</h3>
+            <h3 class="kpi-value">{{ formatNumber(dashboardData.serviciosRealizados) }}</h3>
             <p class="kpi-label">Servicios Realizados</p>
           </div>
         </div>
 
+        <!-- Clientes Nuevos -->
         <div class="kpi-card">
           <div class="kpi-header">
-            <div class="kpi-icon-wrapper purple">
+            <div class="kpi-icon-wrapper accent">
               <span class="kpi-icon">👥</span>
             </div>
-            <div class="kpi-badge">✨ New</div>
+            <div class="kpi-badge new">✨ New</div>
           </div>
           <div class="kpi-body">
-            <h3 class="kpi-value">{{ dashboardData.clientesNuevos }}</h3>
+            <h3 class="kpi-value">{{ formatNumber(dashboardData.clientesNuevos) }}</h3>
             <p class="kpi-label">Clientes Nuevos</p>
           </div>
         </div>
 
+        <!-- Ticket Promedio -->
         <div class="kpi-card">
           <div class="kpi-header">
             <div class="kpi-icon-wrapper orange">
@@ -116,7 +123,9 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-title-group">
-                <span class="card-icon">🔥</span>
+                <div class="card-icon-wrapper">
+                  <span class="card-icon">🔥</span>
+                </div>
                 <h3 class="card-title">Servicios Más Solicitados</h3>
               </div>
               <span class="card-badge">Top 5</span>
@@ -143,7 +152,9 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-title-group">
-                <span class="card-icon">📦</span>
+                <div class="card-icon-wrapper">
+                  <span class="card-icon">📦</span>
+                </div>
                 <h3 class="card-title">Resumen de Ventas</h3>
               </div>
             </div>
@@ -152,14 +163,14 @@
                 <div class="stat-item">
                   <div class="stat-icon">📊</div>
                   <div class="stat-info">
-                    <span class="stat-value">{{ dashboardData.productosVendidos }}</span>
+                    <span class="stat-value">{{ formatNumber(dashboardData.productosVendidos) }}</span>
                     <span class="stat-label">Productos Vendidos</span>
                   </div>
                 </div>
                 <div class="stat-item">
                   <div class="stat-icon">👤</div>
                   <div class="stat-info">
-                    <span class="stat-value">{{ dashboardData.totalClientes }}</span>
+                    <span class="stat-value">{{ formatNumber(dashboardData.totalClientes) }}</span>
                     <span class="stat-label">Total Clientes</span>
                   </div>
                 </div>
@@ -182,7 +193,9 @@
           <div class="info-card chart-card">
             <div class="card-header">
               <div class="card-title-group">
-                <span class="card-icon">📈</span>
+                <div class="card-icon-wrapper">
+                  <span class="card-icon">📈</span>
+                </div>
                 <h3 class="card-title">Ventas de la Semana</h3>
               </div>
             </div>
@@ -196,7 +209,6 @@
                   <div 
                     class="chart-bar" 
                     :style="{ height: getBarHeight(venta) + '%' }"
-                    :data-value="'$' + formatNumber(venta)"
                   >
                     <div class="bar-tooltip">${{ formatNumber(venta) }}</div>
                   </div>
@@ -210,7 +222,9 @@
           <div v-if="dashboardData.stockBajoCount > 0" class="info-card alert-card">
             <div class="card-header">
               <div class="card-title-group">
-                <span class="card-icon">⚠️</span>
+                <div class="card-icon-wrapper alert">
+                  <span class="card-icon">⚠️</span>
+                </div>
                 <h3 class="card-title">Alertas de Inventario</h3>
               </div>
               <span class="alert-count">{{ dashboardData.stockBajoCount }}</span>
@@ -283,9 +297,12 @@ export default {
 
         const data = await response.json()
         dashboardData.value = { ...defaultData, ...data }
-        lastUpdate.value = new Date().toLocaleTimeString('es-ES', { 
+        
+        const now = new Date()
+        lastUpdate.value = now.toLocaleTimeString('es-ES', { 
           hour: '2-digit', 
-          minute: '2-digit' 
+          minute: '2-digit',
+          second: '2-digit'
         })
         
       } catch (err) {
@@ -331,48 +348,87 @@ export default {
 </script>
 
 <style scoped>
+/* ========== VARIABLES BASE ========== */
 .dashboard-wrapper {
   min-height: 100vh;
   background: var(--bg-primary);
 }
 
-/* ========== HEADER ========== */
+/* ========== HEADER PREMIUM ========== */
 .dashboard-header {
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 3px solid var(--border-color);
   padding: 24px 32px;
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.dashboard-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1);
 }
 
 .header-container {
-  max-width: 1400px;
+  max-width: 1600px;
   margin: 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 24px;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 20px;
+  flex: 1;
+}
+
+.header-icon-wrapper {
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35);
+  border: 2px solid var(--border-color);
+}
+
+.header-icon {
+  font-size: 28px;
+}
+
+.header-info {
+  display: flex;
+  flex-direction: column;
 }
 
 .dashboard-title {
   font-size: 28px;
-  font-weight: 800;
+  font-weight: 900;
   margin: 0;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  background: linear-gradient(135deg, var(--text-primary), #0ea5e9);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
 }
 
-.title-icon {
-  font-size: 32px;
+.dashboard-subtitle {
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  margin: 4px 0 0 0;
+  letter-spacing: 0.5px;
 }
 
 .period-selector {
@@ -383,35 +439,47 @@ export default {
   background: var(--bg-tertiary);
   border: 2px solid var(--border-color);
   color: var(--text-primary);
-  padding: 10px 16px;
+  padding: 12px 18px;
   border-radius: 12px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
 }
 
 .period-select:hover {
   border-color: var(--accent-color);
+  background: var(--hover-bg);
 }
 
 .period-select:focus {
   outline: none;
   border-color: var(--accent-color);
-  box-shadow: 0 0 0 3px var(--accent-light);
+  box-shadow: 0 0 0 4px var(--accent-light);
 }
 
 .last-update {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 500;
+  gap: 10px;
+  background: var(--bg-tertiary);
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: 2px solid var(--border-color);
 }
 
 .update-icon {
-  font-size: 16px;
+  font-size: 18px;
+}
+
+.update-time {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-family: 'Courier New', monospace;
 }
 
 /* ========== LOADING & ERROR ========== */
@@ -426,10 +494,10 @@ export default {
 }
 
 .loading-spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid var(--border-color);
-  border-top-color: var(--accent-color);
+  width: 60px;
+  height: 60px;
+  border: 5px solid var(--border-color);
+  border-top-color: #0ea5e9;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -439,53 +507,61 @@ export default {
 }
 
 .loading-text {
-  margin-top: 20px;
+  margin-top: 24px;
   color: var(--text-secondary);
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.5px;
 }
 
 .error-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
+  font-size: 72px;
+  margin-bottom: 20px;
 }
 
 .error-title {
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 28px;
+  font-weight: 900;
   color: var(--text-primary);
-  margin: 0 0 8px 0;
+  margin: 0 0 12px 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .error-message {
   color: var(--text-secondary);
-  margin-bottom: 24px;
+  margin-bottom: 28px;
+  font-weight: 500;
+  font-size: 15px;
 }
 
 .retry-btn {
-  background: var(--accent-color);
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
   color: white;
   border: none;
-  padding: 12px 24px;
-  border-radius: 10px;
+  padding: 14px 32px;
+  border-radius: 12px;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 800;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35);
 }
 
 .retry-btn:hover {
-  background: var(--accent-hover);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px rgba(14, 165, 233, 0.5);
 }
 
 /* ========== MAIN CONTENT ========== */
 .dashboard-content {
-  max-width: 1400px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 32px;
 }
@@ -493,21 +569,34 @@ export default {
 /* ========== KPI CARDS ========== */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
   margin-bottom: 32px;
 }
 
 .kpi-card {
   background: var(--bg-secondary);
   border: 2px solid var(--border-color);
-  border-radius: 16px;
-  padding: 24px;
-  transition: all 0.3s ease;
+  border-radius: 20px;
+  padding: 28px;
+  transition: all 0.4s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1);
+  border-radius: 20px 20px 0 0;
 }
 
 .kpi-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-6px);
   border-color: var(--accent-color);
   box-shadow: var(--shadow-lg);
 }
@@ -516,81 +605,107 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .kpi-icon-wrapper {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
+  font-size: 32px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  border: 2px solid var(--border-color);
 }
 
 .kpi-icon-wrapper.green {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, #10b981, #059669);
 }
 
 .kpi-icon-wrapper.blue {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
 }
 
-.kpi-icon-wrapper.purple {
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+.kpi-icon-wrapper.accent {
+  background: linear-gradient(135deg, #0ea5e9, #0369a1);
 }
 
 .kpi-icon-wrapper.orange {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  background: linear-gradient(135deg, #f59e0b, #d97706);
 }
 
 .kpi-trend {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 12px;
-  border-radius: 8px;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 12px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border: 2px solid;
 }
 
 .kpi-trend.positive {
-  background: rgba(16, 185, 129, 0.15);
-  color: var(--success-color);
+  background: var(--bg-tertiary);
+  color: #10b981;
+  border-color: #10b981;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
 }
 
 .kpi-trend.negative {
-  background: rgba(239, 68, 68, 0.15);
+  background: var(--bg-tertiary);
   color: var(--error-color);
+  border-color: var(--error-color);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
 }
 
 .kpi-badge {
-  padding: 6px 12px;
-  border-radius: 8px;
+  padding: 8px 14px;
+  border-radius: 12px;
   font-size: 12px;
-  font-weight: 700;
-  background: var(--accent-light);
-  color: var(--accent-color);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  border: 2px solid;
+}
+
+.kpi-badge.hot {
+  background: var(--bg-tertiary);
+  color: #0ea5e9;
+  border-color: #0ea5e9;
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.3);
+}
+
+.kpi-badge.new {
+  background: var(--bg-tertiary);
+  color: #0ea5e9;
+  border-color: #0ea5e9;
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.3);
 }
 
 .kpi-body {
-  margin-top: 12px;
+  margin-top: 16px;
 }
 
 .kpi-value {
-  font-size: 36px;
-  font-weight: 800;
+  font-size: 42px;
+  font-weight: 900;
   color: var(--text-primary);
-  margin: 0 0 8px 0;
-  letter-spacing: -1px;
+  margin: 0 0 10px 0;
+  letter-spacing: -1.5px;
 }
 
 .kpi-label {
   color: var(--text-secondary);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 /* ========== CONTENT LAYOUT ========== */
@@ -611,9 +726,21 @@ export default {
 .info-card {
   background: var(--bg-secondary);
   border: 2px solid var(--border-color);
-  border-radius: 16px;
+  border-radius: 20px;
   overflow: hidden;
   transition: all 0.3s ease;
+  position: relative;
+}
+
+.info-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1);
+  border-radius: 20px 20px 0 0;
 }
 
 .info-card:hover {
@@ -625,172 +752,214 @@ export default {
   border-color: var(--warning-color);
 }
 
+.alert-card::before {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+
 .card-header {
-  padding: 20px 24px;
+  padding: 24px 28px;
   border-bottom: 2px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background: var(--hover-bg);
 }
 
 .card-title-group {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+}
+
+.card-icon-wrapper {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--border-color);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+}
+
+.card-icon-wrapper.alert {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
 }
 
 .card-icon {
-  font-size: 24px;
+  font-size: 22px;
 }
 
 .card-title {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 900;
   color: var(--text-primary);
   margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .card-badge {
-  padding: 6px 12px;
-  background: var(--accent-light);
-  color: var(--accent-color);
-  border-radius: 8px;
+  padding: 8px 16px;
+  background: var(--bg-tertiary);
+  color: #0ea5e9;
+  border: 2px solid #0ea5e9;
+  border-radius: 12px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.3);
 }
 
 .alert-count {
   background: var(--warning-color);
   color: white;
-  padding: 6px 12px;
-  border-radius: 8px;
+  padding: 8px 16px;
+  border-radius: 12px;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
 }
 
 .card-body {
-  padding: 24px;
+  padding: 28px;
 }
 
 /* ========== SERVICE LIST ========== */
 .service-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .service-row {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px;
+  gap: 18px;
+  padding: 18px;
   background: var(--bg-tertiary);
   border: 2px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 14px;
   transition: all 0.3s ease;
 }
 
 .service-row:hover {
   border-color: var(--accent-color);
-  transform: translateX(4px);
+  transform: translateX(6px);
+  box-shadow: var(--shadow-sm);
 }
 
 .service-rank {
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
   color: white;
-  border-radius: 8px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 14px;
+  font-weight: 900;
+  font-size: 15px;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+  border: 2px solid var(--border-color);
 }
 
 .service-details {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .service-name {
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text-primary);
   font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .service-meta {
   font-size: 13px;
   color: var(--text-secondary);
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 .service-amount {
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--accent-color);
+  font-size: 20px;
+  font-weight: 900;
+  color: #0ea5e9;
+  letter-spacing: -0.5px;
 }
 
 /* ========== STATS GRID ========== */
 .stats-grid {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 .stat-item {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px;
+  gap: 18px;
+  padding: 18px;
   background: var(--bg-tertiary);
   border: 2px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 14px;
   transition: all 0.3s ease;
 }
 
 .stat-item:hover {
   border-color: var(--accent-color);
-  transform: scale(1.02);
+  transform: scale(1.03);
+  box-shadow: var(--shadow-sm);
 }
 
 .stat-icon {
-  font-size: 32px;
+  font-size: 36px;
 }
 
 .stat-info {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .stat-value {
-  font-size: 22px;
-  font-weight: 800;
+  font-size: 26px;
+  font-weight: 900;
   color: var(--text-primary);
+  letter-spacing: -0.5px;
 }
 
 .stat-label {
   font-size: 13px;
   color: var(--text-secondary);
-  font-weight: 600;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
 }
 
 /* ========== CHART ========== */
 .chart-card {
-  min-height: 400px;
+  min-height: 450px;
 }
 
 .chart-container {
   display: flex;
   align-items: flex-end;
-  gap: 16px;
-  height: 280px;
-  padding: 20px 0;
+  gap: 18px;
+  height: 300px;
+  padding: 24px 0;
 }
 
 .chart-column {
@@ -798,40 +967,46 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .chart-bar {
   width: 100%;
-  background: linear-gradient(to top, var(--accent-color), var(--accent-hover));
-  border-radius: 8px 8px 0 0;
-  min-height: 40px;
+  background: linear-gradient(to top, #0ea5e9, #0284c7);
+  border-radius: 10px 10px 0 0;
+  min-height: 50px;
   position: relative;
-  transition: all 0.3s ease;
+  transition: all 0.4s ease;
   cursor: pointer;
+  border: 2px solid var(--border-color);
+  border-bottom: none;
+  box-shadow: 0 -4px 12px rgba(14, 165, 233, 0.3);
 }
 
 .chart-bar:hover {
-  transform: scaleY(1.05);
-  box-shadow: 0 -4px 12px rgba(59, 130, 246, 0.3);
+  transform: scaleY(1.08);
+  box-shadow: 0 -8px 20px rgba(14, 165, 233, 0.5);
+  background: linear-gradient(to top, #0284c7, #0369a1);
 }
 
 .bar-tooltip {
   position: absolute;
-  top: -32px;
+  top: -40px;
   left: 50%;
   transform: translateX(-50%);
   background: var(--bg-secondary);
-  border: 2px solid var(--accent-color);
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 700;
+  border: 2px solid #0ea5e9;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 800;
   color: var(--text-primary);
   white-space: nowrap;
   opacity: 0;
   transition: opacity 0.3s ease;
   pointer-events: none;
+  box-shadow: var(--shadow-md);
+  letter-spacing: 0.5px;
 }
 
 .chart-bar:hover .bar-tooltip {
@@ -841,8 +1016,10 @@ export default {
 .chart-label {
   color: var(--text-secondary);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* ========== ALERT CONTENT ========== */
@@ -851,35 +1028,46 @@ export default {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 16px;
-  padding: 20px;
+  gap: 20px;
+  padding: 24px;
 }
 
 .alert-icon-large {
-  font-size: 48px;
+  font-size: 56px;
 }
 
 .alert-text {
   color: var(--text-secondary);
   font-size: 15px;
   margin: 0;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+.alert-text strong {
+  color: var(--text-primary);
+  font-weight: 800;
 }
 
 .alert-action-btn {
-  background: var(--warning-color);
+  background: linear-gradient(135deg, #f59e0b, #d97706);
   color: white;
   border: none;
-  padding: 12px 24px;
-  border-radius: 10px;
+  padding: 14px 28px;
+  border-radius: 12px;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 800;
   cursor: pointer;
   transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.35);
 }
 
 .alert-action-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  background: linear-gradient(135deg, #d97706, #b45309);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px rgba(245, 158, 11, 0.5);
 }
 
 /* ========== RESPONSIVE ========== */
@@ -900,6 +1088,10 @@ export default {
     align-items: flex-start;
   }
   
+  .header-left {
+    flex-wrap: wrap;
+  }
+  
   .dashboard-content {
     padding: 20px;
   }
@@ -909,7 +1101,11 @@ export default {
   }
   
   .kpi-value {
-    font-size: 28px;
+    font-size: 32px;
+  }
+  
+  .chart-container {
+    height: 220px;
   }
 }
 
@@ -919,11 +1115,20 @@ export default {
   }
   
   .dashboard-title {
+    font-size: 22px;
+  }
+  
+  .header-icon-wrapper {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .header-icon {
     font-size: 24px;
   }
   
   .chart-container {
-    height: 200px;
+    height: 180px;
   }
 }
 </style>

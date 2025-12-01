@@ -1019,3 +1019,39 @@ class Cotizacion(models.Model):
         p = float(self.precio_ofrecido)
         d = float(self.dias_entrega or 5) 
         return (p * 0.7) + (d * 10)
+
+
+# ==============================================================================
+# MÓDULO DE FIDELIZACIÓN: REACTIVACIÓN DE CLIENTES
+# ==============================================================================
+
+class PromocionReactivacion(models.Model):
+    ESTADOS = [
+        ('ACTIVA', 'Activa (Enviada)'),
+        ('USADA', 'Usada (Canjeada)'),
+        ('VENCIDA', 'Vencida (No aprovechada)'),
+    ]
+
+    cliente = models.ForeignKey('Usuario', on_delete=models.CASCADE, related_name='promociones_reactivacion')
+    
+    # Código único que viaja en el link (ej: VOLVE-A1B2)
+    codigo = models.CharField(max_length=20, unique=True, help_text="Código único para canjear")
+    
+    # Porcentaje de descuento (Parametrizable por si querés cambiarlo a futuro)
+    descuento_porcentaje = models.DecimalField(max_digits=5, decimal_places=2, default=15.00)
+    
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_vencimiento = models.DateTimeField()
+    
+    estado = models.CharField(max_length=10, choices=ESTADOS, default='ACTIVA')
+    
+    # Guardamos en qué turno se usó para trazabilidad
+    turno_canje = models.ForeignKey('Turno', on_delete=models.SET_NULL, null=True, blank=True, related_name='promo_usada')
+
+    def __str__(self):
+        return f"Promo {self.cliente.nombre} - {self.codigo} ({self.estado})"
+
+    @property
+    def esta_vigente(self):
+        """Verifica si la promo se puede usar hoy"""
+        return self.estado == 'ACTIVA' and timezone.now() <= self.fecha_vencimiento

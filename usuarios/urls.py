@@ -29,7 +29,8 @@ from .views import (
     turnos_ocupados,
     gestionar_cotizacion_externa,
     SolicitudPresupuestoViewSet,
-    contar_interesados
+    contar_interesados,
+    validar_cupon
 )
 
 
@@ -101,6 +102,7 @@ urlpatterns = [
     path('api/turnos/<int:turno_id>/procesar-sena/', func_views.procesar_sena_turno, name='procesar_sena_turno'),
     path('api/turnos/verificar-disponibilidad/', func_views.verificar_disponibilidad, name='verificar_disponibilidad'),
     path('api/turnos/cancelar-propio/<int:turno_id>/', func_views.cancelar_mi_turno, name='cancelar_mi_turno'),
+    path('api/turnos/<int:turno_id>/cambiar-estado/<str:nuevo_estado>/', func_views.cambiar_estado_turno, name='cambiar_estado_turno'),
 
     # ================================
     # ✅✅✅ RUTA CRÍTICA FALTANTE - REGISTRAR INTERÉS
@@ -212,6 +214,7 @@ urlpatterns = [
 
     path('api/turnos/<int:turno_id>/procesar-sena/', func_views.procesar_sena_turno, name='procesar_sena_turno'),
     path('api/turnos/<int:turno_id>/completar-pago/', func_views.completar_pago_turno, name='completar_pago_turno'),
+    path('api/turnos/<int:turno_id>/actualizar-pago/', func_views.actualizar_pago_turno, name='actualizar_pago_turno'),
 
     # ================================
     # REOFERTA MASIVA - ✅ RUTAS CORREGIDAS
@@ -245,4 +248,7 @@ urlpatterns = [
     path('api/solicitudes-presupuesto/', SolicitudPresupuestoViewSet.as_view({'get': 'list'}), name='solicitudes-list'),
     path('api/solicitudes-presupuesto/<int:pk>/', SolicitudPresupuestoViewSet.as_view({'get': 'retrieve'}), name='solicitudes-detail'),
     path('api/solicitudes-presupuesto/<int:pk>/generar-orden/', SolicitudPresupuestoViewSet.as_view({'post': 'generar_orden_compra'}), name='solicitudes-generar-orden'),
+
+    # ✅ RUTA PARA VALIDAR CUPÓN (Agregala si no está)
+    path('api/promociones/validar/<str:codigo>/', validar_cupon, name='validar_cupon'),
 ]

@@ -55,11 +55,11 @@ class TurnoSerializer(serializers.ModelSerializer):
     servicios = ServicioSerializer(many=True, read_only=True)
     cliente = UsuarioSerializer(read_only=True)
     peluquero = UsuarioSerializer(read_only=True)
+    precio_total = serializers.SerializerMethodField()
 
     class Meta:
         model = Turno
-        fields = ['id', 'fecha', 'hora', 'estado', 'cliente', 'peluquero', 'servicios']
-
+        fields = ['id', 'fecha', 'hora', 'estado', 'cliente', 'peluquero', 'servicios', 'precio_total']
 # ----------------------------------------------------------------------
 # CATEGORIAS DE PRODUCTOS
 # ----------------------------------------------------------------------

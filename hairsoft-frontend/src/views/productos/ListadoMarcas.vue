@@ -7,7 +7,7 @@
           <h1>Gestión de Marcas</h1>
           <p>Administración y control de marcas del sistema</p>
         </div>
-        <div class="header-buttons" style="display: flex; gap: 12px;">
+        <div class="header-buttons">
           <button @click="mostrarRegistrar = true" class="register-button">
             <Plus :size="18" />
             Registrar Marca
@@ -83,14 +83,16 @@
               </td>
               <td>
                 <div class="proveedores-lista">
-                  <div v-for="(proveedor, index) in marca.proveedores_nombres || []" :key="index" 
-                       class="proveedor-item">
-                    <span class="proveedor-nombre">{{ proveedor }}</span>
+                  <div v-if="marca.proveedores_nombres && marca.proveedores_nombres.length > 0">
+                    <div v-for="(proveedor, index) in marca.proveedores_nombres.slice(0, 3)" :key="index" 
+                         class="proveedor-item">
+                      <span class="proveedor-nombre">{{ proveedor }}</span>
+                    </div>
+                    <div v-if="marca.proveedores_nombres.length > 3" class="mas-proveedores">
+                      +{{ marca.proveedores_nombres.length - 3 }} más...
+                    </div>
                   </div>
-                  <div v-if="marca.total_proveedores > 3" class="mas-proveedores">
-                    +{{ marca.total_proveedores - 3 }} más...
-                  </div>
-                  <div v-else-if="!marca.proveedores_count || marca.proveedores_count === 0" class="sin-proveedores">
+                  <div v-else class="sin-proveedores">
                     Sin proveedor
                   </div>
                 </div>
@@ -187,6 +189,7 @@
 
 <script>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 import Swal from 'sweetalert2'
 import RegistrarMarca from './RegistrarMarca.vue'
@@ -202,9 +205,12 @@ export default {
   name: "ListadoMarcas",
   components: {
     RegistrarMarca,
-    ModificarMarca
+    ModificarMarca,
+    Package, PackageX, Plus, Edit3, Power, CheckCircle, PowerOff,
+    ChevronLeft, ChevronRight, Trash2, ArrowLeft, X
   },
   setup() {
+    const router = useRouter()
     const marcas = ref([])
     const filtros = ref({ 
       busqueda: '', 
@@ -223,6 +229,17 @@ export default {
         const res = await axios.get(`${API_BASE}/usuarios/api/marcas/`)
         marcas.value = res.data.sort((a, b) => b.id - a.id)
         console.log('Marcas cargadas:', marcas.value)
+        
+        // DEBUG: Ver estructura de datos
+        marcas.value.forEach((marca, index) => {
+          console.log(`Marca ${index + 1}:`, {
+            id: marca.id,
+            nombre: marca.nombre,
+            proveedores_nombres: marca.proveedores_nombres,
+            proveedores_count: marca.proveedores_count,
+            productos_count: marca.productos_count
+          })
+        })
       } catch (err) {
         console.error('❌ Error al cargar marcas:', err)
         Swal.fire({
@@ -391,6 +408,10 @@ export default {
     const cerrarModal = () => { mostrarRegistrar.value = false }
     const cerrarModalEditar = () => { mostrarEditar.value = false; marcaEditando.value = null }
 
+    const navegarAProductos = () => {
+      router.push('/productos')
+    }
+
     watch(filtros, () => { pagina.value = 1 }, { deep: true })
 
     return {
@@ -418,12 +439,12 @@ export default {
       marcaRegistrada,
       marcaActualizada,
       cerrarModal,
-      cerrarModalEditar
+      cerrarModalEditar,
+      navegarAProductos
     }
   }
 }
 </script>
-
 
 <style scoped>
 /* ========================================
@@ -532,6 +553,11 @@ export default {
   font-weight: 500;
   margin-top: 8px;
   letter-spacing: 0.5px;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 12px;
 }
 
 /* Botón registrar */
@@ -780,7 +806,6 @@ export default {
   transition: all 0.3s ease;
   width: 40px;
   height: 40px;
-  text-decoration: none;
 }
 
 .action-button.edit {
@@ -951,6 +976,101 @@ export default {
   font-size: 0.95rem;
 }
 
+/* OVERLAY Y MODALES - CON VARIABLES */
+.overlay-activo {
+  opacity: 0.3;
+  filter: blur(5px);
+  pointer-events: none;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(12px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeInModal 0.3s ease;
+}
+
+@keyframes fadeInModal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  position: relative;
+  animation: slideUp 0.3s ease;
+  max-height: 85vh;
+  max-width: 90vw;
+  width: auto;
+  overflow-y: auto;
+  border-radius: 16px;
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-lg);
+  border: 2px solid var(--border-color);
+  padding: 0;
+  margin: 20px;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.modal-close {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--error-color);
+  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--error-color);
+  box-shadow: var(--shadow-md);
+  transition: all 0.3s ease;
+  z-index: 1001;
+}
+
+.modal-close:hover {
+  transform: scale(1.15) rotate(90deg);
+  box-shadow: 0 6px 25px rgba(239, 68, 68, 0.6);
+  background: var(--hover-bg);
+  border-color: var(--error-color);
+}
+
+/* SCROLLBAR PERSONALIZADO - CON VARIABLES */
+.modal-content::-webkit-scrollbar,
+.table-container::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.modal-content::-webkit-scrollbar-track,
+.table-container::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+  border-radius: 6px;
+}
+
+.modal-content::-webkit-scrollbar-thumb,
+.table-container::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 6px;
+  border: 2px solid var(--bg-primary);
+}
+
+.modal-content::-webkit-scrollbar-thumb:hover,
+.table-container::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-color);
+}
+
 /* RESPONSIVE */
 @media (max-width: 768px) {
   .list-card {
@@ -969,6 +1089,12 @@ export default {
   
   .filters-grid {
     grid-template-columns: 1fr;
+  }
+  
+  .modal-content {
+    max-width: 95vw;
+    margin: 12px;
+    border-radius: 12px;
   }
   
   .users-table {
