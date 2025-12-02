@@ -238,7 +238,7 @@ urlpatterns = [
     # ================================
     # OTRAS RUTAS
     # ================================
-    path('turnos/api/ocupados/', turnos_ocupados, name='turnos_ocupados'),
+    path('api/turnos/ocupados/', turnos_ocupados, name='turnos_ocupados'),
     path('api/cotizacion-externa/<str:token>/', gestionar_cotizacion_externa, name='cotizacion_externa'),
     path('api/dashboard/', func_views.dashboard_data, name='dashboard_data'),
     path('api/marcas/', func_views.listar_marcas, name='listar_marcas'),

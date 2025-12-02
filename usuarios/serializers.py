@@ -51,15 +51,53 @@ class CategoriaServicioSerializer(serializers.ModelSerializer):
 # ----------------------------------------------------------------------
 # TURNO
 # ----------------------------------------------------------------------
+# usuarios/serializers.py
+
 class TurnoSerializer(serializers.ModelSerializer):
-    servicios = ServicioSerializer(many=True, read_only=True)
+
     cliente = UsuarioSerializer(read_only=True)
     peluquero = UsuarioSerializer(read_only=True)
+    servicios = ServicioSerializer(many=True, read_only=True)
+    cliente_id = serializers.PrimaryKeyRelatedField(
+        queryset=Usuario.objects.all(), source='cliente', write_only=True
+    )
+    peluquero_id = serializers.PrimaryKeyRelatedField(
+        queryset=Usuario.objects.all(), source='peluquero', write_only=True
+    )
+    servicios_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Servicio.objects.all(), source='servicios', many=True, write_only=True
+    )
+
     precio_total = serializers.SerializerMethodField()
 
     class Meta:
         model = Turno
-        fields = ['id', 'fecha', 'hora', 'estado', 'cliente', 'peluquero', 'servicios', 'precio_total']
+        fields = [
+            'id', 
+            'fecha', 
+            'hora', 
+            'estado', 
+            'canal',           # Importante para saber si es WEB o PRESENCIAL
+            'tipo_pago',       # Importante
+            'medio_pago',      # Importante
+            'monto_total', 
+            'monto_seña',
+            'precio_total',    # Campo calculado (legacy)
+            
+            # Campos de Objetos (Solo lectura)
+            'cliente', 
+            'peluquero', 
+            'servicios', 
+            
+            # Campos de IDs (Solo escritura)
+            'cliente_id', 
+            'peluquero_id', 
+            'servicios_ids'
+        ]
+
+    def get_precio_total(self, obj):
+        # Tu lógica actual para precio_total, si la tienes
+        return obj.monto_total or 0
 # ----------------------------------------------------------------------
 # CATEGORIAS DE PRODUCTOS
 # ----------------------------------------------------------------------

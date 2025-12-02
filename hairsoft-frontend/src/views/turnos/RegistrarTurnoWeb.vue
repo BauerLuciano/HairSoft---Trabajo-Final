@@ -1,342 +1,418 @@
 <template>
-  <div class="pedido-container">
-    <div class="card-modern">
-      <div class="header-section">
-        <h2>Reservar Turno Online</h2>
-        <p class="subtitle">Reserva tu turno desde casa, con pago de seña o total</p>
+  <div class="turno-container">
+    <div class="header-section">
+      <h2>
+        <Calendar class="header-icon" />
+        Reservar Turno Online
+      </h2>
+      <button @click="volverAlListado" class="btn-back">
+        <ArrowLeft :size="18" />
+        Volver al Listado
+      </button>
+    </div>
+
+    <!-- Alerta de Descuento -->
+    <transition name="slide">
+      <div v-if="descuentoAplicado > 0" class="card-modern cupon-alerta">
+        <div class="card-header">
+          <div class="card-icon">
+            <Gift :size="20" />
+          </div>
+          <h3>🎉 ¡Descuento Activado!</h3>
+        </div>
+        <p>Tenés un <strong>{{ descuentoAplicado }}% OFF</strong> por reactivación. {{ mensajePromo }}</p>
       </div>
+    </transition>
 
-      <transition name="bounce">
-        <div v-if="descuentoAplicado > 0" class="cup-alert">
-          <span class="cup-icon">🎉</span>
-          <div class="cup-info">
-            <strong>¡Descuento Activado!</strong>
-            <p>Tenés un {{ descuentoAplicado }}% OFF por reactivación.</p>
-          </div>
+    <!-- Datos del Usuario -->
+    <div class="card-modern">
+      <div class="card-header">
+        <div class="card-icon">
+          <User :size="20" />
         </div>
-      </transition>
+        <h3>Tus Datos</h3>
+      </div>
+      
+      <div class="cliente-info-card">
+        <div class="cliente-datos">
+          <p><strong>Cliente:</strong> {{ usuario.nombre }} {{ usuario.apellido }}</p>
+          <p><strong>DNI:</strong> {{ usuario.dni || 'Cargando...' }}</p>
+          <p><strong>Teléfono:</strong> {{ usuario.telefono || 'No registrado' }}</p>
+          <p v-if="usuario.turnosCount > 0"><strong>Turnos reservados:</strong> {{ usuario.turnosCount }}</p>
+        </div>
+        <small class="info-pago">Tu información se enviará automáticamente al sistema.</small>
+      </div>
+    </div>
 
-      <div class="form-content">
-        <div class="input-group cliente-section">
-          <label class="section-label">👤 Tus Datos</label>
-          <div class="cliente-info-card">
-            <div class="cliente-datos">
-              <p><strong>Cliente:</strong> {{ usuario.nombre }} {{ usuario.apellido }}</p>
-              <p><strong>DNI:</strong> {{ usuario.dni || 'Cargando...' }}</p>
-              <p><strong>Teléfono:</strong> {{ usuario.telefono || 'No registrado' }}</p>
-              <p v-if="usuario.turnosCount > 0"><strong>Turnos reservados:</strong> {{ usuario.turnosCount }}</p>
+    <!-- Selección de Peluquero -->
+    <div class="card-modern slide-in">
+      <div class="card-header">
+        <div class="card-icon">
+          <UserCheck :size="20" />
+        </div>
+        <h3>Profesional</h3>
+      </div>
+      
+      <div class="input-group">
+        <select v-model="form.peluquero" @change="onPeluqueroSeleccionado" class="select-modern">
+          <option value="">-- Seleccionar Profesional --</option>
+          <option v-for="p in peluqueros" :key="p.id" :value="p.id">
+            {{ p.nombre }} {{ p.apellido }}
+          </option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Categorías -->
+    <div v-if="form.peluquero" class="card-modern slide-in">
+      <div class="card-header">
+        <div class="card-icon">
+          <FolderOpen :size="20" />
+        </div>
+        <h3>Categoría de Servicio</h3>
+        <span v-if="categoriasSeleccionadas.length" class="badge-count">
+          {{ categoriasSeleccionadas.length }}
+        </span>
+      </div>
+      
+      <div class="grid-chips">
+        <button 
+          v-for="categoria in categorias" 
+          :key="categoria.id"
+          class="chip-modern"
+          :class="{ 'chip-active': categoriasSeleccionadas.includes(categoria.id) }"
+          @click="toggleCategoria(categoria.id)"
+        >
+          <Tag :size="14" />
+          {{ categoria.nombre }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Servicios -->
+    <div v-if="categoriasSeleccionadas.length > 0" class="card-modern slide-in">
+      <div class="card-header">
+        <div class="card-icon">
+          <Scissors :size="20" />
+        </div>
+        <h3>Servicios</h3>
+        <span v-if="form.servicios_ids.length" class="badge-count">
+          {{ form.servicios_ids.length }}
+        </span>
+      </div>
+      
+      <div class="busqueda-servicios">
+        <div class="search-wrapper">
+          <Search class="search-icon" :size="18" />
+          <input
+            type="text"
+            v-model="busquedaServicio"
+            placeholder="Buscar servicio..."
+            class="input-modern"
+          />
+        </div>
+      </div>
+      
+      <div v-if="serviciosFiltrados.length === 0" class="no-resultados">
+        <Inbox class="no-resultados-icon" :size="48" />
+        <p v-if="busquedaServicio">No se encontraron servicios con "{{ busquedaServicio }}"</p>
+        <p v-else>No hay servicios en las categorías seleccionadas</p>
+        <small>Selecciona una categoría para ver los servicios</small>
+      </div>
+      
+      <div v-else class="grid-servicios">
+        <div 
+          v-for="servicio in serviciosFiltrados" 
+          :key="servicio.id"
+          class="card-servicio"
+          :class="{ 'servicio-active': form.servicios_ids.includes(servicio.id) }"
+          @click="toggleServicio(servicio)"
+        >
+          <div class="servicio-check">
+            <Check v-if="form.servicios_ids.includes(servicio.id)" :size="16" />
+          </div>
+          
+          <div class="servicio-content">
+            <span class="servicio-nombre">{{ servicio.nombre }}</span>
+            <div class="servicio-details">
+              <span class="servicio-precio">
+                <DollarSign :size="14" />
+                ${{ servicio.precio }}
+              </span>
+              <span class="servicio-duracion">
+                <Clock :size="14" />
+                {{ servicio.duracion }}m
+              </span>
             </div>
-            <small class="info-pago">Tu información se enviará automáticamente al sistema.</small>
+            <span class="servicio-categoria">{{ getCategoriaNombre(servicio.categoria) }}</span>
           </div>
         </div>
+      </div>
+    </div>
 
-        <div class="input-group">
-          <label class="section-label">👨‍💼 Elegir Peluquero</label>
-          <select v-model="form.peluquero" @change="onPeluqueroSeleccionado" class="select-modern-rounded">
-            <option value="">Selecciona tu peluquero preferido</option>
-            <option v-for="p in peluqueros" :key="p.id" :value="p.id">
-              {{ p.nombre }} {{ p.apellido }}
-            </option>
-          </select>
+    <!-- Calendario -->
+    <div v-if="form.servicios_ids.length > 0" class="card-modern slide-in">
+      <div class="card-header">
+        <div class="card-icon">
+          <CalendarDays :size="20" />
+        </div>
+        <h3>Seleccionar Fecha</h3>
+      </div>
+      
+      <div class="calendar-wrapper">
+        <div class="calendar-header">
+          <button @click="cambiarMes(-1)" class="btn-nav-cal">
+            <ChevronLeft :size="20" />
+          </button>
+          <span class="mes-titulo">{{ nombreMesActual }} {{ currentYear }}</span>
+          <button @click="cambiarMes(1)" class="btn-nav-cal">
+            <ChevronRight :size="20" />
+          </button>
         </div>
 
-        <div v-if="form.peluquero" class="input-group">
-          <label class="section-label">📁 Seleccionar Categorías</label>
-          <div class="categorias-container-horizontal">
-            <div class="categorias-grid-horizontal">
-              <div 
-                v-for="categoria in categorias" 
-                :key="categoria.id"
-                class="categoria-card-horizontal"
-                :class="{ selected: categoriasSeleccionadas.includes(categoria.id) }"
-                @click="toggleCategoria(categoria.id)"
-              >
-                <div class="categoria-checkbox-horizontal">
-                  <span class="checkmark-horizontal" :class="{ checked: categoriasSeleccionadas.includes(categoria.id) }">
-                    ✓
-                  </span>
-                </div>
-                <div class="categoria-content-horizontal">
-                  <span class="categoria-nombre-horizontal">{{ categoria.nombre }}</span>
-                  <span class="categoria-desc-horizontal">{{ categoria.descripcion || 'Servicios de calidad' }}</span>
-                </div>
-              </div>
+        <div class="calendar-days-header">
+          <span v-for="d in ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']" :key="d">{{ d }}</span>
+        </div>
+
+        <div class="calendar-grid">
+          <div v-for="i in startingDayOfWeek" :key="'empty-'+i" class="day-empty"></div>
+          
+          <button 
+            v-for="day in daysInMonth" 
+            :key="day"
+            class="day-btn"
+            :class="{
+              'day-today': esHoy(day),
+              'day-selected': esDiaSeleccionado(day),
+              'day-disabled': !esDiaSeleccionable(day)
+            }"
+            :disabled="!esDiaSeleccionable(day)"
+            @click="seleccionarDiaCalendario(day)"
+          >
+            {{ day }}
+            <span v-if="esHoy(day)" class="badge-today">HOY</span>
+          </button>
+        </div>
+
+        <div class="calendar-footer">
+          <Info :size="14" />
+          Disponible: Hoy + 14 días (No Domingos)
+        </div>
+      </div>
+    </div>
+
+    <!-- Horarios -->
+    <div v-if="form.fecha" class="card-modern slide-in">
+      <div class="card-header">
+        <div class="card-icon">
+          <Clock :size="20" />
+        </div>
+        <h3>Horarios Disponibles</h3>
+      </div>
+      
+      <div v-if="cargandoHorarios" class="loading-spinner">
+        <Loader2 class="spinner-icon" :size="32" />
+        <p>Buscando horarios disponibles...</p>
+      </div>
+      
+      <div v-else-if="horariosGenerados.length === 0" class="no-resultados">
+        <Clock class="no-resultados-icon" :size="48" />
+        <p>No hay horarios disponibles</p>
+        <small>Intenta seleccionar otro día</small>
+      </div>
+      
+      <div v-else class="grid-horarios-mejorado">
+        <div
+          v-for="hora in horariosGenerados"
+          :key="hora"
+          class="hora-card-mejorada"
+          :class="{
+            'hora-selected-mejorada': form.hora === hora,
+            'hora-disponible-mejorada': estaHorarioDisponible(hora),
+            'hora-ocupada-mejorada': !estaHorarioDisponible(hora)
+          }"
+        >
+          <div 
+            v-if="estaHorarioDisponible(hora)"
+            class="hora-content-mejorada"
+            @click="seleccionarHora(hora)"
+          >
+            <div class="hora-info-mejorada">
+              <Clock :size="16" class="hora-icon-mejorada" />
+              <span class="hora-texto-mejorada">{{ hora }}</span>
+            </div>
+            <div class="hora-estado-mejorada disponible">
+              <CheckCircle2 :size="14" />
+              <span>Disponible</span>
             </div>
           </div>
           
-          <div v-if="categoriasSeleccionadas.length === 0" class="no-selection">
-            <span>📝</span>
-            <p>Selecciona al menos una categoría para ver los servicios</p>
-          </div>
-        </div>
-
-        <transition name="scale-fade">
-          <div v-if="categoriasSeleccionadas.length > 0" class="input-group">
-            <label class="section-label">
-              ✂️ Servicios Disponibles
-              <span class="selected-categories">({{ categoriasSeleccionadasNombres }})</span>
-            </label>
-            
-            <div class="busqueda-servicios">
-              <input
-                type="text"
-                v-model="busquedaServicio"
-                placeholder="Buscar servicio..."
-                class="input-busqueda"
-              />
+          <div v-else class="hora-content-mejorada ocupada">
+            <div class="hora-info-mejorada">
+              <Clock :size="16" class="hora-icon-mejorada" />
+              <span class="hora-texto-mejorada">{{ hora }}</span>
             </div>
-            
-            <div class="servicios-grid-horizontal" v-if="serviciosFiltrados.length > 0">
-              <div 
-                v-for="servicio in serviciosFiltrados" 
-                :key="servicio.id"
-                class="servicio-item-horizontal"
-                :class="{ selected: form.servicios_ids.includes(servicio.id) }"
-                @click="toggleServicio(servicio)"
-              >
-                <div class="servicio-checkbox">
-                  <span class="checkmark" :class="{ checked: form.servicios_ids.includes(servicio.id) }">
-                    ✓
-                  </span>
-                </div>
-                <div class="servicio-info">
-                  <span class="servicio-nombre">{{ servicio.nombre }}</span>
-                  <div class="servicio-details">
-                    <span class="servicio-precio">${{ servicio.precio }}</span>
-                    <span class="servicio-duracion">{{ servicio.duracion }}min</span>
-                  </div>
-                  <span class="servicio-categoria">{{ getCategoriaNombre(servicio.categoria) }}</span>
-                </div>
-              </div>
+            <div class="hora-estado-mejorada ocupado">
+              <Bell :size="14" class="campanita-icon" />
+              <span>Ocupado</span>
             </div>
-            
-            <div v-else class="no-servicios">
-              <p v-if="busquedaServicio">No se encontraron servicios con "{{ busquedaServicio }}"</p>
-              <p v-else>No hay servicios en las categorías seleccionadas</p>
-            </div>
-          </div>
-        </transition>
-
-        <transition name="scale-fade">
-          <div v-if="form.servicios_ids.length > 0" class="resumen-pedido">
-            <h3 class="section-label">💰 Resumen de Costos</h3>
-            <div class="resumen-grid">
-              <div class="resumen-item" v-for="servicioId in form.servicios_ids" :key="servicioId">
-                <span>{{ getServicioNombre(servicioId) }}</span>
-                <span>${{ getServicioPrecio(servicioId) }}</span>
-              </div>
-              
-              <div class="resumen-item subtotal" v-if="descuentoAplicado > 0">
-                <span>Subtotal</span>
-                <span class="tachado">${{ calcularTotalOriginal() }}</span>
-              </div>
-
-              <div class="resumen-item descuento" v-if="descuentoAplicado > 0">
-                <span>🎁 Descuento ({{ descuentoAplicado }}%)</span>
-                <span class="text-success">- ${{ calcularMontoDescuento() }}</span>
-              </div>
-
-              <div class="resumen-item total">
-                <span>Total del servicio</span>
-                <span><strong>${{ calcularTotalConDescuento() }}</strong></span>
-              </div>
-            </div>
-          </div>
-        </transition>
-
-        <transition name="scale-fade">
-          <div v-if="form.servicios_ids.length > 0" class="input-group">
-            <label class="section-label">📅 Seleccionar Fecha</label>
-            
-            <div class="calendar-container-horizontal">
-              <div class="calendar-grid-horizontal">
-                <div 
-                  v-for="dateInfo in fechasDisponibles" 
-                  :key="dateInfo.fullDate"
-                  class="date-card-horizontal"
-                  :class="{ 
-                    selected: form.fecha === dateInfo.fullDate,
-                    today: dateInfo.isToday 
-                  }"
-                  @click="seleccionarFecha(dateInfo)"
-                >
-                  <div v-if="dateInfo.isToday" class="today-badge">Hoy</div>
-                  <div class="date-content">
-                    <span class="day-name">{{ dateInfo.dayName }}</span>
-                    <span class="day-number">{{ dateInfo.dayNum }}</span>
-                    <span class="month-name">{{ dateInfo.month }}</span>
-                  </div>
-                  <div class="shine-effect"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </transition>
-
-        <transition name="scale-fade">
-          <div v-if="form.fecha" class="input-group">
-            <label class="section-label">⏰ Seleccionar Horario</label>
-            
-            <div class="time-picker-trigger" @click="abrirModalHora">
-              <div class="time-display">
-                <span class="time-icon">⏰</span>
-                <span class="time-text">{{ form.hora || 'Seleccionar hora' }}</span>
-                <span class="time-arrow">▼</span>
-              </div>
-            </div>
-          </div>
-        </transition>
-
-        <transition name="scale-fade">
-          <div v-if="form.fecha && form.hora" class="input-group">
-            <label class="section-label">💳 Seleccione Opción de Pago</label>
-            
-            <div class="pago-container-horizontal">
-              <div class="pago-options-horizontal">
-                <div 
-                  class="pago-option-horizontal"
-                  :class="{ selected: form.tipo_pago === 'SENA_50' }"
-                  @click="form.tipo_pago = 'SENA_50'"
-                >
-                  <div class="pago-content-horizontal">
-                    <span class="pago-nombre-horizontal">Seña (50%)</span>
-                    <span class="pago-monto-horizontal">${{ calcularSena() }}</span>
-                    <span class="pago-desc-horizontal">Resto: ${{ (calcularTotalConDescuento() * 0.5).toFixed(2) }} en el local</span>
-                  </div>
-                </div>
-
-                <div 
-                  class="pago-option-horizontal"
-                  :class="{ selected: form.tipo_pago === 'TOTAL' }"
-                  @click="form.tipo_pago = 'TOTAL'"
-                >
-                  <div class="pago-content-horizontal">
-                    <span class="pago-nombre-horizontal">Pago Total (100%)</span>
-                    <span class="pago-monto-horizontal">${{ calcularTotalConDescuento() }}</span>
-                    <span class="pago-desc-horizontal">Pago completo online</span>
-                  </div>
-                </div>
-              </div>
-
-              <transition name="slide-fade">
-                <div v-if="form.tipo_pago" class="medio-pago-section-horizontal">
-                  <label class="section-label">🔗 Medio de Pago</label>
-                  <div class="medio-pago-options-horizontal">
-                    <div class="medio-pago-btn-horizontal active">
-                      <span class="medio-icon-horizontal">💳</span>
-                      <span class="medio-text-horizontal">Mercado Pago</span>
-                    </div>
-                  </div>
-                </div>
-              </transition>
-            </div>
-          </div>
-        </transition>
-
-        <transition name="scale-fade">
-          <div v-if="formularioValido" class="card-modern resumen-final">
-            <h3 class="section-label">✅ Confirmar y Pagar</h3>
-            <div class="resumen-final-detalles">
-              <div class="resumen-grid">
-                <div class="resumen-item">
-                  <span>Fecha:</span>
-                  <span>{{ formatoFechaLegible(form.fecha) }} a las {{ form.hora }}</span>
-                </div>
-                <div class="resumen-item">
-                  <span>Peluquero:</span>
-                  <span>{{ getPeluqueroNombre() }}</span>
-                </div>
-                <div class="resumen-item">
-                  <span>Servicios:</span>
-                  <span>{{ getServiciosNombres() }}</span>
-                </div>
-                
-                <div class="resumen-item" v-if="descuentoAplicado > 0">
-                  <span>Descuento aplicado:</span>
-                  <span class="text-success font-bold">{{ descuentoAplicado }}% OFF</span>
-                </div>
-
-                <div class="resumen-item total">
-                  <span>Total a pagar ahora:</span>
-                  <span class="monto-final-pago">${{ montoAPagarAhora() }}</span>
-                </div>
-              </div>
-            </div>
-            
-            <button
-              @click="reservarTurno" 
-              class="btn-registrar-premium"
-              :disabled="cargando"
+            <button 
+              class="btn-avisar-liberado-mejorada"
+              :disabled="estaInteresRegistrado(hora)"
+              @click="registrarInteresHorario(hora)"
             >
-              <span class="btn-content">
-                {{ cargando ? '🔄 Procesando...' : `💳 Pagar $${montoAPagarAhora()} con Mercado Pago` }}
-              </span>
+              <Bell :size="14" />
+              {{ estaInteresRegistrado(hora) ? '✅ En lista' : 'Avísame' }}
             </button>
-            
-            <p class="info-pago-final">
-              Tu turno quedará <strong>confirmado</strong> tras el pago exitoso.
-            </p>
-          </div>
-        </transition>
-
-        <div v-if="cargando" class="loading-overlay">
-          <div class="loading-content">
-            <span class="loading-spinner">🔄</span>
-            <p>Iniciando proceso de pago. No cierres esta ventana...</p>
           </div>
         </div>
       </div>
     </div>
 
-    <div v-if="mostrarModalHora" class="modal-overlay" @click="cerrarModalHora">
-      <div class="modal-content modal-horario-grande" @click.stop>
-        <div class="modal-header">
-          <h3>⏰ Seleccionar Horario</h3>
-          <button class="modal-close-btn" @click="cerrarModalHora">×</button>
+    <!-- Resumen del Turno -->
+    <div v-if="form.hora" class="card-modern slide-in">
+      <div class="card-header">
+        <div class="card-icon">
+          <Receipt :size="20" />
         </div>
-        <div class="modal-body">
-          <div class="quick-time-grid-modal-mejorado">
-            <div 
-              v-for="hora in horariosDisponibles" 
-              :key="hora"
-              class="quick-time-option-modal-mejorado"
-              :class="{ selected: form.hora === hora, disabled: !estaHorarioDisponible(hora) }"
-            >
-              <div v-if="estaHorarioDisponible(hora)" class="hora-content-disponible" @click="seleccionarHoraRapida(hora)">
-                <div class="hora-icon">✅</div>
-                <div class="hora-texto">
-                  <span class="hora-hora">{{ hora }}</span>
-                  <span class="hora-estado">Disponible</span>
-                </div>
-              </div>
-              <div v-else class="hora-content-ocupado">
-                <div class="hora-icon">❌</div>
-                <div class="hora-texto">
-                  <span class="hora-hora">{{ hora }}</span>
-                  <span class="hora-estado">Ocupado</span>
-                </div>
-                <div class="horario-ocupado-actions-mejorado">
-                  <button @click.stop="registrarInteresHorario(hora)" class="btn-avisar-liberado-mejorado" :disabled="estaInteresRegistrado(hora)">
-                    {{ estaInteresRegistrado(hora) ? '✅ En lista' : '🔔 Avísame' }}
-                  </button>
-                </div>
-              </div>
+        <h3>Resumen del Turno</h3>
+      </div>
+
+      <div class="resumen-grid">
+        <div class="resumen-item" v-for="servicioId in form.servicios_ids" :key="servicioId">
+          <div>
+            <Scissors :size="16" /> {{ getServicioNombre(servicioId) }}
+          </div>
+          <span>${{ getServicioPrecio(servicioId) }}</span>
+        </div>
+        
+        <div class="resumen-item subtotal" v-if="descuentoAplicado > 0">
+          <div>
+            <FileText :size="16" /> Subtotal
+          </div>
+          <span class="tachado">${{ calcularTotalOriginal() }}</span>
+        </div>
+
+        <div class="resumen-item descuento" v-if="descuentoAplicado > 0">
+          <div>
+            <Tag :size="16" /> Descuento ({{ descuentoAplicado }}%)
+          </div>
+          <span class="text-success">- ${{ calcularMontoDescuento() }}</span>
+        </div>
+
+        <div class="resumen-item total">
+          <div>
+            <Wallet :size="18" /> Total del servicio
+          </div>
+          <strong>${{ calcularTotalConDescuento() }}</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Opciones de Pago -->
+    <div v-if="form.hora" class="card-modern slide-in">
+      <div class="card-header">
+        <div class="card-icon">
+          <CreditCard :size="20" />
+        </div>
+        <h3>Opciones de Pago</h3>
+      </div>
+
+      <div class="pago-section">
+        <label class="label-modern">
+          <CreditCard :size="16" />
+          Tipo de Pago
+        </label>
+        <div class="pago-options">
+          <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'SENA_50' }">
+            <input type="radio" v-model="form.tipo_pago" value="SENA_50" class="hidden-radio">
+            <div class="radio-content">
+              <span>Seña 50%</span>
+              <strong>${{ calcularSena() }}</strong>
+              <small>Resto: ${{ (calcularTotalConDescuento() * 0.5).toFixed(2) }} en el local</small>
+            </div>
+          </label>
+          <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'TOTAL' }">
+            <input type="radio" v-model="form.tipo_pago" value="TOTAL" class="hidden-radio">
+            <div class="radio-content">
+              <span>Pago Total (100%)</span>
+              <strong>${{ calcularTotalConDescuento() }}</strong>
+              <small>Pago completo online</small>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div v-if="form.tipo_pago" class="pago-detalles">
+        <div class="input-group">
+          <label class="label-modern">
+            <Banknote :size="16" />
+            Medio de Pago
+          </label>
+          <div class="medio-pago-box">
+            <div class="medio-pago-content">
+              <span class="medio-icon">💳</span>
+              <span class="medio-text">Mercado Pago</span>
             </div>
           </div>
-          <div class="info-avisos-horarios">
-            <p><strong>💡 ¿El horario está ocupado?</strong></p>
-            <p>Tocá "Avísame" y te notificaremos si alguien cancela.</p>
-            <p>Tendrás <strong>15% descuento</strong>.</p>
-          </div>
         </div>
       </div>
     </div>
 
+    <!-- Confirmación Final -->
+    <div v-if="formularioValido" class="card-modern slide-in resumen-final">
+      <div class="card-header">
+        <div class="card-icon">
+          <CheckCircle2 :size="20" />
+        </div>
+        <h3>Confirmar Reserva</h3>
+      </div>
+
+      <div class="resumen-detalles">
+        <div class="resumen-item">
+          <span><CalendarDays :size="14" /> Fecha:</span>
+          <span>{{ formatoFechaLegible(form.fecha) }} a las {{ form.hora }}</span>
+        </div>
+        <div class="resumen-item">
+          <span><UserCheck :size="14" /> Profesional:</span>
+          <span>{{ getPeluqueroNombre() }}</span>
+        </div>
+        <div class="resumen-item">
+          <span><Scissors :size="14" /> Servicios:</span>
+          <span>{{ getServiciosNombres() }}</span>
+        </div>
+        
+        <div class="resumen-item total">
+          <span><Wallet :size="16" /> Total a pagar ahora:</span>
+          <span class="monto-final-pago">${{ montoAPagarAhora() }}</span>
+        </div>
+      </div>
+      
+      <button
+        @click="reservarTurno" 
+        class="btn-confirmar-premium"
+        :disabled="cargando"
+      >
+        <span class="btn-content">
+          <CreditCard :size="20" />
+          {{ cargando ? '🔄 Procesando...' : `Pagar $${montoAPagarAhora()} con Mercado Pago` }}
+        </span>
+      </button>
+      
+      <p class="info-pago-final">
+        <CheckCircle2 :size="14" />
+        Tu turno quedará <strong>confirmado</strong> tras el pago exitoso.
+      </p>
+    </div>
+
+    <!-- Modal de Interés -->
     <div v-if="mostrarModalInteres" class="modal-overlay">
       <div class="modal-content">
         <div class="modal-header">
           <h3>🔔 Confirmar Interés</h3>
-          <button class="modal-close-btn" @click="cancelarRegistroInteres">×</button>
+          <button class="modal-close-btn" @click="cancelarRegistroInteres">
+            <X :size="20" />
+          </button>
         </div>
         <div class="modal-body">
           <div class="info-interes-card">
@@ -360,442 +436,527 @@
         </div>
       </div>
     </div>
+
+    <!-- Toast Message -->
+    <transition name="fade">
+      <div v-if="mensaje" class="toast-message" :class="mensajeTipo">
+        <component :is="mensajeTipo === 'success' ? CheckCircle : AlertCircle" :size="18" />
+        {{ mensaje }}
+      </div>
+    </transition>
   </div>
 </template>
 
-<script>
-import axios from 'axios';
-import Swal from 'sweetalert2';
-import { useRoute } from 'vue-router'; // Importar useRoute
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import axios from 'axios'
+import Swal from 'sweetalert2'
+import { 
+  Calendar, ArrowLeft, User, UserCheck, FolderOpen, Tag, 
+  Scissors, Check, DollarSign, Clock, CalendarDays, 
+  ChevronLeft, ChevronRight, Info, Loader2, Receipt, 
+  Wallet, CreditCard, Banknote, CheckCircle2, CheckCircle, 
+  Inbox, Search, Gift, Bell, X, FileText, AlertCircle
+} from 'lucide-vue-next'
 
-export default {
-  data() {
-    return {
-      form: {
-        peluquero: null, 
-        servicios_ids: [],
-        hora: "",
-        fecha: "",
-        tipo_pago: null,
-        medio_pago: "MERCADO_PAGO",
-        canal: "WEB"
-      },
-      usuario: { id: null, nombre: 'Cargando', apellido: '...', dni: 'Cargando', telefono: '', turnosCount: 0 }, 
-      peluqueros: [],
-      servicios: [],
-      categorias: [],
-      turnosOcupados: [],
-      cargando: false,
-      categoriasSeleccionadas: [],
-      busquedaServicio: "",
-      interesesRegistrados: [],
-      mostrarModalInteres: false,
-      horarioSeleccionadoInteres: null,
-      registrandoInteres: false,
-      mensajeInteres: "",
-      mostrarModalHora: false,
-      
-      // 🆕 VARIABLES PARA CUPÓN DE DESCUENTO
-      cuponCodigo: null,
-      descuentoAplicado: 0,
-      mensajePromo: ""
-    };
-  },
-  computed: {
-    formularioValido() {
-      return this.form.peluquero && 
-             this.form.servicios_ids.length > 0 &&
-             this.form.fecha && 
-             this.form.hora &&
-             this.form.tipo_pago;
-    },
-    
-    fechasDisponibles() {
-      const dates = [];
-      const today = new Date();
-      for (let i = 0; i < 14; i++) {
-        const date = new Date(today);
-        date.setDate(today.getDate() + i);
-        if (date.getDay() !== 0) {
-          dates.push(this.formatDate(date));
-          if (dates.length === 7) break;
-        }
-      }
-      return dates;
-    },
+const router = useRouter()
+const route = useRoute()
 
-    serviciosFiltrados() {
-      let filtrados = this.servicios;
-      if (this.categoriasSeleccionadas.length > 0) {
-        filtrados = filtrados.filter(servicio => {
-          const categoriaSeleccionada = this.categorias.find(cat => cat.id === this.categoriasSeleccionadas[0]);
-          return servicio.categoria === categoriaSeleccionada.nombre;
-        });
-      }
-      if (this.busquedaServicio) {
-        const termino = this.busquedaServicio.toLowerCase();
-        filtrados = filtrados.filter(s => s.nombre.toLowerCase().includes(termino));
-      }
-      return filtrados;
-    },
+// Estados
+const form = ref({
+  peluquero: null,
+  servicios_ids: [],
+  hora: "",
+  fecha: "",
+  tipo_pago: null,
+  medio_pago: "MERCADO_PAGO",
+  canal: "WEB"
+})
 
-    categoriasSeleccionadasNombres() {
-      return this.categoriasSeleccionadas.map(catId => {
-        const categoria = this.categorias.find(c => c.id === catId);
-        return categoria ? categoria.nombre : '';
-      }).join(', ');
-    },
-    
-    horariosDisponibles() {
-      const horariosBase = [];
-      const bloques = [{ inicio: 8, fin: 12 }, { inicio: 15, fin: 20 }];
-      const ahora = new Date();
-      const horaActual = ahora.getHours();
-      const minutoActual = ahora.getMinutes();
-      
-      const hoy = new Date();
-      const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
-      const esHoy = this.form.fecha === hoyFormateado;
+const usuario = ref({ 
+  id: null, 
+  nombre: 'Cargando', 
+  apellido: '...', 
+  dni: 'Cargando', 
+  telefono: '', 
+  turnosCount: 0 
+})
 
-      bloques.forEach(b => {
-        for (let h = b.inicio; h < b.fin; h++) {
-          for (let m = 0; m < 60; m += 30) {
-            const horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-            if (esHoy) {
-              if (h < horaActual || (h === horaActual && m <= minutoActual)) continue;
-            }
-            horariosBase.push(horaStr);
-          }
-        }
-      });
-      return horariosBase;
-    }
-  },
-  methods: {
-    async cargarDatosIniciales() {
-      await Promise.all([
-        this.cargarUsuarioLogueado(),
-        this.cargarPeluqueros(),
-        this.cargarServicios(),
-        this.cargarCategorias(),
-        this.cargarTurnosOcupados()
-      ]);
-      // 🆕 Validar cupón al iniciar (si viene en URL)
-      this.validarCuponURL();
-      await this.cargarInteresesUsuario();
-    },
-    
-// 🆕 FUNCIÓN PARA VALIDAR CUPÓN (Versión A Prueba de Balas 🛡️)
-    async validarCuponURL() {
-        // 1. Intentar leer desde Vue Router
-        let codigo = this.$route.query.cup;
-        
-        // 2. Si falla, intentar leer directo del navegador (Fallback nativo)
-        if (!codigo) {
-            const urlParams = new URLSearchParams(window.location.search);
-            codigo = urlParams.get('cup');
-        }
+const peluqueros = ref([])
+const servicios = ref([])
+const categorias = ref([])
+const turnosOcupados = ref([])
+const categoriasSeleccionadas = ref([])
+const busquedaServicio = ref("")
+const interesesRegistrados = ref([])
+const cargando = ref(false)
+const cargandoHorarios = ref(false)
+const mostrarModalInteres = ref(false)
+const horarioSeleccionadoInteres = ref(null)
+const registrandoInteres = ref(false)
+const currentDate = ref(new Date())
+const mensaje = ref("")
+const mensajeTipo = ref("success")
 
-        console.log("🔍 Buscando cupón en URL... Encontrado:", codigo); // <--- Mirá la consola (F12)
+// Cupón de descuento
+const cuponCodigo = ref(null)
+const descuentoAplicado = ref(0)
+const mensajePromo = ref("")
 
-        if (!codigo) return;
+// Computed
+const formularioValido = computed(() => {
+  return form.value.peluquero && 
+         form.value.servicios_ids.length > 0 &&
+         form.value.fecha && 
+         form.value.hora &&
+         form.value.tipo_pago
+})
 
-        try {
-            console.log(`📡 Consultando API: http://localhost:8000/usuarios/api/promociones/validar/${codigo}/`);
-            const res = await axios.get(`http://localhost:8000/usuarios/api/promociones/validar/${codigo}/`);
-            
-            console.log("✅ Respuesta API:", res.data);
-
-            if (res.data.valido) {
-                this.cuponCodigo = codigo;
-                this.descuentoAplicado = parseFloat(res.data.descuento); // Asegurar número
-                this.mensajePromo = res.data.mensaje;
-                
-                // Guardar en variable reactiva para que el template se entere
-                // (A veces Vue 3 necesita un empujón si usas Options API mezclado)
-                this.$forceUpdate(); 
-
-                Swal.fire({
-                    title: '¡Descuento Activado! 🎉',
-                    text: res.data.mensaje,
-                    icon: 'success',
-                    toast: true,
-                    position: 'top-end',
-                    showConfirmButton: false,
-                    timer: 4000
-                });
-            } else {
-                console.warn("⚠️ Cupón inválido según backend:", res.data.mensaje);
-                // Opcional: Avisar al usuario que el cupón expiró
-            }
-        } catch (e) {
-            console.error("❌ Error validando cupón (Axios):", e);
-        }
-    },
-
-    async cargarUsuarioLogueado() {
-          try {
-            const storedUserId = localStorage.getItem('user_id');
-            const token = localStorage.getItem('token');
-            const config = token ? { headers: { 'Authorization': `Bearer ${token}` } } : {};
-            
-            if (storedUserId) {
-                const res = await axios.get(`http://localhost:8000/usuarios/api/usuarios/${storedUserId}/`, config); 
-                this.usuario = res.data; 
-                this.usuario.id = parseInt(storedUserId);
-                try {
-                  const statsRes = await axios.get(`http://localhost:8000/usuarios/api/turnos/cliente/${this.usuario.id}/estadisticas/`, config);
-                  this.usuario.turnosCount = statsRes.data.total_turnos || 0;
-                } catch (statsErr) { this.usuario.turnosCount = 0; }
-            } else {
-                this.usuario = { nombre: 'Invitado', apellido: '', dni: 'No identificado', telefono: 'No registrado', turnosCount: 0, id: null };
-            }
-          } catch (err) {
-            console.error("Error usuario:", err);
-          }
-    },
-    
-    async cargarPeluqueros() {
-      try {
-        const res = await axios.get("http://localhost:8000/usuarios/api/peluqueros/");
-        this.peluqueros = res.data.map(p => ({ ...p, apellido: p.apellido || '' }));
-      } catch (err) { this.peluqueros = []; }
-    },
-
-    async cargarServicios() {
-      try {
-        const res = await axios.get("http://localhost:8000/usuarios/api/servicios/");
-        this.servicios = res.data;
-      } catch (err) { console.error(err); }
-    },
-
-    async cargarCategorias() {
-      try {
-        const res = await axios.get("http://localhost:8000/usuarios/api/categorias/servicios/");
-        this.categorias = res.data;
-      } catch (err) { console.error(err); }
-    },
-
-    async cargarTurnosOcupados(fecha = null) {
-      try {
-        let url = "http://localhost:8000/usuarios/api/turnos/?estado__in=RESERVADO,CONFIRMADO";
-        if (fecha) url += `&fecha=${fecha}`;
-        const res = await axios.get(url);
-        this.turnosOcupados = res.data.results || res.data;
-      } catch (err) { this.turnosOcupados = []; }
-    },
-
-    async cargarInteresesUsuario() {
-      try {
-        if (this.usuario.id) {
-          const res = await axios.get(`http://localhost:8000/usuarios/api/turnos/mis-intereses/`, {
-             headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
-          });
-          this.interesesRegistrados = res.data;
-        }
-      } catch (err) { console.error("Error intereses:", err); }
-    },
-    
-    // 🆕 MÉTODOS DE CÁLCULO CON DESCUENTO
-    calcularTotalOriginal() {
-      return this.form.servicios_ids.reduce((total, id) => total + parseFloat(this.getServicioPrecio(id) || 0), 0).toFixed(2);
-    },
-    
-    calcularTotal() {
-       // Alias para mantener compatibilidad
-       return this.calcularTotalOriginal();
-    },
-
-    calcularMontoDescuento() {
-        const total = parseFloat(this.calcularTotalOriginal());
-        if (this.descuentoAplicado > 0) {
-            return (total * (this.descuentoAplicado / 100)).toFixed(2);
-        }
-        return '0.00';
-    },
-
-    calcularTotalConDescuento() {
-        const total = parseFloat(this.calcularTotalOriginal());
-        if (this.descuentoAplicado > 0) {
-            return (total * (1 - this.descuentoAplicado / 100)).toFixed(2);
-        }
-        return total.toFixed(2);
-    },
-
-    calcularSena() {
-        const totalConDesc = parseFloat(this.calcularTotalConDescuento());
-        return (totalConDesc * 0.5).toFixed(2);
-    },
-    
-    montoAPagarAhora() {
-      const total = parseFloat(this.calcularTotalConDescuento());
-      if (this.form.tipo_pago === 'TOTAL') return total.toFixed(2);
-      if (this.form.tipo_pago === 'SENA_50') return (total * 0.5).toFixed(2);
-      return '0.00';
-    },
-
-    // ... Resto de métodos (toggleCategoria, toggleServicio, etc.) se mantienen igual ...
-    toggleCategoria(categoriaId) {
-      const index = this.categoriasSeleccionadas.indexOf(categoriaId);
-      if (index === -1) this.categoriasSeleccionadas.push(categoriaId);
-      else this.categoriasSeleccionadas.splice(index, 1);
-    },
-
-    toggleServicio(servicio) {
-      const index = this.form.servicios_ids.indexOf(servicio.id);
-      if (index === -1) this.form.servicios_ids.push(servicio.id);
-      else this.form.servicios_ids.splice(index, 1);
-    },
-
-    getServicioNombre(id) { return this.servicios.find(x => x.id === id)?.nombre || ''; },
-    getServiciosNombres() { return this.form.servicios_ids.map(id => this.getServicioNombre(id)).join(', '); },
-    getServicioPrecio(id) { return this.servicios.find(x => x.id === id)?.precio || 0; },
-    getCategoriaNombre(categoria) { return categoria || 'General'; },
-
-    formatDate(date) {
-      const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-      const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-      const today = new Date();
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const fullDate = `${year}-${month}-${day}`;
-      const isToday = date.toDateString() === today.toDateString();
-      return { dayName: days[date.getDay()], dayNum: date.getDate(), month: months[date.getMonth()], fullDate: fullDate, isToday: isToday, dateObj: date };
-    },
-
-    formatoFechaLegible(fechaStr) {
-      if(!fechaStr) return '';
-      const [year, month, day] = fechaStr.split('-');
-      const fecha = new Date(year, month - 1, day);
-      return fecha.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-    },
-
-    onPeluqueroSeleccionado() { this.limpiarSelecciones(); this.cargarTurnosOcupados(this.form.fecha); },
-    seleccionarFecha(dateInfo) { this.form.fecha = dateInfo.fullDate; this.form.hora = ""; this.form.tipo_pago = null; this.cargarTurnosOcupados(dateInfo.fullDate); },
-
-    estaHorarioDisponible(horario) {
-      if (!this.form.fecha || !this.form.peluquero) return true;
-      const peluqueroSeleccionado = this.peluqueros.find(p => p.id == this.form.peluquero);
-      if (!peluqueroSeleccionado) return true;
-      const turnoOcupado = this.turnosOcupados.find(turno => {
-        const mismoPeluquero = turno.peluquero_id == this.form.peluquero;
-        return mismoPeluquero && turno.fecha === this.form.fecha && turno.hora === horario;
-      });
-      return !turnoOcupado;
-    },
-
-    estaInteresRegistrado(horario) {
-      return this.interesesRegistrados.some(interes => 
-        interes.fecha_deseada === this.form.fecha &&
-        interes.hora_deseada === horario &&
-        interes.peluquero_id == this.form.peluquero
-      );
-    },
-
-    getPeluqueroNombre() {
-      const p = this.peluqueros.find(p => p.id == this.form.peluquero); 
-      return p ? `${p.nombre} ${p.apellido}` : '';
-    },
-
-    limpiarSelecciones() {
-      this.form.fecha = null; this.form.hora = ""; this.form.servicios_ids = [];
-      this.form.tipo_pago = null; this.categoriasSeleccionadas = [];
-    },
-
-    abrirModalHora() { this.mostrarModalHora = true; },
-    cerrarModalHora() { this.mostrarModalHora = false; },
-
-    seleccionarHoraRapida(hora) {
-      if (this.estaHorarioDisponible(hora)) {
-        this.form.hora = hora; this.form.tipo_pago = null; this.cerrarModalHora();
-      }
-    },
-
-    registrarInteresHorario(horario) {
-      if (this.estaHorarioDisponible(horario)) { Swal.fire('Atención', 'Este horario está disponible.', 'info'); return; }
-      this.horarioSeleccionadoInteres = horario;
-      this.mostrarModalInteres = true;
-    },
-
-    cancelarRegistroInteres() { this.mostrarModalInteres = false; this.horarioSeleccionadoInteres = null; },
-
-    async confirmarRegistroInteres() {
-        if (!this.usuario.id) { Swal.fire('Error', 'Debes iniciar sesión.', 'error'); return; }
-        this.registrandoInteres = true;
-        try {
-            const token = localStorage.getItem('token');
-            const config = token ? { headers: { 'Authorization': `Token ${token}` } } : {};
-            const payload = { cliente_id: this.usuario.id, servicio_id: this.form.servicios_ids[0], peluquero_id: this.form.peluquero, fecha_deseada: this.form.fecha, hora_deseada: this.horarioSeleccionadoInteres };
-            const res = await axios.post("http://localhost:8000/usuarios/api/turnos/registrar-interes/", payload, config);
-            if (res.data.success) {
-                this.mostrarModalInteres = false;
-                await this.cargarInteresesUsuario();
-                Swal.fire({ icon: 'success', title: '¡Listo!', text: 'Te avisaremos por WhatsApp.', timer: 3000, showConfirmButton: false });
-            } else {
-                Swal.fire('Atención', res.data.error || "Ya registrado.", 'warning');
-            }
-        } catch (err) { Swal.fire('Error', err.response?.data?.error || "Error al conectar.", 'error'); } 
-        finally { this.registrandoInteres = false; }
-    },
-    
-    async reservarTurno() {
-      if (!this.formularioValido) { Swal.fire('Faltan datos', 'Completa todos los campos.', 'warning'); return; }
-
-      this.cargando = true;
-      const payload = {
-        peluquero_id: this.form.peluquero, 
-        servicios_ids: this.form.servicios_ids,
-        fecha: this.form.fecha,
-        hora: this.form.hora,
-        canal: 'WEB',
-        tipo_pago: this.form.tipo_pago,
-        medio_pago: this.form.medio_pago,
-        // ✅ AGREGAMOS EL CUPÓN AL PAYLOAD PARA QUE EL BACKEND APLIQUE EL DESCUENTO
-        cup_codigo: this.cuponCodigo 
-      };
-
-      try {
-        const token = localStorage.getItem('token');
-        const config = token ? { headers: { 'Authorization': `Token ${token}` } } : {};
-
-        const res = await axios.post("http://localhost:8000/usuarios/api/turnos/crear/", payload, config);
-        const data = res.data;
-        this.cargando = false;
-
-        if (data.status === 'ok') {
-          if (data.procesar_pago && data.mp_data?.init_point) {
-            Swal.fire({ icon: 'success', title: 'Reserva Iniciada', text: 'Redirigiendo a Mercado Pago...', timer: 2000, showConfirmButton: false })
-              .then(() => { window.open(data.mp_data.init_point, '_blank'); this.$router.push('/turnos'); });
-          } else {
-            Swal.fire({ icon: 'success', title: '¡Turno Reservado!', text: 'Te esperamos.', timer: 2000, showConfirmButton: false })
-              .then(() => { this.$router.push('/turnos'); });
-          }
-        } else {
-          Swal.fire('Error', data.message || "No se pudo reservar.", 'error');
-        }
-      } catch (err) {
-        this.cargando = false;
-        if (err.response && err.response.status === 401) Swal.fire('Sesión Expirada', 'Inicia sesión.', 'error');
-        else Swal.fire('Error', err.response?.data?.message || 'Error de conexión', 'error');
-      }
-    },
-
-    iniciarPagoMercadoPago(initPointUrl) { if (initPointUrl) window.open(initPointUrl, '_blank'); }
-  },
-
-  mounted() {
-    this.cargarDatosIniciales();
-    setTimeout(() => {
-        this.validarCuponURL();
-    }, 500);
+const serviciosFiltrados = computed(() => {
+  let filtrados = servicios.value
+  if (categoriasSeleccionadas.value.length > 0) {
+    const nombresCats = categorias.value
+      .filter(c => categoriasSeleccionadas.value.includes(c.id))
+      .map(c => c.nombre)
+    filtrados = filtrados.filter(s => nombresCats.includes(s.categoria))
   }
-};
+  if (busquedaServicio.value) {
+    const termino = busquedaServicio.value.toLowerCase()
+    filtrados = filtrados.filter(s => s.nombre.toLowerCase().includes(termino))
+  }
+  return filtrados
+})
+
+// Computed para calendario
+const currentYear = computed(() => currentDate.value.getFullYear())
+const currentMonth = computed(() => currentDate.value.getMonth())
+const nombreMesActual = computed(() => {
+  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+  return meses[currentMonth.value]
+})
+const daysInMonth = computed(() => {
+  return new Date(currentYear.value, currentMonth.value + 1, 0).getDate()
+})
+const startingDayOfWeek = computed(() => {
+  return new Date(currentYear.value, currentMonth.value, 1).getDay()
+})
+
+// 🎯 HORARIOS DE 20 EN 20 MINUTOS EXACTAMENTE
+const horariosGenerados = computed(() => {
+  const horariosBase = []
+  const bloques = [
+    { inicio: 8, fin: 12 },    // Mañana: 8:00 a 12:00
+    { inicio: 15, fin: 20 }    // Tarde: 15:00 a 20:00
+  ]
+  
+  const ahora = new Date()
+  const horaActual = ahora.getHours()
+  const minutoActual = ahora.getMinutes()
+  
+  const hoy = new Date()
+  const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+  const esHoy = form.value.fecha === hoyFormateado
+
+  bloques.forEach(b => {
+    for (let h = b.inicio; h < b.fin; h++) {
+      for (let m = 0; m < 60; m += 20) { // ⏰ 20 EN 20 MINUTOS
+        const horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+        
+        // Si es hoy, filtrar horarios pasados
+        if (esHoy) {
+          if (h < horaActual) continue
+          if (h === horaActual && m <= minutoActual) continue
+        }
+        
+        horariosBase.push(horaStr)
+      }
+    }
+  })
+  return horariosBase
+})
+
+// Métodos
+const cargarDatosIniciales = async () => {
+  await Promise.all([
+    cargarUsuarioLogueado(),
+    cargarPeluqueros(),
+    cargarServicios(),
+    cargarCategorias(),
+    cargarTurnosOcupados()
+  ])
+  await validarCuponURL()
+  await cargarInteresesUsuario()
+}
+
+const validarCuponURL = async () => {
+  let codigo = route.query.cup
+  
+  if (!codigo) {
+    const urlParams = new URLSearchParams(window.location.search)
+    codigo = urlParams.get('cup')
+  }
+
+  if (!codigo) return
+
+  try {
+    const res = await axios.get(`http://localhost:8000/usuarios/api/promociones/validar/${codigo}/`)
+    
+    if (res.data.valido) {
+      cuponCodigo.value = codigo
+      descuentoAplicado.value = parseFloat(res.data.descuento)
+      mensajePromo.value = res.data.mensaje
+      
+      Swal.fire({
+        title: '¡Descuento Activado! 🎉',
+        text: res.data.mensaje,
+        icon: 'success',
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 4000
+      })
+    }
+  } catch (e) {
+    console.error("Error validando cupón:", e)
+  }
+}
+
+const cargarUsuarioLogueado = async () => {
+  try {
+    const storedUserId = localStorage.getItem('user_id')
+    const token = localStorage.getItem('token')
+    const config = token ? { headers: { 'Authorization': `Bearer ${token}` } } : {}
+    
+    if (storedUserId) {
+      const res = await axios.get(`http://localhost:8000/usuarios/api/usuarios/${storedUserId}/`, config)
+      usuario.value = res.data
+      usuario.value.id = parseInt(storedUserId)
+      try {
+        const statsRes = await axios.get(`http://localhost:8000/usuarios/api/turnos/cliente/${usuario.value.id}/estadisticas/`, config)
+        usuario.value.turnosCount = statsRes.data.total_turnos || 0
+      } catch { usuario.value.turnosCount = 0 }
+    } else {
+      usuario.value = { 
+        nombre: 'Invitado', 
+        apellido: '', 
+        dni: 'No identificado', 
+        telefono: 'No registrado', 
+        turnosCount: 0, 
+        id: null 
+      }
+    }
+  } catch (err) {
+    console.error("Error usuario:", err)
+  }
+}
+
+const cargarPeluqueros = async () => {
+  try {
+    const res = await axios.get("http://localhost:8000/usuarios/api/peluqueros/")
+    peluqueros.value = res.data.map(p => ({ ...p, apellido: p.apellido || '' }))
+  } catch (err) { peluqueros.value = [] }
+}
+
+const cargarServicios = async () => {
+  try {
+    const res = await axios.get("http://localhost:8000/usuarios/api/servicios/")
+    servicios.value = res.data
+  } catch (err) { console.error(err) }
+}
+
+const cargarCategorias = async () => {
+  try {
+    const res = await axios.get("http://localhost:8000/usuarios/api/categorias/servicios/")
+    categorias.value = res.data
+  } catch (err) { console.error(err) }
+}
+
+const cargarTurnosOcupados = async (fecha = null) => {
+  try {
+    let url = "http://localhost:8000/usuarios/api/turnos/?estado__in=RESERVADO,CONFIRMADO"
+    if (fecha) url += `&fecha=${fecha}`
+    const res = await axios.get(url)
+    turnosOcupados.value = res.data.results || res.data
+  } catch (err) { turnosOcupados.value = [] }
+}
+
+const cargarInteresesUsuario = async () => {
+  try {
+    if (usuario.value.id) {
+      const res = await axios.get(`http://localhost:8000/usuarios/api/turnos/mis-intereses/`, {
+        headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
+      })
+      interesesRegistrados.value = res.data
+    }
+  } catch (err) { console.error("Error intereses:", err) }
+}
+
+// Cálculos con descuento
+const calcularTotalOriginal = () => {
+  return form.value.servicios_ids.reduce((total, id) => 
+    total + parseFloat(getServicioPrecio(id) || 0), 0
+  ).toFixed(2)
+}
+
+const calcularMontoDescuento = () => {
+  const total = parseFloat(calcularTotalOriginal())
+  if (descuentoAplicado.value > 0) {
+    return (total * (descuentoAplicado.value / 100)).toFixed(2)
+  }
+  return '0.00'
+}
+
+const calcularTotalConDescuento = () => {
+  const total = parseFloat(calcularTotalOriginal())
+  if (descuentoAplicado.value > 0) {
+    return (total * (1 - descuentoAplicado.value / 100)).toFixed(2)
+  }
+  return total.toFixed(2)
+}
+
+const calcularSena = () => {
+  const totalConDesc = parseFloat(calcularTotalConDescuento())
+  return (totalConDesc * 0.5).toFixed(2)
+}
+
+const montoAPagarAhora = () => {
+  const total = parseFloat(calcularTotalConDescuento())
+  if (form.value.tipo_pago === 'TOTAL') return total.toFixed(2)
+  if (form.value.tipo_pago === 'SENA_50') return (total * 0.5).toFixed(2)
+  return '0.00'
+}
+
+// Métodos de UI
+const toggleCategoria = (categoriaId) => {
+  const index = categoriasSeleccionadas.value.indexOf(categoriaId)
+  if (index === -1) categoriasSeleccionadas.value.push(categoriaId)
+  else categoriasSeleccionadas.value.splice(index, 1)
+}
+
+const toggleServicio = (servicio) => {
+  const index = form.value.servicios_ids.indexOf(servicio.id)
+  if (index === -1) form.value.servicios_ids.push(servicio.id)
+  else form.value.servicios_ids.splice(index, 1)
+}
+
+const getServicioNombre = (id) => servicios.value.find(x => x.id === id)?.nombre || ''
+const getServiciosNombres = () => form.value.servicios_ids.map(id => getServicioNombre(id)).join(', ')
+const getServicioPrecio = (id) => servicios.value.find(x => x.id === id)?.precio || 0
+const getCategoriaNombre = (categoria) => categoria || 'General'
+
+const formatoFechaLegible = (fechaStr) => {
+  if (!fechaStr) return ''
+  const [year, month, day] = fechaStr.split('-')
+  const fecha = new Date(year, month - 1, day)
+  return fecha.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
+}
+
+const onPeluqueroSeleccionado = () => {
+  form.value.fecha = ""
+  form.value.hora = ""
+  form.value.tipo_pago = null
+  cargarTurnosOcupados(form.value.fecha)
+}
+
+// Calendario
+const cambiarMes = (dir) => {
+  const newDate = new Date(currentDate.value)
+  newDate.setMonth(currentDate.value.getMonth() + dir)
+  currentDate.value = newDate
+}
+
+const esHoy = (day) => {
+  const today = new Date()
+  return day === today.getDate() && 
+         currentMonth.value === today.getMonth() && 
+         currentYear.value === today.getFullYear()
+}
+
+const esDiaSeleccionable = (day) => {
+  const date = new Date(currentYear.value, currentMonth.value, day)
+  const today = new Date()
+  today.setHours(0,0,0,0)
+  
+  const diffTime = date - today
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  
+  const isInRange = diffDays >= 0 && diffDays <= 14
+  const isSunday = date.getDay() === 0
+  
+  return isInRange && !isSunday
+}
+
+const esDiaSeleccionado = (day) => {
+  if (!form.value.fecha) return false
+  const [y, m, d] = form.value.fecha.split('-').map(Number)
+  return day === d && (currentMonth.value + 1) === m && currentYear.value === y
+}
+
+const seleccionarDiaCalendario = (day) => {
+  if (!esDiaSeleccionable(day)) return
+  
+  const mesStr = String(currentMonth.value + 1).padStart(2, '0')
+  const diaStr = String(day).padStart(2, '0')
+  form.value.fecha = `${currentYear.value}-${mesStr}-${diaStr}`
+  
+  cargarTurnosOcupados(form.value.fecha)
+}
+
+const estaHorarioDisponible = (horario) => {
+  if (!form.value.fecha || !form.value.peluquero) return true
+  const turnoOcupado = turnosOcupados.value.find(turno => {
+    return turno.peluquero_id == form.value.peluquero && 
+           turno.fecha === form.value.fecha && 
+           turno.hora === horario
+  })
+  return !turnoOcupado
+}
+
+const seleccionarHora = (hora) => {
+  form.value.hora = hora
+}
+
+const estaInteresRegistrado = (horario) => {
+  return interesesRegistrados.value.some(interes => 
+    interes.fecha_deseada === form.value.fecha &&
+    interes.hora_deseada === horario &&
+    interes.peluquero_id == form.value.peluquero
+  )
+}
+
+const getPeluqueroNombre = () => {
+  const p = peluqueros.value.find(p => p.id == form.value.peluquero)
+  return p ? `${p.nombre} ${p.apellido}` : ''
+}
+
+const registrarInteresHorario = (horario) => {
+  if (estaHorarioDisponible(horario)) { 
+    Swal.fire('Atención', 'Este horario está disponible.', 'info')
+    return 
+  }
+  horarioSeleccionadoInteres.value = horario
+  mostrarModalInteres.value = true
+}
+
+const cancelarRegistroInteres = () => { 
+  mostrarModalInteres.value = false
+  horarioSeleccionadoInteres.value = null
+}
+
+const confirmarRegistroInteres = async () => {
+  if (!usuario.value.id) { 
+    Swal.fire('Error', 'Debes iniciar sesión.', 'error')
+    return 
+  }
+  registrandoInteres.value = true
+  try {
+    const token = localStorage.getItem('token')
+    const config = token ? { headers: { 'Authorization': `Token ${token}` } } : {}
+    const payload = { 
+      cliente_id: usuario.value.id, 
+      servicio_id: form.value.servicios_ids[0], 
+      peluquero_id: form.value.peluquero, 
+      fecha_deseada: form.value.fecha, 
+      hora_deseada: horarioSeleccionadoInteres.value 
+    }
+    const res = await axios.post("http://localhost:8000/usuarios/api/turnos/registrar-interes/", payload, config)
+    if (res.data.success) {
+      mostrarModalInteres.value = false
+      await cargarInteresesUsuario()
+      Swal.fire({ 
+        icon: 'success', 
+        title: '¡Listo!', 
+        text: 'Te avisaremos por WhatsApp.', 
+        timer: 3000, 
+        showConfirmButton: false 
+      })
+    } else {
+      Swal.fire('Atención', res.data.error || "Ya registrado.", 'warning')
+    }
+  } catch (err) { 
+    Swal.fire('Error', err.response?.data?.error || "Error al conectar.", 'error')
+  } finally { 
+    registrandoInteres.value = false 
+  }
+}
+
+const reservarTurno = async () => {
+  if (!formularioValido.value) { 
+    Swal.fire('Faltan datos', 'Completa todos los campos.', 'warning')
+    return 
+  }
+
+  cargando.value = true
+  const payload = {
+    peluquero_id: form.value.peluquero,
+    servicios_ids: form.value.servicios_ids,
+    fecha: form.value.fecha,
+    hora: form.value.hora,
+    canal: 'WEB',
+    tipo_pago: form.value.tipo_pago,
+    medio_pago: form.value.medio_pago,
+    cup_codigo: cuponCodigo.value
+  }
+
+  try {
+    const token = localStorage.getItem('token')
+    const config = token ? { headers: { 'Authorization': `Token ${token}` } } : {}
+
+    const res = await axios.post("http://localhost:8000/usuarios/api/turnos/crear/", payload, config)
+    const data = res.data
+    cargando.value = false
+
+    if (data.status === 'ok') {
+      if (data.procesar_pago && data.mp_data?.init_point) {
+        Swal.fire({ 
+          icon: 'success', 
+          title: 'Reserva Iniciada', 
+          text: 'Redirigiendo a Mercado Pago...', 
+          timer: 2000, 
+          showConfirmButton: false 
+        }).then(() => { 
+          window.open(data.mp_data.init_point, '_blank')
+          router.push('/turnos')
+        })
+      } else {
+        Swal.fire({ 
+          icon: 'success', 
+          title: '¡Turno Reservado!', 
+          text: 'Te esperamos.', 
+          timer: 2000, 
+          showConfirmButton: false 
+        }).then(() => { 
+          router.push('/turnos')
+        })
+      }
+    } else {
+      Swal.fire('Error', data.message || "No se pudo reservar.", 'error')
+    }
+  } catch (err) {
+    cargando.value = false
+    if (err.response && err.response.status === 401) {
+      Swal.fire('Sesión Expirada', 'Inicia sesión.', 'error')
+    } else {
+      Swal.fire('Error', err.response?.data?.message || 'Error de conexión', 'error')
+    }
+  }
+}
+
+const volverAlListado = () => {
+  router.push('/turnos')
+}
+
+onMounted(() => {
+  cargarDatosIniciales()
+  setTimeout(() => {
+    validarCuponURL()
+  }, 500)
+})
 </script>
 
 <style scoped>
-/* ESTILOS BASE */
-.pedido-container {
+.turno-container {
   max-width: 1000px;
   margin: 0 auto;
   padding: 25px;
@@ -806,24 +967,192 @@ export default {
 }
 
 .header-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 30px;
   padding-bottom: 20px;
   border-bottom: 2px solid #f1f3f4;
 }
 
 .header-section h2 {
-  margin: 0 0 8px 0;
+  margin: 0;
   color: #1a1a1a;
   font-size: 1.8em;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.subtitle {
-  color: #6c757d;
-  font-size: 1.1em;
-  margin: 0;
+.header-icon {
+  color: #007bff;
 }
 
+.btn-back {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-back:hover {
+  background: #5a6268;
+  transform: translateY(-1px);
+}
+
+/* ... (todos los estilos anteriores se mantienen igual) ... */
+
+/* NUEVOS ESTILOS PARA HORARIOS MEJORADOS */
+.grid-horarios-mejorado {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.hora-card-mejorada {
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.hora-content-mejorada {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.hora-disponible-mejorada .hora-content-mejorada {
+  background: linear-gradient(135deg, #d4edda, #c3e6cb);
+  border: 2px solid #28a745;
+}
+
+.hora-disponible-mejorada .hora-content-mejorada:hover {
+  background: linear-gradient(135deg, #c3e6cb, #b1dfbb);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+}
+
+.hora-selected-mejorada .hora-content-mejorada {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  border-color: #1e7e34;
+}
+
+.hora-ocupada-mejorada .hora-content-mejorada {
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border: 2px solid #ffc107;
+  cursor: default;
+}
+
+.hora-info-mejorada {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hora-icon-mejorada {
+  flex-shrink: 0;
+}
+
+.hora-texto-mejorada {
+  font-size: 1.3em;
+  font-weight: 700;
+  color: #155724;
+}
+
+.hora-ocupada-mejorada .hora-texto-mejorada {
+  color: #856404;
+}
+
+.hora-selected-mejorada .hora-texto-mejorada {
+  color: white;
+}
+
+.hora-estado-mejorada {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 6px;
+  align-self: flex-start;
+}
+
+.hora-estado-mejorada.disponible {
+  background: rgba(40, 167, 69, 0.15);
+  color: #155724;
+}
+
+.hora-estado-mejorada.ocupado {
+  background: rgba(255, 193, 7, 0.15);
+  color: #856404;
+}
+
+.hora-selected-mejorada .hora-estado-mejorada {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.campanita-icon {
+  color: #ffc107;
+  animation: ring 2s infinite;
+}
+
+@keyframes ring {
+  0%, 100% { transform: rotate(0deg); }
+  10%, 30%, 50%, 70%, 90% { transform: rotate(-10deg); }
+  20%, 40%, 60%, 80% { transform: rotate(10deg); }
+}
+
+.btn-avisar-liberado-mejorada {
+  width: 100%;
+  background: linear-gradient(135deg, #74b9ff, #0984e3);
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 0.9em;
+  margin-top: 8px;
+}
+
+.btn-avisar-liberado-mejorada:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0984e3, #074a8f);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(116, 185, 255, 0.4);
+}
+
+.btn-avisar-liberado-mejorada:disabled {
+  background: linear-gradient(135deg, #00b894, #00a085);
+  cursor: not-allowed;
+}
+
+/* Responsive para horarios */
+@media (max-width: 768px) {
+  .grid-horarios-mejorado {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Cards */
 .card-modern {
   background: #fff;
   border-radius: 16px;
@@ -834,24 +1163,72 @@ export default {
   transition: all 0.3s ease;
 }
 
-.input-group {
-  margin-bottom: 25px;
+.card-modern:hover {
+  border-color: #007bff;
+  box-shadow: 0 6px 20px rgba(0, 123, 255, 0.15);
 }
 
-.section-label {
+.cupon-alerta {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  border: none;
+}
+
+.cupon-alerta .card-header {
+  border-bottom-color: rgba(255, 255, 255, 0.2);
+}
+
+.cupon-alerta .card-icon {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.cupon-alerta h3 {
+  color: white;
+}
+
+.cupon-alerta p {
+  margin: 0;
+  padding: 10px 0 0 0;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.card-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #f1f3f4;
+}
+
+.card-icon {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  padding: 10px;
+  border-radius: 10px;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-header h3 {
+  margin: 0;
   color: #1a1a1a;
-  margin-bottom: 12px;
+  font-size: 1.3em;
+  font-weight: 700;
+  flex: 1;
+}
+
+.badge-count {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.9em;
   font-weight: 600;
-  font-size: 1.1em;
 }
 
-.cliente-section {
-  margin-left: 0;
-}
-
+/* Cliente Info */
 .cliente-info-card {
   background: #f8f9fa;
   border-radius: 12px;
@@ -871,215 +1248,192 @@ export default {
   font-size: 0.9em;
 }
 
-.select-modern-rounded {
-  width: 100%;
-  padding: 16px;
-  border-radius: 16px;
-  border: 2px solid #e1e5e9;
-  background: #f8f9fa;
-  font-size: 16px;
-  transition: all 0.3s ease;
-  color: #1a1a1a;
-  appearance: none;
-  background-image: url("data:image/svg+xml;charset=US-ASCII,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 5'><path fill='%23666' d='M2 0L0 2h4zm0 5L0 3h4z'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 16px center;
-  background-size: 12px;
+/* Inputs */
+.input-group {
+  margin-bottom: 20px;
 }
 
-.select-modern-rounded:focus {
-  border-color: #007bff;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-  outline: none;
-}
-
-/* CATEGORÍAS HORIZONTALES */
-.categorias-container-horizontal {
-  background: #fff;
-  border-radius: 16px;
-  border: 2px solid #f1f3f4;
-  overflow: hidden;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
-}
-
-.categorias-grid-horizontal {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 20px;
-  overflow-x: auto;
-}
-
-.categoria-card-horizontal {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 15px;
-  border: 2px solid #e9ecef;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  background: #fff;
-  min-width: 200px;
-  flex-shrink: 0;
-}
-
-.categoria-card-horizontal:hover {
-  border-color: #007bff;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
-}
-
-.categoria-card-horizontal.selected {
-  border-color: #007bff;
-  background: #e7f3ff;
-}
-
-.checkmark-horizontal {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #dee2e6;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-  color: transparent;
-  font-size: 12px;
-  font-weight: bold;
-}
-
-.checkmark-horizontal.checked {
-  background: #007bff;
-  border-color: #007bff;
-  color: white;
-}
-
-.categoria-nombre-horizontal {
-  font-weight: 600;
-  color: #1a1a1a;
+.label-modern {
   display: block;
-  margin-bottom: 4px;
-}
-
-.categoria-desc-horizontal {
-  font-size: 0.8em;
-  color: #6c757d;
-}
-
-.no-selection {
-  text-align: center;
-  padding: 30px 20px;
-  color: #6c757d;
-  border: 2px dashed #e9ecef;
-  border-radius: 12px;
-  margin-top: 10px;
-}
-
-.no-selection span {
-  font-size: 2em;
+  font-weight: 700;
+  color: #334155;
   margin-bottom: 10px;
-  display: block;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-/* SERVICIOS */
-.busqueda-servicios {
-  margin-bottom: 15px;
-}
-
-.input-busqueda {
+.select-modern {
   width: 100%;
   padding: 12px 16px;
-  border-radius: 12px;
   border: 2px solid #e1e5e9;
+  border-radius: 10px;
   background: #f8f9fa;
   font-size: 14px;
   transition: all 0.3s ease;
+  color: #1a1a1a;
+  cursor: pointer;
 }
 
-.input-busqueda:focus {
+.select-modern:focus {
   border-color: #007bff;
   background: #fff;
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
   outline: none;
 }
 
-.servicios-grid-horizontal {
-  display: flex;
-  overflow-x: auto;
-  gap: 12px;
-  padding: 10px 5px;
-  margin-bottom: 15px;
+.input-modern {
+  width: 100%;
+  padding: 12px 16px 12px 42px;
+  border: 2px solid #e1e5e9;
+  border-radius: 10px;
+  background: #f8f9fa;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  color: #1a1a1a;
 }
 
-.servicio-item-horizontal {
+.input-modern:focus {
+  border-color: #007bff;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+  outline: none;
+}
+
+.search-wrapper {
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6c757d;
+}
+
+/* Chips de Categorías */
+.grid-chips {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 15px;
-  border: 2px solid #e9ecef;
-  border-radius: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chip-modern {
+  background: #fff;
+  border: 2px solid #e1e5e9;
+  padding: 10px 18px;
+  border-radius: 50px;
+  color: #6c757d;
   cursor: pointer;
   transition: all 0.3s ease;
-  background: #fff;
-  min-width: 280px;
-  flex-shrink: 0;
+  font-size: 0.9em;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.servicio-item-horizontal:hover {
+.chip-modern:hover {
+  border-color: #007bff;
+  color: #007bff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.2);
+}
+
+.chip-active {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  border-color: #007bff;
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+}
+
+/* Servicios */
+.grid-servicios {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.card-servicio {
+  background: #fff;
+  border: 2px solid #e1e5e9;
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.card-servicio:hover {
   border-color: #007bff;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.15);
 }
 
-.servicio-item-horizontal.selected {
+.servicio-active {
   border-color: #007bff;
   background: #e7f3ff;
 }
 
-.checkmark {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #dee2e6;
-  border-radius: 6px;
+.servicio-check {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #007bff;
+  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
-  color: transparent;
-  font-size: 12px;
-  font-weight: bold;
+  opacity: 0;
+  transition: all 0.3s;
 }
 
-.checkmark.checked {
-  background: #007bff;
-  border-color: #007bff;
-  color: white;
+.servicio-active .servicio-check {
+  opacity: 1;
+}
+
+.servicio-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .servicio-nombre {
-  font-weight: 600;
+  font-weight: 700;
   color: #1a1a1a;
-  display: block;
-  margin-bottom: 6px;
+  font-size: 1em;
+  line-height: 1.3;
+  padding-right: 30px;
 }
 
 .servicio-details {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: 10px;
 }
 
 .servicio-precio {
   color: #28a745;
   font-weight: 700;
+  font-size: 1.1em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .servicio-duracion {
   color: #6c757d;
-  font-size: 0.9em;
+  font-size: 0.85em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .servicio-categoria {
@@ -1089,147 +1443,458 @@ export default {
   padding: 2px 8px;
   border-radius: 10px;
   display: inline-block;
+  align-self: flex-start;
 }
 
-.selected-categories {
-  color: #007bff;
-  font-weight: 500;
-  font-size: 0.9em;
-  margin-left: 8px;
-}
-
-/* CALENDARIO */
-.calendar-container-horizontal {
-  background: #fff;
+/* Calendario */
+.calendar-wrapper {
+  background: linear-gradient(135deg, #f8f9fa, #f1f3f4);
   border-radius: 16px;
-  border: 2px solid #f1f3f4;
-  overflow: hidden;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
-}
-
-.calendar-grid-horizontal {
-  display: flex;
-  overflow-x: auto;
   padding: 20px;
-  gap: 12px;
+  border: 2px solid #e1e5e9;
 }
 
-.date-card-horizontal {
-  position: relative;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  border-radius: 16px;
-  padding: 20px 15px;
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  padding: 12px 16px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.mes-titulo {
+  font-weight: 700;
+  color: #1a1a1a;
+  font-size: 1.1em;
+  text-transform: capitalize;
+}
+
+.btn-nav-cal {
+  background: transparent;
+  border: none;
+  color: #6c757d;
   cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 3px solid transparent;
-  min-width: 120px;
-  flex-shrink: 0;
-  overflow: hidden;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s;
 }
 
-.date-card-horizontal:hover {
-  transform: translateY(-8px) scale(1.02);
-  box-shadow: 0 20px 40px rgba(79, 172, 254, 0.3);
+.btn-nav-cal:hover {
+  background: #f8f9fa;
+  color: #007bff;
 }
 
-.date-card-horizontal.selected {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  border-color: #4facfe;
-  box-shadow: 0 25px 50px rgba(79, 172, 254, 0.5);
+.calendar-days-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 0.8em;
+  font-weight: 700;
+  color: #6c757d;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+
+.day-btn {
+  aspect-ratio: 1;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background: white;
+  color: #1a1a1a;
+  font-weight: 600;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  font-size: 0.95em;
+}
+
+.day-btn:hover:not(:disabled) {
+  border-color: #007bff;
+  background: #e7f3ff;
   transform: scale(1.05);
 }
 
-.today-badge {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: linear-gradient(135deg, #24948c 0%, #e08618 100%);
-  color: white;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 4px 8px;
-  border-radius: 10px;
+.day-selected {
+  background: linear-gradient(135deg, #007bff, #0056b3) !important;
+  color: white !important;
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
+  border: none !important;
 }
 
-.date-content {
+.day-disabled {
+  background: #f1f3f4;
+  color: #3b3b3b;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.day-today {
+  border-color: #ffc107;
+  font-weight: 700;
+}
+
+.badge-today {
+  position: absolute;
+  bottom: 2px;
+  font-size: 0.5em;
+  font-weight: 800;
+  color: #ffc107;
+  letter-spacing: 0.5px;
+}
+
+.day-selected .badge-today {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.calendar-footer {
+  margin-top: 16px;
+  text-align: center;
+  color: #6c757d;
+  font-size: 0.85em;
+  padding: 10px;
+  background: white;
+  border-radius: 8px;
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 6px;
 }
 
-.day-name {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: #64748b;
-  text-transform: uppercase;
+/* Horarios */
+.loading-spinner {
+  text-align: center;
+  padding: 40px;
+  color: #6c757d;
 }
 
-.date-card-horizontal.selected .day-name {
-  color: rgba(255, 255, 255, 0.9);
+.spinner-icon {
+  animation: spin 1s linear infinite;
+  margin-bottom: 12px;
+  color: #007bff;
 }
 
-.day-number {
-  font-size: 2rem;
-  font-weight: 900;
-  color: #1e293b;
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
-.date-card-horizontal.selected .day-number {
-  color: white;
+.grid-horarios {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
 }
 
-.month-name {
-  font-size: 0.85rem;
+.btn-hora {
+  padding: 12px;
+  text-align: center;
+  border: 2px solid #e1e5e9;
+  border-radius: 10px;
+  background: white;
   font-weight: 600;
-  color: #64748b;
-  text-transform: uppercase;
-}
-
-.date-card-horizontal.selected .month-name {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-/* SELECTOR DE HORA */
-.time-picker-trigger {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  border-radius: 16px;
-  padding: 20px;
+  color: #1a1a1a;
   cursor: pointer;
   transition: all 0.3s ease;
-  border: 2px solid transparent;
-}
-
-.time-picker-trigger:hover {
-  border-color: #007bff;
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 123, 255, 0.15);
-}
-
-.time-display {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  color: #1a1a1a;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-hora:hover:not(:disabled) {
+  border-color: #007bff;
+  color: #007bff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.15);
+}
+
+.hora-selected {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  border-color: #007bff;
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+}
+
+.hora-ocupada {
+  background: #fee2e2;
+  color: #dc3545;
+  border-color: #fca5a5;
+  text-decoration: line-through;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Interés en horarios */
+.interes-horarios {
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border-radius: 12px;
+  padding: 15px;
+  border: 2px solid #ffc107;
+}
+
+.interes-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: #856404;
+}
+
+.interes-info p {
+  margin: 0;
+  font-size: 0.9em;
+}
+
+.btn-interes {
+  width: 100%;
+  background: linear-gradient(135deg, #74b9ff, #0984e3);
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   font-weight: 600;
+  font-size: 0.9em;
+  margin-top: 8px;
 }
 
-.time-icon {
-  font-size: 1.2em;
+.btn-interes:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0984e3, #074a8f);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(116, 185, 255, 0.4);
 }
 
-.time-text {
-  flex: 1;
-  text-align: center;
+.btn-interes:disabled {
+  background: linear-gradient(135deg, #00b894, #00a085);
+  cursor: not-allowed;
+}
+
+/* Resumen */
+.resumen-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.resumen-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  color: #1a1a1a;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.resumen-item:last-child {
+  border-bottom: none;
+}
+
+.resumen-item span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #6c757d;
+}
+
+.resumen-item strong {
+  color: #1a1a1a;
   font-size: 1.1em;
 }
 
-.time-arrow {
-  color: #6c757d;
-  transition: transform 0.3s ease;
+.resumen-item.total {
+  border-top: 2px solid #dee2e6;
+  margin-top: 10px;
+  padding-top: 15px;
+  font-size: 1.2em;
+  font-weight: 700;
 }
 
-/* MODAL */
+.resumen-item.subtotal .tachado {
+  text-decoration: line-through;
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+.resumen-item.descuento {
+  color: #10b981;
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin: 5px 0;
+}
+
+.monto-final-pago {
+  color: #28a745;
+  font-weight: 800;
+  font-size: 1.3em;
+}
+
+.resumen-final {
+  background: linear-gradient(135deg, #f8fff9, #f0f9ff);
+  border-color: #28a745;
+}
+
+.resumen-detalles {
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+/* Pago */
+.pago-section {
+  margin-bottom: 20px;
+}
+
+.pago-options {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+  margin-top: 10px;
+}
+
+.radio-box {
+  border: 2px solid #e1e5e9;
+  padding: 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.3s ease;
+  background: white;
+}
+
+.radio-box:hover {
+  border-color: #007bff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
+}
+
+.radio-active {
+  border-color: #007bff;
+  background: #e7f3ff;
+}
+
+.hidden-radio {
+  display: none;
+}
+
+.radio-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.radio-content span {
+  color: #6c757d;
+  font-size: 0.9em;
+}
+
+.radio-content strong {
+  color: #1a1a1a;
+  font-size: 1.3em;
+}
+
+.radio-content small {
+  color: #6c757d;
+  font-size: 0.8em;
+}
+
+.radio-active .radio-content span {
+  color: #007bff;
+}
+
+.medio-pago-box {
+  border: 2px solid #e1e5e9;
+  padding: 20px;
+  border-radius: 12px;
+  background: #f8f9fa;
+}
+
+.medio-pago-content {
+  display: flex;
+  color: grey;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.1em;
+  font-weight: 600;
+}
+
+.medio-icon {
+  font-size: 1.5em;
+}
+
+/* Botón Final */
+.btn-confirmar-premium {
+  width: 100%;
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  font-size: 1.1em;
+  padding: 18px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 25px;
+  font-weight: 700;
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+}
+
+.btn-confirmar-premium:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4);
+  background: linear-gradient(135deg, #0056b3, #004085);
+}
+
+.btn-confirmar-premium:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+}
+
+.btn-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.info-pago-final {
+  margin-top: 15px;
+  text-align: center;
+  color: #6c757d;
+  font-size: 0.9em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Modal */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -1254,16 +1919,12 @@ export default {
   overflow-y: auto;
 }
 
-.modal-horario-grande {
-  max-width: 800px !important;
-}
-
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 25px;
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: linear-gradient(135deg, #4facfe, #00f2fe);
   color: white;
   border-radius: 20px 20px 0 0;
 }
@@ -1278,7 +1939,6 @@ export default {
   background: rgba(255, 255, 255, 0.2);
   border: none;
   color: white;
-  font-size: 1.8em;
   cursor: pointer;
   width: 40px;
   height: 40px;
@@ -1297,149 +1957,6 @@ export default {
   padding: 30px;
 }
 
-/* GRID DE HORARIOS MEJORADO - ESTILOS IGUAL AL PRESENCIAL */
-.quick-time-grid-modal-mejorado {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 15px;
-  margin-top: 20px;
-  max-height: 60vh;
-  overflow-y: auto;
-  padding: 10px;
-}
-
-.quick-time-option-modal-mejorado {
-  border-radius: 12px;
-  transition: all 0.3s ease;
-  display: flex;
-  flex-direction: column;
-}
-
-/* HORARIOS DISPONIBLES */
-.hora-content-disponible {
-  padding: 15px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #d4edda, #c3e6cb);
-  border: 2px solid #28a745;
-  transition: all 0.3s ease;
-}
-
-.hora-content-disponible:hover {
-  background: linear-gradient(135deg, #c3e6cb, #b1dfbb);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
-}
-
-.quick-time-option-modal-mejorado.selected .hora-content-disponible {
-  background: linear-gradient(135deg, #28a745, #20c997);
-  border-color: #1e7e34;
-}
-
-.quick-time-option-modal-mejorado.selected .hora-hora,
-.quick-time-option-modal-mejorado.selected .hora-estado {
-  color: white;
-}
-
-/* HORARIOS OCUPADOS */
-.hora-content-ocupado {
-  padding: 15px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
-  border: 2px solid #ffc107;
-}
-
-.hora-icon {
-  font-size: 1.5em;
-  flex-shrink: 0;
-}
-
-.hora-texto {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.hora-hora {
-  font-size: 1.3em;
-  font-weight: 700;
-  color: #155724;
-}
-
-.hora-content-ocupado .hora-hora {
-  color: #856404;
-}
-
-.hora-estado {
-  font-size: 0.85em;
-  color: #155724;
-  opacity: 0.8;
-}
-
-.hora-content-ocupado .hora-estado {
-  color: #856404;
-}
-
-/* BOTÓN "AVÍSAME SI SE LIBERA" */
-.horario-ocupado-actions-mejorado {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed #ffc107;
-  width: 100%;
-}
-
-.btn-avisar-liberado-mejorado {
-  width: 100%;
-  background: linear-gradient(135deg, #74b9ff, #0984e3);
-  color: white;
-  border: none;
-  padding: 10px 15px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 0.9em;
-}
-
-.btn-avisar-liberado-mejorado:hover:not(:disabled) {
-  background: linear-gradient(135deg, #0984e3, #074a8f);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(116, 185, 255, 0.4);
-}
-
-.btn-avisar-liberado-mejorado:disabled {
-  background: linear-gradient(135deg, #00b894, #00a085);
-  cursor: not-allowed;
-}
-
-/* INFO AVISOS */
-.info-avisos-horarios {
-  margin-top: 20px;
-  padding: 15px;
-  background: linear-gradient(135deg, #e3f2fd, #bbdefb);
-  border-radius: 10px;
-  border: 1px solid #90caf9;
-  text-align: center;
-}
-
-.info-avisos-horarios p {
-  margin: 5px 0;
-  color: #1565c0;
-  font-size: 0.9em;
-}
-
-/* MODAL DE INTERÉS */
 .info-interes-card {
   margin-bottom: 25px;
 }
@@ -1521,345 +2038,141 @@ export default {
   transform: translateY(-2px);
 }
 
-/* PAGO */
-.pago-container-horizontal {
-  background: #fff;
-  border-radius: 16px;
-  border: 2px solid #f1f3f4;
-  padding: 25px;
-}
-
-.pago-options-horizontal {
-  display: flex;
-  gap: 15px;
-  margin-bottom: 25px;
-}
-
-.pago-option-horizontal {
-  flex: 1;
-  padding: 25px 20px;
-  border: 2px solid #e9ecef;
-  border-radius: 16px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  text-align: center;
-}
-
-.pago-option-horizontal:hover {
-  border-color: #007bff;
-  transform: translateY(-2px);
-}
-
-.pago-option-horizontal.selected {
-  border-color: #007bff;
-  background: #e7f3ff;
-}
-
-.pago-nombre-horizontal {
-  font-weight: 700;
-  color: #1a1a1a;
-  font-size: 1.2em;
-  display: block;
-  margin-bottom: 8px;
-}
-
-.pago-monto-horizontal {
-  color: #28a745;
-  font-weight: 800;
-  font-size: 1.4em;
-  display: block;
-  margin-bottom: 8px;
-}
-
-.pago-desc-horizontal {
-  color: #6c757d;
-  font-size: 0.9em;
-}
-
-.medio-pago-section-horizontal {
-  margin-top: 25px;
-  padding-top: 25px;
-  border-top: 2px solid #f1f3f4;
-}
-
-.medio-pago-btn-horizontal {
-  padding: 25px 20px;
-  border: 2px solid #e9ecef;
-  border-radius: 16px;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.medio-pago-btn-horizontal.active {
-  border-color: #007bff;
-  background: #e7f3ff;
-}
-
-.medio-icon-horizontal {
-  font-size: 2.5em;
-}
-
-.medio-text-horizontal {
-  font-weight: 700;
-  color: #1a1a1a;
-}
-
-/* RESUMEN */
-.resumen-pedido {
-  margin-top: 20px;
-  padding: 20px;
-  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-  border-radius: 12px;
-  border: 2px solid #e9ecef;
-}
-
-.resumen-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.resumen-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 0;
-  color: #1a1a1a;
-}
-
-.resumen-item.total {
-  border-top: 2px solid #dee2e6;
-  margin-top: 10px;
-  padding-top: 12px;
-  font-size: 1.2em;
-  font-weight: 700;
-}
-
-.resumen-final {
-  background: linear-gradient(135deg, #f8fff9, #f0f9ff);
-  border-color: #28a745;
-}
-
-.monto-final-pago {
-  color: #28a745;
-  font-weight: 800;
-  font-size: 1.3em;
-}
-
-/* NUEVOS ESTILOS PARA EL CUPÓN */
-.cup-alert {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
-  padding: 15px 20px;
-  border-radius: 12px;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
-  animation: slideDown 0.5s ease;
-}
-.cup-icon { font-size: 2rem; }
-.cup-info strong { display: block; font-size: 1.1rem; margin-bottom: 2px; }
-.cup-info p { margin: 0; font-size: 0.9rem; opacity: 0.9; }
-
-.resumen-item.subtotal .tachado {
-  text-decoration: line-through;
-  color: #9ca3af;
-  font-size: 0.9rem;
-}
-
-.resumen-item.descuento {
-  color: #10b981;
-  font-weight: 700;
-  background: rgba(16, 185, 129, 0.1);
-  padding: 5px 10px;
-  border-radius: 6px;
-  margin: 5px 0;
-}
-
-.btn-registrar-premium {
-  width: 100%;
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  color: white;
-  font-size: 1.1em;
-  padding: 18px;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  margin-top: 25px;
-  font-weight: 600;
-  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
-}
-
-.btn-registrar-premium:hover:not(:disabled) {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4);
-}
-
-.btn-registrar-premium:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.btn-content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.info-pago-final {
-  margin-top: 15px;
-  text-align: center;
-  color: #6c757d;
-  font-size: 0.9em;
-}
-
-/* MENSAJES */
-.mensaje-premium {
-  margin-top: 20px;
-  padding: 15px 20px;
-  border-radius: 10px;
-  background: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.mensaje-premium.error {
-  background: #f8d7da;
-  color: #721c24;
-  border-color: #f5c6cb;
-}
-
-.mensaje-icon {
-  font-size: 1.2em;
-}
-
-/* LOADING */
-.loading-overlay {
+/* Toast */
+.toast-message {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  bottom: 30px;
+  right: 30px;
+  padding: 16px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
   display: flex;
   align-items: center;
-  justify-content: center;
-  z-index: 10000;
+  gap: 10px;
+  max-width: 400px;
 }
 
-.loading-content {
-  background: white;
-  padding: 30px;
-  border-radius: 16px;
+.toast-message.success {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+}
+
+.toast-message.error {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+  color: white;
+}
+
+/* Estados Vacíos */
+.no-resultados {
   text-align: center;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  padding: 40px 20px;
+  color: #6c757d;
 }
 
-.loading-spinner {
-  font-size: 2em;
-  display: block;
+.no-resultados-icon {
   margin-bottom: 15px;
-  animation: spin 1s linear infinite;
+  opacity: 0.5;
+  color: #6c757d;
 }
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+.no-resultados p {
+  margin: 0 0 8px 0;
+  font-size: 1.1em;
+  color: #1a1a1a;
+  font-weight: 600;
 }
 
-/* ANIMACIONES */
-.slide-fade-enter-active {
+.no-resultados small {
+  font-size: 0.9em;
+  color: #6c757d;
+}
+
+/* Animaciones */
+.slide-in {
+  animation: slideIn 0.4s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+
+.slide-enter-active {
   transition: all 0.3s ease;
 }
-.slide-fade-leave-active {
+.slide-leave-active {
   transition: all 0.3s cubic-bezier(1, 0.5, 0.8, 1);
 }
-.slide-fade-enter-from,
-.slide-fade-leave-to {
+.slide-enter-from,
+.slide-leave-to {
   transform: translateY(-10px);
   opacity: 0;
 }
 
-.scale-fade-enter-active {
-  transition: all 0.3s ease;
-}
-.scale-fade-leave-active {
-  transition: all 0.3s cubic-bezier(1, 0.5, 0.8, 1);
-}
-.scale-fade-enter-from,
-.scale-fade-leave-to {
-  transform: scale(0.95);
-  opacity: 0;
-}
-
-.bounce-enter-active {
-  animation: bounce-in 0.5s;
-}
-.bounce-leave-active {
-  animation: bounce-in 0.5s reverse;
-}
-
-/* ESTILO PARA EL BOTÓN "YA REGISTRADO" */
-.btn-avisar-nuevo:disabled {
-  background: linear-gradient(135deg, #2ecc71, #27ae60) !important; /* Verde éxito */
-  color: white !important;
-  opacity: 0.9;
-  cursor: default;
-  box-shadow: none;
-  transform: none;
-  border: 1px solid #2ecc71;
-}
-
-/* Ajuste visual para que se note que es un estado final */
-.btn-avisar-nuevo:disabled::before {
-  content: ""; 
-}
-
-@keyframes bounce-in {
-  0% { transform: scale(0); }
-  50% { transform: scale(1.05); }
-  100% { transform: scale(1); }
-}
-
-/* RESPONSIVE */
+/* Responsive */
 @media (max-width: 768px) {
-  .pedido-container {
+  .turno-container {
     padding: 15px;
   }
   
-  .calendar-grid-horizontal,
-  .servicios-grid-horizontal,
-  .categorias-grid-horizontal {
+  .header-section {
     flex-direction: column;
+    gap: 15px;
+    align-items: stretch;
   }
   
-  .servicio-item-horizontal,
-  .categoria-card-horizontal {
-    min-width: auto;
+  .header-section h2 {
+    font-size: 1.5em;
   }
   
-  .pago-options-horizontal,
-  .modal-actions {
-    flex-direction: column;
-  }
-  
-  .quick-time-grid-modal-mejorado {
+  .grid-servicios {
     grid-template-columns: 1fr;
   }
   
-  .modal-horario-grande {
-    margin: 10px;
-    max-height: 95vh;
+  .calendar-grid {
+    gap: 4px;
+  }
+  
+  .day-btn {
+    font-size: 0.85em;
+  }
+  
+  .grid-horarios {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  }
+  
+  .pago-options {
+    grid-template-columns: 1fr;
+  }
+  
+  .pago-detalles {
+    grid-template-columns: 1fr;
+  }
+  
+  .toast-message {
+    right: 15px;
+    left: 15px;
+    bottom: 15px;
+  }
+  
+  .modal-actions {
+    flex-direction: column;
   }
 }
 </style>

@@ -32,31 +32,36 @@ def manejar_cancelacion_turno_post_save(sender, instance, created, **kwargs):
     if created:
         return  # No hacer nada si es un nuevo turno
     
-    # Si el estado actual es CANCELADO y la oferta no está activa
-    if instance.estado == 'CANCELADO' and not instance.oferta_activa and instance.canal == 'WEB':
-        # Verificamos si la configuración está activa
+    # 🚨 CORRECCIÓN: Quitamos "and instance.canal == 'WEB'"
+    # Ahora funciona para TODOS los turnos (Web y Presenciales)
+    if instance.estado == 'CANCELADO' and not instance.oferta_activa:
+        
+        # Verificamos si la configuración global está activa
         if ConfiguracionReoferta.get_configuracion().activo:
             try:
-                logger.info(f"🚨 Turno {instance.id} CANCELADO (Señal) - Iniciando reoferta.")
-                
-                # Ejecutar tarea después del commit para evitar Race Conditions
-                transaction.on_commit(lambda: procesar_reoferta_masiva.delay(instance.id))
-                
-                # Marcar oferta como activa para no re-procesar
-                # Nota: Usamos update() directo para no disparar señales recursivas
-                Turno.objects.filter(pk=instance.pk).update(oferta_activa=True)
+                # Verificar si hay interesados REALES antes de activar todo el circo
+                # Esto evita logs innecesarios si nadie quiere ese turno
+                from .models import InteresTurnoLiberado
+                hay_interesados = InteresTurnoLiberado.objects.filter(
+                    fecha_deseada=instance.fecha,
+                    hora_deseada=instance.hora,
+                    peluquero=instance.peluquero,
+                    estado_oferta='pendiente'
+                ).exists()
+
+                if hay_interesados:
+                    logger.info(f"🚨 Turno {instance.id} CANCELADO (Señal) - Hay interesados. Iniciando reoferta.")
+                    
+                    # 1. Marcar oferta como activa INMEDIATAMENTE para evitar recursión
+                    Turno.objects.filter(pk=instance.pk).update(oferta_activa=True)
+
+                    # 2. Ejecutar tarea después del commit
+                    transaction.on_commit(lambda: procesar_reoferta_masiva.delay(instance.id))
+                else:
+                    logger.info(f"ℹ️ Turno {instance.id} cancelado, pero no hay interesados en lista de espera.")
                     
             except Exception as e:
                 logger.error(f"❌ Error en señal de cancelación (post_save): {str(e)}")
-
-# Desconectar señal de auth existente (Legacy)
-from django.contrib.auth.signals import user_logged_in
-from django.contrib.auth.models import update_last_login
-try:
-    user_logged_in.disconnect(update_last_login, dispatch_uid='update_last_login')
-except:
-    pass
-
 
 # ==============================================================================
 # 2. NUEVA LÓGICA: AUTOMATIZACIÓN DE PROVEEDORES 🚀

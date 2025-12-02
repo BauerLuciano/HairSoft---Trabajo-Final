@@ -1342,9 +1342,11 @@ def completar_pago_turno(request, turno_id):
             'message': f'Error interno: {str(e)}'
         }, status=500)
 
+@csrf_exempt
 def turnos_ocupados(request):
     fecha = request.GET.get("fecha")
-    peluquero_id = request.GET.get("peluquero")
+    # ✅ CORRECCIÓN: Leer 'peluquero_id' que es lo que manda el frontend
+    peluquero_id = request.GET.get("peluquero_id") or request.GET.get("peluquero")
 
     if not fecha or not peluquero_id:
         return JsonResponse({"error": "Faltan parámetros"}, status=400)
@@ -1352,12 +1354,16 @@ def turnos_ocupados(request):
     ocupados = Turno.objects.filter(
         fecha=fecha,
         peluquero_id=peluquero_id,
+        estado__in=['RESERVADO', 'CONFIRMADO'] # ✅ Solo ocupados reales
     ).values_list("hora", flat=True)
+
+    # Convertir a formato HH:MM string para que el frontend entienda
+    ocupados_str = [h.strftime("%H:%M") for h in ocupados]
 
     return JsonResponse({
         "fecha": fecha,
         "peluquero": peluquero_id,
-        "ocupados": list(ocupados)
+        "ocupados": ocupados_str # ✅ Mandar lista de strings
     })
 # ================================
 # Listado  de  Categorías
@@ -1812,69 +1818,130 @@ def procesar_reembolso_si_corresponde(turno):
     else:
         return True, f"⚠️ ATENCIÓN: Devolución MANUAL requerida (${turno.monto_seña}). No hay ID de transacción digital."
 
-# 2. CREAR TURNO ACTUALIZADO (Para guardar el ID manual)
+# En usuarios/views.py
+
 @api_view(['POST'])
 @permission_classes([AllowAny]) 
 def crear_turno(request):
     try:
-        print(f"🚀 CREAR TURNO: Iniciando proceso...")
+        # 🔍 DEBUG: Ver qué llega exactamente
+        print(f"🚀 CREAR TURNO DATA: {request.data}")
         data = request.data
         
-        # ... (LÓGICA DE CLIENTE/USUARIO IGUAL QUE ANTES) ...
-        # 1. IDENTIFICAR USUARIO
+        # -----------------------------------------------------
+        # 1. VALIDACIÓN DE CLIENTE (Flexible: ID o Usuario Logueado)
+        # -----------------------------------------------------
         cliente = None
         canal = data.get('canal', 'WEB')
 
         if canal == 'PRESENCIAL':
-            cliente_id = data.get('cliente_id')
+            # Buscamos 'cliente_id' o 'cliente' (por si el front lo manda distinto)
+            cliente_id = data.get('cliente_id') or data.get('cliente')
+            
             if cliente_id:
-                try:
-                    cliente = Usuario.objects.get(pk=cliente_id)
-                except Usuario.DoesNotExist:
-                    return Response({'status': 'error', 'message': "Cliente no encontrado"}, status=400)
+                cliente = Usuario.objects.filter(pk=cliente_id).first()
+                if not cliente:
+                    return Response({'status': 'error', 'message': f"El cliente con ID {cliente_id} no existe."}, status=400)
             else:
-                return Response({'status': 'error', 'message': "Falta seleccionar un cliente."}, status=400)
+                return Response({'status': 'error', 'message': "Falta seleccionar el cliente (ID nulo)."}, status=400)
+        
         elif request.user.is_authenticated:
             cliente = request.user
         
+        # Si falló todo lo anterior
         if not cliente:
-            return Response({'status': 'error', 'message': "Debes iniciar sesión."}, status=401)
+            # Último intento: ver si mandaron un ID de cliente aunque sea WEB (caso borde)
+            cliente_id = data.get('cliente_id')
+            if cliente_id:
+                cliente = Usuario.objects.filter(pk=cliente_id).first()
+            
+            if not cliente:
+                return Response({'status': 'error', 'message': "Usuario no identificado."}, status=401)
 
-        # ... (LÓGICA DE DATOS Y VALIDACIÓN IGUAL QUE ANTES) ...
-        # 2. DATOS
+        # -----------------------------------------------------
+        # 2. VALIDACIÓN DE DATOS DEL TURNO (Peluquero, Fecha, Hora)
+        # -----------------------------------------------------
+        peluquero_id = data.get('peluquero_id') or data.get('peluquero')
+        if not peluquero_id:
+            return Response({'status': 'error', 'message': "Falta seleccionar el peluquero."}, status=400)
+
+        fecha_str = data.get('fecha')
+        hora_str = data.get('hora')
+        
+        if not fecha_str or not hora_str:
+             return Response({'status': 'error', 'message': "Falta fecha u hora."}, status=400)
+
+        # Parseo seguro de fecha/hora
         try:
-            peluquero_id = int(data.get('peluquero_id'))
-            servicios_ids = data.get('servicios_ids', [])
-            fecha_str = data.get('fecha')
-            hora_str = data.get('hora')
-            if len(hora_str) > 5: hora_str = hora_str[:5]
+            # Cortar hora si viene "10:00:00" -> "10:00"
+            if len(hora_str) > 5: 
+                hora_str = hora_str[:5]
+            
             fecha_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
             hora_obj = datetime.strptime(hora_str, "%H:%M").time()
-        except (ValueError, TypeError):
-            return Response({'status': 'error', 'message': "Datos inválidos"}, status=400)
+        except ValueError:
+             return Response({'status': 'error', 'message': "Formato de fecha/hora inválido."}, status=400)
 
+        # -----------------------------------------------------
         # 3. VALIDAR DISPONIBILIDAD
-        if Turno.objects.filter(fecha=fecha_obj, hora=hora_obj, peluquero_id=peluquero_id, estado__in=['RESERVADO', 'CONFIRMADO']).exists():
-            return Response({'status': 'error', 'message': 'Horario ya ocupado.'}, status=400)
+        # -----------------------------------------------------
+        ocupado = Turno.objects.filter(
+            fecha=fecha_obj, 
+            hora=hora_obj, 
+            peluquero_id=peluquero_id, 
+            estado__in=['RESERVADO', 'CONFIRMADO']
+        ).exists()
 
-        # 4. LIMPIEZA DE ZOMBIES
-        zombies = Turno.objects.filter(fecha=fecha_obj, hora=hora_obj, peluquero_id=peluquero_id, oferta_activa=True)
+        if ocupado:
+            return Response({'status': 'error', 'message': 'Ese horario ya está ocupado.'}, status=400)
+
+        # Limpieza de "Zombies" (turnos de reoferta viejos)
+        zombies = Turno.objects.filter(
+            fecha=fecha_obj, hora=hora_obj, peluquero_id=peluquero_id, oferta_activa=True
+        )
         if zombies.exists():
             zombies.update(oferta_activa=False, estado='CANCELADO')
-            from .models import InteresTurnoLiberado
-            InteresTurnoLiberado.objects.filter(turno_liberado__in=zombies).update(estado_oferta='rechazada')
+            # Actualizar intereses asociados si existen
+            try:
+                from .models import InteresTurnoLiberado
+                InteresTurnoLiberado.objects.filter(turno_liberado__in=zombies).update(estado_oferta='rechazada')
+            except:
+                pass
 
-        # 5. CREAR TURNO (AQUÍ ESTÁ EL CAMBIO)
+        # -----------------------------------------------------
+        # 4. CREAR EL TURNO (Lógica de Negocio)
+        # -----------------------------------------------------
         peluquero = Usuario.objects.get(pk=peluquero_id)
-        servicios = Servicio.objects.filter(pk__in=servicios_ids)
-        monto_total = sum(float(s.precio) for s in servicios)
         
-        tipo_pago = data.get('tipo_pago')
-        monto_seña = monto_total * 0.5 if tipo_pago == 'SENA_50' else monto_total
+        servicios_ids = data.get('servicios_ids', [])
+        servicios = Servicio.objects.filter(pk__in=servicios_ids)
+        
+        # Cálculo de montos
+        monto_total_original = sum(float(s.precio) for s in servicios)
+        monto_final = monto_total_original 
 
-        # ✅ CAPTURAMOS EL ID MANUAL SI VIENE DEL FRONTEND
-        mp_payment_id_manual = data.get('mp_payment_id', None)
+        # Aplicar Cupón (Opcional, con try/catch para que no rompa si falla)
+        cup_codigo = data.get('cup_codigo')
+        promo_usada = None
+        if cup_codigo:
+            try:
+                from .models import PromocionReactivacion
+                promo = PromocionReactivacion.objects.get(codigo=cup_codigo)
+                if promo.esta_vigente:
+                    descuento = monto_total_original * (float(promo.descuento_porcentaje) / 100)
+                    monto_final = monto_total_original - descuento
+                    promo_usada = promo
+            except:
+                print("Cupón inválido o módulo no activo, ignorando.")
 
+        # Calcular Seña
+        tipo_pago = data.get('tipo_pago', 'SENA_50')
+        monto_seña = monto_final * 0.5 if tipo_pago == 'SENA_50' else monto_final
+
+        # ID de pago manual (si existe)
+        mp_payment_id_manual = data.get('mp_payment_id')
+
+        # CREAR OBJETO
         turno = Turno.objects.create(
             cliente=cliente,
             peluquero=peluquero,
@@ -1884,46 +1951,68 @@ def crear_turno(request):
             tipo_pago=tipo_pago,
             medio_pago=data.get('medio_pago', 'EFECTIVO'),
             monto_seña=monto_seña,
-            monto_total=monto_total,
-            estado='RESERVADO',
-            mp_payment_id=mp_payment_id_manual # <--- GUARDAMOS EL ID MANUAL
+            monto_total=monto_final,
+            estado='RESERVADO', 
+            mp_payment_id=mp_payment_id_manual
         )
-        turno.servicios.set(servicios)
         
-        # 6. MERCADO PAGO (WEB)
+        # Asignar servicios
+        if servicios.exists():
+            turno.servicios.set(servicios)
+        
+        # Confirmación automática si es presencial o hay comprobante manual
+        if canal == 'PRESENCIAL' or mp_payment_id_manual:
+            turno.estado = 'CONFIRMADO'
+            turno.save()
+        
+        # Marcar promo usada
+        if promo_usada:
+            promo_usada.estado = 'USADA'
+            promo_usada.turno_canje = turno
+            promo_usada.save()
+        
+        # -----------------------------------------------------
+        # 5. MERCADO PAGO (Solo Web)
+        # -----------------------------------------------------
         mp_data = None
         procesar_pago = False
         
         if data.get('medio_pago') == 'MERCADO_PAGO' and canal == 'WEB':
-            # ... (Tu lógica de generación de link existente) ...
             try:
                 from .mercadopago_service import MercadoPagoService
                 mp_service = MercadoPagoService()
-                preference_data = {
+                pref_data = {
                     'turno_id': turno.id,
                     'monto_pago': float(monto_seña),
                     'cliente_nombre': f"{cliente.nombre} {cliente.apellido}",
-                    'cliente_correo': cliente.correo or "cliente@test.com",
+                    'cliente_correo': cliente.correo or "cliente@hairsoft.com",
                     'peluquero_nombre': f"{peluquero.nombre}",
                     'es_pago_total': (tipo_pago == 'TOTAL')
                 }
-                res_mp = mp_service.crear_preferencia_seña(preference_data)
+                res_mp = mp_service.crear_preferencia_seña(pref_data)
                 if res_mp['success']:
                     procesar_pago = True
-                    mp_data = {'init_point': res_mp.get('init_point'), 'preference_id': res_mp['preference_id']}
-            except Exception:
-                pass
+                    # Priorizar init_point sandbox si estamos probando
+                    mp_data = {
+                        'init_point': res_mp.get('init_point') or res_mp.get('sandbox_init_point'), 
+                        'preference_id': res_mp['preference_id']
+                    }
+            except Exception as e:
+                print(f"⚠️ Error MP: {e}")
 
         return Response({
             'status': 'ok',
             'turno_id': turno.id,
-            'message': 'Turno registrado.',
+            'message': 'Turno registrado correctamente.',
             'procesar_pago': procesar_pago,
             'mp_data': mp_data
         })
 
     except Exception as e:
-        return Response({'status': 'error', 'message': str(e)}, status=500)
+        print(f"💥 ERROR CRÍTICO AL CREAR TURNO: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return Response({'status': 'error', 'message': f"Error interno: {str(e)}"}, status=500)
     
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -3846,9 +3935,10 @@ def cancelar_mi_turno(request, turno_id):
 @permission_classes([AllowAny])
 def aceptar_oferta_turno(request, turno_id, token):
     """
-    Acepta oferta, gestiona canje y GENERA PAGO MP.
+    Acepta oferta. Si ya tenía turno pago, LO TRANSFIERE y devuelve solo la diferencia (Reembolso Parcial).
     """
     try:
+        print(f"🎁 Procesando aceptación de oferta para turno {turno_id}")
         turno_nuevo = Turno.objects.get(id=turno_id)
         tipo_pago = request.data.get('tipo_pago', 'SENA_50') 
         
@@ -3865,82 +3955,130 @@ def aceptar_oferta_turno(request, turno_id, token):
             return Response({'error': 'El turno ya no está disponible.'}, status=400)
 
         with transaction.atomic():
-            # 1. CANJE
+            # 1. BUSCAR TURNO VIEJO (CONFLICTO DE HORARIO)
             turno_viejo = Turno.objects.filter(
                 cliente=interes.cliente,
                 fecha=turno_nuevo.fecha,
                 estado__in=['RESERVADO', 'CONFIRMADO']
             ).exclude(id=turno_nuevo.id).first()
 
-            if turno_viejo:
-                turno_viejo.estado = 'CANCELADO'
-                turno_viejo.save()
-
-            # 2. CONFIGURAR NUEVO TURNO
+            # 2. CALCULAR PRECIOS DEL NUEVO TURNO (CON DESCUENTO)
             precio_original = interes.servicio.precio
             descuento = Decimal(interes.descuento_aplicado)
             factor = Decimal('1') - (descuento / Decimal('100'))
             precio_final = precio_original * factor
             
+            monto_seña_nuevo = precio_final * Decimal('0.5') if tipo_pago == 'SENA_50' else precio_final
+
+            # 3. CONFIGURAR DATOS BÁSICOS DEL NUEVO TURNO
             turno_nuevo.cliente = interes.cliente
             turno_nuevo.canal = 'WEB'
-            turno_nuevo.estado = 'RESERVADO'
             turno_nuevo.oferta_activa = False
             turno_nuevo.cliente_asignado_reoferta = interes.cliente
             turno_nuevo.monto_total = precio_final
-            
             turno_nuevo.tipo_pago = tipo_pago
             turno_nuevo.medio_pago = 'MERCADO_PAGO'
+            turno_nuevo.monto_seña = monto_seña_nuevo
             
-            if tipo_pago == 'SENA_50':
-                turno_nuevo.monto_seña = precio_final * Decimal('0.5')
-            else:
-                turno_nuevo.monto_seña = precio_final
-            
-            turno_nuevo.save()
             turno_nuevo.servicios.clear()
             turno_nuevo.servicios.add(interes.servicio)
+
+            mp_link = None
+            mensaje_final = "Turno confirmado."
             
+            # ============================================================
+            # 4. LÓGICA DE CANJE INTELIGENTE
+            # ============================================================
+            if turno_viejo:
+                print(f"🔄 Encontrado turno viejo {turno_viejo.id} para canje.")
+                
+                # CASO A: EL TURNO VIEJO YA ESTABA PAGADO
+                if turno_viejo.estado == 'CONFIRMADO' and turno_viejo.mp_payment_id:
+                    print("💰 El turno viejo estaba pagado. Iniciando TRANSFERENCIA de saldo.")
+                    
+                    # 1. Transferimos el ID de pago al nuevo turno
+                    turno_nuevo.mp_payment_id = turno_viejo.mp_payment_id
+                    turno_nuevo.estado = 'CONFIRMADO' # Confirmado automáticamente
+                    
+                    # 2. Calcular diferencia para devolver (Reembolso Parcial)
+                    # (Plata vieja) - (Plata nueva)
+                    diferencia = turno_viejo.monto_seña - turno_nuevo.monto_seña
+                    
+                    if diferencia > 0:
+                        try:
+                            from .mercadopago_service import MercadoPagoService
+                            mp = MercadoPagoService()
+                            
+                            # 🚨 DEVOLUCIÓN PARCIAL
+                            print(f"💸 Devolviendo diferencia: ${diferencia}")
+                            mp.devolver_pago(turno_viejo.mp_payment_id, amount=float(diferencia))
+                            
+                            mensaje_final = f"¡Canje exitoso! Te devolvimos ${diferencia} a tu cuenta MP."
+                        except Exception as e:
+                            print(f"⚠️ Error devolviendo diferencia: {e}")
+                            mensaje_final = "Canje exitoso. Saldo a favor registrado."
+                    else:
+                        mensaje_final = "Canje exitoso. Tu pago anterior cubre el nuevo turno."
+
+                    # 3. Cancelar el turno viejo (MARCARLO REEMBOLSADO para evitar doble devolución)
+                    turno_viejo.reembolsado = True 
+                    turno_viejo.estado = 'CANCELADO'
+                    turno_viejo.save()
+
+                # CASO B: EL TURNO VIEJO NO ESTABA PAGADO
+                else:
+                    print("ℹ️ Turno viejo sin pago. Se cancela y se paga el nuevo.")
+                    turno_viejo.estado = 'CANCELADO'
+                    turno_viejo.save()
+                    turno_nuevo.estado = 'RESERVADO' # Debe pagar
+            
+            else:
+                turno_nuevo.estado = 'RESERVADO'
+
+            turno_nuevo.save()
+
+            # 5. LIMPIAR LISTA DE ESPERA
             interes.aceptar_oferta(ip_address=get_client_ip(request))
-            
             InteresTurnoLiberado.objects.filter(
                 turno_liberado=turno_nuevo,
                 estado_oferta='enviada'
             ).exclude(id=interes.id).update(estado_oferta='rechazada')
 
-        # 3. GENERAR LINK MP
-        mp_link = None
-        try:
-            from .mercadopago_service import MercadoPagoService
-            mp_service = MercadoPagoService()
-            monto_a_cobrar = float(turno_nuevo.monto_seña)
-            
-            pref_data = {
-                'turno_id': turno_nuevo.id,
-                'monto_pago': monto_a_cobrar,
-                'cliente_nombre': f"{interes.cliente.nombre} {interes.cliente.apellido}",
-                'cliente_correo': interes.cliente.correo or "cliente@hairsoft.com",
-                'peluquero_nombre': f"{turno_nuevo.peluquero.nombre}",
-                'es_pago_total': (tipo_pago == 'TOTAL')
-            }
-            
-            resultado = mp_service.crear_preferencia_seña(pref_data)
-            if resultado['success']:
-                mp_link = resultado.get('init_point') or resultado.get('sandbox_init_point')
-        except Exception as e:
-            print(f"⚠️ Error MP: {e}")
+        # ============================================================
+        # 6. GENERAR PAGO (SI NO FUE CANJE)
+        # ============================================================
+        if turno_nuevo.estado == 'RESERVADO':
+            try:
+                from .mercadopago_service import MercadoPagoService
+                mp_service = MercadoPagoService()
+                
+                pref_data = {
+                    'turno_id': turno_nuevo.id,
+                    'monto_pago': float(turno_nuevo.monto_seña),
+                    'cliente_nombre': f"{interes.cliente.nombre} {interes.cliente.apellido}",
+                    'cliente_correo': interes.cliente.correo or "cliente@hairsoft.com",
+                    'peluquero_nombre': f"{turno_nuevo.peluquero.nombre}",
+                    'es_pago_total': (tipo_pago == 'TOTAL')
+                }
+                
+                resultado = mp_service.crear_preferencia_seña(pref_data)
+                if resultado['success']:
+                    mp_link = resultado.get('init_point') or resultado.get('sandbox_init_point')
+                    mensaje_final = "Oferta aceptada. Redirigiendo a pago..."
+            except Exception as e:
+                print(f"⚠️ Error MP: {e}")
 
         from .tasks import notificar_turno_asignado
         notificar_turno_asignado.delay(turno_nuevo.id)
         
         return Response({
             'success': True,
-            'mp_link': mp_link,
-            'message': 'Turno confirmado. Redirigiendo a pago...'
+            'mp_link': mp_link, 
+            'message': mensaje_final
         })
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Error Aceptar Oferta: {e}")
         return Response({'error': f'Error interno: {str(e)}'}, status=500)
 
 @api_view(['GET'])
