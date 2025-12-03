@@ -726,36 +726,28 @@ class ConfiguracionReofertaSerializer(serializers.ModelSerializer):
         model = ConfiguracionReoferta
         fields = '__all__'
 
-# Marcas
 class MarcaSerializer(serializers.ModelSerializer):
-    productos_count = serializers.SerializerMethodField()
-    proveedores_count = serializers.SerializerMethodField()
-    proveedores_nombres = serializers.SerializerMethodField()
-    total_proveedores = serializers.SerializerMethodField()
-    
+    productos_count = serializers.IntegerField(read_only=True)
+    total_proveedores = serializers.IntegerField(read_only=True)
+    proveedores_nombres = serializers.ListField(child=serializers.CharField(), read_only=True)
+    estado_display = serializers.CharField(source='get_estado_display', read_only=True)
+
     class Meta:
         model = Marca
-        fields = ['id', 'nombre', 'productos_count', 'proveedores_count', 'proveedores_nombres', 'total_proveedores']
-    
-    def get_productos_count(self, obj):
-        return obj.producto_set.count()
-    
-    def get_proveedores_count(self, obj):
-        # Si tienes relación directa con proveedores
-        return obj.proveedores.count() if hasattr(obj, 'proveedores') else 0
-    
-    def get_proveedores_nombres(self, obj):
-        # Obtener los primeros 3 proveedores
-        proveedores = obj.proveedores.all()[:3] if hasattr(obj, 'proveedores') else []
-        return [proveedor.nombre for proveedor in proveedores]
-    
-    def get_total_proveedores(self, obj):
-        return obj.proveedores.count() if hasattr(obj, 'proveedores') else 0
-    
+        fields = [
+            'id',
+            'nombre',
+            'descripcion',
+            'estado',
+            'estado_display',
+            'productos_count',
+            'total_proveedores',
+            'proveedores_nombres',
+            'fecha_creacion',
+        ]
 
 
 #Cotizacion proveedores
-# usuarios/serializers.py (al final)
 class CotizacionExternaSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='solicitud.producto.nombre', read_only=True)
     cantidad_requerida = serializers.IntegerField(source='solicitud.cantidad_requerida', read_only=True)

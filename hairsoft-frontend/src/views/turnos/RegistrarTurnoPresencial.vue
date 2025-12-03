@@ -1,373 +1,277 @@
 <template>
-  <div class="turno-container">
-    <div class="header-section">
-      <h2>
-        <Calendar class="header-icon" />
-        Nuevo Turno
-      </h2>
-      <button @click="volverAlListado" class="btn-back">
-        <ArrowLeft :size="18" />
-        Volver al Listado
-      </button>
-    </div>
-
-    <!-- Selección de Cliente -->
-    <div class="card-modern">
-      <div class="card-header">
-        <div class="card-icon">
-          <Users :size="20" />
+  <!-- FONDO DEGRADADO -->
+  <div class="page-background">
+    <!-- TARJETA BLANCA QUE ENVUELVE TODO -->
+    <div class="main-card-container">
+      <div class="turno-container">
+        <div class="header-section">
+          <h2>
+            <Calendar class="header-icon" />
+            Registrar Turno (Presencial)
+          </h2>
+          <button @click="volverAlListado" class="btn-back">
+            <ArrowLeft :size="18" />
+            Volver
+          </button>
         </div>
-        <h3>Cliente</h3>
-      </div>
-      
-      <div class="input-group">
-        <div class="row-search">
-          <div class="search-wrapper">
-            <Search class="search-icon" :size="18" />
-            <input
-              type="text"
-              :value="form.cliente ? form.clienteNombre : busquedaCliente"
-              @input="actualizarBusquedaCliente"
-              :placeholder="form.cliente ? '' : 'Buscar por nombre o DNI...'"
-              :class="['input-modern', { 'cliente-activo': form.cliente }]"
-              :readonly="form.cliente !== null"
-            />
-            <button v-if="form.cliente" @click="limpiarCliente" class="btn-icon-clean">
-              <X :size="16" />
+
+        <div class="card-modern">
+          <div class="card-header">
+            <div class="card-icon"><Users :size="20" /></div>
+            <h3>Cliente</h3>
+          </div>
+          
+          <div class="input-group">
+            <div class="row-search">
+              <div class="search-wrapper">
+                <Search class="search-icon" :size="18" />
+                <input
+                  type="text"
+                  :value="form.cliente ? form.clienteNombre : busquedaCliente"
+                  @input="actualizarBusquedaCliente"
+                  :placeholder="form.cliente ? '' : 'Buscar por nombre o DNI...'"
+                  :class="['input-modern', { 'cliente-activo': form.cliente }]"
+                  :readonly="form.cliente !== null"
+                />
+                <button v-if="form.cliente" @click="limpiarCliente" class="btn-icon-clean">
+                  <X :size="16" />
+                </button>
+              </div>
+              
+              <button @click="irARegistrarCliente" class="btn-nuevo">
+                <Plus :size="18" /> Nuevo
+              </button>
+            </div>
+
+            <ul v-if="clientesSugeridos.length && !form.cliente" class="lista-sugerencias">
+              <li v-for="c in clientesSugeridos" :key="c.id" @click="seleccionarCliente(c)" class="item-sugerencia">
+                <div class="avatar-mini"><User :size="14" /></div>
+                <div class="sugerencia-info">
+                  <strong>{{ getNombreCompletoCliente(c) }}</strong>
+                  <small>  - DNI: {{ c.dni || '---' }}</small>
+                </div>
+              </li>
+            </ul>
+            
+            <div v-if="errorCliente" class="msg-error">
+              <AlertCircle :size="14" /> {{ errorCliente }}
+            </div>
+          </div>
+        </div>
+
+        <div v-if="form.cliente" class="card-modern slide-in">
+          <div class="card-header">
+            <div class="card-icon"><FolderOpen :size="20" /></div>
+            <h3>Categoría</h3>
+          </div>
+          <div class="grid-chips">
+            <button 
+              v-for="categoria in categorias" 
+              :key="categoria.id"
+              class="chip-modern"
+              :class="{ 'chip-active': categoriasSeleccionadas.includes(categoria.id) }"
+              @click="toggleCategoria(categoria.id)"
+            >
+              <Tag :size="14" /> {{ categoria.nombre }}
             </button>
           </div>
-          
-          <button @click="irARegistrarCliente" class="btn-nuevo">
-            <Plus :size="18" />
-            Nuevo Cliente
-          </button>
         </div>
 
-        <ul v-if="clientesSugeridos.length && !form.cliente" class="lista-sugerencias">
-          <li v-for="c in clientesSugeridos" :key="c.id" @click="seleccionarCliente(c)" class="item-sugerencia">
-            <div class="avatar-mini">
-              <User :size="14" />
-            </div>
-            <div class="sugerencia-info">
-              <strong>{{ getNombreCompletoCliente(c) }}</strong>
-              <small>
-                <IdCard :size="12" />
-                DNI: {{ c.dni || '---' }}
-              </small>
-            </div>
-          </li>
-        </ul>
-        
-        <div v-if="errorCliente" class="msg-error">
-          <AlertCircle :size="14" />
-          {{ errorCliente }}
-        </div>
-      </div>
-    </div>
-
-    <!-- Categorías -->
-    <div v-if="form.cliente" class="card-modern slide-in">
-      <div class="card-header">
-        <div class="card-icon">
-          <FolderOpen :size="20" />
-        </div>
-        <h3>Categoría de Servicio</h3>
-        <span v-if="categoriasSeleccionadas.length" class="badge-count">
-          {{ categoriasSeleccionadas.length }}
-        </span>
-      </div>
-      
-      <div class="grid-chips">
-        <button 
-          v-for="categoria in categorias" 
-          :key="categoria.id"
-          class="chip-modern"
-          :class="{ 'chip-active': categoriasSeleccionadas.includes(categoria.id) }"
-          @click="toggleCategoria(categoria.id)"
-        >
-          <Tag :size="14" />
-          {{ categoria.nombre }}
-        </button>
-      </div>
-    </div>
-
-    <!-- Servicios -->
-    <div v-if="categoriasSeleccionadas.length > 0" class="card-modern slide-in">
-      <div class="card-header">
-        <div class="card-icon">
-          <Scissors :size="20" />
-        </div>
-        <h3>Servicios</h3>
-        <span v-if="form.servicios_ids.length" class="badge-count">
-          {{ form.servicios_ids.length }}
-        </span>
-      </div>
-      
-      <div v-if="serviciosFiltrados.length === 0" class="no-resultados">
-        <Inbox class="no-resultados-icon" :size="48" />
-        <p>No hay servicios disponibles</p>
-        <small>Selecciona una categoría para ver los servicios</small>
-      </div>
-      
-      <div v-else class="grid-servicios">
-        <div 
-          v-for="servicio in serviciosFiltrados" 
-          :key="servicio.id"
-          class="card-servicio"
-          :class="{ 'servicio-active': form.servicios_ids.includes(servicio.id) }"
-          @click="toggleServicio(servicio)"
-        >
-          <div class="servicio-check">
-            <Check v-if="form.servicios_ids.includes(servicio.id)" :size="16" />
+        <div v-if="categoriasSeleccionadas.length > 0" class="card-modern slide-in">
+          <div class="card-header">
+            <div class="card-icon"><Scissors :size="20" /></div>
+            <h3>Servicios</h3>
           </div>
           
-          <div class="servicio-content">
-            <span class="servicio-nombre">{{ servicio.nombre }}</span>
-            <div class="servicio-details">
-              <span class="servicio-precio">
-                <DollarSign :size="14" />
-                ${{ servicio.precio }}
-              </span>
-              <span class="servicio-duracion">
-                <Clock :size="14" />
-                {{ servicio.duracion }}m
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Profesional -->
-    <div v-if="form.servicios_ids.length > 0" class="card-modern slide-in">
-      <div class="card-header">
-        <div class="card-icon">
-          <UserCheck :size="20" />
-        </div>
-        <h3>Profesional</h3>
-      </div>
-      
-      <div class="input-group">
-        <select v-model="form.peluquero" @change="alCambiarPeluquero" class="select-modern">
-          <option value="">-- Seleccionar Profesional --</option>
-          <option v-for="p in peluqueros" :key="p.id" :value="p.id">
-            {{ p.nombre }} {{ p.apellido || '' }}
-          </option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Calendario -->
-    <div v-if="form.peluquero" class="card-modern slide-in">
-      <div class="card-header">
-        <div class="card-icon">
-          <CalendarDays :size="20" />
-        </div>
-        <h3>Seleccionar Fecha</h3>
-      </div>
-      
-      <div class="calendar-wrapper">
-        <div class="calendar-header">
-          <button @click="cambiarMes(-1)" class="btn-nav-cal">
-            <ChevronLeft :size="20" />
-          </button>
-          <span class="mes-titulo">{{ nombreMesActual }} {{ currentYear }}</span>
-          <button @click="cambiarMes(1)" class="btn-nav-cal">
-            <ChevronRight :size="20" />
-          </button>
-        </div>
-
-        <div class="calendar-days-header">
-          <span v-for="d in ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']" :key="d">{{ d }}</span>
-        </div>
-
-        <div class="calendar-grid">
-          <div v-for="i in startingDayOfWeek" :key="'empty-'+i" class="day-empty"></div>
-          
-          <button 
-            v-for="day in daysInMonth" 
-            :key="day"
-            class="day-btn"
-            :class="{
-              'day-today': esHoy(day),
-              'day-selected': esDiaSeleccionado(day),
-              'day-disabled': !esDiaSeleccionable(day)
-            }"
-            :disabled="!esDiaSeleccionable(day)"
-            @click="seleccionarDiaCalendario(day)"
-          >
-            {{ day }}
-            <span v-if="esHoy(day)" class="badge-today">HOY</span>
-          </button>
-        </div>
-
-        <div class="calendar-footer">
-          <Info :size="14" />
-          Disponible: Hoy + 7 días (No Domingos)
-        </div>
-      </div>
-    </div>
-
-    <!-- Horarios - VERSIÓN CORREGIDA -->
-    <div v-if="form.fecha" class="card-modern slide-in">
-      <div class="card-header">
-        <div class="card-icon">
-          <Clock :size="20" />
-        </div>
-        <h3>Horarios Disponibles</h3>
-      </div>
-      
-      <div v-if="cargandoHorarios" class="loading-spinner">
-        <Loader2 class="spinner-icon" :size="32" />
-        <p>Buscando horarios disponibles...</p>
-      </div>
-      
-      <div v-else-if="horariosGenerados.length === 0" class="no-resultados">
-        <Clock class="no-resultados-icon" :size="48" />
-        <p>No hay horarios disponibles</p>
-        <small>Intenta seleccionar otro día</small>
-      </div>
-      
-      <div v-else class="grid-horarios-mejorado">
-        <div
-          v-for="hora in horariosGenerados"
-          :key="hora"
-          class="hora-card-mejorada"
-          :class="{
-            'hora-selected-mejorada': form.hora === hora,
-            'hora-disponible-mejorada': esHorarioDisponible(hora),
-            'hora-ocupada-mejorada': !esHorarioDisponible(hora)
-          }"
-        >
-          <div 
-            v-if="esHorarioDisponible(hora)"
-            class="hora-content-mejorada"
-            @click="seleccionarHora(hora)"
-          >
-            <div class="hora-info-mejorada">
-              <Clock :size="16" class="hora-icon-mejorada" />
-              <span class="hora-texto-mejorada">{{ hora }}</span>
-            </div>
-            <div class="hora-estado-mejorada disponible">
-              <CheckCircle2 :size="14" />
-              <span>Disponible</span>
-            </div>
+          <div v-if="serviciosFiltrados.length === 0" class="no-resultados">
+            <Inbox class="no-resultados-icon" :size="48" />
+            <p>No hay servicios en esta categoría</p>
           </div>
           
-          <div v-else class="hora-content-mejorada ocupada">
-            <div class="hora-info-mejorada">
-              <Clock :size="16" class="hora-icon-mejorada" />
-              <span class="hora-texto-mejorada">{{ hora }}</span>
-            </div>
-            <div class="hora-estado-mejorada ocupado">
-              <Bell :size="14" class="campanita-icon" />
-              <span>Ocupado</span>
+          <div v-else class="grid-servicios">
+            <div 
+              v-for="servicio in serviciosFiltrados" 
+              :key="servicio.id"
+              class="card-servicio"
+              :class="{ 'servicio-active': form.servicios_ids.includes(servicio.id) }"
+              @click="toggleServicio(servicio)"
+            >
+              <div class="servicio-check">
+                <Check v-if="form.servicios_ids.includes(servicio.id)" :size="16" />
+              </div>
+              <div class="servicio-content">
+                <span class="servicio-nombre">{{ servicio.nombre }}</span>
+                <div class="servicio-details">
+                  <span class="servicio-precio">${{ servicio.precio }}</span>
+                  <span class="servicio-duracion">{{ servicio.duracion }}m</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- Resumen y Pago -->
-    <div v-if="form.hora" class="card-modern slide-in">
-      <div class="card-header">
-        <div class="card-icon">
-          <Receipt :size="20" />
-        </div>
-        <h3>Resumen del Turno</h3>
-      </div>
-
-      <div class="resumen-grid">
-        <div class="resumen-item">
-          <div>
-            <Scissors :size="16" /> Total de Servicios:
+        <div v-if="form.servicios_ids.length > 0" class="card-modern slide-in">
+          <div class="card-header">
+            <div class="card-icon"><UserCheck :size="20" /></div>
+            <h3>Profesional</h3>
           </div>
-          <strong>{{ form.servicios_ids.length }}</strong>
-        </div>
-        <div class="resumen-item total">
-          <div>
-            <Wallet :size="18" /> Total a Pagar:
+          <select v-model="form.peluquero" @change="alCambiarPeluquero" class="select-modern">
+            <option value="">-- Seleccionar --</option>
+            <option 
+              v-for="p in peluqueros" 
+              :key="p.id" 
+              :value="p.id"
+              :disabled="p.id === form.cliente"
+            >
+              {{ p.nombre }} {{ p.apellido || '' }} {{ p.id === form.cliente ? '(Es el cliente)' : '' }}
+            </option>
+          </select>
+          <div v-if="form.peluquero === form.cliente && form.cliente" class="msg-error mt-2">
+            <AlertCircle :size="14" /> No puedes seleccionar al mismo profesional como cliente.
           </div>
-          <strong>${{ calcularTotal() }}</strong>
         </div>
-      </div>
 
-      <div class="pago-section">
-        <label class="label-modern">
-          <CreditCard :size="16" />
-          Tipo de Pago
-        </label>
-        <div class="pago-options">
-          <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'SENA_50' }">
-            <input type="radio" v-model="form.tipo_pago" value="SENA_50" class="hidden-radio">
-            <div class="radio-content">
-              <span>Seña 50%</span>
-              <strong>${{ calcularSena() }}</strong>
+        <div v-if="form.peluquero && form.peluquero !== form.cliente" class="card-modern slide-in">
+          <div class="card-header">
+            <div class="card-icon"><CalendarDays :size="20" /></div>
+            <h3>Fecha</h3>
+          </div>
+          
+          <div class="calendar-wrapper">
+            <div class="calendar-header">
+              <button @click="cambiarMes(-1)" class="btn-nav-cal"><ChevronLeft :size="20" /></button>
+              <span class="mes-titulo">{{ nombreMesActual }} {{ currentYear }}</span>
+              <button @click="cambiarMes(1)" class="btn-nav-cal"><ChevronRight :size="20" /></button>
             </div>
-          </label>
-          <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'TOTAL' }">
-            <input type="radio" v-model="form.tipo_pago" value="TOTAL" class="hidden-radio">
-            <div class="radio-content">
-              <span>Total</span>
+
+            <div class="calendar-days-header">
+              <span v-for="d in ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']" :key="d">{{ d }}</span>
+            </div>
+
+            <div class="calendar-grid">
+              <div v-for="i in startingDayOfWeek" :key="'empty-'+i" class="day-empty"></div>
+              <button 
+                v-for="day in daysInMonth" 
+                :key="day"
+                class="day-btn"
+                :class="{
+                  'day-today': esHoy(day),
+                  'day-selected': esDiaSeleccionado(day),
+                  'day-disabled': !esDiaSeleccionable(day)
+                }"
+                :disabled="!esDiaSeleccionable(day)"
+                @click="seleccionarDiaCalendario(day)"
+              >
+                {{ day }}
+                <span v-if="esHoy(day)" class="badge-today">HOY</span>
+              </button>
+            </div>
+            <div class="calendar-footer">
+              <Info :size="14" /> Disponible: Hoy + 7 días (No Domingos)
+            </div>
+          </div>
+        </div>
+
+        <div v-if="form.fecha" class="card-modern slide-in">
+          <div class="card-header">
+            <div class="card-icon"><Clock :size="20" /></div>
+            <h3>Horarios Disponibles</h3>
+          </div>
+          
+          <div v-if="cargandoHorarios" class="loading-spinner">
+            <Loader2 class="spinner-icon" :size="32" />
+            <p>Calculando disponibilidad...</p>
+          </div>
+          
+          <div v-else-if="horariosGenerados.length === 0" class="no-resultados">
+            <Clock class="no-resultados-icon" :size="48" />
+            <p>Local Cerrado en esta fecha</p>
+          </div>
+          
+          <div v-else class="grid-horarios">
+            <div
+              v-for="hora in horariosGenerados"
+              :key="hora"
+              class="hora-card"
+              :class="{
+                'hora-selected': form.hora === hora,
+                'hora-disponible': esHorarioDisponible(hora),
+                'hora-ocupada': !esHorarioDisponible(hora)
+              }"
+              @click="esHorarioDisponible(hora) ? seleccionarHora(hora) : null"
+            >
+              <span class="hora-texto">{{ hora }}</span>
+              <span v-if="!esHorarioDisponible(hora)" class="etiqueta-ocupado">OCUPADO</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="form.hora" class="card-modern slide-in">
+          <div class="card-header">
+            <div class="card-icon"><Receipt :size="20" /></div>
+            <h3>Confirmación</h3>
+          </div>
+
+          <div class="resumen-grid">
+            <div class="resumen-item total">
+              <span>Total a Pagar:</span>
               <strong>${{ calcularTotal() }}</strong>
             </div>
-          </label>
-        </div>
-      </div>
+          </div>
 
-      <div class="pago-detalles">
-        <div class="input-group">
-          <label class="label-modern">
-            <Banknote :size="16" />
-            Método de Pago
-          </label>
-          <select v-model="form.medio_pago" class="select-modern">
-            <option value="EFECTIVO">💵 Efectivo</option>
-            <option value="TARJETA">💳 Tarjeta</option>
-            <option value="TRANSFERENCIA">📱 Transferencia</option>
-          </select>
+          <div class="pago-section">
+            <div class="pago-options">
+              <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'SENA_50' }">
+                <input type="radio" v-model="form.tipo_pago" value="SENA_50" class="hidden-radio">
+                <div class="radio-content">
+                  <span>Seña 50%</span>
+                  <strong>${{ calcularSena() }}</strong>
+                </div>
+              </label>
+              <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'TOTAL' }">
+                <input type="radio" v-model="form.tipo_pago" value="TOTAL" class="hidden-radio">
+                <div class="radio-content">
+                  <span>Total</span>
+                  <strong>${{ calcularTotal() }}</strong>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="pago-detalles">
+            <div class="input-group">
+              <label class="label-modern">Método de Pago</label>
+              <select v-model="form.medio_pago" class="select-modern">
+                <option value="EFECTIVO">💵 Efectivo</option>
+                <option value="TARJETA">💳 Tarjeta</option>
+                <option value="TRANSFERENCIA">📱 Transferencia / MP</option>
+              </select>
+            </div>
+            
+            <div v-if="form.medio_pago !== 'EFECTIVO'" class="input-group">
+              <label class="label-modern">Nro. Comprobante (Opcional)</label>
+              <input type="text" v-model="form.comprobante_id" class="input-modern" placeholder="Ej: 12345678" />
+            </div>
+          </div>
+
+          <button 
+            @click="crearTurno" 
+            class="btn-confirmar-premium"
+            :disabled="procesando"
+          >
+            <span v-if="!procesando">Confirmar Reserva</span>
+            <span v-else>Procesando...</span>
+          </button>
         </div>
-        
-        <div v-if="form.medio_pago !== 'EFECTIVO'" class="input-group">
-          <label class="label-modern">
-            <FileText :size="16" />
-            Nro. Comprobante
-          </label>
-          <input 
-            type="text" 
-            v-model="form.comprobante_id" 
-            class="input-modern"
-            placeholder="Ingrese número de comprobante"
-          />
-        </div>
+
+        <transition name="fade">
+          <div v-if="mensaje" class="toast-message" :class="mensajeTipo">
+            <component :is="mensajeTipo === 'success' ? CheckCircle : AlertCircle" :size="18" />
+            {{ mensaje }}
+          </div>
+        </transition>
       </div>
     </div>
-
-    <!-- Botón Final -->
-    <button 
-      v-if="form.hora"
-      @click="crearTurno" 
-      class="btn-confirmar-premium"
-      :class="{'btn-processing': procesando}"
-      :disabled="procesando"
-    >
-      <span v-if="!procesando" class="btn-content">
-        <CheckCircle2 :size="20" />
-        Confirmar Reserva - ${{ calcularTotal() }}
-      </span>
-      <span v-else class="btn-content">
-        <Loader2 :size="20" class="btn-spinner" />
-        Procesando...
-      </span>
-    </button>
-
-    <!-- Toast Message -->
-    <transition name="fade">
-      <div v-if="mensaje" class="toast-message" :class="mensajeTipo">
-        <component :is="mensajeTipo === 'success' ? CheckCircle : AlertCircle" :size="18" />
-        {{ mensaje }}
-      </div>
-    </transition>
   </div>
 </template>
 
@@ -376,16 +280,14 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { 
   Calendar, ArrowLeft, Users, Search, X, Plus, User, IdCard,
-  AlertCircle, FolderOpen, Tag, Scissors, Check, DollarSign,
-  Clock, UserCheck, CalendarDays, ChevronLeft, ChevronRight,
-  Info, Loader2, Receipt, Wallet, CreditCard, Bell, CheckCircle2,
-  Banknote, FileText, CheckCircle, Inbox
+  AlertCircle, FolderOpen, Tag, Scissors, Check, Clock, UserCheck, 
+  CalendarDays, ChevronLeft, ChevronRight, Info, Loader2, Receipt, 
+  CheckCircle2, Bell, Banknote, FileText, Inbox, CheckCircle, CreditCard, Wallet
 } from 'lucide-vue-next'
 
 const router = useRouter()
 const API_URL = "http://localhost:8000/usuarios/api"
 
-// Estados
 const form = ref({
   canal: 'PRESENCIAL',
   cliente: null,
@@ -405,8 +307,7 @@ const peluqueros = ref([])
 const busquedaCliente = ref("")
 const clientesSugeridos = ref([])
 const categoriasSeleccionadas = ref([])
-const horariosGenerados = ref([])
-const turnosOcupadosDelDia = ref([]) // CAMBIADO: ahora almacenará turnos completos
+const slotsOcupadosReales = ref([]) // Lista de slots HH:MM ocupados
 const currentDate = ref(new Date())
 const errorCliente = ref("")
 const mensaje = ref("")
@@ -414,8 +315,6 @@ const mensajeTipo = ref("success")
 const procesando = ref(false)
 const cargandoHorarios = ref(false)
 
-const horarioApertura = 9
-const horarioCierre = 20
 const intervaloMinutos = 20
 
 // Computed
@@ -440,6 +339,46 @@ const startingDayOfWeek = computed(() => {
   return new Date(currentYear.value, currentMonth.value, 1).getDay()
 })
 
+// 🟢 HORARIOS COMPUTADOS (Grilla Base)
+const horariosGenerados = computed(() => {
+  const horariosBase = []
+  const bloques = [
+    { inicio: 8, fin: 12 }, 
+    { inicio: 15, fin: 20 }
+  ]
+  const ahora = new Date()
+  const horaActual = ahora.getHours()
+  const minutoActual = ahora.getMinutes()
+  const hoy = new Date()
+  const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+  
+  const fechaForm = form.value.fecha
+  const esHoy = fechaForm === hoyFormateado
+
+  bloques.forEach(b => {
+    for (let h = b.inicio; h < b.fin; h++) {
+      for (let m = 0; m < 60; m += intervaloMinutos) {
+        const horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+        if (esHoy) {
+          if (h < horaActual) continue
+          if (h === horaActual && m <= minutoActual) continue
+        }
+        horariosBase.push(horaStr)
+      }
+    }
+    const cierreH = b.fin
+    const cierreStr = `${String(cierreH).padStart(2, '0')}:00`
+    let agregarCierre = true
+    if (esHoy) {
+       if (cierreH < horaActual) agregarCierre = false
+       if (cierreH === horaActual && 0 <= minutoActual) agregarCierre = false
+    }
+    if (agregarCierre) horariosBase.push(cierreStr)
+  })
+
+  return horariosBase
+})
+
 // Métodos
 const cargarDatosIniciales = async () => {
   try {
@@ -453,14 +392,12 @@ const cargarDatosIniciales = async () => {
     peluqueros.value = await resPel.json()
   } catch (error) {
     console.error("Error API", error)
-    mensaje.value = "Error al cargar datos iniciales"
-    mensajeTipo.value = "error"
   }
 }
 
 const actualizarBusquedaCliente = async (e) => {
   busquedaCliente.value = e.target.value
-  if (busquedaCliente.value.length < 2) {
+  if (busquedaCliente.value.length < 1) {
     clientesSugeridos.value = []
     return
   }
@@ -482,6 +419,11 @@ const seleccionarCliente = (c) => {
   clientesSugeridos.value = []
   busquedaCliente.value = ""
   errorCliente.value = ""
+  // Si había seleccionado el mismo peluquero que el cliente, resetear
+  if (form.value.peluquero === c.id) {
+      form.value.peluquero = ""
+      resetFechas()
+  }
 }
 
 const limpiarCliente = () => {
@@ -504,22 +446,16 @@ const getNombreCompletoCliente = (c) => {
 
 const toggleCategoria = (id) => {
   const index = categoriasSeleccionadas.value.indexOf(id)
-  if (index > -1) {
-    categoriasSeleccionadas.value.splice(index, 1)
-  } else {
-    categoriasSeleccionadas.value.push(id)
-  }
+  if (index > -1) categoriasSeleccionadas.value.splice(index, 1)
+  else categoriasSeleccionadas.value.push(id)
   form.value.servicios_ids = []
   form.value.peluquero = ""
 }
 
 const toggleServicio = (servicio) => {
   const index = form.value.servicios_ids.indexOf(servicio.id)
-  if (index > -1) {
-    form.value.servicios_ids.splice(index, 1)
-  } else {
-    form.value.servicios_ids.push(servicio.id)
-  }
+  if (index > -1) form.value.servicios_ids.splice(index, 1)
+  else form.value.servicios_ids.push(servicio.id)
   form.value.peluquero = ""
   resetFechas()
 }
@@ -531,8 +467,7 @@ const alCambiarPeluquero = () => {
 const resetFechas = () => {
   form.value.fecha = ""
   form.value.hora = ""
-  horariosGenerados.value = []
-  turnosOcupadosDelDia.value = []
+  slotsOcupadosReales.value = []
 }
 
 const cambiarMes = (dir) => {
@@ -543,9 +478,18 @@ const cambiarMes = (dir) => {
 
 const esHoy = (day) => {
   const today = new Date()
-  return day === today.getDate() && 
-         currentMonth.value === today.getMonth() && 
-         currentYear.value === today.getFullYear()
+  return day === today.getDate() && currentMonth.value === today.getMonth() && currentYear.value === today.getFullYear()
+}
+
+const esDiaSeleccionable = (day) => {
+  const date = new Date(currentYear.value, currentMonth.value, day)
+  const today = new Date()
+  today.setHours(0,0,0,0)
+  const diffTime = date - today
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  const isInRange = diffDays >= 0 && diffDays <= 7
+  const isSunday = date.getDay() === 0
+  return isInRange && !isSunday
 }
 
 const esDiaSeleccionado = (day) => {
@@ -554,95 +498,65 @@ const esDiaSeleccionado = (day) => {
   return day === d && (currentMonth.value + 1) === m && currentYear.value === y
 }
 
-const esDiaSeleccionable = (day) => {
-  const date = new Date(currentYear.value, currentMonth.value, day)
-  const today = new Date()
-  today.setHours(0,0,0,0)
-  
-  const diffTime = date - today
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  
-  const isInRange = diffDays >= 0 && diffDays <= 7
-  const isSunday = date.getDay() === 0
-  
-  return isInRange && !isSunday
-}
-
 const seleccionarDiaCalendario = (day) => {
   if (!esDiaSeleccionable(day)) return
-  
   const mesStr = String(currentMonth.value + 1).padStart(2, '0')
   const diaStr = String(day).padStart(2, '0')
   form.value.fecha = `${currentYear.value}-${mesStr}-${diaStr}`
-  
-  cargarHorariosParaFecha(form.value.fecha)
+  cargarHorariosOcupados(form.value.fecha)
 }
 
-// 🎯 CORREGIDO: Ahora sí filtra por peluquero específico
-const cargarHorariosParaFecha = async (fecha) => {
+// 🟢 LÓGICA DE OCUPADOS COMPLEJA (BLOQUEA RANGOS)
+const cargarHorariosOcupados = async (fecha) => {
   form.value.hora = ""
   cargandoHorarios.value = true
-  turnosOcupadosDelDia.value = [] // Limpiar antes de cargar
+  slotsOcupadosReales.value = [] 
   
   try {
-    // URL corregida: solo turnos del peluquero seleccionado en la fecha seleccionada
+    // Usamos el endpoint que devuelve OBJETOS TURNO COMPLETOS
     const url = `${API_URL}/turnos/?fecha=${fecha}&peluquero_id=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
     const res = await fetch(url)
-    const data = await res.json()
+    const turnos = await res.json()
     
-    // Guardamos los turnos completos para poder filtrar por peluquero
-    turnosOcupadosDelDia.value = data.results || data || []
+    // Calculamos todos los slots de 20 min ocupados
+    const ocupadosSet = new Set()
     
+    turnos.forEach(turno => {
+        const [h, m] = turno.hora.split(':').map(Number)
+        const inicioMin = h * 60 + m
+        
+        // Calcular duración total del turno ocupado
+        // Si el backend no manda 'duracion_total', la calculamos sumando servicios
+        let duracion = turno.duracion_total || 0
+        if (!duracion && turno.servicios) {
+            duracion = turno.servicios.reduce((acc, s) => acc + (s.duracion || 20), 0)
+        }
+        if (!duracion) duracion = 20 // Fallback
+        
+        const finMin = inicioMin + duracion
+        
+        // Marcar cada slot de 20 min dentro del rango como ocupado
+        for (let i = inicioMin; i < finMin; i += 20) {
+            const hh = Math.floor(i / 60).toString().padStart(2, '0')
+            const mm = (i % 60).toString().padStart(2, '0')
+            ocupadosSet.add(`${hh}:${mm}`)
+        }
+    })
+    
+    slotsOcupadosReales.value = Array.from(ocupadosSet)
+
   } catch (e) {
-    console.error("Error cargando turnos ocupados:", e)
-    turnosOcupadosDelDia.value = []
+    console.error("Error cargando turnos:", e)
+  } finally {
+    cargandoHorarios.value = false
   }
-  
-  generarGrillaHorarios(fecha)
-  cargandoHorarios.value = false
 }
 
-const generarGrillaHorarios = (fechaStr) => {
-  const horarios = []
-  const [year, month, day] = fechaStr.split('-').map(Number)
-  const fechaSeleccionada = new Date(year, month - 1, day)
-  const esHoy = new Date().toDateString() === fechaSeleccionada.toDateString()
-  const ahora = new Date()
-
-  for (let h = horarioApertura; h < horarioCierre; h++) {
-    for (let m = 0; m < 60; m += intervaloMinutos) {
-      const horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-      if (esHoy) {
-        const fechaHoraLoop = new Date()
-        fechaHoraLoop.setHours(h, m, 0, 0)
-        if (fechaHoraLoop <= ahora) continue
-      }
-      horarios.push(horaStr)
-    }
-  }
-  horariosGenerados.value = horarios
-}
-
-// 🎯 CORREGIDO: Ahora sí verifica si el horario está ocupado por ESTE peluquero
 const esHorarioDisponible = (hora) => {
   if (!form.value.fecha || !form.value.peluquero) return true
-  
-  // Buscar turnos ocupados para este peluquero específico en esta fecha y hora
-  const turnoOcupado = turnosOcupadosDelDia.value.find(turno => {
-    // Verificar que el turno sea del mismo peluquero
-    const mismoPeluquero = turno.peluquero_id == form.value.peluquero
-    
-    // Verificar que sea la misma fecha (formato puede variar)
-    const mismaFecha = turno.fecha === form.value.fecha || 
-                      turno.fecha === form.value.fecha.replace(/-/g, '/')
-    
-    // Verificar que sea la misma hora
-    const mismaHora = turno.hora === hora
-    
-    return mismoPeluquero && mismaFecha && mismaHora
-  })
-  
-  return !turnoOcupado
+  const horaSimple = hora.substring(0, 5)
+  // Chequeamos contra la lista calculada de rangos
+  return !slotsOcupadosReales.value.includes(horaSimple)
 }
 
 const seleccionarHora = (hora) => {
@@ -655,11 +569,11 @@ const calcularTotal = () => {
   return form.value.servicios_ids.reduce((total, id) => {
     const s = servicios.value.find(x => x.id === id)
     return total + (s ? parseFloat(s.precio) : 0)
-  }, 0)
+  }, 0).toFixed(2)
 }
 
 const calcularSena = () => {
-  return calcularTotal() / 2
+  return (calcularTotal() / 2).toFixed(2)
 }
 
 const crearTurno = async () => {
@@ -671,12 +585,23 @@ const crearTurno = async () => {
     return acc + (s ? parseInt(s.duracion) : 0)
   }, 0)
 
+  // 🟢 CORRECCIÓN: Mapeamos los nombres exactos que pide el Backend
   const payload = {
-    ...form.value,
-    monto_total: calcularTotal(),
-    monto_seña: form.value.tipo_pago === 'SENA_50' ? calcularSena() : 0,
-    duracion_total: duracion
+    peluquero_id: form.value.peluquero, // Backend pide 'peluquero_id', no 'peluquero'
+    cliente_id: form.value.cliente,     // Backend pide 'cliente_id'
+    servicios_ids: form.value.servicios_ids,
+    fecha: form.value.fecha,
+    hora: form.value.hora,
+    canal: 'PRESENCIAL',
+    tipo_pago: form.value.tipo_pago,
+    medio_pago: form.value.medio_pago,
+    monto_total: parseFloat(calcularTotal()),
+    monto_seña: form.value.tipo_pago === 'SENA_50' ? parseFloat(calcularSena()) : 0,
+    duracion_total: duracion,
+    mp_payment_id: form.value.medio_pago !== 'EFECTIVO' ? form.value.comprobante_id : null
   }
+
+  console.log("🚀 Enviando Turno Presencial:", payload) // Para que veas en consola
 
   try {
     const token = localStorage.getItem('token')
@@ -689,6 +614,7 @@ const crearTurno = async () => {
       body: JSON.stringify(payload)
     })
     const data = await res.json()
+    
     if (res.ok && data.status === 'ok') {
       mensaje.value = "¡Turno Reservado con Éxito!"
       mensajeTipo.value = "success"
@@ -715,13 +641,38 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.turno-container {
-  max-width: 1000px;
+/* ============================================
+   FONDO DE PÁGINA Y CONTENEDOR PRINCIPAL
+   ============================================ */
+.page-background {
+  min-height: 100vh;
+  padding: 30px 20px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.main-card-container {
+  background: white;
+  border-radius: 24px;
+  width: 100%;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 25px;
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  padding: 40px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+
+
+/* ============================================
+   TURNO CONTAINER (tu estructura original)
+   ============================================ */
+.turno-container {
+  width: 100%;
+  padding: 0;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
@@ -730,28 +681,32 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 2px solid #f1f3f4;
+  padding: 25px;
+  background: linear-gradient(135deg, #1f2937, #374151);
+  border-radius: 16px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
 }
 
 .header-section h2 {
   margin: 0;
-  color: #1a1a1a;
+  color: white;
   font-size: 1.8em;
   font-weight: 700;
   display: flex;
   align-items: center;
   gap: 12px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-.header-icon {
-  color: #007bff;
+.header-icon { 
+  color: #60a5fa; 
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
 
 .btn-back {
-  background: #6c757d;
+  background: rgba(255, 255, 255, 0.1);
   color: white;
-  border: none;
+  border: 2px solid rgba(255, 255, 255, 0.2);
   padding: 10px 20px;
   border-radius: 8px;
   cursor: pointer;
@@ -760,27 +715,30 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  backdrop-filter: blur(10px);
 }
 
-.btn-back:hover {
-  background: #5a6268;
-  transform: translateY(-1px);
+.btn-back:hover { 
+  background: rgba(255, 255, 255, 0.2); 
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px); 
 }
 
-/* Cards */
+/* Cards Modernas */
 .card-modern {
   background: #fff;
   border-radius: 16px;
-  border: 2px solid #f1f3f4;
+  border: 1px solid #e5e7eb;
   padding: 25px;
   margin-bottom: 25px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   transition: all 0.3s ease;
 }
 
 .card-modern:hover {
-  border-color: #007bff;
-  box-shadow: 0 6px 20px rgba(0, 123, 255, 0.15);
+  border-color: #3b82f6;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
 }
 
 .card-header {
@@ -793,864 +751,741 @@ onMounted(() => {
 }
 
 .card-icon {
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  padding: 10px;
-  border-radius: 10px;
-  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  border-radius: 12px;
+  color: white;
+  box-shadow: 0 6px 12px rgba(59, 130, 246, 0.3);
+  flex-shrink: 0;
 }
 
 .card-header h3 {
   margin: 0;
-  color: #1a1a1a;
+  color: #1f2937;
   font-size: 1.3em;
   font-weight: 700;
   flex: 1;
+  letter-spacing: -0.5px;
 }
 
-.badge-count {
-  background: linear-gradient(135deg, #28a745, #20c997);
-  color: white;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 0.9em;
-  font-weight: 600;
-}
-
-/* Inputs */
-.input-group {
+/* Grilla de Horarios (ESTILO WEB) */
+.grid-horarios {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 12px;
   margin-bottom: 20px;
 }
 
-.label-modern {
-  display: block;
-  font-weight: 700;
-  color: #334155;
-  margin-bottom: 10px;
-  font-size: 0.95rem;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.row-search {
-  display: flex;
-  gap: 10px;
-}
-
-.search-wrapper {
-  flex: 1;
+.hora-card {
+  background: #fff;
+  border: 2px solid #e1e5e9;
+  border-radius: 12px;
+  padding: 16px 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
   position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
-.search-icon {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #6c757d;
+.hora-card:hover {
+  border-color: #3b82f6;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
 }
 
-.input-modern {
+.hora-texto {
+  font-weight: 700;
+  color: #1f2937;
+  font-size: 1.1em;
+  display: block;
+}
+
+.hora-selected {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white;
+  border-color: #3b82f6;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+}
+
+.hora-selected .hora-texto { 
+  color: white; 
+}
+
+/* ESTILO OCUPADO (ROJO Y TACHADO) */
+.hora-ocupada {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.hora-ocupada .hora-texto {
+  text-decoration: line-through;
+  color: #dc3545;
+}
+
+.etiqueta-ocupado {
+  display: block;
+  font-size: 0.7em;
+  color: #dc3545;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+/* Inputs y Selects */
+.input-modern, .select-modern {
   width: 100%;
-  padding: 12px 16px 12px 42px;
+  padding: 14px 16px;
   border: 2px solid #e1e5e9;
   border-radius: 10px;
   background: #f8f9fa;
-  font-size: 14px;
+  font-size: 15px;
   transition: all 0.3s ease;
-  color: #1a1a1a;
+  color: #1f2937;
 }
 
-.input-modern:focus {
-  border-color: #007bff;
+.input-modern:focus, .select-modern:focus {
+  border-color: #3b82f6;
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   outline: none;
 }
 
-.cliente-activo {
-  background: #e7f3ff !important;
-  border-color: #007bff !important;
-  color: #0056b3 !important;
-  font-weight: 600;
+.row-search { 
+  display: flex; 
+  gap: 12px; 
+  margin-bottom: 15px;
 }
 
-.btn-icon-clean {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: #dc3545;
-  cursor: pointer;
+.search-wrapper { 
+  flex: 1; 
+  position: relative; 
+}
+
+.search-icon { 
+  position: absolute; 
+  left: 16px; 
+  top: 50%; 
+  transform: translateY(-50%); 
+  color: #6b7280; 
+}
+
+.input-modern { 
+  padding-left: 46px; 
+  width: 100%;
+}
+
+.btn-icon-clean { 
+  position: absolute; 
+  right: 12px; 
+  top: 50%; 
+  transform: translateY(-50%); 
+  background: none; 
+  border: none; 
+  color: #dc3545; 
+  cursor: pointer; 
   padding: 4px;
-  border-radius: 4px;
+  border-radius: 50%;
   transition: all 0.2s;
 }
 
 .btn-icon-clean:hover {
-  background: #fee;
+  background: #fee2e2;
 }
 
-.btn-nuevo {
-  background: #0f172a;
-  color: white;
-  border: none;
-  padding: 12px 20px;
-  border-radius: 10px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.btn-nuevo { 
+  background: linear-gradient(135deg, #0f172a, #1e293b); 
+  color: white; 
+  border: none; 
+  padding: 0 24px; 
+  border-radius: 10px; 
+  font-weight: 600; 
+  cursor: pointer; 
+  display: flex; 
+  align-items: center; 
+  gap: 8px; 
+  transition: all 0.3s;
   white-space: nowrap;
 }
 
 .btn-nuevo:hover {
-  background: #1e293b;
-  transform: translateY(-1px);
-}
-
-.select-modern {
-  width: 100%;
-  padding: 12px 16px;
-  border: 2px solid #e1e5e9;
-  border-radius: 10px;
-  background: #f8f9fa;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  color: #1a1a1a;
-  cursor: pointer;
-}
-
-.select-modern:focus {
-  border-color: #007bff;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-  outline: none;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.3);
 }
 
 /* Sugerencias */
 .lista-sugerencias {
   position: absolute;
   background: white;
-  border: 2px solid #e1e5e9;
+  border: 2px solid #e5e7eb;
   width: 100%;
-  max-height: 300px;
+  max-height: 250px;
   overflow-y: auto;
   z-index: 100;
   border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-  margin-top: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+  margin-top: 5px;
   list-style: none;
-  padding: 8px;
+  padding: 8px 0;
 }
 
-.item-sugerencia {
-  padding: 12px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  cursor: pointer;
-  border-radius: 8px;
+.item-sugerencia { 
+  padding: 12px 16px; 
+  color: #4b5563; 
+  display: flex; 
+  gap: 12px; 
+  align-items: center; 
+  cursor: pointer; 
+  border-radius: 8px; 
   transition: all 0.2s;
+  margin: 0 8px;
 }
 
-.item-sugerencia:hover {
-  background: #f8f9fa;
+.item-sugerencia:hover { 
+  background: #f3f4f6; 
 }
 
-.avatar-mini {
-  width: 36px;
-  height: 36px;
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
+.avatar-mini { 
+  width: 36px; 
+  height: 36px; 
+  background: #e0f2fe; 
+  color: #3b82f6; 
+  border-radius: 50%; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
   flex-shrink: 0;
-}
-
-.sugerencia-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.sugerencia-info strong {
-  color: #1a1a1a;
-  font-size: 0.95em;
-}
-
-.sugerencia-info small {
-  color: #6c757d;
-  font-size: 0.85em;
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 
 .msg-error {
   color: #dc3545;
-  font-size: 0.85em;
-  margin-top: 8px;
-  padding: 8px 12px;
-  background: #fee;
-  border-radius: 6px;
+  background: #fee2e2;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-top: 10px;
+  font-size: 0.9em;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
-/* Chips de Categorías */
-.grid-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.mt-2 {
+  margin-top: 12px;
+}
+
+/* Chips */
+.grid-chips { 
+  display: flex; 
+  flex-wrap: wrap; 
+  gap: 12px; 
 }
 
 .chip-modern {
-  background: #fff;
-  border: 2px solid #e1e5e9;
-  padding: 10px 18px;
+  background: #fff; 
+  border: 2px solid #e5e7eb; 
+  padding: 12px 20px; 
   border-radius: 50px;
-  color: #6c757d;
-  cursor: pointer;
+  color: #6b7280; 
+  cursor: pointer; 
+  font-weight: 600; 
+  display: flex; 
+  align-items: center; 
+  gap: 8px;
   transition: all 0.3s ease;
-  font-size: 0.9em;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  font-size: 0.95rem;
 }
 
-.chip-modern:hover {
-  border-color: #007bff;
-  color: #007bff;
+.chip-modern:hover { 
+  border-color: #3b82f6; 
+  color: #3b82f6; 
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.2);
 }
 
-.chip-active {
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  color: white;
-  border-color: #007bff;
-  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+.chip-active { 
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8); 
+  color: white; 
+  border-color: #3b82f6; 
+  box-shadow: 0 6px 12px rgba(59, 130, 246, 0.3);
 }
 
 /* Servicios */
-.grid-servicios {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 15px;
+.grid-servicios { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
+  gap: 16px; 
+  margin-top: 20px;
 }
 
-.card-servicio {
-  background: #fff;
-  border: 2px solid #e1e5e9;
-  border-radius: 12px;
-  padding: 16px;
-  cursor: pointer;
+.card-servicio { 
+  background: #fff; 
+  border: 2px solid #e5e7eb; 
+  border-radius: 12px; 
+  padding: 20px; 
+  cursor: pointer; 
+  position: relative; 
   transition: all 0.3s ease;
-  position: relative;
 }
 
-.card-servicio:hover {
-  border-color: #007bff;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.15);
+.card-servicio:hover { 
+  border-color: #3b82f6; 
+  transform: translateY(-3px); 
+  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.15);
 }
 
-.servicio-active {
-  border-color: #007bff;
-  background: #e7f3ff;
+.servicio-active { 
+  border-color: #10b981; 
+  background: #f0fdf4; 
 }
 
-.servicio-check {
-  position: absolute;
-  top: 12px;
-  right: 12px;
+.servicio-check { 
+  position: absolute; 
+  top: 12px; 
+  right: 12px; 
   width: 24px;
   height: 24px;
+  background: #10b981;
   border-radius: 50%;
-  background: #007bff;
-  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  transition: all 0.3s;
+  color: white;
 }
 
-.servicio-active .servicio-check {
-  opacity: 1;
+.servicio-nombre { 
+  font-weight: 700; 
+  color: #1f2937; 
+  display: block; 
+  margin-bottom: 8px; 
+  font-size: 1.05rem;
 }
 
-.servicio-content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.servicio-details { 
+  display: flex; 
+  justify-content: space-between; 
+  color: #6b7280; 
+  font-size: 0.95em; 
 }
 
-.servicio-nombre {
-  font-weight: 700;
-  color: #1a1a1a;
-  font-size: 1em;
-  line-height: 1.3;
-  padding-right: 30px;
-}
-
-.servicio-details {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-.servicio-precio {
-  color: #28a745;
-  font-weight: 700;
-  font-size: 1.1em;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.servicio-precio { 
+  color: #059669; 
+  font-weight: 700; 
 }
 
 .servicio-duracion {
-  color: #6c757d;
-  font-size: 0.85em;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  color: #6b7280;
+  font-weight: 500;
 }
 
 /* Calendario */
-.calendar-wrapper {
-  background: linear-gradient(135deg, #f8f9fa, #f1f3f4);
-  border-radius: 16px;
-  padding: 20px;
-  border: 2px solid #e1e5e9;
+.calendar-wrapper { 
+  background: #f8fafc; 
+  border-radius: 16px; 
+  padding: 24px; 
+  border: 2px solid #e5e7eb; 
 }
 
-.calendar-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: white;
-  padding: 12px 16px;
-  border-radius: 12px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+.calendar-header { 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  margin-bottom: 20px; 
 }
 
-.mes-titulo {
-  font-weight: 700;
-  color: #1a1a1a;
-  font-size: 1.1em;
-  text-transform: capitalize;
+.mes-titulo { 
+  font-weight: 700; 
+  font-size: 1.2em; 
+  color: #1f2937;
 }
 
-.btn-nav-cal {
-  background: transparent;
-  border: none;
-  color: #6c757d;
-  cursor: pointer;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
+.btn-nav-cal { 
+  background: white; 
+  border: 1px solid #e5e7eb; 
+  border-radius: 8px; 
+  width: 40px; 
+  height: 40px; 
+  cursor: pointer; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
   transition: all 0.2s;
 }
 
-.btn-nav-cal:hover {
-  background: #f8f9fa;
-  color: #007bff;
+.btn-nav-cal:hover { 
+  background: #f3f4f6; 
+  border-color: #d1d5db;
 }
 
-.calendar-days-header {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  text-align: center;
-  font-size: 0.8em;
-  font-weight: 700;
-  color: #6c757d;
-  margin-bottom: 12px;
-  padding: 0 4px;
+.calendar-days-header { 
+  display: grid; 
+  grid-template-columns: repeat(7, 1fr); 
+  text-align: center; 
+  font-weight: 700; 
+  color: #6b7280; 
+  margin-bottom: 15px; 
+  font-size: 0.95em; 
 }
 
-.calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 8px;
+.calendar-grid { 
+  display: grid; 
+  grid-template-columns: repeat(7, 1fr); 
+  gap: 10px; 
 }
 
 .day-btn {
-  aspect-ratio: 1;
-  border-radius: 10px;
-  border: 2px solid transparent;
-  background: white;
-  color: #1a1a1a;
+  aspect-ratio: 1; 
+  border-radius: 10px; 
+  border: 2px solid transparent; 
+  background: rgb(72, 255, 130);
   font-weight: 600;
-  cursor: pointer;
+  cursor: pointer; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  font-size: 0.95em;
+  color: #1f2937;
 }
 
-.day-btn:hover:not(:disabled) {
-  border-color: #007bff;
-  background: #e7f3ff;
-  transform: scale(1.05);
+.day-btn:hover:not(:disabled) { 
+  border-color: #3b82f6; 
+  transform: translateY(-1px);
 }
 
-.day-selected {
-  background: linear-gradient(135deg, #007bff, #0056b3) !important;
-  color: white !important;
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
-  border: none !important;
+.day-selected { 
+  background: #3b82f6 !important; 
+  color: white !important; 
+  border-color: #3b82f6 !important;
 }
 
-.day-disabled {
-  background: #f1f3f4;
-  color: #3b3b3b;
-  cursor: not-allowed;
-  opacity: 0.5;
+.day-today { 
+  border-color: #f59e0b; 
+  background: #fef3c7;
 }
 
-.day-today {
-  border-color: #ffc107;
-  font-weight: 700;
+.badge-today { 
+  position: absolute; 
+  bottom: 4px; 
+  font-size: 0.6em; 
+  color: #d97706; 
+  font-weight: 800; 
 }
 
-.badge-today {
-  position: absolute;
-  bottom: 2px;
-  font-size: 0.5em;
-  font-weight: 800;
-  color: #ffc107;
-  letter-spacing: 0.5px;
+.day-disabled { 
+  background: #747474; 
+  color: #ffffff; 
+  cursor: not-allowed; 
+  opacity: 0.6;
 }
 
-.day-selected .badge-today {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.calendar-footer {
-  margin-top: 16px;
-  text-align: center;
-  color: #6c757d;
-  font-size: 0.85em;
-  padding: 10px;
-  background: white;
-  border-radius: 8px;
+.calendar-footer { 
+  text-align: center; 
+  margin-top: 20px; 
+  font-size: 0.9em; 
+  color: #6b7280; 
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-}
-
-/* Horarios */
-.loading-spinner {
-  text-align: center;
-  padding: 40px;
-  color: #6c757d;
-}
-
-.spinner-icon {
-  animation: spin 1s linear infinite;
-  margin-bottom: 12px;
-  color: #007bff;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.grid-horarios-mejorado {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.hora-card-mejorada {
-  border-radius: 12px;
-  transition: all 0.3s ease;
-  overflow: hidden;
-}
-
-.hora-content-mejorada {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.hora-disponible-mejorada .hora-content-mejorada {
-  background: linear-gradient(135deg, #d4edda, #c3e6cb);
-  border: 2px solid #28a745;
-}
-
-.hora-disponible-mejorada .hora-content-mejorada:hover {
-  background: linear-gradient(135deg, #c3e6cb, #b1dfbb);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
-}
-
-.hora-selected-mejorada .hora-content-mejorada {
-  background: linear-gradient(135deg, #28a745, #20c997);
-  border-color: #1e7e34;
-}
-
-.hora-ocupada-mejorada .hora-content-mejorada {
-  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
-  border: 2px solid #ffc107;
-  cursor: default;
-}
-
-.hora-info-mejorada {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.hora-icon-mejorada {
-  flex-shrink: 0;
-}
-
-.hora-texto-mejorada {
-  font-size: 1.3em;
-  font-weight: 700;
-  color: #155724;
-}
-
-.hora-ocupada-mejorada .hora-texto-mejorada {
-  color: #856404;
-}
-
-.hora-selected-mejorada .hora-texto-mejorada {
-  color: white;
-}
-
-.hora-estado-mejorada {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.85em;
-  font-weight: 600;
-  padding: 6px 10px;
-  border-radius: 6px;
-  align-self: flex-start;
-}
-
-.hora-estado-mejorada.disponible {
-  background: rgba(40, 167, 69, 0.15);
-  color: #155724;
-}
-
-.hora-estado-mejorada.ocupado {
-  background: rgba(255, 193, 7, 0.15);
-  color: #856404;
-}
-
-.hora-selected-mejorada .hora-estado-mejorada {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-}
-
-.campanita-icon {
-  color: #ffc107;
-  animation: ring 2s infinite;
-}
-
-@keyframes ring {
-  0%, 100% { transform: rotate(0deg); }
-  10%, 30%, 50%, 70%, 90% { transform: rotate(-10deg); }
-  20%, 40%, 60%, 80% { transform: rotate(10deg); }
-}
-
-/* Resumen y Pago */
-.resumen-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 15px;
-  margin-bottom: 25px;
-  padding: 20px;
-  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-  border-radius: 12px;
-}
-
-.resumen-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  color: #1a1a1a;
-}
-
-.resumen-item span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #6c757d;
-}
-
-.resumen-item strong {
-  color: #1a1a1a;
-  font-size: 1.1em;
-}
-
-.resumen-item.total {
-  border-top: 2px solid #dee2e6;
-  margin-top: 10px;
-  padding-top: 15px;
-  font-size: 1.2em;
-  font-weight: 700;
-}
-
-.pago-section {
-  margin-bottom: 20px;
-}
-
-.pago-options {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 15px;
-  margin-top: 10px;
-}
-
-.radio-box {
-  border: 2px solid #e1e5e9;
-  padding: 16px;
-  border-radius: 12px;
-  cursor: pointer;
-  text-align: center;
-  transition: all 0.3s ease;
-  background: white;
-}
-
-.radio-box:hover {
-  border-color: #007bff;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
-}
-
-.radio-active {
-  border-color: #007bff;
-  background: #e7f3ff;
-}
-
-.hidden-radio {
-  display: none;
-}
-
-.radio-content {
-  display: flex;
-  flex-direction: column;
   gap: 8px;
 }
 
-.radio-content span {
-  color: #6c757d;
-  font-size: 0.9em;
+/* Resumen y Pago */
+.resumen-grid { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 12px; 
+  margin-bottom: 25px; 
 }
 
-.radio-content strong {
-  color: #1a1a1a;
-  font-size: 1.3em;
+.resumen-item { 
+  display: flex; 
+  justify-content: space-between; 
+  padding: 12px 0; 
+  border-bottom: 1px solid #e5e7eb; 
+  color: #1f2937;
 }
 
-.radio-active .radio-content span {
-  color: #007bff;
+.resumen-item.total { 
+  font-size: 1.3em; 
+  font-weight: 700; 
+  border-top: 2px solid #e5e7eb; 
+  margin-top: 15px; 
+  padding-top: 15px;
+  border-bottom: none; 
 }
 
-.pago-detalles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 15px;
+.pago-options { 
+  display: grid; 
+  grid-template-columns: 1fr 1fr; 
+  gap: 20px; 
+  margin-bottom: 25px; 
+}
+
+.radio-box {
+  border: 2px solid #e5e7eb; 
+  padding: 20px; 
+  border-radius: 12px; 
+  cursor: pointer; 
+  color: #1f2937; 
+  text-align: center; 
+  transition: all 0.3s ease;
+}
+
+.radio-box:hover { 
+  border-color: #3b82f6; 
+  transform: translateY(-2px);
+}
+
+.radio-active { 
+  border-color: #3b82f6; 
+  background: #eff6ff; 
+}
+
+.hidden-radio { 
+  display: none; 
+}
+
+.radio-content { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 8px; 
+}
+
+.radio-content span { 
+  font-weight: 600; 
+  font-size: 1.1rem;
+}
+
+.radio-content strong { 
+  font-size: 1.3rem; 
+  color: #059669; 
+}
+
+.pago-detalles { 
+  display: grid; 
+  grid-template-columns: 1fr 1fr; 
+  gap: 20px; 
+  margin-bottom: 25px; 
+}
+
+.label-modern {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: #1f2937;
+  font-size: 1rem;
 }
 
 /* Botón Final */
 .btn-confirmar-premium {
-  width: 100%;
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  color: white;
-  font-size: 1.1em;
-  padding: 18px;
+  width: 100%; 
+  background: linear-gradient(135deg, #059669, #047857); 
+  color: white; 
+  padding: 18px; 
   border: none;
-  border-radius: 12px;
-  cursor: pointer;
+  border-radius: 12px; 
+  font-size: 1.1em; 
+  font-weight: 700; 
+  cursor: pointer; 
   transition: all 0.3s ease;
-  margin-top: 25px;
-  font-weight: 700;
-  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+  letter-spacing: 0.5px;
 }
 
-.btn-confirmar-premium:hover:not(:disabled):not(.btn-processing) {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4);
-  background: linear-gradient(135deg, #0056b3, #004085);
+.btn-confirmar-premium:hover:not(:disabled) { 
+  transform: translateY(-3px); 
+  box-shadow: 0 10px 25px rgba(5, 150, 105, 0.4);
+  background: linear-gradient(135deg, #047857, #065f46);
 }
 
-.btn-confirmar-premium:disabled,
-.btn-confirmar-premium.btn-processing {
-  background: #6c757d;
-  cursor: not-allowed;
+.btn-confirmar-premium:disabled { 
+  background: #9ca3af; 
+  cursor: not-allowed; 
+  transform: none; 
   opacity: 0.7;
-  transform: none;
 }
 
-.btn-content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+/* Loader y Empty States */
+.loading-spinner, .no-resultados { 
+  text-align: center; 
+  padding: 50px 20px; 
+  color: #6b7280; 
 }
 
-.btn-spinner {
-  animation: spin 1s linear infinite;
+.spinner-icon { 
+  animation: spin 1s linear infinite; 
+  margin-bottom: 15px; 
+  color: #3b82f6; 
+}
+
+@keyframes spin { 
+  100% { 
+    transform: rotate(360deg); 
+  } 
+}
+
+.no-resultados-icon {
+  opacity: 0.4;
+  margin-bottom: 15px;
+  color: #9ca3af;
 }
 
 /* Toast */
 .toast-message {
-  position: fixed;
-  bottom: 30px;
-  right: 30px;
-  padding: 16px 24px;
-  border-radius: 12px;
+  position: fixed; 
+  bottom: 30px; 
+  right: 30px; 
+  padding: 18px 24px; 
+  border-radius: 12px; 
   font-weight: 600;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: 400px;
+  display: flex; 
+  align-items: center; 
+  gap: 12px; 
+  z-index: 9999; 
+  box-shadow: 0 15px 35px rgba(0,0,0,0.25);
+  min-width: 300px;
+  backdrop-filter: blur(10px);
 }
 
-.toast-message.success {
-  background: linear-gradient(135deg, #28a745, #20c997);
-  color: white;
+.toast-message.success { 
+  background: rgba(16, 185, 129, 0.95); 
+  color: white; 
+  border-left: 4px solid #059669;
 }
 
-.toast-message.error {
-  background: linear-gradient(135deg, #dc3545, #c82333);
-  color: white;
+.toast-message.error { 
+  background: rgba(239, 68, 68, 0.95); 
+  color: white; 
+  border-left: 4px solid #dc2626;
 }
 
-/* Estados Vacíos */
-.no-resultados {
-  text-align: center;
-  padding: 40px 20px;
-  color: #6c757d;
+.fade-enter-active, .fade-leave-active { 
+  transition: opacity 0.5s ease; 
 }
 
-.no-resultados-icon {
-  margin-bottom: 15px;
-  opacity: 0.5;
-  color: #6c757d;
-}
-
-.no-resultados p {
-  margin: 0 0 8px 0;
-  font-size: 1.1em;
-  color: #1a1a1a;
-  font-weight: 600;
-}
-
-.no-resultados small {
-  font-size: 0.9em;
-  color: #6c757d;
+.fade-enter-from, .fade-leave-to { 
+  opacity: 0; 
 }
 
 /* Animaciones */
 .slide-in {
-  animation: slideIn 0.4s ease-out;
+  animation: slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-@keyframes slideIn {
+@keyframes slideInRight {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateX(30px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
   }
-}
-
-.fade-enter-active, .fade-leave-active {
-  transition: opacity 0.3s ease;
-}
-
-.fade-enter-from, .fade-leave-to {
-  opacity: 0;
 }
 
 /* Responsive */
-@media (max-width: 768px) {
-  .turno-container {
-    padding: 15px;
-  }
-  
-  .header-section {
-    flex-direction: column;
-    gap: 15px;
-    align-items: stretch;
-  }
-  
-  .header-section h2 {
-    font-size: 1.5em;
-  }
-  
-  .row-search {
-    flex-direction: column;
-  }
-  
-  .grid-servicios {
-    grid-template-columns: 1fr;
-  }
-  
-  .calendar-grid {
-    gap: 4px;
-  }
-  
-  .day-btn {
-    font-size: 0.85em;
-  }
-  
-  .grid-horarios-mejorado {
-    grid-template-columns: 1fr;
-  }
-  
-  .pago-options {
-    grid-template-columns: 1fr;
+@media (max-width: 1024px) {
+  .main-card-container {
+    padding: 30px;
+    margin: 20px;
   }
   
   .pago-detalles {
     grid-template-columns: 1fr;
   }
   
+  .grid-servicios {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .page-background {
+    padding: 20px 15px;
+  }
+  
+  .main-card-container {
+    padding: 25px;
+    border-radius: 20px;
+  }
+  
+  .header-section {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
+    padding: 20px;
+  }
+  
+  .btn-back {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .grid-servicios {
+    grid-template-columns: 1fr;
+  }
+  
+  .grid-horarios {
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  }
+  
+  .pago-options {
+    grid-template-columns: 1fr;
+  }
+  
+  .row-search {
+    flex-direction: column;
+  }
+  
+  .btn-nuevo {
+    width: 100%;
+    justify-content: center;
+    padding: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-background {
+    padding: 15px 10px;
+  }
+  
+  .main-card-container {
+    padding: 20px;
+    border-radius: 16px;
+  }
+  
+  .card-modern {
+    padding: 20px;
+  }
+  
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .card-icon {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .grid-horarios {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 8px;
+  }
+  
   .toast-message {
-    right: 15px;
     left: 15px;
+    right: 15px;
     bottom: 15px;
+    min-width: auto;
   }
 }
 </style>

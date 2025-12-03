@@ -37,30 +37,22 @@
           </div>
 
           <div class="filter-group">
+            <label>Ordenar por</label>
+            <select v-model="filtros.orden" class="filter-input">
+              <option value="fecha_desc">Más reciente primero</option>
+              <option value="fecha_asc">Más antiguo primero</option>
+              <option value="stock">Stock (más bajo primero)</option>
+              <option value="ofertas">Más ofertas primero</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
             <label>&nbsp;</label>
             <button @click="limpiarFiltros" class="clear-filters-btn">
               <Trash2 :size="16" />
               Limpiar filtros
             </button>
           </div>
-        </div>
-      </div>
-
-      <!-- Contador y alertas -->
-      <div class="usuarios-count">
-        <p>
-          <FileText :size="16" />
-          Mostrando {{ solicitudesFiltradas.length }} de {{ solicitudes.length }} licitaciones
-        </p>
-        <div class="alertas-container">
-          <span v-if="licitacionesPendientes > 0" class="alerta-stock">
-            <Clock :size="14" />
-            {{ licitacionesPendientes }} pendientes
-          </span>
-          <span v-if="licitacionesCerradas > 0" class="alerta-inactivo">
-            <CheckCircle :size="14" />
-            {{ licitacionesCerradas }} cerradas
-          </span>
         </div>
       </div>
 
@@ -75,12 +67,13 @@
               <th>Fecha Creación</th>
               <th>Estado</th>
               <th>Ofertas</th>
+              <th>Recomendación</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="solicitud in solicitudesFiltradas" :key="solicitud.id" 
-                :class="{'stock-bajo-row': solicitud.producto_stock <= 10}">
+            <tr v-for="solicitud in solicitudesPaginadas" :key="solicitud.id" 
+                :class="{'stock-bajo-row': solicitud.producto_stock <= 10, 'recomendada-row': tieneRecomendacion(solicitud)}">
               
               <td>
                 <div class="producto-info">
@@ -106,6 +99,7 @@
 
               <td>
                 <span class="meta-date">{{ formatDate(solicitud.fecha_creacion) }}</span>
+                <span class="meta-hora">{{ formatHora(solicitud.fecha_creacion) }}</span>
               </td>
 
               <td>
@@ -127,6 +121,18 @@
                     <span>Adjudicada</span>
                   </div>
                 </div>
+              </td>
+
+              <td>
+                <div class="recomendacion-cell" v-if="tieneRecomendacion(solicitud)">
+                  <span class="recomendacion-indicator" :title="getRecomendacionTexto(solicitud)">
+                    ⭐
+                  </span>
+                  <span class="recomendacion-breve">
+                    {{ getRecomendacionBreve(solicitud) }}
+                  </span>
+                </div>
+                <span v-else class="sin-recomendacion">-</span>
               </td>
 
               <td>
@@ -165,6 +171,41 @@
         </div>
       </div>
 
+      <!-- Mostrando cantidad -->
+      <div class="usuarios-count">
+        <p>
+          <FileText :size="16" />
+          Mostrando {{ solicitudesPaginadas.length }} de {{ solicitudesFiltradas.length }} licitaciones
+        </p>
+        <div class="alertas-container">
+          <span v-if="licitacionesPendientes > 0" class="alerta-stock">
+            <Clock :size="14" />
+            {{ licitacionesPendientes }} pendientes
+          </span>
+          <span v-if="licitacionesCerradas > 0" class="alerta-inactivo">
+            <CheckCircle :size="14" />
+            {{ licitacionesCerradas }} cerradas
+          </span>
+          <span v-if="licitacionesConRecomendacion > 0" class="alerta-recomendacion">
+            <Award :size="14" />
+            {{ licitacionesConRecomendacion }} recomendadas
+          </span>
+        </div>
+      </div>
+
+      <!-- Paginación estilo productos -->
+      <div class="pagination">
+        <button @click="paginaAnterior" :disabled="pagina === 1">
+          <ChevronLeft :size="16" />
+          Anterior
+        </button>
+        <span>Página {{ pagina }} de {{ totalPaginas }}</span>
+        <button @click="paginaSiguiente" :disabled="pagina === totalPaginas">
+          Siguiente
+          <ChevronRight :size="16" />
+        </button>
+      </div>
+
     </div>
 
     <!-- Modal Detalles Licitación -->
@@ -176,9 +217,14 @@
         
         <div class="modal-header">
           <h2>Detalles de Licitación</h2>
-          <span :class="['badge-estado', getEstadoClass(licitacionSeleccionada.estado)]">
-            {{ licitacionSeleccionada.estado }}
-          </span>
+          <div class="modal-header-right">
+            <span :class="['badge-estado', getEstadoClass(licitacionSeleccionada.estado)]">
+              {{ licitacionSeleccionada.estado }}
+            </span>
+            <span v-if="tieneRecomendacion(licitacionSeleccionada)" class="recomendacion-badge-modal">
+              ⭐ RECOMENDADA
+            </span>
+          </div>
         </div>
 
         <div class="detalles-container">
@@ -191,13 +237,49 @@
               <div class="meta-info">
                 <span><strong>Cantidad requerida:</strong> {{ licitacionSeleccionada.cantidad_requerida }} unidades</span>
                 <span><strong>Stock actual:</strong> {{ licitacionSeleccionada.producto_stock }} unidades</span>
-                <span><strong>Fecha creación:</strong> {{ formatDate(licitacionSeleccionada.fecha_creacion) }}</span>
+                <span><strong>Fecha creación:</strong> {{ formatDate(licitacionSeleccionada.fecha_creacion) }} {{ formatHora(licitacionSeleccionada.fecha_creacion) }}</span>
+                <span><strong>Días desde creación:</strong> {{ diasDesdeCreacion(licitacionSeleccionada) }} días</span>
               </div>
             </div>
           </div>
 
+          <!-- Sección de recomendación -->
+          <div class="recomendacion-detalle" v-if="tieneRecomendacion(licitacionSeleccionada)">
+            <div class="recomendacion-header-detalle">
+              <Award :size="18" />
+              <h4>Análisis de Recomendación</h4>
+            </div>
+            <p class="recomendacion-texto">
+              {{ getRecomendacionTexto(licitacionSeleccionada) }}
+            </p>
+            <div class="recomendacion-factores">
+              <span class="factor" v-if="licitacionSeleccionada.producto_stock <= 10">
+                ⚡ Stock crítico
+              </span>
+              <span class="factor" v-if="licitacionSeleccionada.cotizaciones.length >= 3">
+                📈 Múltiples ofertas
+              </span>
+              <span class="factor" v-if="diasDesdeCreacion(licitacionSeleccionada) > 5">
+                ⏰ Urgente por antigüedad
+              </span>
+            </div>
+          </div>
+
           <div class="cotizaciones-section">
-            <h4>Ofertas de Proveedores</h4>
+            <div class="cotizaciones-header">
+              <h4>Ofertas de Proveedores</h4>
+              <div class="cotizaciones-stats">
+                <span class="stat-item">
+                  <strong>Total:</strong> {{ licitacionSeleccionada.cotizaciones.length }}
+                </span>
+                <span class="stat-item">
+                  <strong>Respondidas:</strong> {{ ofertasRespondidas(licitacionSeleccionada) }}
+                </span>
+                <span class="stat-item">
+                  <strong>Mejor precio:</strong> ${{ getMejorPrecio(licitacionSeleccionada)?.toLocaleString() || 'N/A' }}
+                </span>
+              </div>
+            </div>
             
             <div class="table-responsive">
               <table class="users-table detail-table">
@@ -207,13 +289,17 @@
                     <th>Estado</th>
                     <th>Precio Ofertado</th>
                     <th>Tiempo Entrega</th>
+                    <th>Calificación</th>
                     <th v-if="licitacionSeleccionada.estado !== 'CERRADA'">Acción</th>
                     <th v-else>Resultado</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="cotizacion in licitacionSeleccionada.cotizaciones" :key="cotizacion.id" 
-                      :class="{ 'ganadora-row': cotizacion.es_la_mejor }">
+                      :class="{ 
+                        'ganadora-row': cotizacion.es_la_mejor,
+                        'recomendada-oferta': esOfertaRecomendada(cotizacion, licitacionSeleccionada)
+                      }">
                     
                     <td>
                       <span class="font-bold">{{ cotizacion.proveedor_nombre }}</span>
@@ -227,13 +313,30 @@
 
                     <td v-if="cotizacion.respondio" class="precio-cell">
                       ${{ cotizacion.precio_ofrecido.toLocaleString() }}
+                      <span v-if="esMejorPrecio(cotizacion, licitacionSeleccionada)" class="mejor-precio-badge">
+                        💰 Mejor
+                      </span>
                     </td>
                     <td v-else class="text-muted">-</td>
 
                     <td v-if="cotizacion.respondio">
                       {{ cotizacion.dias_entrega }} días hábiles
+                      <span v-if="cotizacion.dias_entrega <= 3" class="entrega-rapida-badge">
+                        🚀 Rápida
+                      </span>
                     </td>
                     <td v-else class="text-muted">-</td>
+
+                    <td>
+                      <div class="calificacion-estrella" v-if="cotizacion.respondio">
+                        <span v-for="n in 5" :key="n" 
+                              :class="['estrella', n <= calcularCalificacion(cotizacion, licitacionSeleccionada) ? 'activa' : '']">
+                          ★
+                        </span>
+                        <span class="puntaje">{{ calcularPuntaje(cotizacion, licitacionSeleccionada).toFixed(1) }}/10</span>
+                      </div>
+                      <span v-else class="text-muted">-</span>
+                    </td>
 
                     <td>
                       <button 
@@ -264,21 +367,29 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
 import { 
   RefreshCw, Search, Box, FileText, CheckCircle, Award, 
-  Trash2, X, Eye, Clock
+  Trash2, X, Eye, Clock, ChevronLeft, ChevronRight
 } from 'lucide-vue-next'
 
 const API_BASE = 'http://127.0.0.1:8000'
 const solicitudes = ref([])
 const cargando = ref(true)
 const generando = ref(null)
-const filtros = ref({ busqueda: '', estado: '' })
+const filtros = ref({ 
+  busqueda: '', 
+  estado: '',
+  orden: 'fecha_desc'
+})
 const mostrarDetalles = ref(false)
 const licitacionSeleccionada = ref({})
+
+// Paginación (7 licitaciones por página como solicitado)
+const pagina = ref(1)
+const itemsPorPagina = 7
 
 // Cargar datos
 const cargarDatos = async () => {
@@ -288,7 +399,10 @@ const cargarDatos = async () => {
     const response = await axios.get(`${API_BASE}/usuarios/api/solicitudes-presupuesto/`, {
       headers: { Authorization: `Token ${token}` }
     })
-    solicitudes.value = response.data
+    // Ordenar por fecha por defecto (más reciente primero)
+    solicitudes.value = response.data.sort((a, b) => 
+      new Date(b.fecha_creacion) - new Date(a.fecha_creacion)
+    )
   } catch (error) {
     console.error("Error:", error)
     Swal.fire('Error', 'No se pudieron cargar las licitaciones', 'error')
@@ -297,14 +411,196 @@ const cargarDatos = async () => {
   }
 }
 
-// Filtrado
+// Filtrado y ordenamiento
 const solicitudesFiltradas = computed(() => {
-  return solicitudes.value.filter(s => {
+  let filtradas = solicitudes.value.filter(s => {
     const matchBusqueda = s.producto_nombre.toLowerCase().includes(filtros.value.busqueda.toLowerCase())
     const matchEstado = !filtros.value.estado || s.estado === filtros.value.estado
     return matchBusqueda && matchEstado
   })
+
+  // Aplicar ordenamiento
+  switch (filtros.value.orden) {
+    case 'fecha_desc':
+      filtradas.sort((a, b) => new Date(b.fecha_creacion) - new Date(a.fecha_creacion))
+      break
+    case 'fecha_asc':
+      filtradas.sort((a, b) => new Date(a.fecha_creacion) - new Date(b.fecha_creacion))
+      break
+    case 'stock':
+      filtradas.sort((a, b) => a.producto_stock - b.producto_stock)
+      break
+    case 'ofertas':
+      filtradas.sort((a, b) => b.cotizaciones.length - a.cotizaciones.length)
+      break
+  }
+
+  return filtradas
 })
+
+// Paginación
+const totalPaginas = computed(() => {
+  return Math.max(1, Math.ceil(solicitudesFiltradas.value.length / itemsPorPagina))
+})
+
+const solicitudesPaginadas = computed(() => {
+  const inicio = (pagina.value - 1) * itemsPorPagina
+  return solicitudesFiltradas.value.slice(inicio, inicio + itemsPorPagina)
+})
+
+const paginaAnterior = () => { 
+  if (pagina.value > 1) pagina.value-- 
+}
+
+const paginaSiguiente = () => { 
+  if (pagina.value < totalPaginas.value) pagina.value++ 
+}
+
+// Licitaciones con recomendación
+const licitacionesConRecomendacion = computed(() => {
+  return solicitudesFiltradas.value.filter(s => tieneRecomendacion(s)).length
+})
+
+// Sistema de recomendación
+const tieneRecomendacion = (solicitud) => {
+  if (solicitud.estado === 'CERRADA') return false
+  
+  const stockCritico = solicitud.producto_stock <= 10
+  const multiplesOfertas = solicitud.cotizaciones.length >= 3
+  const dias = diasDesdeCreacion(solicitud)
+  const urgentePorTiempo = dias > 5
+  
+  return stockCritico || multiplesOfertas || urgentePorTiempo
+}
+
+const getRecomendacionTexto = (solicitud) => {
+  const razones = []
+  
+  if (solicitud.producto_stock <= 10) {
+    razones.push(`Stock crítico (${solicitud.producto_stock} unidades)`)
+  }
+  
+  if (solicitud.cotizaciones.length >= 3) {
+    razones.push(`${solicitud.cotizaciones.length} ofertas recibidas`)
+  }
+  
+  const dias = diasDesdeCreacion(solicitud)
+  if (dias > 5) {
+    razones.push(`Urgente por antigüedad (${dias} días)`)
+  }
+  
+  if (razones.length === 0) return "Sin recomendación específica"
+  
+  return `Prioridad alta: ${razones.join(', ')}.`
+}
+
+const getRecomendacionBreve = (solicitud) => {
+  if (solicitud.producto_stock <= 5) return ' Stock crítico'
+  if (solicitud.producto_stock <= 10) return ' Stock bajo'
+  if (solicitud.cotizaciones.length >= 3) return ' Buenas ofertas'
+  if (diasDesdeCreacion(solicitud) > 5) return ' Urgente'
+  return ''
+}
+
+// Recomendación destacada (para el header)
+const recomendacionActual = computed(() => {
+  const recomendadas = solicitudesFiltradas.value.filter(s => tieneRecomendacion(s))
+  if (recomendadas.length === 0) return "No hay licitaciones con recomendación activa"
+  
+  const masUrgente = recomendadas.sort((a, b) => {
+    const prioridadA = calcularPrioridad(a)
+    const prioridadB = calcularPrioridad(b)
+    return prioridadB - prioridadA
+  })[0]
+  
+  return `Revisar "${masUrgente.producto_nombre}" - ${getRecomendacionBreve(masUrgente)}`
+})
+
+// Análisis de ofertas
+const esMejorPrecio = (cotizacion, solicitud) => {
+  const ofertasValidas = solicitud.cotizaciones.filter(c => c.respondio && c.precio_ofrecido > 0)
+  if (ofertasValidas.length === 0) return false
+  
+  const mejorPrecio = Math.min(...ofertasValidas.map(c => c.precio_ofrecido))
+  return cotizacion.precio_ofrecido === mejorPrecio
+}
+
+const getMejorPrecio = (solicitud) => {
+  const ofertasValidas = solicitud.cotizaciones.filter(c => c.respondio && c.precio_ofrecido > 0)
+  if (ofertasValidas.length === 0) return null
+  
+  return Math.min(...ofertasValidas.map(c => c.precio_ofrecido))
+}
+
+const calcularCalificacion = (cotizacion, solicitud) => {
+  const ofertasValidas = solicitud.cotizaciones.filter(c => c.respondio && c.precio_ofrecido > 0)
+  if (ofertasValidas.length === 0) return 0
+  
+  // Normalizar precio (más bajo = mejor)
+  const precios = ofertasValidas.map(c => c.precio_ofrecido)
+  const minPrecio = Math.min(...precios)
+  const maxPrecio = Math.max(...precios)
+  
+  if (minPrecio === maxPrecio) return 3
+  
+  const puntajePrecio = 1 - ((cotizacion.precio_ofrecido - minPrecio) / (maxPrecio - minPrecio))
+  
+  // Puntaje por tiempo de entrega (más rápido = mejor)
+  const puntajeTiempo = cotizacion.dias_entrega <= 3 ? 1 : 
+                       cotizacion.dias_entrega <= 7 ? 0.7 : 0.4
+  
+  const puntajeTotal = (puntajePrecio * 0.7 + puntajeTiempo * 0.3) * 5
+  return Math.round(puntajeTotal)
+}
+
+const calcularPuntaje = (cotizacion, solicitud) => {
+  const ofertasValidas = solicitud.cotizaciones.filter(c => c.respondio && c.precio_ofrecido > 0)
+  if (ofertasValidas.length === 0) return 0
+  
+  const precios = ofertasValidas.map(c => c.precio_ofrecido)
+  const minPrecio = Math.min(...precios)
+  const maxPrecio = Math.max(...precios)
+  
+  if (minPrecio === maxPrecio) return 5
+  
+  const puntajePrecio = 1 - ((cotizacion.precio_ofrecido - minPrecio) / (maxPrecio - minPrecio))
+  
+  const puntajeTiempo = cotizacion.dias_entrega <= 3 ? 1 : 
+                       cotizacion.dias_entrega <= 7 ? 0.8 : 
+                       cotizacion.dias_entrega <= 14 ? 0.5 : 0.2
+  
+  return (puntajePrecio * 0.7 + puntajeTiempo * 0.3) * 10
+}
+
+const esOfertaRecomendada = (cotizacion, solicitud) => {
+  if (!cotizacion.respondio) return false
+  
+  const puntaje = calcularPuntaje(cotizacion, solicitud)
+  return puntaje >= 7.5
+}
+
+// Funciones auxiliares
+const calcularPrioridad = (solicitud) => {
+  let prioridad = 0
+  if (solicitud.producto_stock <= 5) prioridad += 3
+  else if (solicitud.producto_stock <= 10) prioridad += 2
+  
+  if (solicitud.cotizaciones.length >= 3) prioridad += 2
+  else if (solicitud.cotizaciones.length >= 1) prioridad += 1
+  
+  const dias = diasDesdeCreacion(solicitud)
+  if (dias > 7) prioridad += 3
+  else if (dias > 5) prioridad += 2
+  
+  return prioridad
+}
+
+const diasDesdeCreacion = (solicitud) => {
+  const creada = new Date(solicitud.fecha_creacion)
+  const hoy = new Date()
+  const diffTiempo = hoy - creada
+  return Math.floor(diffTiempo / (1000 * 60 * 60 * 24))
+}
 
 // Estadísticas
 const licitacionesPendientes = computed(() => 
@@ -369,6 +665,10 @@ const mostrarModalAdjudicar = (solicitud) => {
 
 // Helpers
 const formatDate = (date) => new Date(date).toLocaleDateString('es-AR')
+const formatHora = (date) => new Date(date).toLocaleTimeString('es-AR', { 
+  hour: '2-digit', 
+  minute: '2-digit' 
+})
 
 const getEstadoClass = (estado) => {
   if (estado === 'PENDIENTE') return 'estado-warning'
@@ -383,10 +683,15 @@ const getStockClass = (stock) => {
 }
 
 const limpiarFiltros = () => { 
-  filtros.value = { busqueda: '', estado: '' }
+  filtros.value = { busqueda: '', estado: '', orden: 'fecha_desc' }
+  pagina.value = 1
 }
 
 onMounted(() => cargarDatos())
+
+watch(filtros, () => { 
+  pagina.value = 1 
+}, { deep: true })
 </script>
 
 <style scoped>
@@ -481,7 +786,7 @@ onMounted(() => cargarDatos())
 .list-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 35px;
   flex-wrap: wrap;
   gap: 20px;
@@ -489,8 +794,12 @@ onMounted(() => cargarDatos())
   padding-bottom: 25px;
 }
 
+.header-content {
+  flex: 1;
+}
+
 .header-content h1 {
-  margin: 0;
+  margin: 0 0 10px 0;
   font-size: 2.2rem;
   background: linear-gradient(135deg, var(--text-primary), #0ea5e9);
   -webkit-background-clip: text;
@@ -505,6 +814,13 @@ onMounted(() => cargarDatos())
   font-weight: 500;
   margin-top: 8px;
   letter-spacing: 0.5px;
+}
+
+
+.recomendacion-badge {
+  font-weight: 700;
+  color: #f59e0b;
+  margin-right: 8px;
 }
 
 /* Botón registrar */
@@ -700,6 +1016,20 @@ onMounted(() => cargarDatos())
   gap: 6px;
 }
 
+.alerta-recomendacion {
+  background: var(--bg-tertiary);
+  color: #8b5cf6;
+  border: 2px solid #8b5cf6;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* TABLA - CON VARIABLES */
 .table-container {
   overflow-x: auto;
@@ -787,6 +1117,13 @@ onMounted(() => cargarDatos())
 .meta-date {
   font-size: 0.8rem;
   color: var(--text-tertiary);
+  display: block;
+}
+
+.meta-hora {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  display: block;
 }
 
 .meta-info {
@@ -828,9 +1165,37 @@ onMounted(() => cargarDatos())
   font-size: 0.8rem;
 }
 
+/* Recomendaciones en tabla */
+.recomendacion-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recomendacion-indicator {
+  color: #f59e0b;
+  font-size: 1.2rem;
+}
+
+.recomendacion-breve {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.sin-recomendacion {
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+}
+
 .stock-bajo-row {
   background: rgba(245, 158, 11, 0.05);
   border-left: 3px solid #f59e0b;
+}
+
+.recomendada-row {
+  background: rgba(139, 92, 246, 0.05);
+  border-left: 3px solid #8b5cf6;
 }
 
 /* BOTONES DE ACCIÓN - CON VARIABLES */
@@ -966,6 +1331,54 @@ onMounted(() => cargarDatos())
   color: var(--text-tertiary);
 }
 
+/* PAGINACIÓN - CON VARIABLES (ESTILO PRODUCTOS) */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  margin-top: 25px;
+}
+
+.pagination button {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 12px 24px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 800;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pagination button:hover:not(:disabled) {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.pagination button:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  transform: none;
+  border: 1px solid var(--border-color);
+  opacity: 0.5;
+}
+
+.pagination span {
+  color: var(--text-primary);
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  font-size: 0.95rem;
+}
+
 /* OVERLAY Y MODALES - CON VARIABLES */
 .overlay-activo {
   opacity: 0.3;
@@ -1007,7 +1420,7 @@ onMounted(() => cargarDatos())
 
 .modal-detalles {
   width: 90%;
-  max-width: 1000px;
+  max-width: 1100px;
 }
 
 @keyframes slideUp {
@@ -1048,6 +1461,8 @@ onMounted(() => cargarDatos())
   padding: 30px;
   border-bottom: 2px solid var(--border-color);
   background: var(--bg-primary);
+  flex-wrap: wrap;
+  gap: 15px;
 }
 
 .modal-header h2 {
@@ -1055,6 +1470,22 @@ onMounted(() => cargarDatos())
   color: var(--text-primary);
   font-weight: 800;
   font-size: 1.8rem;
+}
+
+.modal-header-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.recomendacion-badge-modal {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(234, 179, 8, 0.1));
+  color: #f59e0b;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  border: 1px solid #f59e0b;
 }
 
 .detalles-container {
@@ -1079,17 +1510,71 @@ onMounted(() => cargarDatos())
   font-weight: 700;
 }
 
+/* Recomendación detalle */
+.recomendacion-detalle {
+  margin-bottom: 30px;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.05), rgba(234, 179, 8, 0.05));
+  border-radius: 12px;
+  border-left: 4px solid #f59e0b;
+}
+
+.recomendacion-texto {
+  margin: 0 0 15px 0;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.recomendacion-factores {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.recomendacion-factores .factor {
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 .cotizaciones-section {
   margin-top: 30px;
 }
 
-.cotizaciones-section h4 {
-  margin: 0 0 20px 0;
+.cotizaciones-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.cotizaciones-header h4 {
+  margin: 0;
   color: var(--text-primary);
   font-size: 1.2rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.cotizaciones-stats {
+  display: flex;
+  gap: 20px;
+  font-size: 0.9rem;
+}
+
+.cotizaciones-stats .stat-item {
+  color: var(--text-secondary);
+}
+
+.cotizaciones-stats .stat-item strong {
+  color: var(--text-primary);
 }
 
 .detail-table {
@@ -1122,6 +1607,32 @@ onMounted(() => cargarDatos())
   border-left: 3px solid #10b981;
 }
 
+.recomendada-oferta {
+  background: rgba(139, 92, 246, 0.05);
+}
+
+.mejor-precio-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.entrega-rapida-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
 .precio-cell {
   font-weight: 800;
   color: var(--text-primary);
@@ -1134,6 +1645,30 @@ onMounted(() => cargarDatos())
 
 .font-bold {
   font-weight: 700;
+}
+
+/* Calificación con estrellas */
+.calificacion-estrella {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.estrella {
+  color: #d1d5db;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.estrella.activa {
+  color: #f59e0b;
+}
+
+.puntaje {
+  margin-left: 8px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 600;
 }
 
 /* SCROLLBAR PERSONALIZADO - CON VARIABLES */
@@ -1225,6 +1760,21 @@ onMounted(() => cargarDatos())
     flex-direction: column;
     gap: 15px;
     align-items: flex-start;
+  }
+  
+  .pagination {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .cotizaciones-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .cotizaciones-stats {
+    flex-direction: column;
+    gap: 8px;
   }
 }
 

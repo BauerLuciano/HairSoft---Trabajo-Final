@@ -1,210 +1,239 @@
 <template>
-  <!-- Tu template permanece exactamente igual -->
-  <div class="pedido-container">
-    <div class="header-section">
-      <h2>
-        <span class="header-icon">💰</span>
-        Registrar Venta de Productos
-      </h2>
-    </div>
-
-    <!-- Filtros de productos -->
-    <div class="card-modern">
-      <div class="card-header">
-        <div class="card-icon">🔍</div>
-        <h3>Filtros de Búsqueda</h3>
-      </div>
-      <div class="input-group">
-        <div class="search-box">
-          <span class="search-icon">🔍</span>
-          <input v-model="filtroNombre" placeholder="Buscar producto por nombre" class="input-modern"/>
+  <!-- FONDO DEGRADADO Y TARJETA BLANCA -->
+  <div class="page-background">
+    <div class="main-card-container">
+      <div class="venta-container">
+        <div class="header-section">
+          <h2>
+            <span class="header-icon">💰</span>
+            Registrar Venta de Productos
+          </h2>
+          <button @click="volverAlListado" class="btn-back">
+            <span>←</span>
+            Volver
+          </button>
         </div>
-        <select v-model="filtroCategoria" class="select-modern">
-          <option value="">Todas las categorías</option>
-          <option v-for="cat in categorias" :key="cat.id" :value="cat.id">{{ cat.nombre }}</option>
-        </select>
-      </div>
-    </div>
 
-    <!-- Lista de productos -->
-    <div class="card-modern">
-      <div class="card-header">
-        <div class="card-icon">📦</div>
-        <h3>Productos Disponibles</h3>
-        <div class="badge-count" v-if="productosFiltrados.length > 0">
-          {{ productosFiltrados.length }} {{ productosFiltrados.length === 1 ? 'producto' : 'productos' }}
-        </div>
-      </div>
-
-      <div v-if="productos.length" class="productos-grid">
-        <div v-for="producto in productosFiltrados" :key="producto.id" class="producto-item" :class="{'sin-stock': producto.stock === 0}">
-          <div class="producto-info">
-            <div class="producto-header">
-              <span class="producto-nombre">{{ producto.nombre }}</span>
-              <span class="producto-precio">${{ producto.precio }}</span>
-            </div>
-            <div class="producto-details">
-              <span class="producto-codigo">
-                <span>ID:</span>
-                <strong>{{ producto.id }}</strong>
-              </span>
-              <span class="producto-categoria">
-                <span>Categoría:</span>
-                <strong>{{ obtenerNombreCategoria(producto.categoria_id) }}</strong>
-              </span>
-              <span class="producto-stock" :class="{
-                'stock-critico': producto.stock === 0, 
-                'stock-bajo': producto.stock > 0 && producto.stock <= 5,
-                'stock-medio': producto.stock > 5 && producto.stock <= 15,
-                'stock-alto': producto.stock > 15
-              }">
-                <span>Stock:</span>
-                <strong>{{ producto.stock }}</strong>
-                <span v-if="producto.stock === 0" class="sin-stock-badge">SIN STOCK</span>
-                <span v-else-if="producto.stock <= 5" class="stock-bajo-badge">BAJO</span>
-                
-                <span v-if="productoEnCarrito(producto.id)" class="stock-carrito-info">
-                  (En carrito: {{ cantidadEnCarrito(producto.id) }})
-                </span>
-              </span>
-            </div>
+        <!-- Filtros de productos -->
+        <div class="card-modern">
+          <div class="card-header">
+            <div class="card-icon">🔍</div>
+            <h3>Filtros de Búsqueda</h3>
           </div>
-          <div class="producto-actions">
-            <div class="control-group">
-              <label for="cantidad">
-                <span>Cantidad:</span>
-              </label>
-              <input 
-                id="cantidad"
-                type="number" 
-                min="1" 
-                :max="stockDisponibleReal(producto)" 
-                v-model.number="cantidades[producto.id]" 
-                :disabled="producto.stock === 0"
-                class="input-cantidad"
-                :class="{'input-disabled': producto.stock === 0}"
-                @change="validarCantidad(producto)"
-              />
-            </div>
-            <button 
-              @click="agregarAlCarrito(producto)" 
-              :disabled="!puedeAgregarAlCarrito(producto)"
-              class="btn-agregar-masivo"
-              :class="{'btn-disabled': !puedeAgregarAlCarrito(producto)}"
-            >
-              {{ obtenerTextoBoton(producto) }}
-            </button>
-          </div>
-        </div>
-      </div>
-      <div v-else class="no-resultados">
-        <div class="no-resultados-icon">📦</div>
-        <p>No hay productos disponibles</p>
-        <small>Intenta ajustar los filtros de búsqueda</small>
-      </div>
-    </div>
-
-    <!-- Carrito Mejorado -->
-    <div class="card-modern">
-      <div class="card-header">
-        <div class="card-icon">🛒</div>
-        <h3>Carrito de Compras</h3>
-        <div class="badge-count" v-if="carrito.length > 0">
-          {{ carrito.length }} {{ carrito.length === 1 ? 'producto' : 'productos' }}
-        </div>
-      </div>
-      
-      <div v-if="carrito.length" class="detalles-list">
-        <div v-for="item in carrito" :key="item.producto.id" class="detalle-item">
-          <div class="detalle-info">
-            <div class="detalle-header">
-              <span class="detalle-nombre">{{ item.producto.nombre }}</span>
-              <span class="detalle-categoria">
-                <span>Categoría:</span>
-                <strong>{{ obtenerNombreCategoria(item.producto.categoria_id) }}</strong>
-              </span>
-            </div>
-            <div class="detalle-details">
-              <span class="detalle-codigo">
-                <span>ID:</span>
-                <strong>{{ item.producto.id }}</strong>
-              </span>
-              <span class="detalle-precio">
-                <span>Precio:</span>
-                <strong>${{ item.producto.precio }}</strong>
-              </span>
-            </div>
-          </div>
-          <div class="detalle-controls">
-            <div class="control-group">
-              <label for="cantidad-carrito">
-                <span>Cantidad:</span>
-              </label>
-              <span class="input-cantidad">{{ item.cantidad }}</span>
-            </div>
-            <div class="detalle-subtotal">
-              <div class="subtotal-label">
-                <span>Subtotal:</span>
+          <div class="input-group">
+            <div class="row-search">
+              <div class="search-wrapper">
+                <span class="search-icon">🔍</span>
+                <input
+                  v-model="filtroNombre"
+                  placeholder="Buscar producto por nombre"
+                  class="input-modern"
+                />
               </div>
-              <div class="subtotal-value">${{ item.subtotal }}</div>
+              <select v-model="filtroCategoria" class="select-modern">
+                <option value="">Todas las categorías</option>
+                <option v-for="cat in categorias" :key="cat.id" :value="cat.id">{{ cat.nombre }}</option>
+              </select>
             </div>
-            <button @click="quitarDelCarrito(item.producto.id)" class="btn-eliminar" title="Quitar del carrito">
-              <span class="trash-icon">🗑️</span>
-            </button>
           </div>
         </div>
-        
-        <!-- Resumen del carrito -->
-        <div class="resumen-pedido">
-          <div class="resumen-grid">
+
+        <!-- Lista de productos -->
+        <div class="card-modern">
+          <div class="card-header">
+            <div class="card-icon">📦</div>
+            <h3>Productos Disponibles</h3>
+            <div class="badge-count" v-if="productosFiltrados.length > 0">
+              {{ productosFiltrados.length }} {{ productosFiltrados.length === 1 ? 'producto' : 'productos' }}
+            </div>
+          </div>
+
+          <div v-if="productos.length" class="productos-grid">
+            <div 
+              v-for="producto in productosFiltrados" 
+              :key="producto.id" 
+              class="card-producto"
+              :class="{
+                'producto-sin-stock': producto.stock === 0,
+                'producto-selected': productoEnCarrito(producto.id)
+              }"
+            >
+              <div class="producto-check" v-if="productoEnCarrito(producto.id)">
+                ✓
+              </div>
+              <div class="producto-content">
+                <div class="producto-header">
+                  <span class="producto-nombre">{{ producto.nombre }}</span>
+                  <span class="producto-precio">${{ producto.precio }}</span>
+                </div>
+                
+                <div class="producto-details">
+                  <div class="detail-chip">
+                    <span>ID:</span>
+                    <strong>{{ producto.id }}</strong>
+                  </div>
+                  <div class="detail-chip">
+                    <span>Categoría:</span>
+                    <strong>{{ obtenerNombreCategoria(producto.categoria_id) }}</strong>
+                  </div>
+                  <div class="detail-chip" :class="{
+                    'stock-critico': producto.stock === 0,
+                    'stock-bajo': producto.stock > 0 && producto.stock <= 5,
+                    'stock-normal': producto.stock > 5
+                  }">
+                    <span>Stock:</span>
+                    <strong>{{ producto.stock }}</strong>
+                    <span v-if="producto.stock === 0" class="stock-badge">SIN STOCK</span>
+                    <span v-else-if="producto.stock <= 5" class="stock-badge">BAJO</span>
+                  </div>
+                </div>
+
+                <div class="producto-controls">
+                  <div class="control-group">
+                    <label for="cantidad">
+                      <span>Cantidad:</span>
+                    </label>
+                    <input 
+                      id="cantidad"
+                      type="number" 
+                      min="1" 
+                      :max="stockDisponibleReal(producto)" 
+                      v-model.number="cantidades[producto.id]" 
+                      :disabled="producto.stock === 0"
+                      class="input-cantidad-small"
+                      :class="{'input-disabled': producto.stock === 0}"
+                      @change="validarCantidad(producto)"
+                    />
+                  </div>
+                  <button 
+                    @click="agregarAlCarrito(producto)" 
+                    :disabled="!puedeAgregarAlCarrito(producto)"
+                    class="btn-agregar-producto"
+                    :class="{'btn-disabled': !puedeAgregarAlCarrito(producto)}"
+                  >
+                    {{ obtenerTextoBoton(producto) }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div v-else class="no-resultados">
+            <div class="no-resultados-icon">📦</div>
+            <p>No hay productos disponibles</p>
+            <small>Intenta ajustar los filtros de búsqueda</small>
+          </div>
+        </div>
+
+        <!-- Carrito de Compras -->
+        <div class="card-modern" v-if="carrito.length > 0">
+          <div class="card-header">
+            <div class="card-icon">🛒</div>
+            <h3>Carrito de Compras</h3>
+            <div class="badge-count">
+              {{ carrito.length }} {{ carrito.length === 1 ? 'producto' : 'productos' }}
+            </div>
+          </div>
+          
+          <div class="detalles-carrito">
+            <div v-for="item in carrito" :key="item.producto.id" class="item-carrito">
+              <div class="item-info">
+                <div class="item-header">
+                  <span class="item-nombre">{{ item.producto.nombre }}</span>
+                  <span class="item-categoria">
+                    {{ obtenerNombreCategoria(item.producto.categoria_id) }}
+                  </span>
+                </div>
+                <div class="item-details">
+                  <div class="detail-small">
+                    <span>ID:</span>
+                    <strong>{{ item.producto.id }}</strong>
+                  </div>
+                  <div class="detail-small">
+                    <span>Precio:</span>
+                    <strong>${{ item.producto.precio }}</strong>
+                  </div>
+                  <div class="detail-small">
+                    <span>Cantidad:</span>
+                    <strong>{{ item.cantidad }}</strong>
+                  </div>
+                </div>
+              </div>
+              <div class="item-actions">
+                <div class="item-subtotal">
+                  <span>Subtotal:</span>
+                  <strong>${{ item.subtotal }}</strong>
+                </div>
+                <button @click="quitarDelCarrito(item.producto.id)" class="btn-eliminar-item" title="Quitar del carrito">
+                  🗑️
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Información de Pago -->
+        <div class="card-modern slide-in" v-if="carrito.length > 0">
+          <div class="card-header">
+            <div class="card-icon">💳</div>
+            <h3>Información de Pago</h3>
+          </div>
+          
+          <div class="resumen-venta">
             <div class="resumen-item total">
-              <span>
-                <span>Total a Pagar:</span>
-              </span>
-              <span>${{ total.toFixed(2) }}</span>
+              <span>Total a Pagar:</span>
+              <strong>${{ total.toFixed(2) }}</strong>
             </div>
           </div>
+
+          <div class="pago-section">
+            <div class="input-group">
+              <label class="label-modern">Método de Pago</label>
+              <select v-model.number="datosVenta.medio_pago" class="select-modern">
+                <option :value="null" disabled>Seleccione método de pago</option>
+                <option v-for="mp in metodosPago" :key="mp.id" :value="mp.id">
+                  {{ mp.nombre }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <button 
+            @click="registrarVenta" 
+            :disabled="!datosVenta.medio_pago || procesandoVenta" 
+            class="btn-confirmar-premium"
+            :class="{'btn-processing': procesandoVenta}"
+          >
+            <span v-if="!procesandoVenta">
+              <span class="btn-icon">💳</span>
+              Registrar Venta - ${{ total.toFixed(2) }}
+            </span>
+            <span v-else>
+              <span class="btn-spinner">⏳</span>
+              Procesando...
+            </span>
+          </button>
         </div>
-      </div>
-      <div v-else class="no-resultados">
-        <div class="no-resultados-icon">🛒</div>
-        <p>Tu carrito está vacío</p>
-        <small>Agrega productos desde la lista arriba</small>
+
+        <!-- Estado vacío del carrito -->
+        <div class="card-modern" v-if="carrito.length === 0">
+          <div class="no-resultados">
+            <div class="no-resultados-icon">🛒</div>
+            <p>Tu carrito está vacío</p>
+            <small>Agrega productos desde la lista arriba</small>
+          </div>
+        </div>
+
+        <!-- Mensajes de confirmación -->
+        <transition name="fade">
+          <div v-if="mensaje" class="toast-message" :class="mensajeTipo">
+            <span v-if="mensajeTipo === 'success'">✅</span>
+            <span v-else>❌</span>
+            {{ mensaje }}
+          </div>
+        </transition>
       </div>
     </div>
-
-    <!-- Selector de pago -->
-    <div class="card-modern">
-      <div class="card-header">
-        <div class="card-icon">💳</div>
-        <h3>Información de Pago</h3>
-      </div>
-      <div class="input-group">
-        <label for="medio_pago" class="info-label">Medio de Pago</label>
-        <select id="medio_pago" v-model.number="datosVenta.medio_pago" class="select-modern">
-          <option :value="null" disabled>Seleccione método de pago</option>
-          <option v-for="mp in metodosPago" :key="mp.id" :value="mp.id">
-            {{ mp.nombre }}
-          </option>
-        </select>
-      </div>
-    </div>
-
-    <button 
-        @click="registrarVenta" 
-        :disabled="carrito.length === 0 || !datosVenta.medio_pago || procesandoVenta" 
-        class="btn-registrar-premium"
-        :class="{'btn-processing': procesandoVenta}"
-    >
-      <span v-if="!procesandoVenta" class="btn-content">
-        <span class="btn-icon">💳</span>
-        Registrar Venta - ${{ total.toFixed(2) }}
-      </span>
-      <span v-else class="btn-content">
-        <span class="btn-spinner">⏳</span>
-        Procesando...
-      </span>
-    </button>
   </div>
 </template>
 
@@ -228,7 +257,8 @@ export default {
             datosVenta: {
                 medio_pago: null
             },
-            debug: true
+            mensaje: '',
+            mensajeTipo: 'success'
         }
     },
     computed: {
@@ -284,7 +314,7 @@ export default {
                 return `Agregar (+${cantidadEnCarrito})`;
             }
             
-            return 'Agregar';
+            return 'Agregar al Carrito';
         },
 
         validarCantidad(producto) {
@@ -293,45 +323,107 @@ export default {
           
           if (cantidad > stockDisponible) {
             this.cantidades[producto.id] = stockDisponible;
-            this.$nextTick(() => {
-              Swal.fire({
-                icon: 'warning',
-                title: 'Cantidad Ajustada',
-                text: `Stock disponible: ${stockDisponible} unidades`,
-                timer: 3000,
-                showConfirmButton: false
-              })
-            });
+            this.mostrarMensaje('Cantidad ajustada al stock disponible', 'info');
           }
         },
 
         async cargarMetodosPago() {
             try {
                 const res = await axios.get(`${API_BASE_URL}/usuarios/api/metodos-pago/`); 
-                this.metodosPago = Array.isArray(res.data) ? res.data : [];
+                const todosMetodos = Array.isArray(res.data) ? res.data : [];
                 
+                // ✅ CORRECCIÓN: Filtrar y agrupar para mostrar SOLO 3 tipos básicos
+                // Igual que en los turnos: EFECTIVO, TARJETA, TRANSFERENCIA
+                
+                // 1. Filtrar solo métodos activos
+                const metodosActivos = todosMetodos.filter(mp => mp.activo !== false);
+                
+                // 2. Mapear a los 3 tipos básicos
+                const metodosAgrupados = [];
+                const tiposUsados = new Set(); // Para evitar duplicados
+                
+                metodosActivos.forEach(mp => {
+                    let tipoMostrar = '';
+                    let idMostrar = mp.id;
+                    
+                    // Determinar el tipo básico según el nombre
+                    if (mp.nombre.toLowerCase().includes('efectivo')) {
+                        tipoMostrar = 'Efectivo';
+                    } 
+                    else if (mp.nombre.toLowerCase().includes('crédito') || 
+                             mp.nombre.toLowerCase().includes('debito') || 
+                             mp.nombre.toLowerCase().includes('débito') || 
+                             mp.nombre.toLowerCase().includes('tarjeta')) {
+                        tipoMostrar = 'Tarjeta';
+                    }
+                    else if (mp.nombre.toLowerCase().includes('mercado') || 
+                             mp.nombre.toLowerCase().includes('transferencia')) {
+                        tipoMostrar = 'Transferencia';
+                    }
+                    
+                    // Solo agregar si encontramos un tipo válido y no está duplicado
+                    if (tipoMostrar && !tiposUsados.has(tipoMostrar)) {
+                        tiposUsados.add(tipoMostrar);
+                        metodosAgrupados.push({
+                            id: idMostrar,
+                            nombre: tipoMostrar,
+                            tipo_original: mp.tipo,
+                            descripcion: mp.descripcion || tipoMostrar,
+                            requiere_confirmacion: mp.requiere_confirmacion || false
+                        });
+                    }
+                });
+                
+                // ✅ Asegurar que tengamos al menos los 3 básicos
+                const tiposNecesarios = ['Efectivo', 'Tarjeta', 'Transferencia'];
+                tiposNecesarios.forEach(tipo => {
+                    if (!tiposUsados.has(tipo)) {
+                        metodosAgrupados.push({
+                            id: metodosAgrupados.length + 1,
+                            nombre: tipo,
+                            tipo_original: tipo.toUpperCase(),
+                            descripcion: tipo,
+                            requiere_confirmacion: tipo === 'Transferencia'
+                        });
+                    }
+                });
+                
+                // Ordenar: Efectivo, Tarjeta, Transferencia
+                const orden = ['Efectivo', 'Tarjeta', 'Transferencia'];
+                this.metodosPago = metodosAgrupados.sort((a, b) => 
+                    orden.indexOf(a.nombre) - orden.indexOf(b.nombre)
+                );
+                
+                // ✅ Establecer Efectivo como seleccionado por defecto
                 if (this.metodosPago.length > 0) {
                     const efectivo = this.metodosPago.find(mp => mp.nombre === 'Efectivo') || this.metodosPago[0];
                     this.datosVenta.medio_pago = efectivo.id;
                 }
+                
+                console.log('✅ Métodos de pago cargados (simplificados):', this.metodosPago);
+                
             } catch (err) { 
                 console.error("❌ Error al cargar métodos de pago:", err);
-                this.metodosPago = [];
+                
+                // ✅ Fallback: Mostrar los 3 básicos aunque falle la API
+                this.metodosPago = [
+                    { id: 1, nombre: 'Efectivo', tipo_original: 'EFECTIVO', descripcion: 'Pago en efectivo', requiere_confirmacion: false },
+                    { id: 2, nombre: 'Tarjeta', tipo_original: 'TARJETA', descripcion: 'Pago con tarjeta', requiere_confirmacion: true },
+                    { id: 3, nombre: 'Transferencia', tipo_original: 'TRANSFERENCIA', descripcion: 'Transferencia bancaria o QR', requiere_confirmacion: true }
+                ];
+                
+                this.datosVenta.medio_pago = 1; // Efectivo por defecto
             }
         },
         
-        // En RegistrarVenta.vue -> methods:
-
         async cargarProductos() {
             try {
                 const res = await axios.get(`${API_BASE_URL}/usuarios/api/productos/`);
                 const datosCrudos = Array.isArray(res.data) ? res.data : [];
                 
-                // 🚨 LA CORRECCIÓN MÁGICA ESTÁ ACÁ ABAJO:
-                // Mapeamos 'stock_actual' (Backend) a 'stock' (Frontend)
                 this.productos = datosCrudos.map(prod => ({
                     ...prod,
-                    stock: prod.stock_actual // <--- ESTO SOLUCIONA EL PROBLEMA
+                    stock: prod.stock_actual
                 }));
 
                 this.inicializarCantidades();
@@ -386,47 +478,25 @@ export default {
             this.actualizarStockVisual(producto.id, -cantidad);
             this.cantidades[producto.id] = 1;
 
-            // Mensaje de éxito al agregar producto
-            Swal.fire({
-                icon: 'success',
-                title: 'Producto Agregado',
-                text: `${producto.nombre} agregado al carrito`,
-                timer: 2000,
-                showConfirmButton: false
-            });
+            this.mostrarMensaje(`${producto.nombre} agregado al carrito`, 'success');
         },
         
         validarStockDisponible(producto, cantidad) {
           if (cantidad < 1) {
-            Swal.fire({
-              icon: 'error',
-              title: 'Error',
-              text: 'La cantidad debe ser al menos 1',
-              confirmButtonText: 'Entendido'
-            })
+            this.mostrarMensaje('La cantidad debe ser al menos 1', 'error');
             return false;
           }
           
           const stockDisponible = this.stockDisponibleReal(producto);
           
           if (cantidad > stockDisponible) {
-            Swal.fire({
-              icon: 'error',
-              title: 'Stock Insuficiente',
-              text: `Solo quedan ${stockDisponible} unidades disponibles`,
-              confirmButtonText: 'Entendido'
-            })
+            this.mostrarMensaje(`Stock insuficiente. Disponible: ${stockDisponible} unidades`, 'error');
             this.cantidades[producto.id] = stockDisponible;
             return false;
           }
           
           if (producto.stock === 0) {
-            Swal.fire({
-              icon: 'error',
-              title: 'Sin Stock',
-              text: 'Este producto no tiene stock disponible',
-              confirmButtonText: 'Entendido'
-            })
+            this.mostrarMensaje('Este producto no tiene stock disponible', 'error');
             return false;
           }
           
@@ -453,14 +523,7 @@ export default {
                 this.actualizarStockVisual(productoId, cantidadDevuelta);
                 this.carrito.splice(itemIndex, 1);
 
-                // Mensaje al quitar producto
-                Swal.fire({
-                    icon: 'info',
-                    title: 'Producto Removido',
-                    text: `${productoNombre} removido del carrito`,
-                    timer: 2000,
-                    showConfirmButton: false
-                });
+                this.mostrarMensaje(`${productoNombre} removido del carrito`, 'info');
             }
         },
         
@@ -501,21 +564,11 @@ export default {
 
         validarVenta() {
           if (this.carrito.length === 0) {
-            Swal.fire({
-              icon: 'warning',
-              title: 'Carrito Vacío',
-              text: 'Debe agregar productos al carrito',
-              confirmButtonText: 'Entendido'
-            })
+            this.mostrarMensaje('Debe agregar productos al carrito', 'warning');
             return false;
           }
           if (!this.datosVenta.medio_pago) {
-            Swal.fire({
-              icon: 'warning',
-              title: 'Método de Pago',
-              text: 'Debe seleccionar un medio de pago',
-              confirmButtonText: 'Entendido'
-            })
+            this.mostrarMensaje('Debe seleccionar un método de pago', 'warning');
             return false;
           }
           return true;
@@ -621,9 +674,9 @@ export default {
             console.log("🧹 Limpiando formulario...");
             this.carrito = [];
             this.datosVenta.medio_pago = null;
-            this.total = 0;
             this.filtroNombre = '';
             this.filtroCategoria = '';
+            this.mostrarMensaje('Venta registrada exitosamente', 'success');
         },
 
         async manejarErrorVenta(err) {
@@ -650,6 +703,19 @@ export default {
             });
             
             await this.cargarProductos();
+        },
+
+        mostrarMensaje(texto, tipo = 'info') {
+            this.mensaje = texto;
+            this.mensajeTipo = tipo;
+            
+            setTimeout(() => {
+                this.mensaje = '';
+            }, 3000);
+        },
+
+        volverAlListado() {
+            this.$emit('volver-al-listado');
         }
     },
     
@@ -663,44 +729,70 @@ export default {
 </script>
 
 <style scoped>
-/* Estilos base mejorados */
-.pedido-container {
-  max-width: 1200px;
+/* ============================================
+   FONDO DE PÁGINA Y CONTENEDOR PRINCIPAL
+   ============================================ */
+.page-background {
+  min-height: 100vh;
+  padding: 0px 1px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.main-card-container {
+  background: white;
+  border-radius: 24px;
+  width: 100%;
+  max-width: 1500px;
   margin: 0 auto;
-  padding: 25px;
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  padding: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.venta-container {
+  width: 100%;
+  padding: 0;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+/* ============================================
+   HEADER SECTION
+   ============================================ */
 .header-section {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 2px solid #f1f3f4;
+  padding: 25px;
+  background: linear-gradient(135deg, #1f2937, #374151);
+  border-radius: 16px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
 }
 
 .header-section h2 {
   margin: 0;
-  color: #1a1a1a;
+  color: white;
   font-size: 1.8em;
   font-weight: 700;
   display: flex;
   align-items: center;
   gap: 12px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-.header-icon {
-  color: #007bff;
+.header-icon { 
+  color: #60a5fa; 
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
 
 .btn-back {
-  background: #6c757d;
+  background: rgba(255, 255, 255, 0.1);
   color: white;
-  border: none;
+  border: 2px solid rgba(255, 255, 255, 0.2);
   padding: 10px 20px;
   border-radius: 8px;
   cursor: pointer;
@@ -709,27 +801,32 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
+  backdrop-filter: blur(10px);
 }
 
-.btn-back:hover {
-  background: #5a6268;
-  transform: translateY(-1px);
+.btn-back:hover { 
+  background: rgba(255, 255, 255, 0.2); 
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px); 
 }
 
-/* Cards modernas */
+/* ============================================
+   CARDS MODERNAS
+   ============================================ */
 .card-modern {
   background: #fff;
   border-radius: 16px;
-  border: 2px solid #a6a6a6;
+  border: 1px solid #e5e7eb;
   padding: 25px;
   margin-bottom: 25px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   transition: all 0.3s ease;
 }
 
 .card-modern:hover {
-  border-color: #007bff;
-  box-shadow: 0 6px 20px rgba(0, 123, 255, 0.15);
+  border-color: #3b82f6;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
 }
 
 .card-header {
@@ -742,535 +839,386 @@ export default {
 }
 
 .card-icon {
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  padding: 10px;
-  border-radius: 10px;
-  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  border-radius: 12px;
+  color: white;
+  box-shadow: 0 6px 12px rgba(59, 130, 246, 0.3);
+  flex-shrink: 0;
+  font-size: 1.2em;
 }
 
 .card-header h3 {
   margin: 0;
-  color: #1a1a1a;
+  color: #1f2937;
   font-size: 1.3em;
   font-weight: 700;
   flex: 1;
+  letter-spacing: -0.5px;
 }
 
 .badge-count {
-  background: linear-gradient(135deg, #28a745, #20c997);
+  background: linear-gradient(135deg, #10b981, #059669);
   color: white;
   padding: 6px 12px;
   border-radius: 20px;
   font-size: 0.9em;
   font-weight: 600;
+  box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
 }
 
-/* Inputs y selects */
+/* ============================================
+   INPUTS Y CONTROLES
+   ============================================ */
 .input-group {
-  margin-bottom: 20px;
-}
-
-.select-modern, .input-modern {
-  width: 100%;
-  padding: 12px 16px;
-  border-radius: 10px;
-  border: 2px solid #e1e5e9;
-  background: #f8f9fa;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  color: #1a1a1a;
-}
-
-.select-modern:focus, .input-modern:focus {
-  border-color: #007bff;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-  outline: none;
-}
-
-/* Info del proveedor */
-.proveedor-info {
-  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-  padding: 20px;
-  border-radius: 12px;
-  border: 1px solid #dee2e6;
-}
-
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 15px;
-}
-
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.info-label {
-  font-weight: 600;
-  color: #495057;
-  font-size: 0.9em;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.info-value {
-  color: #1a1a1a;
-  font-weight: 500;
-  padding-left: 22px;
-}
-
-/* Filtros */
-.filtros-section h4 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #1a1a1a;
   margin-bottom: 15px;
 }
 
-/* Categorías */
-.categorias-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+.row-search {
+  display: flex;
   gap: 12px;
-  margin-bottom: 20px;
-}
-
-.categoria-item {
-  display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 15px;
-  border: 2px solid #e9ecef;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  background: #fff;
 }
 
-.categoria-item:hover {
-  border-color: #007bff;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
-}
-
-.categoria-item.selected {
-  border-color: #007bff;
-  background: #e7f3ff;
-}
-
-.categoria-checkbox {
-  flex-shrink: 0;
-}
-
-.checkmark {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #dee2e6;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-  color: transparent;
-}
-
-.checkmark.checked {
-  background: #007bff;
-  border-color: #007bff;
-  color: white;
-}
-
-.categoria-info {
-  flex: 1;
-}
-
-.categoria-nombre {
-  font-weight: 600;
-  color: #1a1a1a;
-  display: block;
-  margin-bottom: 4px;
-}
-
-.productos-count {
-  font-size: 0.8em;
-  color: #6c757d;
-  background: #f8f9fa;
-  padding: 3px 8px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.filtro-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.btn-outline {
-  background: transparent;
-  border: 2px solid #007bff;
-  color: #007bff;
-  padding: 8px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.btn-outline:hover {
-  background: #007bff;
-  color: white;
-  transform: translateY(-1px);
-}
-
-/* Búsqueda */
-.search-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  gap: 15px;
-}
-
-.search-box {
+.search-wrapper {
   flex: 1;
   position: relative;
 }
 
 .search-icon {
   position: absolute;
-  left: 12px;
+  left: 16px;
   top: 50%;
   transform: translateY(-50%);
-  color: #6c757d;
+  color: #6b7280;
+  font-size: 1.1em;
 }
 
-.search-box .input-modern {
-  padding-left: 40px;
+.input-modern, .select-modern {
+  width: 100%;
+  padding: 14px 16px;
+  padding-left: 46px;
+  border: 2px solid #e1e5e9;
+  border-radius: 10px;
+  background: #f8f9fa;
+  font-size: 15px;
+  transition: all 0.3s ease;
+  color: #1f2937;
 }
 
-.stats-badge {
-  background: linear-gradient(135deg, #6c757d, #5a6268);
-  color: white;
-  padding: 8px 14px;
-  border-radius: 20px;
-  font-size: 0.9em;
+.select-modern {
+  padding-left: 16px;
+}
+
+.input-modern:focus, .select-modern:focus {
+  border-color: #3b82f6;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  outline: none;
+}
+
+.label-modern {
+  display: block;
   font-weight: 600;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  margin-bottom: 10px;
+  color: #1f2937;
+  font-size: 1rem;
 }
 
-/* Productos */
+/* ============================================
+   PRODUCTOS GRID
+   ============================================ */
 .productos-grid {
   display: grid;
-  gap: 12px;
-  margin-bottom: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
 }
 
-.producto-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  border: 2px solid #e9ecef;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
+.card-producto {
   background: #fff;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  position: relative;
+  transition: all 0.3s ease;
+  overflow: hidden;
 }
 
-.producto-item:hover {
-  border-color: #007bff;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
+.card-producto:hover {
+  border-color: #3b82f6;
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.15);
 }
 
-.producto-item.selected {
-  border-color: #007bff;
-  background: #e7f3ff;
+.producto-selected {
+  border-color: #10b981;
+  background: #f0fdf4;
 }
 
-.producto-checkbox {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #dee2e6;
-  border-radius: 6px;
+.producto-sin-stock {
+  opacity: 0.7;
+  background: #f3f4f6;
+}
+
+.producto-check {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  background: #10b981;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
-  color: transparent;
-  flex-shrink: 0;
-}
-
-.producto-checkbox.checked {
-  background: #007bff;
-  border-color: #007bff;
   color: white;
+  font-weight: bold;
 }
 
-.producto-info {
-  flex: 1;
+.producto-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .producto-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 8px;
 }
 
 .producto-nombre {
-  font-weight: 600;
-  color: #1a1a1a;
+  font-weight: 700;
+  color: #1f2937;
+  font-size: 1.1rem;
   flex: 1;
   margin-right: 10px;
 }
 
 .producto-precio {
-  color: #28a745;
+  color: #059669;
   font-weight: 700;
-  font-size: 1.1em;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 2px;
+  font-size: 1.2rem;
 }
 
 .producto-details {
   display: flex;
-  gap: 12px;
-  align-items: center;
   flex-wrap: wrap;
+  gap: 8px;
 }
 
-.producto-codigo, .producto-stock, .producto-categoria {
-  font-size: 0.85em;
+.detail-chip {
+  background: #f3f4f6;
+  color: #6b7280;
   padding: 4px 8px;
   border-radius: 6px;
+  font-size: 0.85em;
   font-weight: 500;
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 
-.producto-codigo {
-  background: #f8f9fa;
-  color: #6c757d;
-  border: 1px solid #e9ecef;
+.detail-chip.stock-critico {
+  background: #fee2e2;
+  color: #dc2626;
 }
 
-.producto-categoria {
-  background: #e7f3ff;
-  color: #0056b3;
-  border: 1px solid #b3d9ff;
+.detail-chip.stock-bajo {
+  background: #fef3c7;
+  color: #d97706;
 }
 
-.stock-critico {
-  background: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
+.detail-chip.stock-normal {
+  background: #d1fae5;
+  color: #059669;
 }
 
-.stock-bajo {
-  background: #fff3cd;
-  color: #856404;
-  border: 1px solid #ffeaa7;
+.stock-badge {
+  font-size: 0.8em;
+  font-weight: 700;
+  margin-left: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
-.stock-medio {
-  background: #d1ecf1;
-  color: #0c5460;
-  border: 1px solid #bee5eb;
+.stock-critico .stock-badge {
+  background: #dc2626;
+  color: white;
 }
 
-.stock-alto {
-  background: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
+.stock-bajo .stock-badge {
+  background: #d97706;
+  color: white;
 }
 
-.agregar-section {
-  margin-top: 20px;
+.producto-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.control-group label {
+  font-size: 0.85em;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.input-cantidad-small {
+  width: 70px;
   text-align: center;
+  padding: 8px;
+  border: 2px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  font-weight: 600;
+  color: #1f2937;
 }
 
-.btn-agregar-masivo {
-  background: linear-gradient(135deg, #28a745, #20c997);
+.input-cantidad-small:focus {
+  border-color: #3b82f6;
+  outline: none;
+}
+
+.input-cantidad-small.input-disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.btn-agregar-producto {
+  flex: 1;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
   color: white;
   border: none;
-  padding: 15px 30px;
-  border-radius: 10px;
+  padding: 10px 16px;
+  border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 1em;
+  font-size: 0.9em;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 6px;
 }
 
-.btn-agregar-masivo:hover {
+.btn-agregar-producto:hover:not(.btn-disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
-.btn-agregar-masivo.btn-disabled {
-  background: #6c757d;
+.btn-agregar-producto.btn-disabled {
+  background: #9ca3af;
   cursor: not-allowed;
   opacity: 0.6;
   transform: none;
 }
 
-/* Detalles del pedido */
-.detalles-list {
+/* ============================================
+   CARRITO DE COMPRAS
+   ============================================ */
+.detalles-carrito {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 12px;
 }
 
-.detalle-item {
+.item-carrito {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
+  padding: 16px;
   background: #f8f9fa;
   border-radius: 12px;
   border: 1px solid #e9ecef;
   transition: all 0.3s ease;
 }
 
-.detalle-item:hover {
-  border-color: #007bff;
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
+.item-carrito:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
 }
 
-.detalle-info {
+.item-info {
   flex: 1;
 }
 
-.detalle-header {
+.item-header {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
 }
 
-.detalle-nombre {
+.item-nombre {
   font-weight: 600;
-  color: #1a1a1a;
-  font-size: 1.1em;
+  color: #1f2937;
+  font-size: 1.05em;
 }
 
-.detalle-categoria {
+.item-categoria {
   background: #e7f3ff;
-  color: #0056b3;
+  color: #1d4ed8;
   padding: 4px 8px;
   border-radius: 6px;
   font-size: 0.8em;
   font-weight: 500;
   border: 1px solid #b3d9ff;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
 }
 
-.detalle-details {
+.item-details {
   display: flex;
-  gap: 15px;
+  gap: 12px;
   align-items: center;
 }
 
-.detalle-codigo, .detalle-precio {
+.detail-small {
   font-size: 0.9em;
-  color: #6c757d;
+  color: #6b7280;
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.detalle-controls {
+.item-actions {
   display: flex;
   align-items: center;
   gap: 20px;
 }
 
-.control-group {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  align-items: center;
-}
-
-.control-group label {
-  font-size: 0.8em;
-  color: #6c757d;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.input-cantidad, .input-precio {
-  width: 80px;
-  text-align: center;
-  padding: 8px;
-  border: 2px solid #e9ecef;
-  border-radius: 6px;
-  background: #fff;
-  font-weight: 600;
-  color: #1a1a1a;
-}
-
-.input-cantidad:focus, .input-precio:focus {
-  border-color: #007bff;
-  outline: none;
-}
-
-.input-cantidad.input-disabled {
-  background-color: #e9ecef;
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.detalle-subtotal {
+.item-subtotal {
   text-align: center;
   min-width: 100px;
 }
 
-.subtotal-label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  font-size: 0.8em;
-  color: #6c757d;
+.item-subtotal span {
+  display: block;
+  font-size: 0.85em;
+  color: #6b7280;
   margin-bottom: 4px;
 }
 
-.subtotal-value {
+.item-subtotal strong {
   font-weight: 700;
-  color: #28a745;
+  color: #059669;
   font-size: 1.1em;
 }
 
-.btn-eliminar {
-  background: linear-gradient(135deg, #dc3545, #c82333);
+.btn-eliminar-item {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
   color: white;
   border: none;
   padding: 10px;
@@ -1280,151 +1228,89 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 44px;
+  height: 44px;
 }
 
-.btn-eliminar:hover {
+.btn-eliminar-item:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
 }
 
-/* Resumen */
-.resumen-pedido {
-  margin-top: 25px;
+/* ============================================
+   RESUMEN Y PAGO
+   ============================================ */
+.resumen-venta {
+  margin: 20px 0;
   padding: 20px;
-  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  background: #f8fafc;
   border-radius: 12px;
-  border: 2px solid #e9ecef;
-}
-
-.resumen-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 15px;
+  border: 2px solid #e5e7eb;
 }
 
 .resumen-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  color: #1a1a1a;
-  font-size: 1em;
-}
-
-.resumen-item span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e5e7eb;
+  color: #1f2937;
 }
 
 .resumen-item.total {
-  border-top: 2px solid #dee2e6;
-  margin-top: 10px;
-  padding-top: 15px;
-  font-size: 1.2em;
+  font-size: 1.3em;
   font-weight: 700;
+  border-top: 2px solid #e5e7eb;
+  margin-top: 15px;
+  padding-top: 15px;
+  border-bottom: none;
 }
 
-/* Textarea */
-.textarea-modern {
+.pago-section {
+  margin: 25px 0;
+}
+
+/* ============================================
+   BOTÓN FINAL PREMIUM
+   ============================================ */
+.btn-confirmar-premium {
   width: 100%;
-  padding: 15px;
-  border: 2px solid #e9ecef;
-  border-radius: 10px;
-  background: #f8f9fa;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  color: #1a1a1a;
-  resize: vertical;
-  min-height: 80px;
-}
-
-.textarea-modern:focus {
-  border-color: #007bff;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-  outline: none;
-}
-
-.textarea-footer {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 8px;
-}
-
-.textarea-footer small {
-  color: #6c757d;
-  font-size: 0.8em;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* Estados vacíos */
-.no-resultados, .seleccion-categoria {
-  text-align: center;
-  padding: 40px 20px;
-  color: #6c757d;
-}
-
-.no-resultados-icon, .seleccion-icon {
-  margin-bottom: 15px;
-  opacity: 0.5;
-  color: #6c757d;
-}
-
-.no-resultados p, .seleccion-categoria p {
-  margin: 0 0 8px 0;
-  font-size: 1.1em;
-  color: #1a1a1a;
-}
-
-.no-resultados small, .seleccion-categoria small {
-  font-size: 0.9em;
-  color: #6c757d;
-}
-
-/* Botón final premium */
-.btn-registrar-premium {
-  width: 100%;
-  background: linear-gradient(135deg, #007bff, #0056b3);
+  background: linear-gradient(135deg, #059669, #047857);
   color: white;
-  font-size: 1.1em;
   padding: 18px;
   border: none;
   border-radius: 12px;
+  font-size: 1.1em;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.3s ease;
-  margin-top: 25px;
-  font-weight: 600;
-  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
-  position: relative;
-  overflow: hidden;
-}
-
-.btn-registrar-premium:hover:not(:disabled):not(.btn-processing) {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4);
-  background: linear-gradient(135deg, #0056b3, #004085);
-}
-
-.btn-registrar-premium:disabled,
-.btn-registrar-premium.btn-processing {
-  background: #6c757d;
-  cursor: not-allowed;
-  opacity: 0.7;
-  transform: none;
-}
-
-.btn-content {
+  letter-spacing: 0.5px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
 }
 
+.btn-confirmar-premium:hover:not(.btn-processing):not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 25px rgba(5, 150, 105, 0.4);
+  background: linear-gradient(135deg, #047857, #065f46);
+}
+
+.btn-confirmar-premium:disabled,
+.btn-confirmar-premium.btn-processing {
+  background: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+  opacity: 0.7;
+}
+
+.btn-icon {
+  font-size: 1.2em;
+}
+
 .btn-spinner {
   animation: spin 1s linear infinite;
+  font-size: 1.2em;
 }
 
 @keyframes spin {
@@ -1432,52 +1318,197 @@ export default {
   100% { transform: rotate(360deg); }
 }
 
-/* Responsive */
+/* ============================================
+   ESTADOS VACÍOS
+   ============================================ */
+.no-resultados {
+  text-align: center;
+  padding: 50px 20px;
+  color: #6b7280;
+}
+
+.no-resultados-icon {
+  opacity: 0.4;
+  margin-bottom: 15px;
+  font-size: 3em;
+  color: #9ca3af;
+}
+
+.no-resultados p {
+  margin: 0 0 8px 0;
+  font-size: 1.1em;
+  color: #1f2937;
+}
+
+.no-resultados small {
+  font-size: 0.9em;
+  color: #6b7280;
+}
+
+/* ============================================
+   TOAST MESSAGES
+   ============================================ */
+.toast-message {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  padding: 18px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 9999;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.25);
+  min-width: 300px;
+  backdrop-filter: blur(10px);
+}
+
+.toast-message.success {
+  background: rgba(16, 185, 129, 0.95);
+  color: white;
+  border-left: 4px solid #059669;
+}
+
+.toast-message.error {
+  background: rgba(239, 68, 68, 0.95);
+  color: white;
+  border-left: 4px solid #dc2626;
+}
+
+.toast-message.warning {
+  background: rgba(245, 158, 11, 0.95);
+  color: white;
+  border-left: 4px solid #d97706;
+}
+
+.toast-message.info {
+  background: rgba(59, 130, 246, 0.95);
+  color: white;
+  border-left: 4px solid #1d4ed8;
+}
+
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.5s ease;
+}
+
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+
+/* ============================================
+   ANIMACIONES
+   ============================================ */
+.slide-in {
+  animation: slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 1024px) {
+  .main-card-container {
+    padding: 30px;
+    margin: 20px;
+  }
+  
+  .productos-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+}
+
 @media (max-width: 768px) {
-  .pedido-container {
-    padding: 15px;
+  .page-background {
+    padding: 20px 15px;
+  }
+  
+  .main-card-container {
+    padding: 25px;
+    border-radius: 20px;
   }
   
   .header-section {
     flex-direction: column;
-    gap: 15px;
     align-items: stretch;
+    gap: 20px;
+    padding: 20px;
   }
   
-  .search-header {
-    flex-direction: column;
-    align-items: stretch;
+  .btn-back {
+    width: 100%;
+    justify-content: center;
   }
   
-  .detalle-item {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 15px;
-  }
-  
-  .detalle-controls {
-    justify-content: space-between;
-    flex-wrap: wrap;
-  }
-  
-  .categorias-grid {
+  .productos-grid {
     grid-template-columns: 1fr;
   }
   
-  .info-grid {
-    grid-template-columns: 1fr;
+  .row-search {
+    flex-direction: column;
   }
   
-  .producto-item {
+  .item-carrito {
     flex-direction: column;
     align-items: stretch;
     gap: 15px;
   }
   
-  .producto-actions {
-    display: flex;
+  .item-actions {
     justify-content: space-between;
-    align-items: center;
+    width: 100%;
+  }
+  
+  .toast-message {
+    left: 15px;
+    right: 15px;
+    bottom: 15px;
+    min-width: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-background {
+    padding: 15px 10px;
+  }
+  
+  .main-card-container {
+    padding: 20px;
+    border-radius: 16px;
+  }
+  
+  .card-modern {
+    padding: 20px;
+  }
+  
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .card-icon {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .producto-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .btn-agregar-producto {
+    width: 100%;
   }
 }
 </style>

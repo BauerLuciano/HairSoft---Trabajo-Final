@@ -40,9 +40,9 @@ const routes = [
   { path: '/dashboard', name: 'Dashboard', component: () => import('@/views/Dashboard.vue') },
 
   //Marcas
-  { path: '/marcas', name: 'ListadoMarcas', component: () => import('@/views/productos/ListadoMarcas.vue') },
-  { path: '/marcas/crear', name: 'RegistrarMarca', component: () => import('@/views/productos/RegistrarMarca.vue') },
-  { path: '/marcas/modificar/:id', name: 'ModificarMarca', component: () => import('@/views/productos/RegistrarMarca.vue'), props: true },
+  { path: '/productos/marcas', name: 'ListadoMarcas', component: () => import('@/views/productos/ListadoMarcas.vue') },
+  { path: '/productos/marcas/crear', name: 'RegistrarMarca', component: () => import('@/views/productos/RegistrarMarca.vue') },
+  { path: '/productos/marcas/modificar/:id', name: 'ModificarMarca', component: () => import('@/views/productos/ModificarMarca.vue'), props: true },
 
 
    // ================================

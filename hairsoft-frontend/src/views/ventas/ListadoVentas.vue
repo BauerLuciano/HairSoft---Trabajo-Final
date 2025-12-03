@@ -206,9 +206,6 @@
     <!-- Modales -->
     <div v-if="mostrarRegistrar" class="modal-overlay" @click.self="cerrarModal">
       <div class="modal-content">
-        <button class="modal-close" @click="cerrarModal" title="Cerrar formulario">
-          <X :size="20" />
-        </button>
         <RegistrarVenta 
           @venta-registrada="procesarVentaRegistrada" 
           @venta-completada="cerrarModal"
@@ -1425,17 +1422,16 @@ const getClaseEstadoVenta = (anulada) => {
 
 .modal-content {
   position: relative;
-  animation: slideUp 0.3s ease;
-  max-height: 85vh;
-  max-width: 90vw;
+  max-height: 88vh;
+  max-width: 100vw;
   width: auto;
   overflow-y: auto;
   border-radius: 16px;
   background: var(--bg-secondary);
   box-shadow: var(--shadow-lg);
   border: 2px solid var(--border-color);
-  padding: 0;
-  margin: 20px;
+  padding: 0px;
+  margin: 90px;
 }
 
 @keyframes slideUp {
@@ -1474,7 +1470,7 @@ const getClaseEstadoVenta = (anulada) => {
 /* SCROLLBAR PERSONALIZADO - CON VARIABLES */
 .modal-content::-webkit-scrollbar,
 .table-container::-webkit-scrollbar {
-  width: 12px;
+  width: 2px;
   height: 12px;
 }
 

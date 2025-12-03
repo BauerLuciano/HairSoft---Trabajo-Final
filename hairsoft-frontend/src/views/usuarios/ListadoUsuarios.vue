@@ -797,10 +797,7 @@ watch(filtros, () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
   color: var(--error-color);
-  box-shadow: var(--shadow-md);
-  transition: all 0.3s ease;
   z-index: 1001;
 }
 

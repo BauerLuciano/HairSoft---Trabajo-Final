@@ -170,15 +170,20 @@ class Proveedor(models.Model):
 # MARCAS DE PRODUCTOS
 # ===============================
 class Marca(models.Model):
-    nombre = models.CharField(max_length=100, unique=True)
+    ESTADOS = (
+        ('activo', 'Activo'),
+        ('inactivo', 'Inactivo'),
+    )
+    
+    nombre = models.CharField(max_length=100)
+    descripcion = models.TextField(blank=True, null=True)
+    estado = models.CharField(max_length=10, choices=ESTADOS, default='activo')
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+    proveedores = models.ManyToManyField('Proveedor', blank=True, related_name='marcas')
 
     def __str__(self):
         return self.nombre
-
-    class Meta:
-        db_table = "marcas"
-        verbose_name = "Marca"
-        verbose_name_plural = "Marcas"
 
 # ===============================
 # PRODUCTOS

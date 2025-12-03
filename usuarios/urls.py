@@ -33,7 +33,6 @@ from .views import (
     validar_cupon
 )
 
-
 # ================================
 # Configuración de ViewSet para Ventas
 # ================================
@@ -54,6 +53,14 @@ urlpatterns = [
     path('api/me/', func_views.me_api_view, name='me_api_view'), 
     path('api/usuario_actual/', func_views.me_api_view, name='usuario_actual'),
     path('usuarios/api/me/', func_views.me_api_view, name='me_api_view_alias'),
+
+    # ================================
+    # ✅✅✅ MARCAS - MOVIDAS AL PRINCIPIO PARA EVITAR CONFLICTOS
+    # ================================
+    path('api/marcas/', func_views.listar_marcas, name='listar_marcas'),
+    path('api/marcas/crear/', func_views.crear_marca, name='crear_marca'),
+    path('api/marcas/<int:pk>/cambiar_estado/', func_views.cambiar_estado_marca, name='cambiar_estado_marca'),
+    path('api/marcas/<int:pk>/', func_views.eliminar_marca, name='eliminar_marca'),
 
     # ================================
     # Usuarios (USAN FUNCIONES)
@@ -103,6 +110,7 @@ urlpatterns = [
     path('api/turnos/verificar-disponibilidad/', func_views.verificar_disponibilidad, name='verificar_disponibilidad'),
     path('api/turnos/cancelar-propio/<int:turno_id>/', func_views.cancelar_mi_turno, name='cancelar_mi_turno'),
     path('api/turnos/<int:turno_id>/cambiar-estado/<str:nuevo_estado>/', func_views.cambiar_estado_turno, name='cambiar_estado_turno'),
+    path('api/turnos/<int:turno_id>/', func_views.obtener_turno_por_id, name='obtener_turno_por_id'),
 
     # ================================
     # ✅✅✅ RUTA CRÍTICA FALTANTE - REGISTRAR INTERÉS
@@ -178,7 +186,7 @@ urlpatterns = [
 
     # Propuesta y confirmación de precios
     path('api/pedidos/<int:pedido_id>/proponer-precios/', func_views.proponer_precios, name='proponer-precios'),
-    path('api/pedidos/<int:pedido_id>/confirmar-precios/', func_views.confirmar_precios, name='confirmar-precios'),
+    path('api/pedidos/<int:pedido_id>/confirmar-precios/', func_views.confirmar_precios, name='confirmar_precios'),
 
     # ================================
     # LISTAS DE PRECIOS DE PROVEEDORES
@@ -235,20 +243,21 @@ urlpatterns = [
     path('api/reoferta/respuesta/<int:interes_id>/', func_views.procesar_respuesta_oferta, name='procesar-respuesta-oferta'),
     path('api/turnos/<int:turno_id>/oferta-info/<str:token>/', func_views.obtener_info_oferta, name='oferta_info'),
     path('api/turnos/<int:turno_id>/interesados/', contar_interesados, name='contar_interesados'),
+    
     # ================================
     # OTRAS RUTAS
     # ================================
     path('api/turnos/ocupados/', turnos_ocupados, name='turnos_ocupados'),
     path('api/cotizacion-externa/<str:token>/', gestionar_cotizacion_externa, name='cotizacion_externa'),
     path('api/dashboard/', func_views.dashboard_data, name='dashboard_data'),
-    path('api/marcas/', func_views.listar_marcas, name='listar_marcas'),
-    path('api/marcas/crear/', func_views.crear_marca, name='crear_marca'),
 
+    # ================================
     # ✅ RUTAS PARA EL admin
+    # ================================
     path('api/solicitudes-presupuesto/', SolicitudPresupuestoViewSet.as_view({'get': 'list'}), name='solicitudes-list'),
     path('api/solicitudes-presupuesto/<int:pk>/', SolicitudPresupuestoViewSet.as_view({'get': 'retrieve'}), name='solicitudes-detail'),
     path('api/solicitudes-presupuesto/<int:pk>/generar-orden/', SolicitudPresupuestoViewSet.as_view({'post': 'generar_orden_compra'}), name='solicitudes-generar-orden'),
 
-    # ✅ RUTA PARA VALIDAR CUPÓN (Agregala si no está)
+    # ✅ RUTA PARA VALIDAR CUPÓN
     path('api/promociones/validar/<str:codigo>/', validar_cupon, name='validar_cupon'),
 ]

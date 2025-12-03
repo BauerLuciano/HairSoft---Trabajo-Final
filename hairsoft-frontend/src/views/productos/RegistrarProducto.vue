@@ -31,7 +31,10 @@
           required
           placeholder="Ingrese el nombre del producto"
           class="input-modern"
+          @blur="validarNombre"
+          :class="{ 'campo-invalido': errores.nombre }"
         />
+        <div class="mensaje-error" v-if="errores.nombre">{{ errores.nombre }}</div>
       </div>
 
       <div class="form-grid">
@@ -45,12 +48,15 @@
             required
             class="select-modern"
             :disabled="cargandoMarcas || marcas.length === 0"
+            @blur="validarMarca"
+            :class="{ 'campo-invalido': errores.marca }"
           >
             <option value="">Seleccione una marca</option>
             <option v-for="marca in marcas" :key="marca.id" :value="marca.id">
               {{ marca.nombre }}
             </option>
           </select>
+          <div class="mensaje-error" v-if="errores.marca">{{ errores.marca }}</div>
         </div>
 
         <div class="input-group">
@@ -63,12 +69,15 @@
             required
             class="select-modern"
             :disabled="cargandoCategorias || categoriasProductos.length === 0"
+            @blur="validarCategoria"
+            :class="{ 'campo-invalido': errores.categoria }"
           >
             <option value="">Seleccione una categoría</option>
             <option v-for="categoria in categoriasProductos" :key="categoria.id" :value="categoria.id">
               {{ categoria.nombre }}
             </option>
           </select>
+          <div class="mensaje-error" v-if="errores.categoria">{{ errores.categoria }}</div>
         </div>
       </div>
 
@@ -84,6 +93,7 @@
           readonly
           class="input-modern readonly"
         />
+        <div class="mensaje-ayuda">Código generado automáticamente según la categoría</div>
       </div>
 
       <div class="input-group">
@@ -123,7 +133,10 @@
             required
             placeholder="0.00"
             class="input-modern"
+            @blur="validarPrecio"
+            :class="{ 'campo-invalido': errores.precio }"
           />
+          <div class="mensaje-error" v-if="errores.precio">{{ errores.precio }}</div>
         </div>
 
         <div class="input-group">
@@ -138,7 +151,10 @@
             required
             placeholder="0"
             class="input-modern"
+            @blur="validarStock"
+            :class="{ 'campo-invalido': errores.stock }"
           />
+          <div class="mensaje-error" v-if="errores.stock">{{ errores.stock }}</div>
         </div>
       </div>
     </div>
@@ -192,8 +208,15 @@
           </div>
         </div>
         
-        <div class="form-help" :class="{ 'error': producto.proveedores_seleccionados.length === 0 && proveedoresActivos.length > 0 }">
-          {{ producto.proveedores_seleccionados.length === 0 && proveedoresActivos.length > 0 ? '❌ Seleccione al menos un proveedor' : `✅ ${producto.proveedores_seleccionados.length} proveedor(es) seleccionado(s)` }}
+        <div class="mensaje-error" v-if="errores.proveedores">
+          <span class="icono-error">!</span>
+          {{ errores.proveedores }}
+        </div>
+        <div class="mensaje-ayuda" v-else-if="producto.proveedores_seleccionados.length > 0">
+          ✅ {{ producto.proveedores_seleccionados.length }} proveedor(es) seleccionado(s)
+        </div>
+        <div class="mensaje-ayuda" v-else>
+          Seleccione al menos un proveedor
         </div>
       </div>
     </div>
@@ -220,6 +243,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import axios from 'axios'
+import Swal from 'sweetalert2'
 import { 
   Package, ArrowLeft, ClipboardList, Tag, Award, Layers, 
   Barcode, FileText, DollarSign, Truck, User, Phone, 
@@ -240,6 +264,16 @@ const producto = ref({
   proveedores_seleccionados: []
 })
 
+// 📌 Errores por campo
+const errores = ref({
+  nombre: '',
+  marca: '',
+  categoria: '',
+  precio: '',
+  stock: '',
+  proveedores: ''
+})
+
 const categorias = ref([])
 const proveedores = ref([])
 const marcas = ref([])
@@ -249,15 +283,80 @@ const cargandoCategorias = ref(false)
 const cargandoProveedores = ref(false)
 const cargandoMarcas = ref(false)
 
-const formularioValido = computed(() =>
-  producto.value.nombre.trim() &&
-  producto.value.precio > 0 &&
-  producto.value.stock_actual >= 0 &&
-  producto.value.categoria &&
-  producto.value.marca &&
-  producto.value.codigo &&
-  producto.value.proveedores_seleccionados.length > 0
-)
+// ------------------------------
+// VALIDACIONES POR CAMPO (SOLO EN BLUR)
+// ------------------------------
+const validarNombre = () => {
+  const valor = producto.value.nombre.trim()
+  if (!valor) {
+    errores.value.nombre = "El nombre es obligatorio"
+  } else if (valor.length < 2) {
+    errores.value.nombre = "El nombre debe tener al menos 2 caracteres"
+  } else if (valor.length > 100) {
+    errores.value.nombre = "El nombre no puede exceder los 100 caracteres"
+  } else {
+    errores.value.nombre = ""
+  }
+}
+
+const validarMarca = () => {
+  if (!producto.value.marca) {
+    errores.value.marca = "Seleccione una marca"
+  } else {
+    errores.value.marca = ""
+  }
+}
+
+const validarCategoria = () => {
+  if (!producto.value.categoria) {
+    errores.value.categoria = "Seleccione una categoría"
+  } else {
+    errores.value.categoria = ""
+  }
+}
+
+const validarPrecio = () => {
+  const precio = producto.value.precio
+  if (!precio || precio <= 0) {
+    errores.value.precio = "El precio debe ser mayor a 0"
+  } else if (precio > 1000000) {
+    errores.value.precio = "El precio no puede exceder 1,000,000"
+  } else {
+    errores.value.precio = ""
+  }
+}
+
+const validarStock = () => {
+  const stock = producto.value.stock_actual
+  if (stock === null || stock === undefined || stock < 0) {
+    errores.value.stock = "El stock no puede ser negativo"
+  } else if (stock > 1000000) {
+    errores.value.stock = "El stock no puede exceder 1,000,000"
+  } else {
+    errores.value.stock = ""
+  }
+}
+
+const validarProveedores = () => {
+  if (producto.value.proveedores_seleccionados.length === 0 && proveedoresActivos.value.length > 0) {
+    errores.value.proveedores = "Seleccione al menos un proveedor"
+  } else {
+    errores.value.proveedores = ""
+  }
+}
+
+const formularioValido = computed(() => {
+  return (
+    producto.value.nombre.trim() &&
+    producto.value.precio > 0 &&
+    producto.value.stock_actual >= 0 &&
+    producto.value.categoria &&
+    producto.value.marca &&
+    producto.value.codigo &&
+    producto.value.proveedores_seleccionados.length > 0 &&
+    Object.values(errores.value).every(error => !error)
+  )
+})
 
 const categoriasProductos = computed(() => categorias.value)
 const proveedoresActivos = computed(() =>
@@ -272,6 +371,7 @@ const toggleProveedor = (proveedorId) => {
   } else {
     producto.value.proveedores_seleccionados.push(proveedorId)
   }
+  validarProveedores()
 }
 
 // ================================
@@ -365,19 +465,40 @@ const cargarDatos = async () => {
 // WATCHER
 // ================================
 watch(() => producto.value.categoria, (newVal) => {
-  if (newVal) generarCodigo(Number(newVal))
+  if (newVal) {
+    generarCodigo(Number(newVal))
+    validarCategoria()
+  }
 })
+
+// ================================
+// VALIDAR FORMULARIO COMPLETO
+// ================================
+const validarFormulario = () => {
+  validarNombre()
+  validarMarca()
+  validarCategoria()
+  validarPrecio()
+  validarStock()
+  validarProveedores()
+
+  // Verificar si hay algún error
+  return Object.values(errores.value).every(error => !error)
+}
 
 // ================================
 // REGISTRAR PRODUCTO
 // ================================
 const registrarProducto = async () => {
-  if (!formularioValido.value) {
-    if (producto.value.proveedores_seleccionados.length === 0) {
-      alert("❌ Debe seleccionar al menos un proveedor para el producto.")
-    } else {
-      alert("❌ Complete todos los campos obligatorios.")
-    }
+  if (!validarFormulario()) {
+    Swal.fire({
+      icon: 'error',
+      title: 'Formulario inválido',
+      text: 'Por favor corrige los errores en el formulario',
+      confirmButtonColor: '#007bff',
+      background: '#fff',
+      color: '#1a1a1a'
+    })
     return
   }
 
@@ -396,13 +517,42 @@ const registrarProducto = async () => {
 
     const res = await axios.post(`${API_BASE}/usuarios/api/productos/`, payload)
 
-    alert("✅ Producto registrado correctamente")
+    Swal.fire({
+      icon: 'success',
+      title: 'Producto registrado',
+      text: 'El producto se creó correctamente',
+      confirmButtonColor: '#007bff',
+      background: '#fff',
+      color: '#1a1a1a'
+    })
+    
     emit("producto-registrado", res.data)
     resetForm()
 
   } catch (err) {
-    console.error(err)
-    alert("❌ Error al registrar producto")
+    console.error('❌ Error en registrarProducto:', err.response?.data || err)
+    
+    let errorMessage = 'Ocurrió un error inesperado.'
+    if (err.response?.data) {
+      if (typeof err.response.data === 'string') {
+        errorMessage = err.response.data
+      } else if (err.response.data.message) {
+        errorMessage = err.response.data.message
+      } else if (err.response.data.error) {
+        errorMessage = err.response.data.error
+      } else if (typeof err.response.data === 'object') {
+        errorMessage = Object.values(err.response.data).flat().join(', ')
+      }
+    }
+    
+    Swal.fire({
+      icon: 'error',
+      title: 'Error al registrar producto',
+      text: errorMessage,
+      confirmButtonColor: '#007bff',
+      background: '#fff',
+      color: '#1a1a1a'
+    })
   } finally {
     cargando.value = false
   }
@@ -418,6 +568,15 @@ const resetForm = () => {
     categoria: "",
     marca: "",
     proveedores_seleccionados: []
+  }
+
+  errores.value = {
+    nombre: '',
+    marca: '',
+    categoria: '',
+    precio: '',
+    stock: '',
+    proveedores: ''
   }
 }
 
@@ -556,10 +715,53 @@ onMounted(() => cargarDatos())
   outline: none;
 }
 
+/* Campos inválidos */
+.campo-invalido {
+  border-color: #dc3545 !important;
+  background: rgba(220, 53, 69, 0.05) !important;
+}
+
+.campo-invalido:focus {
+  box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1) !important;
+}
+
 .readonly {
   background-color: #e9ecef !important;
   cursor: not-allowed !important;
   color: #6c757d;
+}
+
+/* Mensajes de error */
+.mensaje-error {
+  color: #dc3545;
+  font-size: 0.85rem;
+  margin-top: 6px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+}
+
+.icono-error {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: #dc3545;
+  color: white;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: bold;
+}
+
+/* Mensajes de ayuda */
+.mensaje-ayuda {
+  color: #6c757d;
+  font-size: 0.85em;
+  margin-top: 8px;
+  display: block;
 }
 
 /* Textarea */
@@ -684,19 +886,6 @@ onMounted(() => cargarDatos())
   background: #f8f9fa;
   color: #6c757d;
   border: 1px solid #e9ecef;
-}
-
-/* Mensajes de ayuda */
-.form-help {
-  color: #6c757d;
-  font-size: 0.85em;
-  margin-top: 8px;
-  display: block;
-}
-
-.form-help.error {
-  color: #dc3545;
-  font-weight: 500;
 }
 
 /* Botón final premium */

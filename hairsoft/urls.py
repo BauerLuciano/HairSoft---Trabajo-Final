@@ -10,6 +10,8 @@ urlpatterns = [
     # Redirige raíz al listado de usuarios
     path('', lambda request: redirect('/usuarios/', permanent=False)),
 
+    path('', include('usuarios.urls')),
+
     # Incluye todas las rutas de la app usuarios
     path('usuarios/', include('usuarios.urls')),
 

@@ -80,6 +80,7 @@
               <th>Cliente</th>
               <th>Peluquero</th>
               <th>Servicios</th>
+              <th>Duración</th>
               <th>Estado</th>
               <th>Precio Total</th>
               <th>Acciones</th>
@@ -113,6 +114,14 @@
                   </div>
                 </div>
               </td>
+              
+              <td>
+                <div style="display: flex; align-items: center; gap: 5px; color: #64748b; font-weight: 600;">
+                  <Clock :size="16" />
+                  {{ turno.duracion_total || 0 }} min
+                </div>
+              </td>
+
               <td>
                 <span class="badge-estado" :class="getEstadoClass(turno.estado, turno.tipo_pago)">
                   {{ getEstadoTexto(turno.estado, turno.tipo_pago) }}
@@ -132,20 +141,19 @@
               </td>
               <td>
                 <div class="action-buttons">
-                  <!-- Botón VER DETALLE (siempre visible) -->
+                  <!-- BOTÓN VER DETALLE - SIEMPRE VISIBLE -->
                   <button @click="verDetalleTurno(turno)" class="action-button view" title="Ver Detalle">
                     <Eye :size="14"/>
                   </button>
                   
-                  <!-- Botón EDITAR (solo reservados) -->
-                  <button v-if="turno.estado === 'RESERVADO'" 
+                  <!-- BOTÓN EDITAR - CORREGIDO: Visible cuando no esté COMPLETADO ni CANCELADO -->
+                  <button v-if="turno.estado !== 'COMPLETADO' && turno.estado !== 'CANCELADO'" 
                           @click="modificarTurno(turno.id)" 
                           class="action-button edit" 
                           title="Editar">
                     <Edit3 :size="14"/>
                   </button>
                   
-                  <!-- Botón CONFIRMAR PAGO TOTAL (SIEMPRE para reservados con seña) -->
                   <button v-if="turno.estado === 'RESERVADO' && turno.tipo_pago === 'SENA_50'" 
                           @click="confirmarPagoTotal(turno)" 
                           class="action-button pagar" 
@@ -153,7 +161,6 @@
                     <CreditCard :size="14"/>
                   </button>
                   
-                  <!-- Botón COMPLETAR (solo confirmados) -->
                   <button v-if="turno.estado === 'CONFIRMADO'" 
                           @click="completarTurno(turno)" 
                           class="action-button complete" 
@@ -161,7 +168,6 @@
                     <Check :size="14"/>
                   </button>
                   
-                  <!-- Botón CANCELAR (solo reservados o confirmados) -->
                   <button v-if="turno.estado === 'RESERVADO' || turno.estado === 'CONFIRMADO'" 
                           @click="cancelarTurno(turno)" 
                           class="action-button delete" 
@@ -195,7 +201,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { 
   Plus, Trash2, Edit3, Check, SearchX, ChevronLeft, 
-  ChevronRight, Eye, CreditCard
+  ChevronRight, Eye, CreditCard, Clock
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 
@@ -205,7 +211,6 @@ const peluqueros = ref([])
 const pagina = ref(1)
 const itemsPorPagina = 10
 
-// Estados disponibles
 const estadosDisponibles = ref(['RESERVADO', 'CONFIRMADO', 'COMPLETADO', 'CANCELADO'])
 
 const filtros = ref({
@@ -217,7 +222,6 @@ const filtros = ref({
   fechaHasta: ''
 })
 
-// --- FUNCIONES AUXILIARES ---
 const formatFecha = s => {
     if(!s) return '-';
     try { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`; } catch(e) { return s; }
@@ -249,26 +253,13 @@ const formatearEstado = e => ({
   'CANCELADO':'Cancelado'
 }[e] || e)
 
-// ✅ LÓGICA CORRECTA DE ESTADOS:
-// - RESERVADO: Cuando hizo la seña (tipo_pago SENA_50) o pagó total (tipo_pago TOTAL)
-// - CONFIRMADO: Cuando pagó el total después de haber hecho seña
-// - COMPLETADO: Cuando finalizó el turno
-// - CANCELADO: Cuando se cancela
-
 const getEstadoTexto = (estado, tipoPago) => {
   if (estado === 'RESERVADO') {
-    // Si está RESERVADO, siempre tiene algún pago
     return tipoPago === 'SENA_50' ? 'Reservado (Con Seña)' : 'Reservado (Pagado Total)'
   }
-  if (estado === 'CONFIRMADO') {
-    return 'Confirmado'
-  }
-  if (estado === 'COMPLETADO') {
-    return 'Completado'
-  }
-  if (estado === 'CANCELADO') {
-    return 'Cancelado'
-  }
+  if (estado === 'CONFIRMADO') return 'Confirmado'
+  if (estado === 'COMPLETADO') return 'Completado'
+  if (estado === 'CANCELADO') return 'Cancelado'
   return estado
 }
 
@@ -276,25 +267,17 @@ const getEstadoClass = (estado, tipoPago) => {
   if (estado === 'RESERVADO') {
     return tipoPago === 'SENA_50' ? 'estado-warning' : 'estado-success'
   }
-  if (estado === 'CONFIRMADO') {
-    return 'estado-success'
-  }
+  if (estado === 'CONFIRMADO') return 'estado-success'
   if (estado === 'COMPLETADO') return 'estado-completado'
   if (estado === 'CANCELADO') return 'estado-cancelado'
   return 'estado-secondary'
 }
 
 const calcularPrecioTotal = (turno) => {
-  if (turno.monto_total && turno.monto_total > 0) {
-    return turno.monto_total
-  }
-  
+  if (turno.monto_total && turno.monto_total > 0) return turno.monto_total
   if (turno.servicios && Array.isArray(turno.servicios)) {
-    return turno.servicios.reduce((total, servicio) => {
-      return total + (servicio.precio || 0)
-    }, 0)
+    return turno.servicios.reduce((total, servicio) => total + (servicio.precio || 0), 0)
   }
-  
   return 0
 }
 
@@ -323,148 +306,107 @@ const verDetalleTurno = async (turno) => {
       <div class="detalle-turno" style="text-align: left; max-width: 600px;">
         <div class="detalle-header">
           <h3 style="margin-top: 0; color: #0ea5e9; border-bottom: 2px solid #0ea5e9; padding-bottom: 10px;">
-             Detalle del Turno #${turno.id}
+            Detalle del Turno #${turno.id}
           </h3>
         </div>
         
         <div class="detalle-info-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
           <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;"> Fecha:</strong><br>
-            <span style="color: #1e293b;">${formatFecha(turno.fecha)}</span>
-          </div>
-          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;"> Hora:</strong><br>
-            <span style="color: #1e293b;">${formatHora(turno.hora)}</span>
-          </div>
-          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;"> Cliente:</strong><br>
+            <strong style="color: #475569;">Cliente:</strong><br>
             <span style="color: #1e293b;">${clienteNombre} ${clienteApellido}</span>
           </div>
+          
           <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;"> Peluquero:</strong><br>
+            <strong style="color: #475569;">Peluquero:</strong><br>
             <span style="color: #1e293b;">${peluqueroNombre}</span>
           </div>
+          
           <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;"> Canal:</strong><br>
+            <strong style="color: #475569;">Fecha:</strong><br>
+            <span style="color: #1e293b;">${formatFecha(turno.fecha)}</span>
+          </div>
+          
+          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <strong style="color: #475569;">Hora:</strong><br>
+            <span style="color: #1e293b;">${formatHora(turno.hora)}</span>
+          </div>
+          
+          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <strong style="color: #475569;">Duración:</strong><br>
+            <span style="color: #1e293b;">${turno.duracion_total || 0} min</span>
+          </div>
+          
+          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <strong style="color: #475569;">Estado:</strong><br>
+            <span style="color: #1e293b; font-weight: 600;">${getEstadoTexto(turno.estado, turno.tipo_pago)}</span>
+          </div>
+          
+          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <strong style="color: #475569;">Canal:</strong><br>
             <span style="color: #1e293b;">${turno.canal === 'WEB' ? '🌐 Web' : '🏪 Presencial'}</span>
           </div>
+          
           <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;"> Estado:</strong><br>
-            <span style="padding: 4px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; ${getEstadoClass(turno.estado, turno.tipo_pago) === 'estado-warning' ? 'background: #fef3c7; color: #92400e; border: 1px solid #f59e0b' : getEstadoClass(turno.estado, turno.tipo_pago) === 'estado-success' ? 'background: #d1fae5; color: #065f46; border: 1px solid #10b981' : getEstadoClass(turno.estado, turno.tipo_pago) === 'estado-completado' ? 'background: #10b981; color: white; border: 1px solid #047857' : getEstadoClass(turno.estado, turno.tipo_pago) === 'estado-cancelado' ? 'background: #fee2e2; color: #991b1b; border: 1px solid #ef4444' : 'background: #f3f4f6; color: #374151; border: 1px solid #d1d5db'}">
-              ${getEstadoTexto(turno.estado, turno.tipo_pago)}
-            </span>
+            <strong style="color: #475569;">Tipo de Pago:</strong><br>
+            <span style="color: #1e293b;">${turno.tipo_pago === 'SENA_50' ? 'Con Seña 50%' : 'Total'}</span>
           </div>
         </div>
         
-        <div class="detalle-servicios" style="margin-bottom: 20px;">
-          <h4 style="margin-bottom: 15px; color: #333; background: linear-gradient(90deg, #0ea5e9, transparent); padding: 8px 12px; border-radius: 6px;">
-             Servicios Contratados
-          </h4>
-          <div style="background: #f8fafc; border-radius: 10px; padding: 15px; border: 1px solid #e2e8f0;">
+        <div style="margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+          <h4 style="margin-top: 0; color: #475569; margin-bottom: 10px;">Servicios</h4>
+          <ul style="margin: 0; padding-left: 20px;">
     `
     
     if (serviciosDetallados.length > 0) {
-      serviciosDetallados.forEach((servicio, index) => {
-        html += `
-            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: ${index < serviciosDetallados.length - 1 ? '1px dashed #cbd5e1' : 'none'};">
-              <span style="color: #1e293b;">${servicio.nombre}</span>
-              <span style="color: #0ea5e9; font-weight: 600;">$${formatPrecio(servicio.precio)}</span>
-            </div>
-        `
+      serviciosDetallados.forEach(servicio => {
+        html += `<li style="margin-bottom: 5px; color: #1e293b;">
+                  <strong>${servicio.nombre}</strong> - $${servicio.precio.toFixed(2)}
+                </li>`
       })
-      
-      html += `
-            <div style="display: flex; justify-content: space-between; padding-top: 12px; margin-top: 8px; border-top: 2px solid #0ea5e9;">
-              <span style="font-weight: 700; color: #1e293b;">Subtotal servicios:</span>
-              <span style="font-weight: 800; color: #0ea5e9;">$${formatPrecio(precioTotal)}</span>
-            </div>
-      `
     } else if (serviciosList.length > 0) {
-      serviciosList.forEach((servicio, index) => {
-        html += `<div style="margin: 5px 0; color: #1e293b;">• ${servicio}</div>`
+      serviciosList.forEach(servicio => {
+        html += `<li style="margin-bottom: 5px; color: #1e293b;">
+                  <strong>${servicio}</strong>
+                </li>`
       })
     } else {
-      html += `<div style="color: #6b7280; font-style: italic;">Sin servicios especificados</div>`
+      html += `<li style="color: #94a3b8;">No hay servicios registrados</li>`
     }
     
     html += `
-          </div>
+          </ul>
         </div>
         
-        <div class="detalle-precios">
-          <h4 style="margin-bottom: 15px; color: #333; background: linear-gradient(90deg, #10b981, transparent); padding: 8px 12px; border-radius: 6px;">
-             Resumen de Pagos
-          </h4>
-          <div style="background: linear-gradient(135deg, #f0f9ff, #e0f2fe); padding: 20px; border-radius: 12px; border: 2px solid #0ea5e9;">
+        <div style="padding: 15px; background: #0f766e; color: white; border-radius: 8px; margin-bottom: 20px;">
+          <h4 style="margin-top: 0; margin-bottom: 10px; color: white;">Resumen Financiero</h4>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+            <div>
+              <strong>Precio Total:</strong><br>
+              <span style="font-size: 18px; font-weight: bold;">$${precioTotal.toFixed(2)}</span>
+            </div>
     `
     
     if (turno.tipo_pago === 'SENA_50') {
       html += `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dashed #cbd5e1;">
-              <span style="color: #475569;">Subtotal servicios:</span>
-              <span style="font-weight: 600;">$${formatPrecio(precioTotal)}</span>
+            <div>
+              <strong>Seña Pagada:</strong><br>
+              <span style="font-size: 18px; font-weight: bold;">$${montoSeña.toFixed(2)}</span>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dashed #cbd5e1; color: #f59e0b;">
-              <span>
-                <span style="background: #fef3c7; padding: 2px 8px; border-radius: 4px; font-size: 0.85rem; margin-right: 8px;">SEÑA</span>
-                Seña (50%):
-              </span>
-              <span style="font-weight: 700;">$${formatPrecio(montoSeña)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 12px; color: #5f6c7f;">
-              <span>Saldo pendiente:</span>
-              <span style="font-weight: 600;">$${formatPrecio(saldoPendiente)}</span>
-            </div>
-            <hr style="margin: 15px 0; border: none; border-top: 2px solid #0ea5e9;">
-            <div style="display: flex; justify-content: space-between; font-weight: 800; font-size: 1.2em; padding: 12px; background: #10b981; color: white; border-radius: 8px;">
-              <span>Total a pagar:</span>
-              <span>$${formatPrecio(precioTotal)}</span>
-            </div>
-            <div style="font-size: 0.85em; color: #6b7280; margin-top: 10px; text-align: center;">
-              💡 <strong>Estado:</strong> Seña realizada ($${formatPrecio(montoSeña)}) - Saldo: $${formatPrecio(saldoPendiente)}
-            </div>
-      `
-    } else if (turno.tipo_pago === 'TOTAL') {
-      html += `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-              <span style="color: #475569;">Total del turno:</span>
-              <span style="font-weight: 600; color: #0ea5e9;">$${formatPrecio(precioTotal)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 15px; padding: 12px; background: #d1fae5; border-radius: 8px; color: #065f46; border: 1px solid #10b981;">
-              <span>
-                <span style="background: #10b981; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.85rem; margin-right: 8px;">TOTAL</span>
-                Pago completo:
-              </span>
-              <span style="font-weight: 800;">$${formatPrecio(precioTotal)}</span>
-            </div>
-            <div style="font-size: 0.85em; color: #10b981; margin-top: 5px; text-align: center;">
-              ✅ Pago total completado
+            <div>
+              <strong>Saldo Pendiente:</strong><br>
+              <span style="font-size: 18px; font-weight: bold;">$${saldoPendiente.toFixed(2)}</span>
             </div>
       `
     }
     
     html += `
           </div>
-        </div>
-        
-        ${turno.oferta_activa ? `
-        <div style="background: linear-gradient(135deg, #ff6b6b, #ee5a24); color: white; padding: 12px; border-radius: 8px; margin-top: 20px; display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 1.2em;">🔥</span>
-          <div>
-            <div style="font-weight: 700; font-size: 1.1em;">Reoferta Activa</div>
-            <div style="font-size: 0.9em; opacity: 0.9;">Este turno está siendo reofertado a clientes en lista de espera.</div>
-          </div>
-        </div>
-        ` : ''}
-        
-        <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e2e8f0; font-size: 0.85em; color: #6b7280; text-align: center;">
-          ID: ${turno.id} • ${turno.fecha_creacion ? 'Creado: ' + new Date(turno.fecha_creacion).toLocaleDateString() : ''}
         </div>
       </div>
     `
     
     await Swal.fire({
-      title: 'Detalle del Turno',
+      title: `Turno #${turno.id}`,
       html: html,
       width: 650,
       showCloseButton: true,
@@ -479,7 +421,6 @@ const verDetalleTurno = async (turno) => {
   }
 }
 
-// --- CARGA DE DATOS ---
 const cargarPeluqueros = async () => {
     try {
         const res = await fetch('http://localhost:8000/usuarios/api/peluqueros/', {
@@ -525,7 +466,6 @@ const cargarTurnos = async () => {
     }
 }
 
-// ✅ FUNCIÓN: Confirmar Pago Total (SIEMPRE visible para RESERVADO con SENA_50)
 const confirmarPagoTotal = async (turno) => {
   try {
     const precioTotal = calcularPrecioTotal(turno)
@@ -536,14 +476,11 @@ const confirmarPagoTotal = async (turno) => {
       title: 'Confirmar Pago Total',
       html: `
         <div style="text-align: left;">
-          <p><strong>Cliente:</strong> ${turno.cliente_nombre || ''}</p>
-          <p><strong>Fecha:</strong> ${formatFecha(turno.fecha)} ${formatHora(turno.hora)}</p>
-          <p><strong>Precio total:</strong> $${formatPrecio(precioTotal)}</p>
-          <p><strong>Seña pagada:</strong> $${formatPrecio(señaPagada)}</p>
-          <hr style="margin: 10px 0;">
-          <div style="background: #d1fae5; padding: 10px; border-radius: 8px; color: #065f46;">
-            <strong>Saldo a pagar:</strong> $${formatPrecio(saldoPendiente)}
-          </div>
+          <p><strong>Cliente:</strong> ${turno.cliente_nombre} ${turno.cliente_apellido}</p>
+          <p><strong>Precio Total:</strong> $${precioTotal.toFixed(2)}</p>
+          <p><strong>Seña Pagada:</strong> $${señaPagada.toFixed(2)}</p>
+          <p><strong>Saldo a Pagar:</strong> $${saldoPendiente.toFixed(2)}</p>
+          <p>¿Confirmar que se ha realizado el pago completo del saldo pendiente?</p>
         </div>
       `,
       icon: 'question',
@@ -556,7 +493,6 @@ const confirmarPagoTotal = async (turno) => {
     if (confirm.isConfirmed) {
       Swal.fire({ title: 'Procesando...', didOpen: () => Swal.showLoading() })
       
-      // Cambiar de RESERVADO a CONFIRMADO
       const response = await fetch(`http://localhost:8000/usuarios/api/turnos/${turno.id}/cambiar-estado/CONFIRMADO/`, {
         method: 'POST',
         headers: {
@@ -584,17 +520,16 @@ const confirmarPagoTotal = async (turno) => {
   }
 }
 
-// ✅ FUNCIÓN: Completar turno (de CONFIRMADO a COMPLETADO)
 const completarTurno = async (turno) => {
   try {
     const confirm = await Swal.fire({
       title: '¿Completar turno?',
       html: `
         <div style="text-align: left;">
-          <p>Marcar como <strong>COMPLETADO</strong></p>
-          <p><strong>Cliente:</strong> ${turno.cliente_nombre || ''}</p>
-          <p><strong>Fecha:</strong> ${formatFecha(turno.fecha)} ${formatHora(turno.hora)}</p>
-          <p><strong>Total pagado:</strong> $${formatPrecio(turno.monto_total)}</p>
+          <p><strong>Cliente:</strong> ${turno.cliente_nombre} ${turno.cliente_apellido}</p>
+          <p><strong>Fecha:</strong> ${formatFecha(turno.fecha)}</p>
+          <p><strong>Hora:</strong> ${formatHora(turno.hora)}</p>
+          <p>¿Marcar este turno como COMPLETADO?</p>
         </div>
       `,
       icon: 'question',
@@ -630,22 +565,17 @@ const completarTurno = async (turno) => {
   }
 }
 
-// ✅ FUNCIÓN: Cancelar turno
 const cancelarTurno = async (turno) => {
   try {
     const confirm = await Swal.fire({
       title: '¿Cancelar turno?',
       html: `
         <div style="text-align: left;">
-          <p>¿Cancelar este turno?</p>
-          <p><strong>Cliente:</strong> ${turno.cliente_nombre || ''}</p>
-          <p><strong>Fecha:</strong> ${formatFecha(turno.fecha)} ${formatHora(turno.hora)}</p>
-          <p><strong>Estado:</strong> ${getEstadoTexto(turno.estado, turno.tipo_pago)}</p>
-          ${turno.tipo_pago === 'SENA_50' ? `
-          <div style="background: #fef3c7; padding: 10px; border-radius: 8px; margin-top: 10px; border: 1px solid #f59e0b;">
-            <small>⚠️ Se procesará reembolso de la seña si corresponde.</small>
-          </div>
-          ` : ''}
+          <p><strong>Cliente:</strong> ${turno.cliente_nombre} ${turno.cliente_apellido}</p>
+          <p><strong>Fecha:</strong> ${formatFecha(turno.fecha)}</p>
+          <p><strong>Hora:</strong> ${formatHora(turno.hora)}</p>
+          <p><strong>Estado Actual:</strong> ${getEstadoTexto(turno.estado, turno.tipo_pago)}</p>
+          <p>¿Estás seguro de cancelar este turno?</p>
         </div>
       `,
       icon: 'warning',
@@ -681,7 +611,6 @@ const cancelarTurno = async (turno) => {
   }
 }
 
-// Resto de funciones
 const irARegistrar = () => router.push('/turnos/crear-presencial')
 const modificarTurno = (id) => router.push(`/turnos/modificar/${id}`)
 
