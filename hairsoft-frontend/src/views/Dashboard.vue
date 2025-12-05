@@ -281,8 +281,9 @@ export default {
       error.value = null
       
       try {
+        // ✅ CORREGIDO: Ruta sin /usuarios/
         const response = await fetch(
-          `http://localhost:8000/usuarios/api/dashboard/?period=${selectedPeriod.value}`,
+          `http://localhost:8000/api/dashboard/?period=${selectedPeriod.value}`,
           {
             method: 'GET',
             headers: {

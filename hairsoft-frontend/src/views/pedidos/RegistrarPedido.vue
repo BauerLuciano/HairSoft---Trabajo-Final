@@ -114,7 +114,7 @@
             <div class="producto-header">
               <span class="producto-nombre">{{ producto.nombre }}</span>
               <span class="producto-precio">
-                {{ formatPrecio(producto.precio_sugerido) }}
+                {{ formatPrecio(producto.precio_compra) }}
               </span>
             </div>
             <div class="producto-details">
@@ -392,7 +392,8 @@ const cargarProductosDelProveedor = async (proveedorId) => {
         nombre: producto.nombre,
         codigo: producto.codigo,
         stock_actual: producto.stock_actual || producto.stock || 0,
-        precio_sugerido: lista.precio_sugerido_venta || lista.precio_base || 0
+        precio_compra: lista.precio_base || 0,
+        precio_venta: lista.precio_sugerido_venta || 0
       }
     })
   } catch (error) {
@@ -456,9 +457,9 @@ const agregarProductosSeleccionados = () => {
         producto_nombre: producto.nombre,
         producto_codigo: producto.codigo,
         producto_stock_actual: producto.stock_actual,
-        precio_unitario: producto.precio_sugerido,
+        precio_unitario: producto.precio_compra,
         cantidad: 1,
-        subtotal: producto.precio_sugerido // Inicializar subtotal
+        subtotal: producto.precio_compra // Inicializar subtotal
       })
     }
   })

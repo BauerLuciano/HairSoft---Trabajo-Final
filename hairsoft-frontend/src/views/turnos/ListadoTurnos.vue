@@ -197,8 +197,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, inject } from 'vue' // Agregamos inject si usas axios global o import directo
 import { useRouter } from 'vue-router'
+import axios from '../../utils/axiosConfig'
 import { 
   Plus, Trash2, Edit3, Check, SearchX, ChevronLeft, 
   ChevronRight, Eye, CreditCard, Clock
@@ -209,7 +210,7 @@ const router = useRouter()
 const turnos = ref([])
 const peluqueros = ref([])
 const pagina = ref(1)
-const itemsPorPagina = 10
+const itemsPorPagina = 8
 
 const estadosDisponibles = ref(['RESERVADO', 'CONFIRMADO', 'COMPLETADO', 'CANCELADO'])
 
@@ -222,17 +223,13 @@ const filtros = ref({
   fechaHasta: ''
 })
 
+// --- FUNCIONES DE FORMATO (IGUALES QUE ANTES) ---
 const formatFecha = s => {
     if(!s) return '-';
     try { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`; } catch(e) { return s; }
 }
-
 const formatHora = s => (s && s.length >= 5) ? s.slice(0,5) : '-'
-
-const formatPrecio = (precio) => {
-  if (!precio) return '0.00'
-  return parseFloat(precio).toFixed(2)
-}
+const formatPrecio = (precio) => (!precio ? '0.00' : parseFloat(precio).toFixed(2))
 
 const getServiciosLista = s => {
   if (!s) return []
@@ -247,16 +244,12 @@ const getServiciosLista = s => {
 }
 
 const formatearEstado = e => ({
-  'RESERVADO':'Reservado',
-  'CONFIRMADO':'Confirmado',
-  'COMPLETADO':'Completado',
-  'CANCELADO':'Cancelado'
+  'RESERVADO':'Reservado', 'CONFIRMADO':'Confirmado',
+  'COMPLETADO':'Completado', 'CANCELADO':'Cancelado'
 }[e] || e)
 
 const getEstadoTexto = (estado, tipoPago) => {
-  if (estado === 'RESERVADO') {
-    return tipoPago === 'SENA_50' ? 'Reservado (Con Seña)' : 'Reservado (Pagado Total)'
-  }
+  if (estado === 'RESERVADO') return tipoPago === 'SENA_50' ? 'Reservado (Con Seña)' : 'Reservado (Pagado Total)'
   if (estado === 'CONFIRMADO') return 'Confirmado'
   if (estado === 'COMPLETADO') return 'Completado'
   if (estado === 'CANCELADO') return 'Cancelado'
@@ -264,9 +257,7 @@ const getEstadoTexto = (estado, tipoPago) => {
 }
 
 const getEstadoClass = (estado, tipoPago) => {
-  if (estado === 'RESERVADO') {
-    return tipoPago === 'SENA_50' ? 'estado-warning' : 'estado-success'
-  }
+  if (estado === 'RESERVADO') return tipoPago === 'SENA_50' ? 'estado-warning' : 'estado-success'
   if (estado === 'CONFIRMADO') return 'estado-success'
   if (estado === 'COMPLETADO') return 'estado-completado'
   if (estado === 'CANCELADO') return 'estado-cancelado'
@@ -281,6 +272,7 @@ const calcularPrecioTotal = (turno) => {
   return 0
 }
 
+// --- DETALLE TURNO (LÓGICA IGUAL) ---
 const verDetalleTurno = async (turno) => {
   try {
     const precioTotal = calcularPrecioTotal(turno)
@@ -289,9 +281,7 @@ const verDetalleTurno = async (turno) => {
     let serviciosDetallados = []
     if (turno.servicios && Array.isArray(turno.servicios)) {
       serviciosDetallados = turno.servicios.map(s => {
-        if (typeof s === 'object') {
-          return { nombre: s.nombre || 'Servicio', precio: s.precio || 0 }
-        }
+        if (typeof s === 'object') return { nombre: s.nombre || 'Servicio', precio: s.precio || 0 }
         return { nombre: s, precio: 0 }
       })
     }
@@ -315,40 +305,21 @@ const verDetalleTurno = async (turno) => {
             <strong style="color: #475569;">Cliente:</strong><br>
             <span style="color: #1e293b;">${clienteNombre} ${clienteApellido}</span>
           </div>
-          
           <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
             <strong style="color: #475569;">Peluquero:</strong><br>
             <span style="color: #1e293b;">${peluqueroNombre}</span>
           </div>
-          
           <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
             <strong style="color: #475569;">Fecha:</strong><br>
             <span style="color: #1e293b;">${formatFecha(turno.fecha)}</span>
           </div>
-          
           <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
             <strong style="color: #475569;">Hora:</strong><br>
             <span style="color: #1e293b;">${formatHora(turno.hora)}</span>
           </div>
-          
-          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;">Duración:</strong><br>
-            <span style="color: #1e293b;">${turno.duracion_total || 0} min</span>
-          </div>
-          
           <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
             <strong style="color: #475569;">Estado:</strong><br>
             <span style="color: #1e293b; font-weight: 600;">${getEstadoTexto(turno.estado, turno.tipo_pago)}</span>
-          </div>
-          
-          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;">Canal:</strong><br>
-            <span style="color: #1e293b;">${turno.canal === 'WEB' ? '🌐 Web' : '🏪 Presencial'}</span>
-          </div>
-          
-          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;">Tipo de Pago:</strong><br>
-            <span style="color: #1e293b;">${turno.tipo_pago === 'SENA_50' ? 'Con Seña 50%' : 'Total'}</span>
           </div>
         </div>
         
@@ -356,21 +327,12 @@ const verDetalleTurno = async (turno) => {
           <h4 style="margin-top: 0; color: #475569; margin-bottom: 10px;">Servicios</h4>
           <ul style="margin: 0; padding-left: 20px;">
     `
-    
     if (serviciosDetallados.length > 0) {
-      serviciosDetallados.forEach(servicio => {
-        html += `<li style="margin-bottom: 5px; color: #1e293b;">
-                  <strong>${servicio.nombre}</strong> - $${servicio.precio.toFixed(2)}
-                </li>`
-      })
+      serviciosDetallados.forEach(s => html += `<li><strong>${s.nombre}</strong> - $${s.precio.toFixed(2)}</li>`)
     } else if (serviciosList.length > 0) {
-      serviciosList.forEach(servicio => {
-        html += `<li style="margin-bottom: 5px; color: #1e293b;">
-                  <strong>${servicio}</strong>
-                </li>`
-      })
+      serviciosList.forEach(s => html += `<li><strong>${s}</strong></li>`)
     } else {
-      html += `<li style="color: #94a3b8;">No hay servicios registrados</li>`
+      html += `<li>No hay servicios registrados</li>`
     }
     
     html += `
@@ -380,53 +342,31 @@ const verDetalleTurno = async (turno) => {
         <div style="padding: 15px; background: #0f766e; color: white; border-radius: 8px; margin-bottom: 20px;">
           <h4 style="margin-top: 0; margin-bottom: 10px; color: white;">Resumen Financiero</h4>
           <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
-            <div>
-              <strong>Precio Total:</strong><br>
-              <span style="font-size: 18px; font-weight: bold;">$${precioTotal.toFixed(2)}</span>
-            </div>
+            <div><strong>Precio Total:</strong><br><span style="font-size: 18px; font-weight: bold;">$${precioTotal.toFixed(2)}</span></div>
     `
-    
     if (turno.tipo_pago === 'SENA_50') {
       html += `
-            <div>
-              <strong>Seña Pagada:</strong><br>
-              <span style="font-size: 18px; font-weight: bold;">$${montoSeña.toFixed(2)}</span>
-            </div>
-            <div>
-              <strong>Saldo Pendiente:</strong><br>
-              <span style="font-size: 18px; font-weight: bold;">$${saldoPendiente.toFixed(2)}</span>
-            </div>
+            <div><strong>Seña Pagada:</strong><br><span style="font-size: 18px; font-weight: bold;">$${montoSeña.toFixed(2)}</span></div>
+            <div><strong>Saldo Pendiente:</strong><br><span style="font-size: 18px; font-weight: bold;">$${saldoPendiente.toFixed(2)}</span></div>
       `
     }
-    
-    html += `
-          </div>
-        </div>
-      </div>
-    `
+    html += `</div></div></div>`
     
     await Swal.fire({
-      title: `Turno #${turno.id}`,
-      html: html,
-      width: 650,
-      showCloseButton: true,
-      showConfirmButton: true,
-      confirmButtonText: 'Cerrar',
-      confirmButtonColor: '#0ea5e9'
+      title: `Turno #${turno.id}`, html: html, width: 650,
+      showCloseButton: true, confirmButtonText: 'Cerrar', confirmButtonColor: '#0ea5e9'
     })
-    
   } catch (error) {
     console.error('Error al mostrar detalle:', error)
-    Swal.fire('Error', 'No se pudo cargar el detalle del turno', 'error')
   }
 }
 
+// --- CARGA DE DATOS CORREGIDA (USANDO AXIOS) ---
 const cargarPeluqueros = async () => {
     try {
-        const res = await fetch('http://localhost:8000/usuarios/api/peluqueros/', {
-            headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
-        })
-        peluqueros.value = await res.json()
+        // ✅ Usamos axios en vez de fetch para aprovechar la config global
+        const res = await axios.get('/usuarios/api/peluqueros/');
+        peluqueros.value = Array.isArray(res.data) ? res.data : (res.data.results || []);
     } catch(e) {
         console.error('Error cargando peluqueros:', e)
     }
@@ -434,7 +374,6 @@ const cargarPeluqueros = async () => {
 
 const cargarTurnos = async () => {
     try {
-        const token = localStorage.getItem('token')
         const p = new URLSearchParams()
         if(filtros.value.peluquero) p.append('peluquero', filtros.value.peluquero)
         if(filtros.value.estado) p.append('estado', filtros.value.estado)
@@ -442,10 +381,11 @@ const cargarTurnos = async () => {
         if(filtros.value.fechaDesde) p.append('fecha_desde', filtros.value.fechaDesde)
         if(filtros.value.fechaHasta) p.append('fecha_hasta', filtros.value.fechaHasta)
 
-        const res = await fetch(`http://localhost:8000/usuarios/api/turnos/?${p.toString()}`, {
-            headers: { 'Authorization': `Token ${token}` }
-        })
-        const data = await res.json()
+        // ✅ Usamos axios y la ruta correcta /usuarios/api/
+        const res = await axios.get(`/usuarios/api/turnos/?${p.toString()}`);
+        
+        // ✅ Manejo seguro de datos (Array vs Paginación)
+        const data = Array.isArray(res.data) ? res.data : (res.data.results || []);
         
         const turnosOrdenados = data.sort((a, b) => {
           const fechaA = new Date(`${a.fecha}T${a.hora}`)
@@ -462,10 +402,11 @@ const cargarTurnos = async () => {
         }))
     } catch(e) {
         console.error(e)
-        Swal.fire('Error', 'No se pudieron cargar los turnos', 'error')
+        // Swal.fire('Error', 'No se pudieron cargar los turnos', 'error')
     }
 }
 
+// --- ACCIONES (TAMBIÉN CORREGIDAS CON AXIOS) ---
 const confirmarPagoTotal = async (turno) => {
   try {
     const precioTotal = calcularPrecioTotal(turno)
@@ -474,48 +415,25 @@ const confirmarPagoTotal = async (turno) => {
     
     const confirm = await Swal.fire({
       title: 'Confirmar Pago Total',
-      html: `
-        <div style="text-align: left;">
-          <p><strong>Cliente:</strong> ${turno.cliente_nombre} ${turno.cliente_apellido}</p>
-          <p><strong>Precio Total:</strong> $${precioTotal.toFixed(2)}</p>
-          <p><strong>Seña Pagada:</strong> $${señaPagada.toFixed(2)}</p>
-          <p><strong>Saldo a Pagar:</strong> $${saldoPendiente.toFixed(2)}</p>
-          <p>¿Confirmar que se ha realizado el pago completo del saldo pendiente?</p>
-        </div>
-      `,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonText: 'Confirmar Pago Total',
-      cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#10b981'
+      text: `Saldo a pagar: $${saldoPendiente.toFixed(2)}`,
+      icon: 'question', showCancelButton: true, confirmButtonText: 'Confirmar', confirmButtonColor: '#10b981'
     })
 
     if (confirm.isConfirmed) {
-      Swal.fire({ title: 'Procesando...', didOpen: () => Swal.showLoading() })
-      
-      const response = await fetch(`http://localhost:8000/usuarios/api/turnos/${turno.id}/cambiar-estado/CONFIRMADO/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+      Swal.showLoading()
+      // ✅ Axios
+      const response = await axios.post(`/usuarios/api/turnos/${turno.id}/cambiar-estado/CONFIRMADO/`, {
           tipo_pago: 'TOTAL',
           monto_total: precioTotal
-        })
-      })
+      });
 
-      const data = await response.json()
-
-      if (response.ok && data.status === 'ok') {
+      if (response.data.status === 'ok') {
         await cargarTurnos()
-        Swal.fire('¡Pago confirmado!', 'El turno ahora está CONFIRMADO (pagado total).', 'success')
-      } else {
-        Swal.fire('Error', data.message || 'No se pudo confirmar el pago', 'error')
+        Swal.fire('¡Pago confirmado!', '', 'success')
       }
     }
   } catch (error) {
-    console.error('Error confirmando pago:', error)
+    console.error('Error:', error)
     Swal.fire('Error', 'No se pudo procesar el pago', 'error')
   }
 }
@@ -524,43 +442,20 @@ const completarTurno = async (turno) => {
   try {
     const confirm = await Swal.fire({
       title: '¿Completar turno?',
-      html: `
-        <div style="text-align: left;">
-          <p><strong>Cliente:</strong> ${turno.cliente_nombre} ${turno.cliente_apellido}</p>
-          <p><strong>Fecha:</strong> ${formatFecha(turno.fecha)}</p>
-          <p><strong>Hora:</strong> ${formatHora(turno.hora)}</p>
-          <p>¿Marcar este turno como COMPLETADO?</p>
-        </div>
-      `,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonText: '✅ Completar',
-      cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#10b981'
+      icon: 'question', showCancelButton: true, confirmButtonText: '✅ Completar', confirmButtonColor: '#10b981'
     })
 
     if (confirm.isConfirmed) {
-      Swal.fire({ title: 'Procesando...', didOpen: () => Swal.showLoading() })
-
-      const response = await fetch(`http://localhost:8000/usuarios/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      })
-
-      const data = await response.json()
-
-      if (response.ok && data.status === 'ok') {
+      Swal.showLoading()
+      // ✅ Axios
+      const response = await axios.post(`/usuarios/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`);
+      if (response.data.status === 'ok') {
         await cargarTurnos()
-        Swal.fire('¡Completado!', 'Turno marcado como COMPLETADO.', 'success')
-      } else {
-        Swal.fire('Error', data.message || 'No se pudo completar', 'error')
+        Swal.fire('¡Completado!', '', 'success')
       }
     }
   } catch (error) {
-    console.error('Error completando turno:', error)
+    console.error('Error:', error)
     Swal.fire('Error', 'Error de conexión', 'error')
   }
 }
@@ -569,40 +464,16 @@ const cancelarTurno = async (turno) => {
   try {
     const confirm = await Swal.fire({
       title: '¿Cancelar turno?',
-      html: `
-        <div style="text-align: left;">
-          <p><strong>Cliente:</strong> ${turno.cliente_nombre} ${turno.cliente_apellido}</p>
-          <p><strong>Fecha:</strong> ${formatFecha(turno.fecha)}</p>
-          <p><strong>Hora:</strong> ${formatHora(turno.hora)}</p>
-          <p><strong>Estado Actual:</strong> ${getEstadoTexto(turno.estado, turno.tipo_pago)}</p>
-          <p>¿Estás seguro de cancelar este turno?</p>
-        </div>
-      `,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Sí, cancelar',
-      cancelButtonText: 'No',
-      confirmButtonColor: '#ef4444'
+      icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, cancelar', confirmButtonColor: '#ef4444'
     })
 
     if (confirm.isConfirmed) {
-      Swal.fire({ title: 'Procesando...', didOpen: () => Swal.showLoading() })
-      
-      const response = await fetch(`http://localhost:8000/usuarios/api/turnos/${turno.id}/cambiar-estado/CANCELADO/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      })
-
-      const data = await response.json()
-
-      if (response.ok && data.status === 'ok') {
+      Swal.showLoading()
+      // ✅ Axios
+      const response = await axios.post(`/usuarios/api/turnos/${turno.id}/cambiar-estado/CANCELADO/`);
+      if (response.data.status === 'ok') {
         await cargarTurnos()
-        Swal.fire('¡Cancelado!', 'Turno cancelado.', 'success')
-      } else {
-        Swal.fire('Error', data.message || 'No se pudo cancelar', 'error')
+        Swal.fire('¡Cancelado!', '', 'success')
       }
     }
   } catch(e) { 
@@ -644,15 +515,9 @@ const paginaSiguiente = () => { if(pagina.value<totalPaginas.value) pagina.value
 onMounted(() => { cargarPeluqueros(); cargarTurnos(); })
 
 watch(() => [
-    filtros.value.peluquero, 
-    filtros.value.estado, 
-    filtros.value.canal, 
-    filtros.value.fechaDesde, 
-    filtros.value.fechaHasta
-], () => { 
-    pagina.value = 1; 
-    cargarTurnos(); 
-})
+    filtros.value.peluquero, filtros.value.estado, filtros.value.canal, 
+    filtros.value.fechaDesde, filtros.value.fechaHasta
+], () => { pagina.value = 1; cargarTurnos(); })
 </script>
 
 <style scoped>

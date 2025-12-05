@@ -166,9 +166,6 @@
                 <span v-if="esHoy(day)" class="badge-today">HOY</span>
               </button>
             </div>
-            <div class="calendar-footer">
-              <Info :size="14" /> Disponible: Hoy + 7 días (No Domingos)
-            </div>
           </div>
         </div>
 
@@ -270,13 +267,129 @@
             {{ mensaje }}
           </div>
         </transition>
+
+        <!-- 🟢 MODAL PARA REGISTRAR CLIENTE -->
+        <transition name="fade">
+          <div v-if="mostrarModalRegistro" class="modal-overlay">
+            <div class="modal-container">
+              <div class="modal-header">
+                <h3>📝 Registrar Nuevo Cliente</h3>
+                <button @click="cerrarModalRegistro" class="modal-close-btn">
+                  <X :size="20" />
+                </button>
+              </div>
+              
+              <div class="modal-body">
+                <div class="form-grid">
+                  <div class="input-group">
+                    <label class="label-modern">Nombre *</label>
+                    <input 
+                      type="text" 
+                      v-model="formNuevoCliente.nombre" 
+                      class="input-modern" 
+                      placeholder="Ej: Juan"
+                      :class="{ 'input-error': erroresCliente.nombre }"
+                    />
+                    <div v-if="erroresCliente.nombre" class="msg-error small">
+                      {{ erroresCliente.nombre }}
+                    </div>
+                  </div>
+                  
+                  <div class="input-group">
+                    <label class="label-modern">Apellido *</label>
+                    <input 
+                      type="text" 
+                      v-model="formNuevoCliente.apellido" 
+                      class="input-modern" 
+                      placeholder="Ej: Pérez"
+                      :class="{ 'input-error': erroresCliente.apellido }"
+                    />
+                    <div v-if="erroresCliente.apellido" class="msg-error small">
+                      {{ erroresCliente.apellido }}
+                    </div>
+                  </div>
+                  
+                  <div class="input-group">
+                    <label class="label-modern">DNI *</label>
+                    <input 
+                      type="text" 
+                      v-model="formNuevoCliente.dni" 
+                      class="input-modern" 
+                      placeholder="Ej: 12345678"
+                      :class="{ 'input-error': erroresCliente.dni }"
+                    />
+                    <div v-if="erroresCliente.dni" class="msg-error small">
+                      {{ erroresCliente.dni }}
+                    </div>
+                  </div>
+                  
+                  <div class="input-group">
+                    <label class="label-modern">Teléfono</label>
+                    <input 
+                      type="text" 
+                      v-model="formNuevoCliente.telefono" 
+                      class="input-modern" 
+                      placeholder="Ej: +541123456789"
+                    />
+                  </div>
+                  
+                  <div class="input-group">
+                    <label class="label-modern">Email *</label>
+                    <input 
+                      type="email" 
+                      v-model="formNuevoCliente.correo" 
+                      class="input-modern" 
+                      placeholder="Ej: cliente@email.com"
+                      :class="{ 'input-error': erroresCliente.correo }"
+                    />
+                    <div v-if="erroresCliente.correo" class="msg-error small">
+                      {{ erroresCliente.correo }}
+                    </div>
+                  </div>
+                  
+                  <div class="input-group">
+                    <label class="label-modern">Contraseña *</label>
+                    <input 
+                      type="password" 
+                      v-model="formNuevoCliente.contrasena" 
+                      class="input-modern" 
+                      placeholder="Mínimo 6 caracteres"
+                      :class="{ 'input-error': erroresCliente.contrasena }"
+                    />
+                    <div v-if="erroresCliente.contrasena" class="msg-error small">
+                      {{ erroresCliente.contrasena }}
+                    </div>
+                  </div>
+                </div>
+                
+                <div v-if="errorCrearCliente" class="msg-error mt-3">
+                  <AlertCircle :size="14" /> {{ errorCrearCliente }}
+                </div>
+              </div>
+              
+              <div class="modal-footer">
+                <button @click="cerrarModalRegistro" class="btn-secondary">
+                  Cancelar
+                </button>
+                <button 
+                  @click="crearClienteDesdeTurno" 
+                  class="btn-primary"
+                  :disabled="creandoCliente"
+                >
+                  <span v-if="!creandoCliente">Registrar Cliente</span>
+                  <span v-else>Registrando...</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </transition>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { 
   Calendar, ArrowLeft, Users, Search, X, Plus, User, IdCard,
@@ -286,7 +399,7 @@ import {
 } from 'lucide-vue-next'
 
 const router = useRouter()
-const API_URL = "http://localhost:8000/usuarios/api"
+const API_URL = "http://localhost:8000/api" // ✅ CORREGIDO: Sin /usuarios/
 
 const form = ref({
   canal: 'PRESENCIAL',
@@ -307,7 +420,7 @@ const peluqueros = ref([])
 const busquedaCliente = ref("")
 const clientesSugeridos = ref([])
 const categoriasSeleccionadas = ref([])
-const slotsOcupadosReales = ref([]) // Lista de slots HH:MM ocupados
+const slotsOcupadosReales = ref([])
 const currentDate = ref(new Date())
 const errorCliente = ref("")
 const mensaje = ref("")
@@ -316,6 +429,7 @@ const procesando = ref(false)
 const cargandoHorarios = ref(false)
 
 const intervaloMinutos = 20
+const STORAGE_KEY = 'turno_presencial_context'
 
 // Computed
 const serviciosFiltrados = computed(() => {
@@ -339,7 +453,7 @@ const startingDayOfWeek = computed(() => {
   return new Date(currentYear.value, currentMonth.value, 1).getDay()
 })
 
-// 🟢 HORARIOS COMPUTADOS (Grilla Base)
+// 🟢 HORARIOS COMPUTADOS
 const horariosGenerados = computed(() => {
   const horariosBase = []
   const bloques = [
@@ -379,19 +493,91 @@ const horariosGenerados = computed(() => {
   return horariosBase
 })
 
-// Métodos
+// 🟢 GUARDAR CONTEXTO
+const guardarContexto = () => {
+  const contexto = {
+    categoriasSeleccionadas: categoriasSeleccionadas.value,
+    serviciosSeleccionados: form.value.servicios_ids,
+    peluquero: form.value.peluquero,
+    tipo_pago: form.value.tipo_pago,
+    medio_pago: form.value.medio_pago,
+    fecha: form.value.fecha,
+    hora: form.value.hora,
+    comprobante_id: form.value.comprobante_id,
+    timestamp: Date.now()
+  }
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(contexto))
+}
+
+// 🟢 CARGAR CONTEXTO
+const cargarContexto = () => {
+  const contextoStr = sessionStorage.getItem(STORAGE_KEY)
+  if (contextoStr) {
+    try {
+      const contexto = JSON.parse(contextoStr)
+      
+      if (contexto.tipo_pago) form.value.tipo_pago = contexto.tipo_pago
+      if (contexto.medio_pago) form.value.medio_pago = contexto.medio_pago
+      if (contexto.comprobante_id) form.value.comprobante_id = contexto.comprobante_id
+      
+      if (contexto.peluquero && form.value.cliente !== contexto.peluquero) {
+        form.value.peluquero = contexto.peluquero
+      }
+      
+      if (contexto.fecha) form.value.fecha = contexto.fecha
+      if (contexto.hora) form.value.hora = contexto.hora
+      
+      if (contexto.serviciosSeleccionados && contexto.serviciosSeleccionados.length > 0) {
+        form.value.servicios_ids = contexto.serviciosSeleccionados
+      }
+      if (contexto.categoriasSeleccionadas && contexto.categoriasSeleccionadas.length > 0) {
+        categoriasSeleccionadas.value = contexto.categoriasSeleccionadas
+      }
+      
+      if (form.value.fecha && form.value.peluquero && form.value.peluquero !== form.value.cliente) {
+        cargarHorariosOcupados(form.value.fecha)
+      }
+    } catch (e) {
+      console.error('Error cargando contexto:', e)
+    }
+  }
+}
+
+// 🟢 LIMPIAR CONTEXTO
+const limpiarContexto = () => {
+  sessionStorage.removeItem(STORAGE_KEY)
+}
+
 const cargarDatosIniciales = async () => {
   try {
+    console.log("📡 Cargando datos desde:", API_URL)
+    
+    // ✅ CORREGIDO: Rutas sin /usuarios/
     const [resCat, resServ, resPel] = await Promise.all([
       fetch(`${API_URL}/categorias/servicios/`),
       fetch(`${API_URL}/servicios/`),
       fetch(`${API_URL}/peluqueros/`)
     ])
+    
+    // Verificar respuestas
+    if (!resCat.ok) throw new Error(`Error categorías: ${resCat.status}`)
+    if (!resServ.ok) throw new Error(`Error servicios: ${resServ.status}`)
+    if (!resPel.ok) throw new Error(`Error peluqueros: ${resPel.status}`)
+    
     categorias.value = await resCat.json()
     servicios.value = await resServ.json()
     peluqueros.value = await resPel.json()
+    
+    console.log("📦 Datos cargados exitosamente:", {
+      categorias: categorias.value.length,
+      servicios: servicios.value.length,
+      peluqueros: peluqueros.value.length
+    })
+    
   } catch (error) {
-    console.error("Error API", error)
+    console.error("❌ Error API", error)
+    mensaje.value = "Error cargando datos del servidor. Verifica la conexión."
+    mensajeTipo.value = "error"
   }
 }
 
@@ -402,27 +588,42 @@ const actualizarBusquedaCliente = async (e) => {
     return
   }
   try {
+    // ✅ CORREGIDO: Ruta sin /usuarios/
     const res = await fetch(`${API_URL}/clientes/?q=${busquedaCliente.value}`)
+    if (!res.ok) throw new Error(`Error: ${res.status}`)
     const data = await res.json()
     clientesSugeridos.value = data.results || data || []
     errorCliente.value = clientesSugeridos.value.length === 0 ? "No se encontraron clientes" : ""
   } catch (e) {
+    console.error("Error buscando clientes:", e)
     errorCliente.value = "Error de conexión"
   }
 }
 
 const seleccionarCliente = (c) => {
-  form.value.cliente = c.id
+  if (!c || !c.id) {
+    console.error("Cliente inválido:", c)
+    return
+  }
+  
+  form.value.cliente = parseInt(c.id)
   const nombre = c.nombre || c.first_name || ''
   const apellido = c.apellido || c.last_name || ''
   form.value.clienteNombre = `${nombre} ${apellido}`.trim()
+  
+  console.log("👤 Cliente seleccionado:", form.value.clienteNombre, "ID:", form.value.cliente)
+  
   clientesSugeridos.value = []
   busquedaCliente.value = ""
   errorCliente.value = ""
-  // Si había seleccionado el mismo peluquero que el cliente, resetear
+  
   if (form.value.peluquero === c.id) {
-      form.value.peluquero = ""
-      resetFechas()
+    form.value.peluquero = ""
+    resetFechas()
+  }
+  
+  if (form.value.fecha && form.value.peluquero && form.value.peluquero !== form.value.cliente) {
+    cargarHorariosOcupados(form.value.fecha)
   }
 }
 
@@ -437,7 +638,8 @@ const limpiarCliente = () => {
 }
 
 const irARegistrarCliente = () => {
-  router.push('/usuarios/crear')
+  guardarContexto()
+  router.push('/usuarios/crear?returnTo=turnos')
 }
 
 const getNombreCompletoCliente = (c) => {
@@ -506,36 +708,39 @@ const seleccionarDiaCalendario = (day) => {
   cargarHorariosOcupados(form.value.fecha)
 }
 
-// 🟢 LÓGICA DE OCUPADOS COMPLEJA (BLOQUEA RANGOS)
+// 🟢 LÓGICA DE OCUPADOS
 const cargarHorariosOcupados = async (fecha) => {
+  if (!form.value.peluquero || form.value.peluquero === form.value.cliente) return
+  
   form.value.hora = ""
   cargandoHorarios.value = true
   slotsOcupadosReales.value = [] 
   
   try {
-    // Usamos el endpoint que devuelve OBJETOS TURNO COMPLETOS
+    // ✅ CORREGIDO: Ruta sin /usuarios/
     const url = `${API_URL}/turnos/?fecha=${fecha}&peluquero_id=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
-    const res = await fetch(url)
-    const turnos = await res.json()
+    console.log("📡 Buscando turnos ocupados:", url)
     
-    // Calculamos todos los slots de 20 min ocupados
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`Error: ${res.status}`)
+    
+    const turnos = await res.json()
+    console.log("📊 Turnos ocupados encontrados:", turnos.length)
+    
     const ocupadosSet = new Set()
     
     turnos.forEach(turno => {
         const [h, m] = turno.hora.split(':').map(Number)
         const inicioMin = h * 60 + m
         
-        // Calcular duración total del turno ocupado
-        // Si el backend no manda 'duracion_total', la calculamos sumando servicios
         let duracion = turno.duracion_total || 0
         if (!duracion && turno.servicios) {
             duracion = turno.servicios.reduce((acc, s) => acc + (s.duracion || 20), 0)
         }
-        if (!duracion) duracion = 20 // Fallback
+        if (!duracion) duracion = 20
         
         const finMin = inicioMin + duracion
         
-        // Marcar cada slot de 20 min dentro del rango como ocupado
         for (let i = inicioMin; i < finMin; i += 20) {
             const hh = Math.floor(i / 60).toString().padStart(2, '0')
             const mm = (i % 60).toString().padStart(2, '0')
@@ -544,19 +749,71 @@ const cargarHorariosOcupados = async (fecha) => {
     })
     
     slotsOcupadosReales.value = Array.from(ocupadosSet)
+    console.log("⏰ Slots ocupados:", slotsOcupadosReales.value)
 
   } catch (e) {
-    console.error("Error cargando turnos:", e)
+    console.error("❌ Error cargando turnos:", e)
   } finally {
     cargandoHorarios.value = false
   }
 }
 
 const esHorarioDisponible = (hora) => {
-  if (!form.value.fecha || !form.value.peluquero) return true
+  if (!form.value.fecha || !form.value.peluquero || form.value.peluquero === form.value.cliente) return true
   const horaSimple = hora.substring(0, 5)
-  // Chequeamos contra la lista calculada de rangos
   return !slotsOcupadosReales.value.includes(horaSimple)
+}
+
+// Variables para el modal de registro (mantenidas para compatibilidad)
+const mostrarModalRegistro = ref(false)
+const creandoCliente = ref(false)
+const errorCrearCliente = ref("")
+const formNuevoCliente = ref({
+  nombre: "",
+  apellido: "",
+  dni: "",
+  telefono: "",
+  correo: "",
+  contrasena: ""
+})
+const erroresCliente = ref({
+  nombre: "",
+  apellido: "",
+  dni: "",
+  correo: "",
+  contrasena: ""
+})
+
+// 🔴 NOTA: La función crearClienteDesdeTurno() ya no es necesaria si no existe la ruta
+// Se mantiene para evitar errores en el template, pero muestra un mensaje informativo
+const crearClienteDesdeTurno = async () => {
+  creandoCliente.value = true
+  errorCrearCliente.value = "Esta función requiere una ruta específica en el backend. Usa el botón 'Registrar Nuevo Cliente'."
+  
+  // Retraso para mostrar el mensaje
+  setTimeout(() => {
+    creandoCliente.value = false
+  }, 2000)
+}
+
+const cerrarModalRegistro = () => {
+  mostrarModalRegistro.value = false
+  errorCrearCliente.value = ""
+  erroresCliente.value = {
+    nombre: "",
+    apellido: "",
+    dni: "",
+    correo: "",
+    contrasena: ""
+  }
+  formNuevoCliente.value = {
+    nombre: "",
+    apellido: "",
+    dni: "",
+    telefono: "",
+    correo: "",
+    contrasena: ""
+  }
 }
 
 const seleccionarHora = (hora) => {
@@ -585,10 +842,9 @@ const crearTurno = async () => {
     return acc + (s ? parseInt(s.duracion) : 0)
   }, 0)
 
-  // 🟢 CORRECCIÓN: Mapeamos los nombres exactos que pide el Backend
   const payload = {
-    peluquero_id: form.value.peluquero, // Backend pide 'peluquero_id', no 'peluquero'
-    cliente_id: form.value.cliente,     // Backend pide 'cliente_id'
+    peluquero_id: form.value.peluquero,
+    cliente_id: form.value.cliente,
     servicios_ids: form.value.servicios_ids,
     fecha: form.value.fecha,
     hora: form.value.hora,
@@ -601,10 +857,11 @@ const crearTurno = async () => {
     mp_payment_id: form.value.medio_pago !== 'EFECTIVO' ? form.value.comprobante_id : null
   }
 
-  console.log("🚀 Enviando Turno Presencial:", payload) // Para que veas en consola
+  console.log("🚀 Enviando Turno Presencial:", payload)
 
   try {
     const token = localStorage.getItem('token')
+    // ✅ CORREGIDO: Ruta sin /usuarios/
     const res = await fetch(`${API_URL}/turnos/crear/`, {
       method: "POST",
       headers: {
@@ -613,11 +870,13 @@ const crearTurno = async () => {
       },
       body: JSON.stringify(payload)
     })
+    
     const data = await res.json()
     
     if (res.ok && data.status === 'ok') {
       mensaje.value = "¡Turno Reservado con Éxito!"
       mensajeTipo.value = "success"
+      limpiarContexto()
       setTimeout(() => router.push('/turnos'), 2000)
     } else {
       mensaje.value = data.message || "Error al crear turno"
@@ -632,11 +891,46 @@ const crearTurno = async () => {
 }
 
 const volverAlListado = () => {
+  limpiarContexto()
   router.push('/turnos')
 }
 
 onMounted(() => {
+  console.log("📍 RegistrarTurnoPresencial - Montado")
+  const urlParams = new URLSearchParams(window.location.search)
+  const nuevoClienteId = urlParams.get('nuevo_cliente_id')
+  const nuevoClienteNombre = urlParams.get('nuevo_cliente_nombre')
+  
+  console.log("📌 URL Params:", {
+    nuevoClienteId,
+    nuevoClienteNombre,
+    search: window.location.search
+  })
+  
+  if (nuevoClienteId && nuevoClienteNombre) {
+    console.log("🎯 NUEVO CLIENTE DETECTADO:", { nuevoClienteId, nuevoClienteNombre })
+    
+    seleccionarCliente({
+      id: parseInt(nuevoClienteId),
+      nombre: decodeURIComponent(nuevoClienteNombre.split('+')[0]),
+      apellido: decodeURIComponent(nuevoClienteNombre.split('+')[1] || '')
+    })
+    
+    cargarContexto()
+    
+    const nuevaUrl = window.location.pathname
+    console.log("🧹 Limpiando URL, nueva:", nuevaUrl)
+    window.history.replaceState({}, '', nuevaUrl)
+  }
+  
   cargarDatosIniciales()
+})
+
+onBeforeUnmount(() => {
+  const currentPath = window.location.pathname
+  if (!currentPath.includes('/usuarios/crear')) {
+    limpiarContexto()
+  }
 })
 </script>
 
@@ -664,8 +958,6 @@ onMounted(() => {
   position: relative;
   overflow: hidden;
 }
-
-
 
 /* ============================================
    TURNO CONTAINER (tu estructura original)
@@ -920,6 +1212,146 @@ onMounted(() => {
 .btn-nuevo:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 12px rgba(15, 23, 42, 0.3);
+}
+
+/* 🟢 ESTILOS PARA EL MODAL DE REGISTRO */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+}
+
+.modal-container {
+  background: white;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 700px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px;
+  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, #1f2937, #374151);
+  border-radius: 16px 16px 0 0;
+  color: white;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.4em;
+  font-weight: 600;
+}
+
+.modal-close-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.modal-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.input-error {
+  border-color: #dc3545 !important;
+  background: #fff5f5 !important;
+}
+
+.msg-error.small {
+  font-size: 0.85em;
+  padding: 8px 12px;
+  margin-top: 5px;
+}
+
+.modal-footer {
+  padding: 20px 24px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  background: #f9fafb;
+  border-radius: 0 0 16px 16px;
+}
+
+.btn-secondary {
+  background: #6b7280;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-secondary:hover {
+  background: #4b5563;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1d4ed8, #1e40af);
+  transform: translateY(-2px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Sugerencias */

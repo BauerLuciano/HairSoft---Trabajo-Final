@@ -1,155 +1,253 @@
 <template>
-  <div class="user-form">
-    <div class="form-card">
-      <div class="form-header">
-        <h1>Registrar Usuario</h1>
-        <p>Completa los datos del usuario</p>
+  <div class="modern-form">
+    <!-- 🎯 NOTA DE CONTEXTO CUANDO VENIMOS DE TURNOS -->
+    <div v-if="vieneDeTurnos" class="turno-notice">
+      <div class="notice-icon">📋</div>
+      <div class="notice-content">
+        <h3>Registro para Turno Presencial</h3>
+        <p>Completa los datos del cliente para continuar con la reserva del turno</p>
+      </div>
+    </div>
+
+    <div class="form-header">
+      <h1>{{ vieneDeTurnos ? 'Registrar Nuevo Cliente' : 'Registrar Nuevo Usuario' }}</h1>
+      <p class="subtitle">{{ vieneDeTurnos ? 'Completa los datos del cliente para el turno' : 'Completa todos los campos requeridos' }}</p>
+    </div>
+
+    <form @submit.prevent="crearUsuario" class="form-content" autocomplete="off">
+      
+      <!-- Primera fila -->
+      <div class="form-row">
+        <div class="input-field">
+          <div class="field-header">
+            <label>Nombre</label>
+            <span class="required-badge">Requerido</span>
+          </div>
+          <div class="input-wrapper">
+            <input 
+              v-model="form.nombre" 
+              type="text" 
+              placeholder="Ingresa el nombre" 
+              @blur="validarNombre"
+              :class="{ 'error': errores.nombre }"
+            />
+          </div>
+          <div v-if="errores.nombre" class="field-error">
+            <span class="error-dot"></span>
+            {{ errores.nombre }}
+          </div>
+        </div>
+
+        <div class="input-field">
+          <div class="field-header">
+            <label>Apellido</label>
+            <span class="required-badge">Requerido</span>
+          </div>
+          <div class="input-wrapper">
+            <input 
+              v-model="form.apellido" 
+              type="text" 
+              placeholder="Ingresa el apellido" 
+              @blur="validarApellido"
+              :class="{ 'error': errores.apellido }"
+            />
+          </div>
+          <div v-if="errores.apellido" class="field-error">
+            <span class="error-dot"></span>
+            {{ errores.apellido }}
+          </div>
+        </div>
       </div>
 
-      <form @submit.prevent="crearUsuario" class="form-grid" autocomplete="off">
-        <!-- Nombre -->
-        <div class="input-group">
-          <label>Nombre <span class="required">*</span></label>
-          <input 
-            v-model="form.nombre" 
-            type="text" 
-            placeholder="Ingrese el nombre" 
-            required 
-            @blur="validarNombre"
-            :class="{ 'campo-invalido': errores.nombre }"
-          />
-          <div class="error-message" v-if="errores.nombre">{{ errores.nombre }}</div>
+      <!-- Segunda fila -->
+      <div class="form-row">
+        <div class="input-field">
+          <div class="field-header">
+            <label>DNI</label>
+            <span class="required-badge">Requerido</span>
+          </div>
+          <div class="input-wrapper">
+            <input 
+              v-model="form.dni" 
+              type="text" 
+              placeholder="30236987"
+              @blur="validarDNI"
+              @input="formatearDNI"
+              maxlength="8"
+              :class="{ 'error': errores.dni }"
+            />
+          </div>
+          <div v-if="errores.dni" class="field-error">
+            <span class="error-dot"></span>
+            {{ errores.dni }}
+          </div>
         </div>
 
-        <!-- Apellido -->
-        <div class="input-group">
-          <label>Apellido <span class="required">*</span></label>
-          <input 
-            v-model="form.apellido" 
-            type="text" 
-            placeholder="Ingrese el apellido" 
-            required 
-            @blur="validarApellido"
-            :class="{ 'campo-invalido': errores.apellido }"
-          />
-          <div class="error-message" v-if="errores.apellido">{{ errores.apellido }}</div>
+        <div class="input-field">
+          <div class="field-header">
+            <label>Teléfono</label>
+            <span class="optional-badge">Opcional</span>
+          </div>
+          <div class="input-wrapper">
+            <input 
+              v-model="form.telefono" 
+              type="tel" 
+              placeholder="+54 3755399999"
+              @blur="validarTelefono"
+              @input="formatearTelefono"
+              :class="{ 'error': errores.telefono }"
+            />
+          </div>
+          <div v-if="errores.telefono" class="field-error">
+            <span class="error-dot"></span>
+            {{ errores.telefono }}
+          </div>
         </div>
+      </div>
 
-        <!-- DNI -->
-        <div class="input-group">
-          <label>DNI <span class="required">*</span></label>
-          <input 
-            v-model="form.dni" 
-            type="text" 
-            placeholder="Ingrese el DNI" 
-            required 
-            @blur="validarDNI"
-            maxlength="8"
-            :class="{ 'campo-invalido': errores.dni }"
-          />
-          <div class="error-message" v-if="errores.dni">{{ errores.dni }}</div>
+      <!-- Correo -->
+      <div class="input-field full-width">
+        <div class="field-header">
+          <label>Correo Electrónico</label>
+          <span class="required-badge">Requerido</span>
         </div>
-
-        <!-- Teléfono -->
-        <div class="input-group">
-          <label>Teléfono</label>
-          <input 
-            v-model="form.telefono" 
-            type="text" 
-            placeholder="Ingrese el teléfono" 
-            @blur="validarTelefono"
-            maxlength="15"
-            :class="{ 'campo-invalido': errores.telefono }"
-          />
-          <div class="error-message" v-if="errores.telefono">{{ errores.telefono }}</div>
-        </div>
-
-        <!-- Correo -->
-        <div class="input-group">
-          <label>Correo <span class="required">*</span></label>
+        <div class="input-wrapper">
           <input 
             v-model="form.correo" 
             type="email" 
-            placeholder="Ingrese el correo electrónico" 
-            required 
-            autocomplete="off"
+            placeholder="ejemplo@dominio.com" 
             @blur="validarCorreo"
-            :class="{ 'campo-invalido': errores.correo }"
+            :class="{ 'error': errores.correo }"
           />
-          <div class="error-message" v-if="errores.correo">{{ errores.correo }}</div>
+        </div>
+        <div v-if="errores.correo" class="field-error">
+          <span class="error-dot"></span>
+          {{ errores.correo }}
+        </div>
+      </div>
+
+      <!-- Contraseñas -->
+      <div class="form-row">
+        <div class="input-field">
+          <div class="field-header">
+            <label>Contraseña</label>
+            <span class="required-badge">Requerido</span>
+          </div>
+          <div class="input-wrapper password-wrapper">
+            <input 
+              v-model="form.contrasena" 
+              :type="mostrarContrasena ? 'text' : 'password'" 
+              placeholder="Mínimo 6 caracteres"
+              @blur="validarContrasena"
+              :class="{ 'error': errores.contrasena }"
+            />
+            <button 
+              type="button" 
+              class="password-toggle"
+              @click="mostrarContrasena = !mostrarContrasena"
+              :aria-label="mostrarContrasena ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+            >
+              {{ mostrarContrasena ? '👁️' : '👁️‍🗨️' }}
+            </button>
+          </div>
+          <div v-if="errores.contrasena" class="field-error">
+            <span class="error-dot"></span>
+            {{ errores.contrasena }}
+          </div>
         </div>
 
-        <!-- Contraseña -->
-        <div class="input-group">
-          <label>Contraseña <span class="required">*</span></label>
-          <input 
-            v-model="form.contrasena" 
-            type="password" 
-            placeholder="Ingrese la contraseña" 
-            required 
-            autocomplete="new-password"
-            @blur="validarContrasena"
-            :class="{ 'campo-invalido': errores.contrasena }"
-          />
-          <div class="error-message" v-if="errores.contrasena">{{ errores.contrasena }}</div>
+        <div class="input-field">
+          <div class="field-header">
+            <label>Confirmar Contraseña</label>
+            <span class="required-badge">Requerido</span>
+          </div>
+          <div class="input-wrapper password-wrapper">
+            <input 
+              v-model="form.confirmarContrasena" 
+              :type="mostrarConfirmarContrasena ? 'text' : 'password'" 
+              placeholder="Repite la contraseña" 
+              @blur="validarConfirmarContrasena"
+              :class="{ 'error': errores.confirmarContrasena }"
+            />
+            <button 
+              type="button" 
+              class="password-toggle"
+              @click="mostrarConfirmarContrasena = !mostrarConfirmarContrasena"
+              :aria-label="mostrarConfirmarContrasena ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+            >
+              {{ mostrarConfirmarContrasena ? '👁️' : '👁️‍🗨️' }}
+            </button>
+          </div>
+          <div v-if="errores.confirmarContrasena" class="field-error">
+            <span class="error-dot"></span>
+            {{ errores.confirmarContrasena }}
+          </div>
         </div>
+      </div>
 
-        <!-- Confirmar Contraseña -->
-        <div class="input-group">
-          <label>Confirmar Contraseña <span class="required">*</span></label>
-          <input 
-            v-model="form.confirmarContrasena" 
-            type="password" 
-            placeholder="Confirme la contraseña" 
-            required 
-            autocomplete="new-password"
-            @blur="validarConfirmarContrasena"
-            :class="{ 'campo-invalido': errores.confirmarContrasena }"
-          />
-          <div class="error-message" v-if="errores.confirmarContrasena">{{ errores.confirmarContrasena }}</div>
+      <!-- 🔥 CAMBIO IMPORTANTE: Si venimos de turnos, el rol ES FIJO = CLIENTE -->
+      <div v-if="!vieneDeTurnos" class="input-field full-width">
+        <div class="field-header">
+          <label>Rol del Usuario</label>
+          <span class="required-badge">Requerido</span>
         </div>
-
-        <!-- Rol -->
-        <div class="input-group">
-          <label>Rol <span class="required">*</span></label>
+        <div class="select-wrapper">
           <select 
             v-model="form.rol_id" 
-            required 
-            @blur="validarRol"
-            :class="{ 'campo-invalido': errores.rol_id }"
+            @change="validarRol"
+            :class="{ 'error': errores.rol_id }"
           >
-            <option value="">Seleccionar rol</option>
-            <option v-for="rol in roles" :key="rol.id" :value="rol.id">
+            <option value="" disabled selected>Selecciona un rol</option>
+            <option 
+              v-for="rol in roles" 
+              :key="rol.id" 
+              :value="rol.id"
+            >
               {{ rol.nombre }}
             </option>
           </select>
           <div class="select-arrow">▼</div>
-          <div class="error-message" v-if="errores.rol_id">{{ errores.rol_id }}</div>
         </div>
+        <div v-if="errores.rol_id" class="field-error">
+          <span class="error-dot"></span>
+          {{ errores.rol_id }}
+        </div>
+      </div>
 
-        <div class="full-width">
-          <button type="submit" class="submit-btn">
-            <span class="btn-text">Guardar Usuario</span>
-            <span class="btn-icon">→</span>
-          </button>
-        </div>
-      </form>
-    </div>
+      <!-- Botón -->
+      <button type="submit" class="submit-button" :disabled="cargando">
+        <span class="button-content">
+          <span class="button-text">{{ 
+            cargando 
+              ? (vieneDeTurnos ? 'Registrando cliente...' : 'Creando usuario...') 
+              : (vieneDeTurnos ? 'Registrar Cliente y Volver a Turnos' : 'Crear Usuario')
+          }}</span>
+          <span class="button-icon">{{ cargando ? '⏳' : (vieneDeTurnos ? '📋' : '→') }}</span>
+        </span>
+      </button>
+    </form>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import { ref, onMounted, watch } from 'vue'
+import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2'
+import { useRouter, useRoute } from 'vue-router'
 
-// 📌 API
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+const router = useRouter()
+const route = useRoute()
 
-// 📌 Props y eventos
-const emit = defineEmits(['usuario-registrado'])
+// Estado
+const cargando = ref(false)
+const mostrarContrasena = ref(false)
+const mostrarConfirmarContrasena = ref(false)
+const roles = ref([])
+const usuariosExistentes = ref([])
+const vieneDeTurnos = ref(false)
+const idRolCliente = ref(null) // 🎯 PARA GUARDAR EL ID DEL ROL CLIENTE
 
-// 📌 Formulario
+// Formulario
 const form = ref({
   nombre: '',
   apellido: '',
@@ -161,7 +259,7 @@ const form = ref({
   rol_id: ''
 })
 
-// 📌 Errores por campo
+// Errores
 const errores = ref({
   nombre: '',
   apellido: '',
@@ -173,117 +271,244 @@ const errores = ref({
   rol_id: ''
 })
 
-// 📌 Roles y usuarios existentes
-const roles = ref([])
-const usuarios = ref([])
-
-// 🔹 Cargar usuarios existentes
-const cargarUsuarios = async () => {
-  try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/usuarios/`)
-    usuarios.value = res.data
-  } catch (error) {
-    console.error('Error al cargar usuarios:', error)
-  }
-}
-
-// 🔹 Cargar roles activos
-const cargarRoles = async () => {
-  try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/roles/`)
-    roles.value = (res.data || []).filter(r => r.activo === true || r.activo === undefined)
-  } catch (error) {
-    console.error('Error al cargar roles:', error)
-  }
-}
 
 onMounted(async () => {
-  await cargarUsuarios()
+  // Solo detectar de dónde venimos, NO redirigir automáticamente
+  vieneDeTurnos.value = route.query.returnTo === 'turnos'
+  
+  console.log("📌 Contexto:", vieneDeTurnos.value ? 'Desde Turnos Presenciales' : 'Registro Normal')
+  
+  await cargarUsuariosExistentes()
   await cargarRoles()
+  
+  // 🎯 IMPORTANTE: Buscar el rol CLIENTE si venimos de turnos
+  if (vieneDeTurnos.value && !idRolCliente.value) {
+    const rolCliente = roles.value.find(r => r.nombre.toLowerCase().includes('cliente'))
+    if (rolCliente) {
+      idRolCliente.value = rolCliente.id
+      // 🟢 FORZAR EL ROL CLIENTE EN EL FORMULARIO
+      form.value.rol_id = idRolCliente.value
+    }
+  }  
 })
 
-// ------------------------------
-// VALIDACIONES POR CAMPO (SOLO EN BLUR)
-// ------------------------------
-const validarNombre = () => {
-  const valor = form.value.nombre.trim()
-  if (!valor) {
-    errores.value.nombre = "El nombre es obligatorio"
-  } else if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]{2,50}$/.test(valor)) {
-    errores.value.nombre = "El nombre solo puede contener letras y tener 2-50 caracteres"
+// Cargar roles
+const cargarRoles = async () => {
+  try {
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+    const res = await axios.get(`${API_BASE}/api/roles/`)
+    
+    if (Array.isArray(res.data)) {
+      roles.value = res.data.filter(r => r.activo !== false)
+    } else if (res.data && Array.isArray(res.data.data)) {
+      roles.value = res.data.data.filter(r => r.activo !== false)
+    } else if (res.data && res.data.results) {
+      roles.value = res.data.results.filter(r => r.activo !== false)
+    }
+    
+    console.log("📋 Roles cargados:", roles.value.length)
+  } catch (error) {
+    console.error('Error cargando roles:', error)
+    if (error.response?.status === 401) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Sesión expirada',
+        text: 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.',
+        background: '#1e293b',
+        color: '#f1f5f9'
+      })
+    } else {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'No se pudieron cargar los roles',
+        background: '#1e293b',
+        color: '#f1f5f9'
+      })
+    }
+  }
+}
+
+// Cargar usuarios existentes para validar duplicados
+const cargarUsuariosExistentes = async () => {
+  try {
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+    const res = await axios.get(`${API_BASE}/api/usuarios/`)
+    usuariosExistentes.value = res.data
+  } catch (error) {
+    console.error('Error cargando usuarios existentes:', error)
+  }
+}
+
+// Formateo y validaciones
+const formatearDNI = () => {
+  form.value.dni = form.value.dni.replace(/\D/g, '').slice(0, 8)
+}
+
+const formatearTelefono = () => {
+  let tel = form.value.telefono.replace(/\D/g, '')
+  
+  if (tel.length === 0) {
+    form.value.telefono = ''
+    return
+  }
+  
+  if (tel.startsWith('549')) {
+    form.value.telefono = '+54 ' + tel.slice(2)
+  } else if (tel.startsWith('54')) {
+    form.value.telefono = '+54 ' + tel.slice(2)
+  } else if (tel.startsWith('9')) {
+    form.value.telefono = '+54 ' + tel
   } else {
-    errores.value.nombre = ""
+    form.value.telefono = '+54 9' + tel
+  }
+  
+  tel = form.value.telefono.replace(/\D/g, '')
+  if (tel.length > 13) {
+    tel = tel.slice(0, 13)
+    const codigoPais = tel.slice(0, 2)
+    const resto = tel.slice(2)
+    form.value.telefono = `+${codigoPais} ${resto}`
+  }
+}
+
+// Validar que no exista otro usuario con el mismo nombre y apellido
+const validarNombreApellidoUnico = () => {
+  const nombre = form.value.nombre.trim().toLowerCase()
+  const apellido = form.value.apellido.trim().toLowerCase()
+  
+  if (!nombre || !apellido) return true
+  
+  const existeDuplicado = usuariosExistentes.value.some(usuario => {
+    const usuarioNombre = usuario.nombre?.toLowerCase() || ''
+    const usuarioApellido = usuario.apellido?.toLowerCase() || ''
+    
+    return usuarioNombre === nombre && usuarioApellido === apellido
+  })
+  
+  return !existeDuplicado
+}
+
+// Validar que no exista otro usuario con el mismo DNI
+const validarDNIUnico = () => {
+  const dni = form.value.dni.trim()
+  
+  if (!dni) return true
+  
+  const existeDuplicado = usuariosExistentes.value.some(usuario => {
+    return usuario.dni === dni
+  })
+  
+  return !existeDuplicado
+}
+
+// Validar que no exista otro usuario con el mismo correo
+const validarCorreoUnico = () => {
+  const correo = form.value.correo.trim().toLowerCase()
+  
+  if (!correo) return true
+  
+  const existeDuplicado = usuariosExistentes.value.some(usuario => {
+    const usuarioCorreo = usuario.correo?.toLowerCase() || ''
+    return usuarioCorreo === correo
+  })
+  
+  return !existeDuplicado
+}
+
+const validarNombre = () => {
+  const val = form.value.nombre.trim()
+  if (!val) {
+    errores.value.nombre = 'El nombre es obligatorio'
+  } else if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]{2,50}$/.test(val)) {
+    errores.value.nombre = 'Solo letras (2-50 caracteres)'
+  } else if (!validarNombreApellidoUnico()) {
+    errores.value.nombre = 'Ya existe un usuario con este nombre y apellido'
+  } else {
+    errores.value.nombre = ''
   }
 }
 
 const validarApellido = () => {
-  const valor = form.value.apellido.trim()
-  if (!valor) {
-    errores.value.apellido = "El apellido es obligatorio"
-  } else if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]{2,50}$/.test(valor)) {
-    errores.value.apellido = "El apellido solo puede contener letras y tener 2-50 caracteres"
+  const val = form.value.apellido.trim()
+  if (!val) {
+    errores.value.apellido = 'El apellido es obligatorio'
+  } else if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]{2,50}$/.test(val)) {
+    errores.value.apellido = 'Solo letras (2-50 caracteres)'
+  } else if (!validarNombreApellidoUnico()) {
+    errores.value.apellido = 'Ya existe un usuario con este nombre y apellido'
   } else {
-    errores.value.apellido = ""
+    errores.value.apellido = ''
   }
 }
 
 const validarDNI = () => {
-  const dni = form.value.dni.trim()
-  if (!dni) {
-    errores.value.dni = "El DNI es obligatorio"
-  } else if (!/^\d{7,8}$/.test(dni)) {
-    errores.value.dni = "DNI inválido (solo números, 7-8 dígitos)"
+  const val = form.value.dni.trim()
+  if (!val) {
+    errores.value.dni = 'El DNI es obligatorio'
+  } else if (!/^\d{7,8}$/.test(val)) {
+    errores.value.dni = 'DNI inválido (7-8 dígitos)'
+  } else if (!validarDNIUnico()) {
+    errores.value.dni = 'Ya existe un usuario con este DNI'
   } else {
-    errores.value.dni = ""
+    errores.value.dni = ''
   }
 }
 
 const validarTelefono = () => {
-  const telefono = form.value.telefono.trim()
-  if (telefono && !/^\+?[\d\s\-\(\)]{6,15}$/.test(telefono)) {
-    errores.value.telefono = "Número inválido (solo números y caracteres especiales, 6-15 dígitos)"
+  const val = form.value.telefono.trim()
+  if (!val) {
+    errores.value.telefono = ''
+    return
+  }
+
+  const limpio = val.replace(/\s+/g, '')
+  
+  if (!/^\+54\s?9\d{10}$/.test(limpio)) {
+    errores.value.telefono = 'Formato: +54 9 3755 558911'
   } else {
-    errores.value.telefono = ""
+    errores.value.telefono = ''
   }
 }
 
 const validarCorreo = () => {
-  const correo = form.value.correo.trim()
-  if (!correo) {
-    errores.value.correo = "El correo es obligatorio"
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
-    errores.value.correo = "Correo inválido"
+  const val = form.value.correo.trim()
+  if (!val) {
+    errores.value.correo = 'El correo es obligatorio'
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+    errores.value.correo = 'Correo electrónico inválido'
+  } else if (!validarCorreoUnico()) {
+    errores.value.correo = 'Ya existe un usuario con este correo'
   } else {
-    errores.value.correo = ""
+    errores.value.correo = ''
   }
 }
 
 const validarContrasena = () => {
-  const contrasena = form.value.contrasena
-  if (!contrasena) {
-    errores.value.contrasena = "La contraseña es obligatoria"
-  } else if (contrasena.length < 6) {
-    errores.value.contrasena = "Debe tener al menos 6 caracteres"
-  } else if (!/(?=.*[A-Z])(?=.*\d)/.test(contrasena)) {
-    errores.value.contrasena = "Debe contener al menos una mayúscula y un número"
+  const val = form.value.contrasena
+  if (!val) {
+    errores.value.contrasena = 'La contraseña es obligatoria'
+  } else if (val.length < 6) {
+    errores.value.contrasena = 'Mínimo 6 caracteres'
+  } else if (!/(?=.*[A-Z])(?=.*\d)/.test(val)) {
+    errores.value.contrasena = '1 mayúscula y 1 número'
   } else {
-    errores.value.contrasena = ""
+    errores.value.contrasena = ''
   }
   
-  // Si hay confirmación, validar que coincidan
   if (form.value.confirmarContrasena) {
     validarConfirmarContrasena()
   }
 }
 
 const validarConfirmarContrasena = () => {
-  const confirmacion = form.value.confirmarContrasena
-  if (!confirmacion) {
-    errores.value.confirmarContrasena = "Confirmar contraseña es obligatorio"
-  } else if (confirmacion !== form.value.contrasena) {
-    errores.value.confirmarContrasena = "Las contraseñas no coinciden"
+  const val = form.value.confirmarContrasena
+  if (!val) {
+    errores.value.confirmarContrasena = 'Confirma la contraseña'
+  } else if (val !== form.value.contrasena) {
+    errores.value.confirmarContrasena = 'Las contraseñas no coinciden'
   } else {
-    errores.value.confirmarContrasena = ""
+    errores.value.confirmarContrasena = ''
   }
 }
 
@@ -295,13 +520,7 @@ const validarRol = () => {
   }
 }
 
-// ----------------------------------
-// VALIDACIÓN DE FORMULARIO COMPLETO
-// ----------------------------------
 const validarFormulario = () => {
-  console.log("🟢 Ejecutando validarFormulario()")
-
-  // Validar todos los campos antes de enviar
   validarNombre()
   validarApellido()
   validarDNI()
@@ -309,441 +528,638 @@ const validarFormulario = () => {
   validarCorreo()
   validarContrasena()
   validarConfirmarContrasena()
-  validarRol()
+  
+  // Solo validar rol si NO venimos de turnos
+  if (!vieneDeTurnos.value) {
+    validarRol()
+  }
 
-  // Verificar si hay algún error
-  let valido = true
-  Object.keys(errores.value).forEach(k => {
-    if (errores.value[k]) valido = false
-  })
-
-  return valido
+  return !Object.values(errores.value).some(e => e !== '')
 }
 
-// ----------------------------------
-// CREAR USUARIO
-// ----------------------------------
 const crearUsuario = async () => {
-  console.log("✅ crearUsuario ejecutado")
-
+  // Validar formulario primero
   if (!validarFormulario()) {
     Swal.fire({
       icon: 'error',
-      title: 'Formulario inválido',
-      text: 'Por favor corrige los errores en el formulario',
-      confirmButtonColor: '#0ea5e9',
+      title: 'Formulario incompleto',
+      text: 'Por favor, completa todos los campos requeridos correctamente',
       background: '#1e293b',
       color: '#f1f5f9'
     })
     return
   }
 
-  const rolSeleccionado = roles.value.find(r => r.id == form.value.rol_id)
-  if (!rolSeleccionado) {
-    Swal.fire({
-      icon: 'error',
-      title: 'Rol no válido',
-      text: 'Por favor selecciona un rol válido',
-      confirmButtonColor: '#0ea5e9',
-      background: '#1e293b',
-      color: '#f1f5f9'
-    })
-    return
-  }
+  // 🔥 VALIDAR ADMINISTRADOR ÚNICO (solo para registros normales)
+  if (!vieneDeTurnos.value) {
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+      const rolNombreSeleccionado = roles.value.find(r => r.id == form.value.rol_id)?.nombre?.toLowerCase()
+      
+      const usuariosRes = await axios.get(`${API_BASE}/api/usuarios/`)
+      
+      const hayOtroAdmin = usuariosRes.data.some(u => 
+        u.rol_nombre?.toLowerCase() === 'administrador' && 
+        u.estado === 'ACTIVO'
+      )
 
-  // 🔹 Verificar si ya existe un administrador activo
-  if (rolSeleccionado.nombre?.toLowerCase() === 'administrador') {
-    const hayAdminActivo = usuarios.value.some(u => 
-      u.rol_nombre?.toLowerCase() === 'administrador' && u.estado === 'ACTIVO'
-    )
-    if (hayAdminActivo) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Administrador existente',
-        text: 'Ya existe un usuario Administrador activo. No se puede crear otro.',
-        confirmButtonColor: '#0ea5e9',
-        background: '#1e293b',
-        color: '#f1f5f9'
-      })
-      return
+      if (rolNombreSeleccionado === 'administrador' && hayOtroAdmin) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'Administrador existente',
+          text: 'Ya existe un administrador activo. No se puede crear otro.',
+          background: '#1e293b',
+          color: '#f1f5f9'
+        })
+        return
+      }
+    } catch (error) {
+      console.error('Error validando administrador:', error)
     }
   }
 
+  cargando.value = true
+
   try {
+    // Preparar el teléfono para el backend
+    let telefonoParaBackend = null
+    if (form.value.telefono.trim()) {
+      let telLimpio = form.value.telefono.replace(/\s+/g, '').replace('+', '')
+      
+      if (!telLimpio.startsWith('549')) {
+        if (telLimpio.startsWith('54')) {
+          telLimpio = '549' + telLimpio.slice(2)
+        } else if (telLimpio.startsWith('9')) {
+          telLimpio = '54' + telLimpio
+        } else {
+          telLimpio = '549' + telLimpio
+        }
+      }
+      
+      if (telLimpio.length === 13) {
+        telefonoParaBackend = '+' + telLimpio
+      } else {
+        errores.value.telefono = 'El teléfono debe tener 13 dígitos'
+        throw new Error('Teléfono inválido')
+      }
+    }
+
+    // 🎯 SI VENIMOS DE TURNOS, EL ROL ES FIJO = CLIENTE
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+    
+    // Buscar el rol CLIENTE si venimos de turnos
+    if (vieneDeTurnos.value && !idRolCliente.value) {
+      const rolCliente = roles.value.find(r => r.nombre.toLowerCase().includes('cliente'))
+      if (rolCliente) {
+        idRolCliente.value = rolCliente.id
+      } else {
+        // Si no encuentra el rol CLIENTE, buscar alternativas
+        console.warn('No se encontró rol CLIENTE, buscando alternativas...')
+        const rolAlternativo = roles.value.find(r => 
+          r.nombre.toLowerCase().includes('cliente') || 
+          r.nombre.toLowerCase().includes('usuario')
+        )
+        if (rolAlternativo) {
+          idRolCliente.value = rolAlternativo.id
+        } else {
+          throw new Error('No se encontró el rol CLIENTE en el sistema')
+        }
+      }
+    }
+
     const payload = {
       nombre: form.value.nombre.trim(),
       apellido: form.value.apellido.trim(),
       dni: form.value.dni.trim(),
-      telefono: form.value.telefono.trim() || '',
+      telefono: telefonoParaBackend,
       correo: form.value.correo.trim(),
       contrasena: form.value.contrasena,
-      rol: form.value.rol_id,
+      rol: vieneDeTurnos.value ? idRolCliente.value : form.value.rol_id,
       estado: 'ACTIVO'
     }
 
-    console.log("📤 Enviando datos al backend:", payload)
-    const res = await axios.post(`${API_BASE}/usuarios/api/usuarios/crear/`, payload)
+    console.log('📤 Enviando al backend:', payload)
 
-    Swal.fire({
-      icon: 'success',
-      title: 'Usuario registrado',
-      text: 'El usuario se creó correctamente',
-      confirmButtonColor: '#0ea5e9',
-      background: '#1e293b',
-      color: '#f1f5f9'
-    })
+    const response = await axios.post(`${API_BASE}/api/usuarios/crear/`, payload)
+    const nuevoUsuarioId = response.data.id
 
-    // Limpiar formulario
-    resetForm()
+    console.log("✅ CLIENTE CREADO - ID:", nuevoUsuarioId)
 
-    // Emitir evento para que el padre refresque la lista y cierre modal
-    emit('usuario-registrado', res.data)
+    // 🎯 AQUÍ ESTÁ LA CLAVE CORREGIDA - DIFERENCIAR ENTRE VENIR DE TURNOS O NO
+    if (vieneDeTurnos.value) {
+      console.log("🔥 VENIMOS DE TURNOS - REDIRIGIENDO A TURNOS...")
+      
+      // Mostrar mensaje de éxito rápido
+      await Swal.fire({
+        icon: 'success',
+        title: '¡Cliente Registrado!',
+        text: 'Volviendo a turnos con el cliente seleccionado...',
+        showConfirmButton: false,
+        timer: 800,
+        timerProgressBar: true,
+        background: '#1e293b',
+        color: '#f1f5f9'
+      })
+      
+      // 🟢 CODIFICAR LOS NOMBRES PARA LA URL (usar + en lugar de %20 para espacios)
+      const nombreCodificado = encodeURIComponent(form.value.nombre.trim())
+      const apellidoCodificado = encodeURIComponent(form.value.apellido.trim())
+      const nombreCompleto = `${nombreCodificado}+${apellidoCodificado}`
+      
+      console.log("📍 Redirigiendo a turnos con:", {
+        id: nuevoUsuarioId,
+        nombre: nombreCompleto
+      })
+      
+      // 🟢 REDIRIGIR CON LOS PARÁMETROS CORRECTOS
+      router.push({
+        path: '/turnos/crear-presencial',
+        query: {
+          nuevo_cliente_id: nuevoUsuarioId,
+          nuevo_cliente_nombre: nombreCompleto
+        }
+      })
+      
+    } else {
+      // 🔥 CASO 2: REGISTRO NORMAL (NO desde turnos)
+      Swal.fire({
+        icon: 'success',
+        title: 'Usuario creado',
+        text: 'El usuario se ha registrado exitosamente',
+        background: '#1e293b',
+        color: '#f1f5f9'
+      }).then(() => {
+        // Limpiar formulario
+        form.value = {
+          nombre: '',
+          apellido: '',
+          dni: '',
+          telefono: '',
+          correo: '',
+          contrasena: '',
+          confirmarContrasena: '',
+          rol_id: ''
+        }
+        
+        // Limpiar errores
+        Object.keys(errores.value).forEach(key => {
+          errores.value[key] = ''
+        })
+        
+        // Resetear estados de contraseñas
+        mostrarContrasena.value = false
+        mostrarConfirmarContrasena.value = false
+        
+        // Recargar usuarios existentes
+        cargarUsuariosExistentes()
+      })
+    }
 
-  } catch (err) {
-    console.error('❌ Error en crearUsuario:', err.response?.data || err)
+  } catch (error) {
+    console.error('❌ Error creando usuario:', error)
     
-    let errorMessage = 'Ocurrió un error inesperado.'
-    if (err.response?.data) {
-      if (typeof err.response.data === 'string') {
-        errorMessage = err.response.data
-      } else if (err.response.data.message) {
-        errorMessage = err.response.data.message
-      } else if (err.response.data.error) {
-        errorMessage = err.response.data.error
-      } else if (typeof err.response.data === 'object') {
-        errorMessage = Object.values(err.response.data).flat().join(', ')
-      }
+    let msg = 'Error al crear el usuario'
+    
+    if (error.response?.data?.error) {
+      msg = error.response.data.error
+    } else if (error.response?.data?.message) {
+      msg = error.response.data.message
+    } else if (error.message) {
+      msg = error.message
+    }
+    
+    // Manejar errores específicos de duplicados
+    if (msg.toLowerCase().includes('dni') || msg.toLowerCase().includes('duplicado')) {
+      errores.value.dni = 'Ya existe un usuario con este DNI'
+    }
+    
+    if (msg.toLowerCase().includes('correo') || msg.toLowerCase().includes('email')) {
+      errores.value.correo = 'Ya existe un usuario con este correo'
     }
     
     Swal.fire({
       icon: 'error',
-      title: 'Error al crear usuario',
-      text: errorMessage,
-      confirmButtonColor: '#0ea5e9',
+      title: 'Error',
+      text: msg,
       background: '#1e293b',
       color: '#f1f5f9'
     })
-  }
-}
-
-// ------------------------------
-// RESET
-// ------------------------------
-const resetForm = () => {
-  form.value = {
-    nombre: '',
-    apellido: '',
-    dni: '',
-    telefono: '',
-    correo: '',
-    contrasena: '',
-    confirmarContrasena: '',
-    rol_id: ''
-  }
-
-  errores.value = {
-    nombre: '',
-    apellido: '',
-    dni: '',
-    telefono: '',
-    correo: '',
-    contrasena: '',
-    confirmarContrasena: '',
-    rol_id: ''
+  } finally {
+    cargando.value = false
   }
 }
 </script>
 
 <style scoped>
-/* ========================================
-   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE - FORMULARIO USUARIO
-   ======================================== */
+/* ESTILOS MODERNOS CON TUS COLORES */
 
-:root {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-tertiary: #334155;
-  --text-primary: #f1f5f9;
-  --text-secondary: #cbd5e1;
-  --text-tertiary: #94a3b8;
-  --accent-color: #0ea5e9;
-  --accent-light: rgba(14, 165, 233, 0.1);
-  --border-color: #334155;
-  --hover-bg: #2d3748;
-  --error-color: #ef4444;
-  --success-color: #10b981;
-  --warning-color: #f59e0b;
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
-}
-
-
-/* Tarjeta del formulario */
-.form-card {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border-radius: 24px;
-  padding: 40px;
-  width: 100%;
+.modern-form {
   max-width: 900px;
-  box-shadow: var(--shadow-lg);
-  position: relative;
-  overflow: hidden;
-  transition: all 0.4s ease;
-  border: 1px solid var(--border-color);
+  margin: 0 auto;
+  padding: 40px;
+  background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+  border-radius: 24px;
+  border: 1px solid #334155;
+  box-shadow: 
+    0 20px 60px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-/* Borde superior azul acero */
-.form-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9);
-  border-radius: 24px 24px 0 0;
+/* 🎯 NOTA DE CONTEXTO PARA TURNOS */
+.turno-notice {
+  background: linear-gradient(135deg, #0f172a, #1e293b);
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  animation: slideIn 0.5s ease;
 }
 
-/* Header del formulario */
+.notice-icon {
+  font-size: 32px;
+  flex-shrink: 0;
+}
+
+.notice-content h3 {
+  margin: 0 0 8px 0;
+  color: #f1f5f9;
+  font-size: 18px;
+}
+
+.notice-content p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* HEADER ESTILIZADO */
 .form-header {
   text-align: center;
   margin-bottom: 40px;
-  padding-bottom: 25px;
-  border-bottom: 2px solid var(--border-color);
+  padding-bottom: 30px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.header-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.9;
 }
 
 .form-header h1 {
-  margin: 0;
-  font-size: 2.2rem;
-  background: linear-gradient(135deg, var(--text-primary), #0ea5e9);
+  margin: 0 0 8px 0;
+  font-size: 32px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #f1f5f9 0%, #0ea5e9 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  font-weight: 900;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
+  letter-spacing: -0.5px;
 }
 
-.form-header p {
-  color: var(--text-secondary);
-  font-weight: 500;
-  margin-top: 8px;
-  letter-spacing: 0.5px;
-  font-size: 1rem;
+.subtitle {
+  color: #94a3b8;
+  font-size: 16px;
+  margin: 0;
 }
 
-/* Grid del formulario */
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 25px;
-}
-
-.full-width {
-  grid-column: 1 / -1;
-}
-
-/* Grupos de entrada */
-.input-group {
+/* CONTENIDO DEL FORM */
+.form-content {
   display: flex;
   flex-direction: column;
+  gap: 24px;
+}
+
+/* FILAS DEL FORM */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+/* CAMPOS INDIVIDUALES */
+.input-field {
   position: relative;
 }
 
-.input-group label {
-  font-weight: 700;
-  margin-bottom: 10px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 1px;
+.field-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 4px;
+  margin-bottom: 10px;
 }
 
-.required {
-  color: var(--error-color);
-  font-size: 1.2rem;
+.field-header label {
+  color: #cbd5e1;
+  font-weight: 600;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-/* Campos de entrada */
-.input-group input,
-.input-group select {
-  padding: 14px 16px;
-  border: 2px solid var(--border-color);
-  border-radius: 12px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  transition: all 0.3s ease;
-  font-weight: 500;
-  font-size: 0.95rem;
+.required-badge {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.optional-badge {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* INPUTS ESTILIZADOS */
+.input-wrapper {
+  position: relative;
   width: 100%;
 }
 
-.input-group input:focus,
-.input-group select:focus {
+.input-wrapper input,
+.select-wrapper select {
+  width: 100%;
+  padding: 16px 52px 16px 20px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 2px solid #334155;
+  border-radius: 14px; /* BORDES REDONDEADOS EN TODOS LADOS */
+  color: #f1f5f9;
+  font-size: 15px;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
+  box-sizing: border-box;
+}
+
+.input-wrapper input:focus,
+.select-wrapper select:focus {
   outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 4px var(--accent-light);
-  background: var(--bg-secondary);
+  border-color: #0ea5e9;
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 
+    0 0 0 4px rgba(14, 165, 233, 0.2),
+    0 4px 20px rgba(14, 165, 233, 0.15);
+  transform: translateY(-1px);
 }
 
-.input-group input::placeholder {
-  color: var(--text-tertiary);
+.input-wrapper input.error,
+.select-wrapper select.error {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.07);
 }
 
-/* Estilos específicos para select */
-.input-group select {
+.input-wrapper input.error:focus {
+  box-shadow: 
+    0 0 0 4px rgba(239, 68, 68, 0.2),
+    0 4px 20px rgba(239, 68, 68, 0.1);
+}
+
+/* ICONOS EN INPUTS */
+.input-icon {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+  font-size: 18px;
+  pointer-events: none;
+}
+
+/* PASSWORD WRAPPER */
+.password-wrapper {
+  position: relative;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: all 0.2s;
+  z-index: 2;
+}
+
+.password-toggle:hover {
+  color: #0ea5e9;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.password-toggle:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.3);
+}
+
+/* SELECT ESTILIZADO */
+.select-wrapper {
+  position: relative;
+}
+
+.select-wrapper select {
   appearance: none;
   cursor: pointer;
-  padding-right: 40px;
+  padding-right: 52px;
 }
 
 .select-arrow {
   position: absolute;
-  right: 16px;
-  bottom: 16px;
-  pointer-events: none;
-  color: var(--text-tertiary);
-  font-size: 0.8rem;
+  right: 20px;
+  top: 50%;
   transform: translateY(-50%);
+  color: #64748b;
+  font-size: 12px;
+  pointer-events: none;
 }
 
-/* Campos inválidos */
-.campo-invalido {
-  border-color: var(--error-color) !important;
-  background: rgba(239, 68, 68, 0.05) !important;
-}
-
-.campo-invalido:focus {
-  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2) !important;
-}
-
-/* Mensajes de error */
-.error-message {
-  color: var(--error-color);
-  font-size: 0.8rem;
-  margin-top: 6px;
-  font-weight: 600;
+/* ERRORES */
+.field-error {
   display: flex;
   align-items: center;
-  gap: 4px;
-  min-height: 20px;
+  gap: 8px;
+  margin-top: 8px;
+  color: #ef4444;
+  font-size: 13px;
+  font-weight: 500;
+  animation: slideIn 0.3s ease;
 }
 
-/* Botón de submit */
-.submit-btn {
-  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+.error-dot {
+  width: 6px;
+  height: 6px;
+  background: #ef4444;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* BOTÓN MODERNO */
+.submit-button {
+  width: 100%;
+  padding: 18px 32px;
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
   color: white;
   border: none;
-  padding: 18px 32px;
-  border-radius: 12px;
-  font-weight: 900;
+  border-radius: 14px; /* BORDES REDONDEADOS */
+  font-size: 16px;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.3s ease;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  font-size: 1rem;
-  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-top: 10px;
   position: relative;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  width: 100%;
-  margin-top: 10px;
 }
 
-.submit-btn::before {
+.submit-button::before {
   content: '';
   position: absolute;
   top: 0;
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  transition: left 0.5s;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.6s;
 }
 
-.submit-btn:hover::before {
+.submit-button:hover:not(:disabled)::before {
   left: 100%;
 }
 
-.submit-btn:hover {
+.submit-button:hover:not(:disabled) {
   transform: translateY(-3px);
-  box-shadow: 0 10px 30px rgba(14, 165, 233, 0.5);
-  background: linear-gradient(135deg, #0284c7, #0369a1);
+  box-shadow: 
+    0 12px 40px rgba(14, 165, 233, 0.4),
+    0 4px 15px rgba(14, 165, 233, 0.3);
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
 }
 
-.btn-text {
-  font-size: 1rem;
-  font-weight: 900;
+.submit-button:active:not(:disabled) {
+  transform: translateY(-1px);
 }
 
-.btn-icon {
-  font-size: 1.2rem;
-  font-weight: 900;
-  transition: transform 0.3s ease;
+.submit-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
 }
 
-.submit-btn:hover .btn-icon {
-  transform: translateX(5px);
+.button-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .form-card {
-    padding: 25px;
+.button-icon {
+  font-size: 18px;
+  transition: transform 0.3s;
+}
+
+.submit-button:hover:not(:disabled) .button-icon {
+  transform: translateX(4px);
+}
+
+/* FULL WIDTH */
+.full-width {
+  grid-column: 1 / -1;
+}
+
+/* RESPONSIVE */
+@media (max-width: 900px) {
+  .modern-form {
+    padding: 32px;
     border-radius: 20px;
-    margin: 15px;
+    margin: 16px;
   }
-  
-  .form-header h1 {
-    font-size: 1.8rem;
-  }
-  
-  .form-grid {
+}
+
+@media (max-width: 768px) {
+  .form-row {
     grid-template-columns: 1fr;
     gap: 20px;
   }
   
-  .submit-btn {
-    padding: 16px 24px;
-    font-size: 0.95rem;
+  .form-header h1 {
+    font-size: 28px;
+  }
+  
+  .modern-form {
+    padding: 24px;
+  }
+  
+  .turno-notice {
+    flex-direction: column;
+    text-align: center;
+    gap: 12px;
   }
 }
 
 @media (max-width: 480px) {
-  .form-card {
+  .modern-form {
     padding: 20px;
     border-radius: 16px;
   }
   
   .form-header h1 {
-    font-size: 1.5rem;
+    font-size: 24px;
   }
   
-  .form-header p {
-    font-size: 0.9rem;
+  .subtitle {
+    font-size: 14px;
   }
   
-  .input-group input,
-  .input-group select {
-    padding: 12px 14px;
-    font-size: 0.9rem;
+  .input-wrapper input,
+  .select-wrapper select {
+    padding: 14px 48px 14px 16px;
+    font-size: 14px;
   }
   
-  .submit-btn {
-    padding: 14px 20px;
-    font-size: 0.9rem;
+  .submit-button {
+    padding: 16px 24px;
+    font-size: 15px;
   }
 }
 
-/* Estados de validación visual */
-.input-group input:valid:not(:focus):not(:placeholder-shown):not(.campo-invalido),
-.input-group select:valid:not(:focus):not(.campo-invalido) {
-  border-color: var(--success-color);
-  background: rgba(16, 185, 129, 0.05);
+/* EFECTO DE GLOW EN FOCUS */
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 
+      0 0 0 4px rgba(14, 165, 233, 0.2),
+      0 4px 20px rgba(14, 165, 233, 0.15);
+  }
+  50% {
+    box-shadow: 
+      0 0 0 4px rgba(14, 165, 233, 0.3),
+      0 4px 25px rgba(14, 165, 233, 0.25);
+  }
+}
+
+.input-wrapper input:focus,
+.select-wrapper select:focus {
+  animation: glow 2s infinite;
 }
 </style>

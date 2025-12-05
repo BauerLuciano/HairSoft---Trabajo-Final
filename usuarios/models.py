@@ -252,6 +252,13 @@ class Producto(models.Model):
 
     class Meta:
         db_table = "productos"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['nombre', 'marca'],
+                name='unique_producto_nombre_marca',
+                condition=models.Q(estado='activo')
+            )
+        ]  
 
 #Solicitud  Reabastecimiento
 

@@ -39,7 +39,6 @@
               <option value="EFECTIVO">Efectivo</option>
               <option value="TARJETA">Tarjeta</option>
               <option value="TRANSFERENCIA">Transferencia</option>
-              <option value="MERCADO_PAGO">Mercado Pago</option>
             </select>
           </div>
 
@@ -148,7 +147,7 @@
                     <Trash2 :size="14" />
                   </button>
                   <button 
-                    @click="verDetallesVenta(venta)" 
+                    @click="verDetallesVenta(venta.id)" 
                     class="action-button info"
                     title="Ver detalles de venta"
                   >
@@ -229,7 +228,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import axios from '../../utils/axiosConfig' 
 import Swal from 'sweetalert2'
 import RegistrarVenta from './RegistrarVenta.vue'
 import ModificarVenta from './ModificarVenta.vue'
@@ -239,16 +238,10 @@ import {
 } from 'lucide-vue-next'
 
 const router = useRouter()
-const API_BASE = 'http://127.0.0.1:8000'
 
 const ventas = ref([])
 const filtros = ref({ 
-  busqueda: '', 
-  fechaDesde: '', 
-  fechaHasta: '',
-  metodoPago: '',
-  tipo: '',
-  estado: ''
+  busqueda: '', fechaDesde: '', fechaHasta: '', metodoPago: '', tipo: '', estado: ''
 })
 const pagina = ref(1)
 const itemsPorPagina = 8
@@ -259,29 +252,24 @@ const cargando = ref(false)
 const ventaRecienCreada = ref(null)
 const generandoPDF = ref(null)
 
-// Cargar ventas del backend
+// --- CARGA DE VENTAS (CORREGIDO: SIN /usuarios/) ---
 const cargarVentas = async () => {
   cargando.value = true
   try {
-    console.log('🔄 Cargando ventas desde:', `${API_BASE}/usuarios/api/ventas/`)
-    const res = await axios.get(`${API_BASE}/usuarios/api/ventas/`)
+    // ✅ CORREGIDO: Ruta con /api/ en lugar de /usuarios/api/
+    const res = await axios.get('/api/ventas/')
     
-    if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-      // Ordenar por fecha descendente
-      ventas.value = res.data.sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+    // ✅ Desempaquetado seguro
+    const data = Array.isArray(res.data) ? res.data : (res.data.results || [])
+
+    if (data.length > 0) {
+      ventas.value = data.sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
       console.log('✅ Ventas cargadas:', ventas.value.length)
     } else {
-      console.log('📭 No hay ventas registradas')
       ventas.value = []
     }
   } catch (err) {
-    console.error('❌ Error cargando ventas:', err.response || err)
-    Swal.fire({
-      icon: 'error',
-      title: 'Error al Cargar Ventas',
-      text: err.response?.data?.message || err.message,
-      confirmButtonText: 'Entendido'
-    })
+    console.error('❌ Error cargando ventas:', err)
   } finally {
     cargando.value = false
   }
@@ -291,319 +279,81 @@ onMounted(() => {
   cargarVentas()
 })
 
-// Computed properties
+// --- FILTROS ---
 const ventasFiltradas = computed(() => {
   const busca = filtros.value.busqueda.toLowerCase()
   return ventas.value.filter(v => {
-    // Filtro de búsqueda
     const matchBusqueda = !busca || 
-      (v.cliente_nombre?.toLowerCase().includes(busca) || 
-       v.usuario_nombre?.toLowerCase().includes(busca) ||
-       v.medio_pago_nombre?.toLowerCase().includes(busca) ||
-       v.id.toString().includes(busca))
+      (v.cliente_nombre?.toLowerCase() || '').includes(busca) || 
+      (v.id || '').toString().includes(busca)
     
-    // Filtro de fecha
+    // Filtro fecha
     const fecha = v.fecha ? new Date(v.fecha) : null
-    const matchFechaDesde = !filtros.value.fechaDesde || (fecha && fecha >= new Date(filtros.value.fechaDesde))
-    const matchFechaHasta = !filtros.value.fechaHasta || (fecha && fecha <= new Date(filtros.value.fechaHasta + 'T23:59:59'))
-    
-    // Nuevos filtros
-    const matchMetodoPago = !filtros.value.metodoPago || v.medio_pago_tipo === filtros.value.metodoPago
-    const matchTipo = !filtros.value.tipo || v.tipo?.toLowerCase() === filtros.value.tipo.toLowerCase()
+    const matchDesde = !filtros.value.fechaDesde || (fecha && fecha >= new Date(filtros.value.fechaDesde))
+    const matchHasta = !filtros.value.fechaHasta || (fecha && fecha <= new Date(filtros.value.fechaHasta + 'T23:59:59'))
+
+    // Filtros select
+    const matchMetodo = !filtros.value.metodoPago || v.medio_pago_tipo === filtros.value.metodoPago
+    const matchTipo = !filtros.value.tipo || v.tipo === filtros.value.tipo
     const matchEstado = !filtros.value.estado || 
-      (filtros.value.estado === 'activa' && !v.anulada) ||
-      (filtros.value.estado === 'anulada' && v.anulada)
-    
-    return matchBusqueda && matchFechaDesde && matchFechaHasta && matchMetodoPago && matchTipo && matchEstado
+        (filtros.value.estado === 'activa' && !v.anulada) || 
+        (filtros.value.estado === 'anulada' && v.anulada)
+
+    return matchBusqueda && matchDesde && matchHasta && matchMetodo && matchTipo && matchEstado
   })
 })
 
-const ventasAnuladas = computed(() => ventasFiltradas.value.filter(v => v.anulada).length)
+// --- PAGINACIÓN ---
 const totalPaginas = computed(() => Math.max(1, Math.ceil(ventasFiltradas.value.length / itemsPorPagina)))
 const ventasPaginadas = computed(() => {
   const inicio = (pagina.value - 1) * itemsPorPagina
   return ventasFiltradas.value.slice(inicio, inicio + itemsPorPagina)
 })
-
-// Funciones de paginación
 const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
+const ventasAnuladas = computed(() => ventasFiltradas.value.filter(v => v.anulada).length)
 
-// Funciones de ventas
+// --- ACCIONES ---
 const editarVenta = (venta) => {
-  if (venta.anulada) {
-    Swal.fire({
-      icon: 'warning',
-      title: 'Venta Anulada',
-      text: 'No se puede editar una venta anulada',
-      confirmButtonText: 'Entendido'
-    })
-    return
-  }
+  if (venta.anulada) return
   ventaEditando.value = venta
   mostrarEditar.value = true
 }
 
-const verDetallesVenta = (venta) => {
-  Swal.fire({
-    title: `Detalles Venta #${venta.id}`,
-    html: `
-      <div style="text-align: left;">
-        <p><strong>Cliente:</strong> ${venta.cliente_nombre || 'Venta Rápida'}</p>
-        <p><strong>Usuario:</strong> ${venta.usuario_nombre || '–'}</p>
-        <p><strong>Fecha:</strong> ${formatFecha(venta.fecha)}</p>
-        <p><strong>Total:</strong> $${formatPrecio(venta.total)}</p>
-        <p><strong>Método Pago:</strong> ${venta.medio_pago_nombre || '–'}</p>
-        <p><strong>Tipo:</strong> ${venta.tipo || '–'}</p>
-        <p><strong>Estado:</strong> ${venta.anulada ? '❌ ANULADA' : '✅ ACTIVA'}</p>
-      </div>
-    `,
-    icon: 'info',
-    confirmButtonText: 'Cerrar'
-  })
-}
-
-const generarComprobantePDF = async (venta) => {
-  if (generandoPDF.value === venta.id || venta.anulada) return
-  
-  generandoPDF.value = venta.id
-  console.log(`📄 Generando comprobante PDF para venta #${venta.id}`)
-  
-  try {
-    Swal.fire({
-      title: 'Generando PDF...',
-      text: 'Por favor espere',
-      allowOutsideClick: false,
-      didOpen: () => {
-        Swal.showLoading()
-      }
-    })
-    
-    const url = `${API_BASE}/usuarios/api/ventas/${venta.id}/comprobante-pdf/`
-    window.open(url, '_blank')
-    
-    Swal.close()
-    Swal.fire({
-      icon: 'success',
-      title: 'PDF Generado',
-      text: `Comprobante para venta #${venta.id} generado correctamente`,
-      timer: 2000,
-      showConfirmButton: false
-    })
-    
-  } catch (error) {
-    console.error('❌ Error generando PDF:', error)
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'No se pudo generar el comprobante PDF',
-      confirmButtonText: 'Entendido'
-    })
-  } finally {
-    generandoPDF.value = null
-  }
-}
+const verDetallesVenta = (id) => router.push({ name: 'DetalleVenta', params: { id } })
 
 const anularVenta = async (venta) => {
-  if (venta.anulada) {
-    Swal.fire({
-      icon: 'warning',
-      title: 'Venta Ya Anulada',
-      text: 'Esta venta ya está anulada',
-      confirmButtonText: 'Entendido'
-    })
-    return
-  }
-  
-  const result = await Swal.fire({
-    title: '¿Anular Venta?',
-    html: `
-      <div style="text-align: left;">
-        <p><strong>Venta #${venta.id}</strong></p>
-        <p><strong>Cliente:</strong> ${venta.cliente_nombre || 'Venta Rápida'}</p>
-        <p><strong>Total:</strong> $${venta.total}</p>
-        <p><strong>Fecha:</strong> ${formatFecha(venta.fecha)}</p>
-        <hr style="margin: 15px 0;">
-        <p style="color: #e53e3e; font-weight: bold;">
-          ⚠️ Esta acción no se puede deshacer
-        </p>
-        <ul style="text-align: left; margin: 10px 0; padding-left: 20px;">
-          <li>Marcará la venta como ANULADA</li>
-          <li>Devolverá el stock de los productos</li>
-        </ul>
-      </div>
-    `,
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonColor: '#d33',
-    cancelButtonColor: '#3085d6',
-    confirmButtonText: 'Sí, anular venta',
-    cancelButtonText: 'Cancelar',
-    reverseButtons: true,
-    backdrop: true,
-    allowOutsideClick: false
-  })
-  
-  if (!result.isConfirmed) return
-  
+  if (!confirm('¿Anular venta?')) return
   try {
-    cargando.value = true
-    console.log(`🔄 Anulando venta #${venta.id}...`)
-    
-    Swal.fire({
-      title: 'Anulando Venta...',
-      text: 'Por favor espere',
-      allowOutsideClick: false,
-      didOpen: () => {
-        Swal.showLoading()
-      }
-    })
-    
-    const response = await axios.post(`${API_BASE}/usuarios/api/ventas/${venta.id}/anular/`)
-    
-    if (response.status === 200) {
-      const ventaIndex = ventas.value.findIndex(v => v.id === venta.id)
-      if (ventaIndex !== -1) {
-        ventas.value[ventaIndex].anulada = true
-      }
-      
-      await cargarVentas()
-      
-      Swal.fire({
-        icon: 'success',
-        title: 'Venta Anulada',
-        text: `Venta #${venta.id} anulada correctamente. Stock actualizado.`,
-        timer: 3000,
-        showConfirmButton: false
-      })
-      
-      console.log(`✅ Venta #${venta.id} anulada exitosamente`)
-    }
-  } catch (err) {
-    console.error('❌ Error anulando venta:', err.response || err)
-    
-    let errorMessage = 'No se pudo anular la venta'
-    if (err.response?.data?.error) {
-      errorMessage = err.response.data.error
-    } else if (err.response?.status === 404) {
-      errorMessage = 'Venta no encontrada'
-    }
-    
-    Swal.fire({
-      icon: 'error',
-      title: 'Error al Anular',
-      text: errorMessage,
-      confirmButtonText: 'Entendido'
-    })
-  } finally {
-    cargando.value = false
-  }
+    // ✅ CORREGIDO: Ruta con /api/ en lugar de /usuarios/api/
+    await axios.post(`/api/ventas/${venta.id}/anular/`)
+    await cargarVentas()
+    alert('Venta anulada')
+  } catch (err) { console.error(err) }
 }
 
-// Funciones de modal
+const generarComprobantePDF = (venta) => {
+  // ✅ CORREGIDO: Ruta con /api/ en lugar de /usuarios/api/
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+  window.open(`${baseUrl}/api/ventas/${venta.id}/comprobante-pdf/`, '_blank')
+}
+
+// --- MODALES ---
 const cerrarModal = () => { mostrarRegistrar.value = false }
 const cerrarModalEditar = () => { mostrarEditar.value = false; ventaEditando.value = null }
+const procesarVentaRegistrada = async () => { await cargarVentas() }
+const ventaActualizada = async () => { await cargarVentas(); cerrarModalEditar() }
+const limpiarFiltros = () => { filtros.value = { busqueda: '', fechaDesde: '', fechaHasta: '', metodoPago: '', tipo: '', estado: '' }; pagina.value = 1 }
 
-const procesarVentaRegistrada = async (ventaData) => {
-  console.log('🎯 EVENTO RECIBIDO - Venta registrada:', ventaData)
-  
-  if (ventaData && ventaData.id) {
-    const nuevaVenta = {
-      ...ventaData,
-      cliente_nombre: 'Venta Rápida',
-      usuario_nombre: 'Sistema', 
-      medio_pago_nombre: 'Efectivo',
-      tipo: 'PRODUCTO',
-      anulada: false,
-      fecha: ventaData.fecha || new Date().toISOString()
-    }
-    
-    ventas.value.unshift(nuevaVenta)
-    
-    ventaRecienCreada.value = ventaData.id
-    setTimeout(() => {
-      ventaRecienCreada.value = null
-    }, 5000)
-    
-    console.log('✅ Venta agregada al listado - Modal sigue abierto')
-  }
-}
-
-const ventaActualizada = async () => {
-  await cargarVentas()
-  cerrarModalEditar()
-  Swal.fire({
-    icon: 'success',
-    title: 'Venta Actualizada',
-    text: 'La venta se ha actualizado correctamente',
-    timer: 2000,
-    showConfirmButton: false
-  })
-}
-
-const limpiarFiltros = () => {
-  filtros.value = { 
-    busqueda: '', 
-    fechaDesde: '', 
-    fechaHasta: '',
-    metodoPago: '',
-    tipo: '',
-    estado: ''
-  }
-  pagina.value = 1
-}
-
-// Funciones de utilidad
-const formatFecha = (fecha) => {
-  if (!fecha) return '–'
-  try {
-    const dateObj = new Date(fecha)
-    if (isNaN(dateObj.getTime())) return 'Fecha inválida'
-    return dateObj.toLocaleString('es-AR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    })
-  } catch (e) {
-    console.error("Error formateando fecha:", e)
-    return 'Error fecha'
-  }
-}
-
-const formatPrecio = (precio) => {
-  if (!precio) return '0.00'
-  return parseFloat(precio).toFixed(2)
-}
-
-const getClaseTipoPago = (tipoPago) => {
-  const tipos = {
-    'EFECTIVO': 'efectivo',
-    'TARJETA': 'tarjeta',
-    'TRANSFERENCIA': 'transferencia',
-    'MERCADO_PAGO': 'mercadopago'
-  }
-  return tipos[tipoPago] || 'default'
-}
-
-const getClaseTipoVenta = (tipo) => {
-  const tipos = {
-    'PRODUCTO': 'producto',
-    'TURNO': 'turno',
-    'MIXTO': 'mixto'
-  }
-  return tipos[tipo] || 'default'
-}
-
-const getClaseEstadoVenta = (anulada) => {
-  return anulada ? 'estado-anulada' : 'estado-activa'
-}
+// --- UTILS ---
+const formatFecha = (f) => f ? new Date(f).toLocaleDateString() : '-'
+const formatPrecio = (p) => p ? parseFloat(p).toFixed(2) : '0.00'
+const getClaseTipoPago = (t) => 'badge-pago' 
+const getClaseTipoVenta = (t) => 'badge-tipo'
+const getClaseEstadoVenta = (anulada) => anulada ? 'estado-anulada' : 'estado-activa'
 </script>
 
 <style scoped>
-
 /* Tarjeta principal - CON VARIABLES */
 .list-card {
   background: var(--bg-secondary);
@@ -1191,18 +941,6 @@ const getClaseEstadoVenta = (anulada) => {
   border-color: #10b981;
 }
 
-/* Detalle de venta */
-.action-button.detalle {
-  background: var(--bg-tertiary);
-  border: 1px solid #0ea5e9;
-  color: #0ea5e9;
-}
-.action-button.detalle:hover {
-  background: var(--hover-bg);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(14, 165, 233, 0.4);
-  border-color: #0ea5e9;
-}
 /* BOTÓN DE COMPROBANTE PDF - CON VARIABLES */
 .btn-comprobante {
   background: var(--bg-tertiary);
@@ -1265,12 +1003,6 @@ const getClaseEstadoVenta = (anulada) => {
   box-shadow: 0 0 8px rgba(139, 92, 246, 0.2);
 }
 
-.badge-pago.mercadopago {
-  background: var(--bg-tertiary);
-  color: #00b2ff;
-  border: 2px solid #00b2ff;
-  box-shadow: 0 0 8px rgba(0, 178, 255, 0.2);
-}
 
 .badge-pago.default {
   background: var(--bg-tertiary);

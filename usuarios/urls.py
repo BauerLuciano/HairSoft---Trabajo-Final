@@ -69,7 +69,7 @@ urlpatterns = [
     path('api/usuarios/crear/', func_views.crear_usuario, name='crear_usuario'),
     path('api/usuarios/editar/<int:pk>/', func_views.editar_usuario, name='editar_usuario'),
     path('api/usuarios/eliminar/<int:pk>/', func_views.eliminar_usuario, name='eliminar_usuario'),
-
+     #path('api/crear-cliente-desde-turno/', func_views.crear_cliente_desde_turno, name='crear_cliente_desde_turno'),
     # ================================
     # Clientes Autocomplete (USA FUNCIÓN)
     # ================================
@@ -111,6 +111,8 @@ urlpatterns = [
     path('api/turnos/cancelar-propio/<int:turno_id>/', func_views.cancelar_mi_turno, name='cancelar_mi_turno'),
     path('api/turnos/<int:turno_id>/cambiar-estado/<str:nuevo_estado>/', func_views.cambiar_estado_turno, name='cambiar_estado_turno'),
     path('api/turnos/<int:turno_id>/', func_views.obtener_turno_por_id, name='obtener_turno_por_id'),
+    path('api/turnos/mis-turnos/', func_views.mis_turnos, name='mis_turnos'), # ✅ Agregar esta línea
+
 
     # ================================
     # ✅✅✅ RUTA CRÍTICA FALTANTE - REGISTRAR INTERÉS

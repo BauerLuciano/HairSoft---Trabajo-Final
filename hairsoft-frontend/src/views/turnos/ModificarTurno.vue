@@ -178,9 +178,6 @@
                   <span v-if="esHoy(day)" class="badge-today">HOY</span>
                 </button>
               </div>
-              <div class="calendar-footer">
-                <Info :size="14" /> Disponible: Hoy + 7 días (No Domingos)
-              </div>
             </div>
           </div>
 
@@ -1275,7 +1272,7 @@ onMounted(() => {
   aspect-ratio: 1; 
   border-radius: 10px; 
   border: 2px solid transparent; 
-  background: white; 
+  background: rgb(72, 255, 130);
   font-weight: 600;
   cursor: pointer; 
   display: flex; 
@@ -1311,8 +1308,8 @@ onMounted(() => {
 }
 
 .day-disabled { 
-  background: #f3f4f6; 
-  color: #9ca3af; 
+  background: #747474; 
+  color: #ffffff; 
   cursor: not-allowed; 
   opacity: 0.6;
 }

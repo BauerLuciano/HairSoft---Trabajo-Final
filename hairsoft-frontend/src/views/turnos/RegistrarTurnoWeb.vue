@@ -434,7 +434,9 @@ import {
 const router = useRouter()
 const route = useRoute()
 
-const API_URL = "http://localhost:8000/usuarios/api"
+// ✅ CORREGIDO: Ruta sin /usuarios/
+const API_URL = "http://localhost:8000/api"
+
 // Estados
 const form = ref({
   peluquero: null,
@@ -559,7 +561,7 @@ const horariosGenerados = computed(() => {
 const calcularDuracionTotalServicios = () => {
   return form.value.servicios_ids.reduce((total, id) => {
     const servicio = servicios.value.find(s => s.id === id)
-    return total + (servicio?.duracion || servicio?.duracion_minutos || 60) // 60 min por defecto
+    return total + (servicio?.duracion || servicio?.duracion_minutos || 60)
   }, 0)
 }
 
@@ -578,7 +580,6 @@ const horaAMinutos = (horaStr) => {
 
 // 4. Calcular duración de un turno existente
 const calcularDuracionTurno = (turno) => {
-  // Si el turno tiene información de servicios, sumar sus duraciones
   if (turno.servicios && turno.servicios.length > 0) {
     return turno.servicios.reduce((total, servicioId) => {
       const servicio = servicios.value.find(s => s.id === servicioId)
@@ -586,7 +587,6 @@ const calcularDuracionTurno = (turno) => {
     }, 0)
   }
   
-  // Si no, usar duración por defecto
   return turno.duracion_minutos || 60
 }
 
@@ -598,31 +598,23 @@ const estaHorarioDisponible = (horario) => {
   const horarioInicioMinutos = horaAMinutos(horario)
   const horarioFinMinutos = horarioInicioMinutos + duracionTurnoSolicitado
   
-  // Verificar que el turno no se pase del horario de cierre (20:00)
-  const cierreMinutos = 20 * 60 // 20:00 = 1200 minutos
+  const cierreMinutos = 20 * 60
   if (horarioFinMinutos > cierreMinutos) {
     return false
   }
   
-  // Verificar si algún turno ocupado se solapa con nuestro horario deseado
   const turnoOcupado = turnosOcupados.value.find(turno => {
-    // Solo verificar turnos del mismo peluquero y fecha
     if (turno.peluquero_id != form.value.peluquero || turno.fecha !== form.value.fecha) {
       return false
     }
     
-    // Calcular duración del turno ocupado
     const duracionOcupado = calcularDuracionTurno(turno)
     const turnoInicioMinutos = horaAMinutos(turno.hora)
     const turnoFinMinutos = turnoInicioMinutos + duracionOcupado
     
-    // Verificar solapamiento
     const solapa = 
-      // Caso 1: Nuestro turno comienza durante el turno ocupado
       (horarioInicioMinutos >= turnoInicioMinutos && horarioInicioMinutos < turnoFinMinutos) ||
-      // Caso 2: Nuestro turno termina durante el turno ocupado
       (horarioFinMinutos > turnoInicioMinutos && horarioFinMinutos <= turnoFinMinutos) ||
-      // Caso 3: Nuestro turno contiene completamente al turno ocupado
       (horarioInicioMinutos <= turnoInicioMinutos && horarioFinMinutos >= turnoFinMinutos)
     
     return solapa
@@ -648,7 +640,7 @@ const horariosOcupadosParaMostrar = computed(() => {
 // Métodos
 const cargarDatosIniciales = async () => {
   await Promise.all([
-    cargarUsuarioLogueado(), // ARREGLADO para traer todos los datos
+    cargarUsuarioLogueado(),
     cargarPeluqueros(),
     cargarServicios(),
     cargarCategorias(),
@@ -660,7 +652,7 @@ const cargarDatosIniciales = async () => {
 
 const validarCuponURL = async () => {
   let codigo = route.query.cup
-  
+
   if (!codigo) {
     const urlParams = new URLSearchParams(window.location.search)
     codigo = urlParams.get('cup')
@@ -669,7 +661,8 @@ const validarCuponURL = async () => {
   if (!codigo) return
 
   try {
-    const res = await axios.get(`http://localhost:8000/usuarios/api/promociones/validar/${codigo}/`)
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    const res = await axios.get(`http://localhost:8000/api/promociones/validar/${codigo}/`)
     
     if (res.data.valido) {
       cuponCodigo.value = codigo
@@ -691,26 +684,22 @@ const validarCuponURL = async () => {
   }
 }
 
-// En RegistrarTurnoWeb.vue
-
 const cargarUsuarioLogueado = async () => {
   try {
     const storedUserId = localStorage.getItem('user_id')
     const token = localStorage.getItem('token')
     
-    // Configuración segura de headers
     const config = token ? { headers: { 'Authorization': `Token ${token}` } } : {}
     
     if (storedUserId) {
       console.log("🔍 Buscando datos del usuario ID:", storedUserId)
       
-      // 1. Llamada al backend (ahora devuelve DNI y Telefono seguro)
+      // ✅ CORREGIDO: Ruta sin /usuarios/
       const res = await axios.get(`${API_URL}/usuarios/${storedUserId}/`, config)
       const data = res.data
       
-      console.log("✅ Datos recibidos:", data) // Mirá la consola para ver si llegan
+      console.log("✅ Datos recibidos:", data)
 
-      // 2. Asignación directa (sin lógica rara)
       usuario.value = {
         id: data.id,
         nombre: data.nombre || 'Cliente',
@@ -720,7 +709,7 @@ const cargarUsuarioLogueado = async () => {
         turnosCount: 0
       }
       
-      // 3. Cargar estadísticas (Opcional, si falla no rompe nada)
+      // ✅ CORREGIDO: Ruta sin /usuarios/
       try {
         const statsRes = await axios.get(`${API_URL}/turnos/cliente/${storedUserId}/estadisticas/`, config)
         usuario.value.turnosCount = statsRes.data.total_turnos || 0
@@ -735,7 +724,6 @@ const cargarUsuarioLogueado = async () => {
     }
   } catch (err) {
     console.error("❌ Error cargando usuario:", err)
-    // Mostramos error en la interfaz para que no quede "Cargando"
     usuario.value = { 
       nombre: 'Error al cargar', 
       apellido: '', 
@@ -749,39 +737,42 @@ const cargarUsuarioLogueado = async () => {
 
 const cargarPeluqueros = async () => {
   try {
-    const res = await axios.get("http://localhost:8000/usuarios/api/peluqueros/")
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    const res = await axios.get("http://localhost:8000/api/peluqueros/")
     peluqueros.value = res.data.map(p => ({ ...p, apellido: p.apellido || '' }))
   } catch (err) { peluqueros.value = [] }
 }
 
 const cargarServicios = async () => {
   try {
-    const res = await axios.get("http://localhost:8000/usuarios/api/servicios/")
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    const res = await axios.get("http://localhost:8000/api/servicios/")
     servicios.value = res.data
   } catch (err) { console.error(err) }
 }
 
 const cargarCategorias = async () => {
   try {
-    const res = await axios.get("http://localhost:8000/usuarios/api/categorias/servicios/")
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    const res = await axios.get("http://localhost:8000/api/categorias/servicios/")
     categorias.value = res.data
   } catch (err) { console.error(err) }
 }
 
 const cargarTurnosOcupados = async (fecha = null) => {
   try {
-    let url = "http://localhost:8000/usuarios/api/turnos/?estado__in=RESERVADO,CONFIRMADO&expand=servicios"
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    let url = "http://localhost:8000/api/turnos/?estado__in=RESERVADO,CONFIRMADO&expand=servicios"
     if (fecha) url += `&fecha=${fecha}`
     
     const res = await axios.get(url)
     turnosOcupados.value = res.data.results || res.data
     
-    // Si los turnos vienen sin servicios, cargar servicios por separado
     if (turnosOcupados.value.length > 0 && !turnosOcupados.value[0].servicios) {
-      // Intentar obtener servicios de otra manera
       for (const turno of turnosOcupados.value) {
         try {
-          const turnoDetalle = await axios.get(`http://localhost:8000/usuarios/api/turnos/${turno.id}/`)
+          // ✅ CORREGIDO: Ruta sin /usuarios/
+          const turnoDetalle = await axios.get(`http://localhost:8000/api/turnos/${turno.id}/`)
           turno.servicios = turnoDetalle.data.servicios_ids || []
         } catch { turno.servicios = [] }
       }
@@ -795,8 +786,10 @@ const cargarTurnosOcupados = async (fecha = null) => {
 const cargarInteresesUsuario = async () => {
   try {
     if (usuario.value.id) {
-      const res = await axios.get(`http://localhost:8000/usuarios/api/turnos/mis-intereses/`, {
-        headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
+      const token = localStorage.getItem('token')
+      // ✅ CORREGIDO: Ruta sin /usuarios/
+      const res = await axios.get(`http://localhost:8000/api/turnos/mis-intereses/`, {
+        headers: { 'Authorization': `Token ${token}` }
       })
       interesesRegistrados.value = res.data
     }
@@ -961,7 +954,8 @@ const confirmarRegistroInteres = async () => {
       fecha_deseada: form.value.fecha, 
       hora_deseada: horarioSeleccionadoInteres.value 
     }
-    const res = await axios.post("http://localhost:8000/usuarios/api/turnos/registrar-interes/", payload, config)
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    const res = await axios.post("http://localhost:8000/api/turnos/registrar-interes/", payload, config)
     if (res.data.success) {
       mostrarModalInteres.value = false
       await cargarInteresesUsuario()
@@ -983,7 +977,6 @@ const confirmarRegistroInteres = async () => {
 }
 
 const reservarTurno = async () => {
-  // 1. Validación
   if (!formularioValido.value) { 
     Swal.fire('Faltan datos', 'Completa todos los campos.', 'warning')
     return 
@@ -1008,18 +1001,16 @@ const reservarTurno = async () => {
     const token = localStorage.getItem('token')
     const config = token ? { headers: { 'Authorization': `Token ${token}` } } : {}
 
-    const res = await axios.post("http://localhost:8000/usuarios/api/turnos/crear/", payload, config)
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    const res = await axios.post("http://localhost:8000/api/turnos/crear/", payload, config)
     const data = res.data
     
     cargando.value = false
 
     if (data.status === 'ok') {
       
-      // CASO A: PAGO CON MERCADO PAGO
       if (data.procesar_pago === true && data.mp_data && data.mp_data.init_point) {
         
-        // Mostramos alerta de éxito. El clic en "Pagar Ahora" abre la pestaña nueva.
-        // Esto evita que Chrome bloquee la ventana emergente.
         Swal.fire({ 
           icon: 'success', 
           title: '¡Reserva Creada!', 
@@ -1029,17 +1020,12 @@ const reservarTurno = async () => {
           allowEscapeKey: false
         }).then((result) => {
           if (result.isConfirmed) {
-            // 1. Abrir MP en NUEVA PESTAÑA
             window.open(data.mp_data.init_point, '_blank')
-            
-            // 2. En TU sistema, ir al listado (así no tienes que volver atrás)
             router.push('/turnos')
           }
         })
       
-      } 
-      // CASO B: SIN PAGO (Efectivo o error de link)
-      else {
+      } else {
         if (form.value.medio_pago === 'MERCADO_PAGO') {
             Swal.fire('Atención', 'Reserva creada pero no se generó el link de pago. Revisa tus turnos.', 'warning').then(() => router.push('/turnos'))
         } else {

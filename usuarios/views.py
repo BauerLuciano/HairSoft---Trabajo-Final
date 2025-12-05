@@ -194,6 +194,113 @@ def crear_usuario(request):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': f'Error al crear el usuario: {str(e)}'}, status=500)
 
+#CREAR CLIENTE DESDE TURNO PRESENCIAL
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def crear_cliente_desde_turno(request):
+    """
+    Endpoint específico para crear clientes desde el formulario de turnos presenciales.
+    Retorna a la pantalla de turnos con el cliente ya seleccionado.
+    """
+    try:
+        print("📋 Creando cliente desde formulario de turnos...")
+        data = request.data
+        print(f"📦 Datos recibidos: {data}")
+        
+        # =========================
+        # 🔹 CAMPOS OBLIGATORIOS
+        # =========================
+        required_fields = ['nombre', 'apellido', 'dni', 'correo', 'contrasena']
+        for field in required_fields:
+            if not data.get(field):
+                return Response({
+                    'status': 'error',
+                    'message': f'El campo {field} es obligatorio'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        # =========================
+        # 🔹 VALIDACIONES
+        # =========================
+        if not re.match(r'^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{2,50}$', data['nombre']):
+            return Response({'status': 'error', 'message': 'El nombre solo debe contener letras y espacios (2-50 caracteres)'}, status=400)
+
+        if not re.match(r'^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{2,50}$', data['apellido']):
+            return Response({'status': 'error', 'message': 'El apellido solo debe contener letras y espacios (2-50 caracteres)'}, status=400)
+
+        if not re.match(r'^\d{7,9}$', data['dni']):
+            return Response({'status': 'error', 'message': 'El DNI debe contener solo números (7-9 dígitos)'}, status=400)
+
+        telefono = data.get('telefono', '')
+        if telefono and not re.match(r'^\+?\d{6,15}$', telefono):
+            return Response({'status': 'error', 'message': 'El teléfono solo puede contener números y opcional "+" (6-15 dígitos)'}, status=400)
+
+        if not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', data['correo']):
+            return Response({'status': 'error', 'message': 'Correo electrónico inválido'}, status=400)
+
+        if len(data['contrasena']) < 6:
+            return Response({'status': 'error', 'message': 'La contraseña debe tener al menos 6 caracteres'}, status=400)
+
+        # =========================
+        # 🔹 EVITAR DUPLICADOS
+        # =========================
+        if Usuario.objects.filter(correo=data['correo']).exists():
+            return Response({'status': 'error', 'message': 'Ya existe un usuario con ese correo'}, status=400)
+
+        if Usuario.objects.filter(dni=data['dni']).exists():
+            return Response({'status': 'error', 'message': 'Ya existe un usuario con ese DNI'}, status=400)
+
+        # =========================
+        # 🔹 OBTENER ROL CLIENTE
+        # =========================
+        try:
+            rol_cliente = Rol.objects.get(nombre__iexact='CLIENTE')
+        except Rol.DoesNotExist:
+            # Si no existe, crear el rol cliente
+            rol_cliente = Rol.objects.create(
+                nombre='CLIENTE',
+                descripcion='Rol para clientes del sistema'
+            )
+
+        # =========================
+        # 🔹 HASH DE CONTRASEÑA
+        # =========================
+        hashed_password = make_password(data['contrasena'])
+
+        # =========================
+        # 🔹 CREAR CLIENTE
+        # =========================
+        cliente = Usuario.objects.create(
+            nombre=data['nombre'],
+            apellido=data['apellido'],
+            dni=data['dni'],
+            telefono=telefono,
+            correo=data['correo'],
+            contrasena=hashed_password,
+            rol=rol_cliente,
+            estado='ACTIVO'
+        )
+
+        print(f"✅ Cliente creado exitosamente: ID={cliente.id}, Nombre={cliente.nombre} {cliente.apellido}")
+
+        # =========================
+        # 🔹 RETORNAR DATOS PARA REDIRECCIÓN
+        # =========================
+        return Response({
+            'status': 'ok',
+            'id': cliente.id,
+            'nombre_completo': f"{cliente.nombre} {cliente.apellido}",
+            'message': 'Cliente creado exitosamente. Serás redirigido al formulario de turnos.',
+            'redirect_url': f'/turnos/presencial/registrar?nuevo_cliente_id={cliente.id}&nuevo_cliente_nombre={cliente.nombre}+{cliente.apellido}'
+        })
+
+    except Exception as e:
+        print(f"❌ Error al crear cliente desde turno: {str(e)}")
+        return Response({
+            'status': 'error',
+            'message': f'Error al crear el cliente: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_auth(request):
@@ -223,31 +330,63 @@ def login_auth(request):
     else:
         return Response({'error': 'Credenciales inválidas'}, status=401)
     
-@csrf_exempt
+@api_view(['POST', 'PATCH', 'PUT']) # ✅ Usamos el decorador de DRF para manejar métodos fácil
+@permission_classes([IsAuthenticated]) # ✅ Solo gente logueada
 def editar_usuario(request, pk):
-    usuario = get_object_or_404(Usuario, pk=pk)
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
-
     try:
-        data = json.loads(request.body)
-        print(" DATOS EDITAR USUARIO:", data)  # Debug
-    except json.JSONDecodeError:
-        return JsonResponse({'status': 'error', 'message': 'JSON inválido'}, status=400)
+        # 1. Seguridad: Obtener usuario y validar permisos
+        usuario = Usuario.objects.get(pk=pk)
+        
+        # Regla: Solo puedes editar tu propio usuario, a menos que seas Admin/Staff
+        if request.user.id != usuario.id and not request.user.is_staff:
+             # Opcional: Chequear rol específico si is_staff no es suficiente
+             es_admin = request.user.rol and request.user.rol.nombre.upper() in ['ADMINISTRADOR', 'ADMIN']
+             if not es_admin:
+                return JsonResponse({'status': 'error', 'message': 'No tienes permiso para editar este usuario'}, status=403)
 
-    # ✅ USAR EL NUEVO FORMULARIO MEJORADO
-    form = UsuarioForm(data, instance=usuario)
-    
-    if form.is_valid():
-        try:
-            usuario_actualizado = form.save()
-            return JsonResponse({'status': 'ok', 'id': usuario_actualizado.id})
-        except Exception as e:
-            return JsonResponse({'status': 'error', 'message': f'Error al guardar el usuario: {str(e)}'}, status=500)
+        # 2. Parsear datos
+        if request.content_type == 'application/json':
+            data = json.loads(request.body)
+        else:
+            data = request.POST.copy() # Soporte para form-data
 
-    errores = {k: v for k, v in form.errors.items()}
-    print(" ERRORES DEL FORM:", errores)  # Debug
-    return JsonResponse({'status': 'error', 'errors': errores}, status=400)
+        print(f"🔄 Editando Usuario {pk}. Datos:", data)
+
+        # 3. LOGICA CAMBIO DE CONTRASEÑA (Segura)
+        contrasena_nueva = data.get('contrasena_nueva')
+        contrasena_actual = data.get('contrasena_actual')
+
+        if contrasena_nueva:
+            if not contrasena_actual:
+                return JsonResponse({'status': 'error', 'message': 'Para cambiar la contraseña, debes ingresar la actual.'}, status=400)
+            
+            # Verificar que la actual sea correcta
+            from django.contrib.auth.hashers import check_password, make_password
+            if not check_password(contrasena_actual, usuario.contrasena):
+                return JsonResponse({'status': 'error', 'message': 'La contraseña actual es incorrecta.'}, status=400)
+            
+            # Si pasa, hasheamos la nueva y la guardamos en data para el form/objeto
+            usuario.contrasena = make_password(contrasena_nueva)
+            # No pasamos la contraseña al form normal para que no la re-hashee mal o la valide como texto plano
+
+        if 'telefono' in data:
+            usuario.telefono = data['telefono']
+        
+        # Si es Admin, puede cambiar más cosas
+        if request.user.is_staff or (request.user.rol and request.user.rol.nombre.upper() == 'ADMINISTRADOR'):
+            if 'nombre' in data: usuario.nombre = data['nombre']
+            if 'apellido' in data: usuario.apellido = data['apellido']
+            if 'rol' in data: usuario.rol_id = data['rol']
+            if 'estado' in data: usuario.estado = data['estado']
+
+        usuario.save()
+        return JsonResponse({'status': 'ok', 'id': usuario.id, 'message': 'Perfil actualizado correctamente'})
+
+    except Usuario.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Usuario no encontrado'}, status=404)
+    except Exception as e:
+        print(f"❌ Error editar_usuario: {e}")
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
 @csrf_exempt
@@ -1852,36 +1991,43 @@ def pago_pendiente(request):
 # 1. FUNCIÓN AUXILIAR ACTUALIZADA (Lógica Universal)
 def procesar_reembolso_si_corresponde(turno):
     """
-    Intenta reembolso automático SIEMPRE que haya un ID de pago (Web o Presencial).
+    Verifica si corresponde reembolso (regla de 3 horas) y avisa para hacerlo MANUALMENTE.
+    NO conecta con Mercado Pago para evitar errores.
+    Devuelve: (bool_corresponde, mensaje_tecnico)
     """
-    # A. Verificar regla de 3 horas
+    # 1. Verificar regla de 3 horas
     ahora = timezone.now()
+    # Aseguramos que fecha_turno tenga zona horaria
     fecha_turno = timezone.make_aware(datetime.combine(turno.fecha, turno.hora))
     tiempo_restante = fecha_turno - ahora
     
+    # Si falta menos de 3 horas, NO hay reembolso (política del negocio)
     if tiempo_restante < timedelta(hours=3):
-        return False, f"Faltan {str(tiempo_restante).split('.')[0]}. Menos de 3 horas: No corresponde reembolso."
+        print(f"❌ CANCELACIÓN TARDÍA: Faltan {str(tiempo_restante).split('.')[0]}. No se devuelve la seña.")
+        return False, "Menos de 3 horas para el turno: No corresponde devolución de seña."
 
-    # B. SI TIENE ID DE PAGO (Sea Web o cargado Manualmente en Presencial)
-    if turno.mp_payment_id:
-        try:
-            print(f"💳 Intentando reembolso automático para ID: {turno.mp_payment_id}")
-            mp = MercadoPagoService()
-            resultado = mp.devolver_pago(turno.mp_payment_id)
-            
-            if resultado['success']:
-                turno.reembolsado = True
-                turno.save()
-                return True, f"✅ Reembolso de ${turno.monto_seña} procesado exitosamente en Mercado Pago."
-            else:
-                return False, f"❌ Falló Mercado Pago: {resultado.get('error')}. Devolver manualmente."
-        except Exception as e:
-            return False, f"❌ Error técnico MP: {str(e)}"
+    # 2. Verificar si hubo plata de por medio
+    monto_a_devolver = turno.monto_seña
+    
+    # Si hay un pago registrado (ID de MP o monto > 0) y no se ha marcado como reembolsado
+    if (turno.mp_payment_id or monto_a_devolver > 0) and not turno.reembolsado:
+        
+        # ⚠️ ALERTA GIGANTE EN TERMINAL (BACKEND)
+        mensaje_alerta = (
+            f"\n🚨 =================================================== 🚨\n"
+            f"⚠️  ATENCIÓN: DEVOLUCIÓN MANUAL REQUERIDA\n"
+            f"👤  Cliente: {turno.cliente.nombre} {turno.cliente.apellido} (DNI: {turno.cliente.dni})\n"
+            f"💰  Monto a devolver: ${monto_a_devolver}\n"
+            f"🆔  ID Pago MP: {turno.mp_payment_id or 'Pago Presencial/Otro'}\n"
+            f"📅  Turno Cancelado: {turno.fecha} {turno.hora}\n"
+            f"🚨 =================================================== 🚨\n"
+        )
+        print(mensaje_alerta)
+        
+        # Devolvemos True indicando que SI corresponde reembolso
+        return True, f"⚠️ IMPORTANTE: Corresponde devolución de ${monto_a_devolver}. Realizar reembolso MANUALMENTE."
 
-    # C. SI NO TIENE ID (Efectivo puro o sin comprobante)
-    else:
-        return True, f"⚠️ ATENCIÓN: Devolución MANUAL requerida (${turno.monto_seña}). No hay ID de transacción digital."
-
+    return False, "No se registraron pagos previos para reembolsar."
 @api_view(['POST'])
 @permission_classes([AllowAny]) 
 def crear_turno(request):
@@ -2088,8 +2234,6 @@ def me_api_view(request):
         'apellido': '',
         'rol': 'Invitado'
     })
-
-# D:\Facultad\Trabajo final\HairSoft\usuarios\views.py
 
 class ProveedorListCreateView(generics.ListCreateAPIView):
     # Esto mantiene tu regla de listar TODOS (activos e inactivos) para la trazabilidad
@@ -2457,14 +2601,14 @@ def anular_venta(request, venta_id):
     except Exception as e:
         print(f"Error al anular venta: {str(e)}")
         return JsonResponse({'error': f'Error interno: {str(e)}'}, status=500)
+
+
 # ================================
 # MÉTODOS DE PAGO (NUEVA VISTA)
 # ================================
 class MetodoPagoListAPIView(generics.ListAPIView):
     queryset = MetodoPago.objects.filter(activo=True).order_by('nombre')
     serializer_class = MetodoPagoSerializer
-
-
 
 #--------------
 @api_view(['GET'])
@@ -4012,7 +4156,8 @@ def get_client_ip(request):
 @permission_classes([IsAuthenticated])
 def cancelar_mi_turno(request, turno_id):
     """
-    Permite al cliente cancelar SU turno y recibir reembolso automático si corresponde.
+    Permite al cliente cancelar SU turno.
+    Si corresponde reembolso, avisa en el backend y notifica amablemente al cliente.
     """
     try:
         turno = Turno.objects.get(id=turno_id)
@@ -4026,7 +4171,6 @@ def cancelar_mi_turno(request, turno_id):
              return Response({'error': 'El turno ya está cancelado.'}, status=400)
 
         # 3. Regla de las 3 horas (Bloqueo estricto para el cliente)
-        # A diferencia del Admin, al cliente NO le dejamos cancelar si falta poco.
         ahora = timezone.now()
         fecha_turno = timezone.make_aware(datetime.combine(turno.fecha, turno.hora))
         tiempo_restante = fecha_turno - ahora
@@ -4036,11 +4180,15 @@ def cancelar_mi_turno(request, turno_id):
                  'error': 'Ya no puedes cancelar online (faltan menos de 3hs). Por favor llama al local.'
              }, status=400)
 
-        # 4. PROCESAR REEMBOLSO (La Magia 💸)
-        # Reutilizamos la lógica que ya armamos para el admin
-        reembolso_ok, mensaje_reembolso = procesar_reembolso_si_corresponde(turno)
+        # 4. PROCESAR REEMBOLSO (Usamos la nueva lógica manual)
+        reembolso_corresponde, mensaje_tecnico = procesar_reembolso_si_corresponde(turno)
         
-        print(f"💰 Cancelación Web - Reembolso: {mensaje_reembolso}")
+        # Definimos el mensaje para el cliente
+        mensaje_cliente = "Turno cancelado correctamente."
+        if reembolso_corresponde:
+            mensaje_cliente += " Nos pondremos en contacto a la brevedad para gestionar tu reintegro."
+        else:
+            mensaje_cliente += " (No corresponde reintegro por política de cancelación o falta de pago)."
 
         # 5. Cancelar y Activar Reoferta
         turno.estado = 'CANCELADO'
@@ -4056,14 +4204,15 @@ def cancelar_mi_turno(request, turno_id):
 
         return Response({
             'status': 'ok',
-            'message': f'Turno cancelado. {mensaje_reembolso}'
+            'message': mensaje_cliente, # ✅ Mensaje suave para el frontend
+            'debug_info': mensaje_tecnico # (Opcional) Por si quieres verlo en la consola del navegador
         })
 
     except Turno.DoesNotExist:
         return Response({'error': 'Turno no encontrado'}, status=404)
     except Exception as e:
         return Response({'error': str(e)}, status=500)
-
+    
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def aceptar_oferta_turno(request, turno_id, token):
@@ -4430,3 +4579,68 @@ class MarcaViewSet(viewsets.ModelViewSet):
         
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def mis_turnos(request):
+    """Devuelve SOLO los turnos del cliente logueado ordenados por fecha."""
+    try:
+        # 🚨 VERIFICAR SI EL USUARIO ES CLIENTE O ADMIN
+        user_rol = None
+        if hasattr(request.user, 'rol') and request.user.rol:
+            user_rol = request.user.rol.nombre.upper()
+        
+        print(f"🔍 Usuario ID: {request.user.id}, Nombre: {request.user.nombre}, Rol: {user_rol}")
+        
+        # 🚨 SI ES ADMIN, BUSCAR TURNOS DE TODOS LOS CLIENTES (para testing)
+        if user_rol in ['ADMIN', 'SUPERADMIN']:
+            print("⚠️ Usuario es admin, mostrando turnos de prueba")
+            # Crear datos de prueba o mostrar últimos turnos
+            turnos = Turno.objects.all().order_by('-fecha', '-hora')[:5]
+        else:
+            # Cliente normal - sus propios turnos
+            turnos = Turno.objects.filter(cliente=request.user).order_by('-fecha', '-hora')
+        
+        print(f"🔍 Turnos encontrados: {turnos.count()}")
+        
+        data = []
+        ahora = timezone.now()
+        
+        for t in turnos:
+            # Calcular duración y nombre de servicios
+            servicios_list = list(t.servicios.all())
+            duracion = sum(s.duracion for s in servicios_list)
+            servicios_str = ", ".join([s.nombre for s in servicios_list])
+            
+            # Lógica de cancelación (Regla de 3 horas para el cliente)
+            fecha_turno = timezone.make_aware(datetime.combine(t.fecha, t.hora))
+            tiempo_restante = fecha_turno - ahora
+            puede_cancelar = (
+                t.estado in ['RESERVADO', 'CONFIRMADO'] and 
+                tiempo_restante > timedelta(hours=3)
+            )
+
+            data.append({
+                'id': t.id,
+                'fecha': t.fecha.strftime("%Y-%m-%d"),
+                'hora': t.hora.strftime("%H:%M"),
+                'peluquero_nombre': f"{t.peluquero.nombre} {t.peluquero.apellido}",
+                'servicios': servicios_str,
+                'estado': t.estado,
+                'tipo_pago': t.tipo_pago,  # ✅ AGREGADO
+                'medio_pago': t.medio_pago,  # ✅ AGREGADO
+                'canal': t.canal,  # ✅ AGREGADO
+                'monto_total': float(t.monto_total),
+                'monto_seña': float(t.monto_seña),
+                'puede_cancelar': puede_cancelar,
+                'duracion': duracion
+            })
+            
+        return Response(data)
+        
+    except Exception as e:
+        print(f"Error en mis_turnos: {e}")
+        import traceback
+        traceback.print_exc()
+        return Response({'error': str(e)}, status=500)

@@ -237,7 +237,8 @@ const proveedorEditando = ref(null)
 // Cargar proveedores desde backend
 const cargarProveedores = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    const res = await axios.get(`${API_BASE}/api/proveedores/`)
     proveedores.value = res.data.sort((a, b) => {
       const fechaA = new Date(a.fecha_creacion || 0)
       const fechaB = new Date(b.fecha_creacion || 0)
@@ -257,7 +258,8 @@ const cargarProveedores = async () => {
 // Cargar categorías de tipo PRODUCTO
 const cargarCategorias = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`) 
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    const res = await axios.get(`${API_BASE}/api/categorias/productos/`) 
     categorias.value = res.data.filter(c => c.activo)
   } catch (err) {
     console.error('Error al cargar categorías:', err)
@@ -372,7 +374,8 @@ const cambiarEstadoProveedor = async (proveedor) => {
   if (!result.isConfirmed) return
   
   try {
-    await axios.patch(`${API_BASE}/usuarios/api/proveedores/${proveedor.id}/`, {
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    await axios.patch(`${API_BASE}/api/proveedores/${proveedor.id}/`, {
       estado: nuevoEstado
     })
     await cargarProveedores()

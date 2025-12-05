@@ -113,7 +113,10 @@
               <td>{{ pedido.usuario_creador_nombre || 'Sistema' }}</td>
               <td class="action-buttons">
                 <!-- Ojo para ver detalle -->
-                <button @click="verDetalle(pedido)" class="action-button view" title="Ver detalle completo">
+                <button 
+                  @click="verDetallePedido(pedido.id)"
+                  class="action-button info" 
+                  title="Ver detalle de pedido">
                   👁️
                 </button>
                 
@@ -276,7 +279,7 @@ const proveedores = ref([])
 const cargando = ref(false)
 const mostrarModalDetalle = ref(false)
 const pedidoSeleccionado = ref(null)
-const recibiendoPedido = ref(null) // ✅ NUEVO: Control de estado de recepción
+const recibiendoPedido = ref(null)
 
 // Estados del pedido
 const estadosPedido = ref([
@@ -303,8 +306,8 @@ const cargarDatosIniciales = async () => {
   try {
     cargando.value = true
     
-    // Cargar proveedores para el filtro
-    const proveedoresResponse = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    const proveedoresResponse = await axios.get(`${API_BASE}/api/proveedores/`)
     proveedores.value = proveedoresResponse.data.filter(p => p.estado === 'ACTIVO')
     
     // Cargar pedidos
@@ -328,10 +331,9 @@ const buscarPedidos = async () => {
   try {
     cargando.value = true
     
-    // ✅ CORRECCIÓN: Agregar token
     const token = localStorage.getItem('token');
     
-    // ✅ SOLO ENVIAR PARÁMETROS QUE TIENEN VALOR
+    // ✅ CORREGIDO: Ruta sin /usuarios/
     const params = new URLSearchParams()
     
     if (filtros.value.id) params.append('id', filtros.value.id)
@@ -342,21 +344,18 @@ const buscarPedidos = async () => {
     
     console.log('🔍 Parámetros enviados:', params.toString())
     
-    const response = await axios.get(`${API_BASE}/usuarios/api/pedidos/buscar/?${params}`, {
+    const response = await axios.get(`${API_BASE}/api/pedidos/buscar/?${params}`, {
       headers: {
         'Authorization': `Token ${token}`
       }
     })
     
-    // ✅ PROCESAR PEDIDOS PARA AGREGAR PROPIEDADES DINÁMICAS
     pedidos.value = procesarPedidos(response.data)
     console.log('✅ Pedidos cargados:', pedidos.value.length)
     
   } catch (error) {
     console.error('❌ Error buscando pedidos:', error)
-    console.error('📄 Respuesta del error:', error.response?.data)
     
-    // ✅ CORRECCIÓN: Manejo de error 401
     if (error.response?.status === 401) {
       Swal.fire({
         icon: 'error',
@@ -379,7 +378,6 @@ const buscarPedidos = async () => {
   }
 }
 
-// ✅ NUEVA FUNCIÓN: Procesar pedidos para agregar propiedades dinámicas
 const procesarPedidos = (pedidosData) => {
   return pedidosData.map(pedido => ({
     ...pedido,
@@ -388,14 +386,13 @@ const procesarPedidos = (pedidosData) => {
   }))
 }
 
-// ✅ NUEVA FUNCIÓN: Verificar si un pedido puede ser recibido
 const puedeRecibirPedido = (estado) => {
   return estado === 'PENDIENTE' || estado === 'CONFIRMADO'
 }
 
 // Aplicar filtros automáticamente
 const aplicarFiltros = () => {
-  pagina.value = 1 // Resetear a primera página
+  pagina.value = 1
   buscarPedidos()
 }
 
@@ -414,7 +411,7 @@ const limpiarFiltros = () => {
 // NUEVA FUNCIÓN: Obtener primeros productos para mostrar en tabla
 const getPrimerosProductos = (detalles) => {
   if (!detalles || detalles.length === 0) return []
-  return detalles.slice(0, 3) // Mostrar solo los primeros 3 productos
+  return detalles.slice(0, 3)
 }
 
 // Navegación
@@ -463,7 +460,8 @@ const cancelarPedido = async (pedido) => {
   
   try {
     cargando.value = true
-    await axios.post(`${API_BASE}/usuarios/api/pedidos/${pedido.id}/cancelar/`)
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    await axios.post(`${API_BASE}/api/pedidos/${pedido.id}/cancelar/`)
     
     Swal.fire({
       icon: 'success',
@@ -492,7 +490,6 @@ const recibirPedido = async (pedido) => {
   
   if (recibiendoPedido.value) return;
   
-  // Verificar si el pedido puede ser recibido
   if (!puedeRecibirPedido(pedido.estado)) {
     Swal.fire({
       icon: 'warning',
@@ -503,7 +500,6 @@ const recibirPedido = async (pedido) => {
     return;
   }
   
-  // Confirmación antes de proceder
   const result = await Swal.fire({
     title: '¿Recibir Pedido?',
     html: `
@@ -534,16 +530,14 @@ const recibirPedido = async (pedido) => {
   try {
     recibiendoPedido.value = pedido.id;
     
-    // ✅ CORRECCIÓN: Agregar token de autenticación
     const token = localStorage.getItem('token');
     
-    // Verificar que el endpoint de recepción existe
-    const testResponse = await axios.get(`${API_BASE}/usuarios/api/pedidos/${pedido.id}/`, {
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    const testResponse = await axios.get(`${API_BASE}/api/pedidos/${pedido.id}/`, {
       headers: {
         'Authorization': `Token ${token}`
       }
     });
-    console.log('📦 Pedido verificado:', testResponse.data);
     
     // Redirigir a la pantalla de recepción
     router.push(`/pedidos/recibir/${pedido.id}`);
@@ -551,7 +545,6 @@ const recibirPedido = async (pedido) => {
   } catch (error) {
     console.error('❌ Error verificando pedido:', error);
     
-    // ✅ CORRECCIÓN: Manejo de error 401 específico
     if (error.response?.status === 401) {
       Swal.fire({
         icon: 'error',
@@ -559,7 +552,6 @@ const recibirPedido = async (pedido) => {
         text: 'Su sesión ha expirado. Por favor, inicie sesión nuevamente.',
         confirmButtonText: 'Entendido'
       }).then(() => {
-        // Redirigir al login o recargar la página
         router.push('/login');
       });
     } else {
@@ -571,73 +563,14 @@ const recibirPedido = async (pedido) => {
       });
     }
   } finally {
-    // Resetear después de un breve delay para permitir la navegación
     setTimeout(() => {
       recibiendoPedido.value = null;
     }, 1000);
   }
 };
 
-// Modal de detalle - VERSIÓN MEJORADA
-const verDetalle = async (pedido) => {
-  try {
-    console.log('🔍 Cargando detalles del pedido:', pedido.id)
-    
-    // ✅ CORRECCIÓN: Agregar token
-    const token = localStorage.getItem('token');
-    
-    // Intentar cargar detalles completos del pedido
-    const response = await axios.get(`${API_BASE}/usuarios/api/pedidos/${pedido.id}/`, {
-      headers: {
-        'Authorization': `Token ${token}`
-      }
-    })
-    pedidoSeleccionado.value = response.data
-    
-    console.log('📦 Respuesta completa del pedido:', response.data)
-    console.log('🔍 Detalles del pedido cargados:', response.data.detalles)
-    
-    // ✅ VERIFICACIÓN CRÍTICA: Si no hay detalles en la respuesta, usar los del listado
-    if (!pedidoSeleccionado.value.detalles || pedidoSeleccionado.value.detalles.length === 0) {
-      console.log('⚠️ No hay detalles en la respuesta, usando detalles del listado')
-      if (pedido.detalles && pedido.detalles.length > 0) {
-        pedidoSeleccionado.value.detalles = pedido.detalles
-        console.log('✅ Detalles del listado asignados:', pedidoSeleccionado.value.detalles)
-      } else {
-        console.log('❌ No hay detalles disponibles en ningún lugar')
-      }
-    } else {
-      console.log('✅ Detalles cargados correctamente desde la API')
-    }
-    
-    mostrarModalDetalle.value = true
-    
-  } catch (error) {
-    console.error('❌ Error cargando detalle del pedido:', error)
-    console.error('🔍 Detalles del error:', error.response?.data)
-    
-    // ✅ CORRECCIÓN: Manejo de error 401
-    if (error.response?.status === 401) {
-      Swal.fire({
-        icon: 'error',
-        title: 'No autorizado',
-        text: 'Su sesión ha expirado. Por favor, inicie sesión nuevamente.',
-        confirmButtonText: 'Entendido'
-      });
-      return;
-    }
-    
-    // Si falla, mostrar al menos los datos básicos con los detalles que ya tenemos
-    pedidoSeleccionado.value = { ...pedido }
-    
-    // ✅ Asegurar que tenemos los detalles del listado
-    if (!pedidoSeleccionado.value.detalles && pedido.detalles) {
-      pedidoSeleccionado.value.detalles = pedido.detalles
-    }
-    
-    console.log('🔄 Usando datos locales del pedido:', pedidoSeleccionado.value)
-    mostrarModalDetalle.value = true
-  }
+const verDetallePedido = async (pedidoId) => {
+  router.push({name: 'DetallePedido', params: { id: pedidoId }})
 }
 
 const cerrarModal = () => {

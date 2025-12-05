@@ -2,8 +2,8 @@
   <div class="pedido-container">
     <div class="header-section">
       <h2>
-        <Award class="header-icon" />
-        Registrar Nueva Marca
+        <Edit3 class="header-icon" />
+        Editar Marca
       </h2>
       <button @click="cancelar" class="btn-back">
         <ArrowLeft :size="18" />
@@ -35,6 +35,7 @@
           :class="{ 'campo-invalido': errores.nombre }"
         />
         <div class="mensaje-error" v-if="errores.nombre">{{ errores.nombre }}</div>
+        <div class="mensaje-ayuda">El nombre debe ser único en el sistema</div>
       </div>
 
       <div class="input-group">
@@ -51,50 +52,94 @@
       </div>
     </div>
 
+    <!-- Estado -->
+    <div class="card-modern">
+      <div class="card-header">
+        <div class="card-icon">
+          <ToggleLeft :size="20" />
+        </div>
+        <h3>Estado</h3>
+      </div>
+
+      <div class="radio-group-horizontal">
+        <div class="radio-option" @click="marca.estado = 'activo'">
+          <div class="radio-custom-large" :class="{ 'selected': marca.estado === 'activo' }">
+            <div class="radio-check" v-if="marca.estado === 'activo'">
+              <Check :size="16" />
+            </div>
+          </div>
+          <div class="radio-content">
+            <div class="radio-header">
+              <span class="radio-title">Activo</span>
+              <span class="radio-badge estado-success">Disponible</span>
+            </div>
+            <p class="radio-description">La marca estará disponible para asignar a productos</p>
+          </div>
+        </div>
+
+        <div class="radio-option" @click="marca.estado = 'inactivo'">
+          <div class="radio-custom-large" :class="{ 'selected': marca.estado === 'inactivo' }">
+            <div class="radio-check" v-if="marca.estado === 'inactivo'">
+              <Check :size="16" />
+            </div>
+          </div>
+          <div class="radio-content">
+            <div class="radio-header">
+              <span class="radio-title">Inactivo</span>
+              <span class="radio-badge estado-danger">Oculto</span>
+            </div>
+            <p class="radio-description">La marca no estará disponible temporalmente</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Botón Final -->
     <button 
-      @click="registrarMarca" 
+      @click="actualizarMarca" 
       :disabled="!formularioValido || cargando" 
       class="btn-registrar-premium"
       :class="{'btn-processing': cargando}"
     >
       <span v-if="!cargando" class="btn-content">
-        <CheckCircle2 :size="20" />
-        Registrar Marca
+        <Save :size="20" />
+        Guardar Cambios
       </span>
       <span v-else class="btn-content">
         <Loader2 :size="20" class="btn-spinner" />
-        Procesando...
+        Guardando...
       </span>
     </button>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
 import { 
-  Award, ArrowLeft, ClipboardList, Tag, 
-  FileText, CheckCircle2, Loader2, 
-  Check, ToggleLeft
+  Edit3, ArrowLeft, ClipboardList, Tag, 
+  FileText, Save, Loader2, Check, 
+  ToggleLeft, Package, Truck, AlertTriangle
 } from 'lucide-vue-next'
 
-const emit = defineEmits(['marca-registrada', 'cancelar'])
+const emit = defineEmits(['marca-actualizada', 'cancelar'])
 const API_BASE = 'http://127.0.0.1:8000'
 
-// Verificar si estamos en modo edición
 const props = defineProps({
   marca: {
     type: Object,
-    default: null
+    required: true
   }
 })
 
 const marca = ref({
   nombre: '',
   descripcion: '',
-  estado: 'activo'
+  estado: 'activo',
+  productos_count: 0,
+  total_proveedores: 0,
+  proveedores_nombres: []
 })
 
 // 📌 Errores por campo
@@ -105,15 +150,23 @@ const errores = ref({
 const cargando = ref(false)
 const nombreOriginal = ref('')
 
-// Inicializar si es edición
-if (props.marca) {
-  marca.value = {
-    nombre: props.marca.nombre || '',
-    descripcion: props.marca.descripcion || '',
-    estado: props.marca.estado || 'activo'
+// Cargar datos de la marca
+onMounted(() => {
+  if (props.marca) {
+    // Cargar todos los datos de la marca
+    marca.value = {
+      nombre: props.marca.nombre || '',
+      descripcion: props.marca.descripcion || '',
+      estado: props.marca.estado || 'activo',
+      productos_count: props.marca.productos_count || 0,
+      total_proveedores: props.marca.total_proveedores || 0,
+      proveedores_nombres: props.marca.proveedores_nombres || []
+    }
+    nombreOriginal.value = props.marca.nombre || ''
+    
+    console.log('📥 Datos de marca cargados:', marca.value)
   }
-  nombreOriginal.value = props.marca.nombre || ''
-}
+})
 
 // ------------------------------
 // VALIDACIONES
@@ -148,8 +201,8 @@ const validarNombre = async () => {
     return
   }
   
-  // Solo validar unicidad si cambió el nombre (en modo edición)
-  if (props.marca && valor === nombreOriginal.value) {
+  // Solo validar unicidad si cambió el nombre
+  if (valor === nombreOriginal.value) {
     errores.value.nombre = ""
     return
   }
@@ -160,7 +213,8 @@ const validarNombre = async () => {
     const marcasExistentes = response.data
     
     const duplicado = marcasExistentes.find(m => 
-      m.nombre.toLowerCase() === valor.toLowerCase()
+      m.nombre.toLowerCase() === valor.toLowerCase() &&
+      m.id !== props.marca.id // Excluir la marca actual
     )
     
     if (duplicado) {
@@ -187,10 +241,13 @@ const formularioValido = computed(() => {
   )
 })
 
+// Watch para validar nombre cuando cambia
+watch(() => marca.value.nombre, validarNombre)
+
 // ================================
-// REGISTRAR/ACTUALIZAR MARCA
+// ACTUALIZAR MARCA
 // ================================
-const registrarMarca = async () => {
+const actualizarMarca = async () => {
   if (!validarFormulario()) {
     Swal.fire({
       icon: 'error',
@@ -211,35 +268,25 @@ const registrarMarca = async () => {
       estado: marca.value.estado
     }
 
-    let response
-    if (props.marca) {
-      // Modo edición
-      response = await axios.put(`${API_BASE}/api/marcas/${props.marca.id}/`, payload)
-    } else {
-      // Modo registro
-      response = await axios.post(`${API_BASE}/api/marcas/crear/`, payload)
-    }
+    console.log('📤 Enviando datos:', payload)
+    console.log('URL:', `${API_BASE}/api/marcas/${props.marca.id}/`)
 
-    const mensaje = props.marca 
-      ? '✅ Marca actualizada correctamente'
-      : '✅ Marca registrada correctamente'
+    const response = await axios.put(
+      `${API_BASE}/api/marcas/${props.marca.id}/`, 
+      payload
+    )
 
     Swal.fire({
       icon: 'success',
-      title: '¡Éxito!',
-      text: mensaje,
+      title: '✅ Marca actualizada',
+      text: 'La marca se actualizó correctamente',
       confirmButtonColor: '#007bff',
       background: '#fff',
       color: '#1a1a1a',
       confirmButtonText: 'Continuar'
     }).then((result) => {
       if (result.isConfirmed) {
-        if (props.marca) {
-          emit("marca-registrada", response.data)
-        } else {
-          emit("marca-registrada", response.data)
-          resetForm()
-        }
+        emit("marca-actualizada", response.data)
       }
     })
 
@@ -267,17 +314,6 @@ const registrarMarca = async () => {
     })
   } finally {
     cargando.value = false
-  }
-}
-
-const resetForm = () => {
-  marca.value = {
-    nombre: '',
-    descripcion: '',
-    estado: 'activo'
-  }
-  errores.value = {
-    nombre: ''
   }
 }
 
@@ -569,10 +605,101 @@ const cancelar = () => emit("cancelar")
   margin: 0;
 }
 
+/* Información de relaciones */
+.relaciones-info {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.relacion-item {
+  border: 1px solid #e9ecef;
+  border-radius: 12px;
+  padding: 20px;
+  background: #f8f9fa;
+}
+
+.relacion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.relacion-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #1a1a1a;
+  font-size: 1em;
+}
+
+.relacion-valor {
+  font-size: 1.5em;
+  font-weight: 800;
+  color: #007bff;
+}
+
+.relacion-valor.alta-cantidad {
+  color: #28a745;
+}
+
+.relacion-advertencia {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  color: #856404;
+  font-size: 0.9em;
+  margin-top: 8px;
+}
+
+.relacion-ok {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(40, 167, 69, 0.1);
+  border: 1px solid #28a745;
+  border-radius: 8px;
+  color: #155724;
+  font-size: 0.9em;
+  margin-top: 8px;
+}
+
+/* Proveedores tags */
+.proveedores-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.proveedor-tag {
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.85em;
+  font-weight: 500;
+  border: 1px solid rgba(29, 78, 216, 0.2);
+}
+
+.mas-proveedores {
+  color: #6c757d;
+  font-size: 0.85em;
+  font-style: italic;
+  padding: 6px 12px;
+}
+
 /* Botón final premium */
 .btn-registrar-premium {
   width: 100%;
-  background: linear-gradient(135deg, #007bff, #0056b3);
+  background: linear-gradient(135deg, #28a745, #20c997);
   color: white;
   font-size: 1.1em;
   padding: 18px;
@@ -582,15 +709,15 @@ const cancelar = () => emit("cancelar")
   transition: all 0.3s ease;
   margin-top: 25px;
   font-weight: 600;
-  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+  box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
   position: relative;
   overflow: hidden;
 }
 
 .btn-registrar-premium:hover:not(:disabled):not(.btn-processing) {
   transform: translateY(-3px);
-  box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4);
-  background: linear-gradient(135deg, #0056b3, #004085);
+  box-shadow: 0 8px 25px rgba(40, 167, 69, 0.4);
+  background: linear-gradient(135deg, #20c997, #1e9e8a);
 }
 
 .btn-registrar-premium:disabled,
@@ -636,6 +763,12 @@ const cancelar = () => emit("cancelar")
   .radio-option {
     padding: 16px;
   }
+  
+  .relacion-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -647,6 +780,15 @@ const cancelar = () => emit("cancelar")
   .radio-header {
     flex-direction: column;
     gap: 4px;
+  }
+  
+  .proveedores-tags {
+    flex-direction: column;
+  }
+  
+  .proveedor-tag {
+    width: 100%;
+    text-align: center;
   }
 }
 </style>

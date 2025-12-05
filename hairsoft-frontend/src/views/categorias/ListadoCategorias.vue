@@ -121,134 +121,119 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import axios from 'axios'
+// ✅ USAMOS TU AXIOS CONFIGURADO
+import axios from '../../utils/axiosConfig'
 
-const API_BASE = 'http://127.0.0.1:8000'
-
-// Datos
 const categorias = ref([])
-
-// Filtros
 const filtros = ref({ busqueda: '', tipo: '' })
-
-// Paginación
 const pagina = ref(1)
 const itemsPorPagina = 8
-
-// Modal y formulario
 const modalVisible = ref(false)
 const form = reactive({ id: null, nombre: '', descripcion: '', tipo: '' })
 const errores = reactive({ nombre: '' })
 
-// Cargar categorías
+// --- CARGA SEGURA (CORREGIDO: SIN /usuarios/) ---
 const cargarCategorias = async () => {
   try {
-    const resServicios = await axios.get(`${API_BASE}/usuarios/api/categorias/servicios/`)
-    const resProductos = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`)
+    // CORREGIDO: Rutas con /api/ en lugar de /usuarios/api/
+    const [resServicios, resProductos] = await Promise.all([
+      axios.get('/api/categorias/servicios/').catch(() => ({ data: [] })),
+      axios.get('/api/categorias/productos/').catch(() => ({ data: [] }))
+    ])
+
+    const dataServicios = Array.isArray(resServicios.data) ? resServicios.data : (resServicios.data?.results || [])
+    const dataProductos = Array.isArray(resProductos.data) ? resProductos.data : (resProductos.data?.results || [])
+
     categorias.value = [
-      ...resServicios.data.map(c => ({ ...c, tipo: 'Servicio' })),
-      ...resProductos.data.map(c => ({ ...c, tipo: 'Producto' }))
+      ...dataServicios.map(c => ({ ...c, tipo: 'Servicio' })),
+      ...dataProductos.map(c => ({ ...c, tipo: 'Producto' }))
     ]
   } catch (err) {
-    console.error(err)
-    alert('No se pudieron cargar las categorías')
+    console.error('Error cargando categorías:', err)
   }
 }
 
-// Clase para el tipo de categoría
-const getTipoClass = (tipo) => {
-  return tipo === 'Servicio' ? 'estado-info' : 'estado-success'
-}
-
-// Filtros computados
+// --- FILTROS Y PAGINACIÓN ---
 const categoriasFiltradas = computed(() => {
   let filtered = categorias.value
   if (filtros.value.busqueda) {
-    const term = filtros.value.busqueda.toLowerCase()
-    filtered = filtered.filter(c => c.nombre.toLowerCase().includes(term))
+    filtered = filtered.filter(c => c.nombre.toLowerCase().includes(filtros.value.busqueda.toLowerCase()))
   }
   if (filtros.value.tipo) filtered = filtered.filter(c => c.tipo === filtros.value.tipo)
   return filtered
 })
 
-// Paginación computada
 const totalPaginas = computed(() => Math.ceil(categoriasFiltradas.value.length / itemsPorPagina))
 const categoriasPaginadas = computed(() => {
   const inicio = (pagina.value - 1) * itemsPorPagina
   return categoriasFiltradas.value.slice(inicio, inicio + itemsPorPagina)
 })
 
-// Paginación
 const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 
-// Acciones modal
+// --- ACCIONES ---
 const abrirModalCrear = () => {
-  form.id = null
-  form.nombre = ''
-  form.descripcion = ''
-  form.tipo = ''
-  errores.nombre = ''
+  Object.assign(form, { id: null, nombre: '', descripcion: '', tipo: '' })
   modalVisible.value = true
 }
-
 const abrirModalEditar = (cat) => {
-  form.id = cat.id
-  form.nombre = cat.nombre
-  form.descripcion = cat.descripcion
-  form.tipo = cat.tipo
-  errores.nombre = ''
+  Object.assign(form, { id: cat.id, nombre: cat.nombre, descripcion: cat.descripcion, tipo: cat.tipo })
   modalVisible.value = true
 }
-
 const cerrarModal = () => { modalVisible.value = false }
 
-// Guardar categoría
 const guardarCategoria = async () => {
-  errores.nombre = form.nombre.trim() === '' ? 'El nombre es obligatorio' : ''
-  if (errores.nombre) return
-
+  if (!form.nombre.trim()) {
+    errores.nombre = 'El nombre es requerido'
+    return
+  }
+  errores.nombre = ''
+  
   try {
     let url = ''
+    // CORREGIDO: Rutas con /api/ en lugar de /usuarios/api/
     if (form.tipo === 'Servicio') {
-      url = form.id
-        ? `${API_BASE}/usuarios/api/categorias/servicios/editar/${form.id}/`
-        : `${API_BASE}/usuarios/api/categorias/servicios/crear/`
+      url = form.id ? `/api/categorias/servicios/editar/${form.id}/` : `/api/categorias/servicios/crear/`
     } else {
-      url = form.id
-        ? `${API_BASE}/usuarios/api/categorias/productos/editar/${form.id}/`
-        : `${API_BASE}/usuarios/api/categorias/productos/crear/`
+      url = form.id ? `/api/categorias/productos/editar/${form.id}/` : `/api/categorias/productos/crear/`
     }
     await axios.post(url, { nombre: form.nombre, descripcion: form.descripcion })
-    alert(`✅ Categoría ${form.id ? 'actualizada' : 'creada'}`)
     cerrarModal()
     cargarCategorias()
-  } catch (err) {
-    console.error(err)
-    alert('❌ Error al guardar la categoría')
+  } catch (err) { 
+    console.error('Error guardando categoría:', err)
+    if (err.response?.data?.nombre) {
+      errores.nombre = err.response.data.nombre[0]
+    }
   }
 }
 
-// Eliminar
 const eliminarCategoria = async (cat) => {
-  if (!confirm(`¿Eliminar categoría "${cat.nombre}"?`)) return
+  if (!confirm('¿Está seguro de eliminar esta categoría?')) return
   try {
-    const url = cat.tipo === 'Servicio'
-      ? `${API_BASE}/usuarios/api/categorias/servicios/eliminar/${cat.id}/`
-      : `${API_BASE}/usuarios/api/categorias/productos/eliminar/${cat.id}/`
+    // CORREGIDO: Rutas con /api/ en lugar de /usuarios/api/
+    const url = cat.tipo === 'Servicio' 
+      ? `/api/categorias/servicios/eliminar/${cat.id}/` 
+      : `/api/categorias/productos/eliminar/${cat.id}/`
     await axios.post(url)
-    categorias.value = categorias.value.filter(c => c.id !== cat.id)
-    alert('Categoría eliminada')
-  } catch (err) {
-    console.error(err)
+    cargarCategorias()
+  } catch (err) { 
+    console.error('Error eliminando categoría:', err)
     alert('No se pudo eliminar la categoría')
   }
 }
 
-// Limpiar filtros
 const limpiarFiltros = () => { filtros.value = { busqueda: '', tipo: '' }; pagina.value = 1 }
+const getTipoClass = (t) => t === 'Servicio' ? 'estado-info' : 'estado-success'
 
-onMounted(() => cargarCategorias())
+// Cargar datos al montar el componente
+onMounted(() => {
+  console.log('Componente de categorías montado')
+  cargarCategorias()
+})
+
+// Reiniciar paginación al cambiar filtros
 watch(filtros, () => { pagina.value = 1 }, { deep: true })
 </script>
 

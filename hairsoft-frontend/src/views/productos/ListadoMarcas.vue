@@ -10,7 +10,9 @@
         </div>
         <div class="header-buttons" style="display: flex; gap: 12px;">
           <button @click="mostrarRegistrar = true" class="register-button">
-            <Plus :size="18" />
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
             Registrar Marca
           </button>
         </div>
@@ -36,7 +38,10 @@
           <div class="filter-group">
             <label>&nbsp;</label>
             <button @click="limpiarFiltros" class="clear-filters-btn">
-              <Trash2 :size="16" />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
               Limpiar filtros
             </button>
           </div>
@@ -50,49 +55,61 @@
             <tr>
               <th>Nombre</th>
               <th>Descripción</th>
-              <th>Estado</th>
               <th>Productos</th>
               <th>Proveedores</th>
-              <th>Nombre proveedores</th>
-              <th>Fecha creación</th>
+              <th>Estado</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="marca in marcasPaginadas" :key="marca.id">
+            <tr v-for="marca in marcasPaginadas" :key="marca.id" 
+                :class="{'sin-proveedores-row': marca.total_proveedores === 0}">
               <td><strong>{{ marca.nombre }}</strong></td>
               <td class="descripcion-cell">{{ marca.descripcion || 'Sin descripción' }}</td>
               <td>
-                <span class="badge-estado" :class="getEstadoClass(marca.estado)">
-                  {{ marca.estado_display }}
+                <span class="badge-estado estado-info">
+                  {{ marca.productos_count || 0 }} producto{{ marca.productos_count !== 1 ? 's' : '' }}
                 </span>
               </td>
-              <td><strong>{{ marca.productos_count }}</strong></td>
-              <td><strong>{{ marca.total_proveedores }}</strong></td>
               <td>
                 <div class="proveedores-lista">
-                  <div v-for="(prov, i) in marca.proveedores_nombres.slice(0,3)" :key="i" class="proveedor-item">
-                    <span class="proveedor-nombre">{{ prov }}</span>
+                  <div v-if="marca.proveedores_nombres && marca.proveedores_nombres.length > 0">
+                    <div v-for="(proveedor, index) in getPrimerosProveedores(marca)" :key="proveedor.id || index" 
+                         class="proveedor-item">
+                      <span class="proveedor-nombre">{{ proveedor.nombre }}</span>
+                    </div>
+                    <div v-if="marca.proveedores_nombres.length > 3" class="mas-proveedores">
+                      +{{ marca.proveedores_nombres.length - 3 }} más...
+                    </div>
                   </div>
-                  <div v-if="marca.proveedores_nombres.length > 3" class="mas-proveedores">
-                    +{{ marca.proveedores_nombres.length - 3 }} más...
-                  </div>
-                  <div v-else-if="marca.proveedores_nombres.length === 0" class="sin-proveedores">
+                  <div v-else class="sin-proveedores">
                     Sin proveedores
                   </div>
                 </div>
               </td>
-              <td>{{ formatFecha(marca.fecha_creacion) }}</td>
+              <td>
+                <span class="badge-estado" :class="getEstadoClass(marca.estado)">
+                  {{ marca.estado === 'activo' ? 'Activo' : 'Inactivo' }}
+                </span>
+              </td>
               <td>
                 <div class="action-buttons">
                   <button @click="editarMarca(marca)" class="action-button edit" title="Editar marca">
-                    <Edit3 :size="14" />
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
                   </button>
                   <button @click="cambiarEstadoMarca(marca)" class="action-button" 
                           :class="marca.estado === 'activo' ? 'delete' : 'success'" 
                           :title="marca.estado === 'activo' ? 'Desactivar marca' : 'Activar marca'">
-                    <Power :size="14" v-if="marca.estado === 'activo'" />
-                    <CheckCircle :size="14" v-else />
+                    <svg v-if="marca.estado === 'activo'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <path d="M8 12l3 3 5-5"/>
+                    </svg>
+                    <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
                   </button>
                 </div>
               </td>
@@ -101,36 +118,32 @@
         </table>
 
         <div v-if="marcasPaginadas.length === 0" class="no-results">
-          <PackageX class="no-results-icon" :size="48" />
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" class="no-results-icon">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
           <p>No se encontraron marcas</p>
           <small>Intenta con otros términos de búsqueda</small>
-        </div>
-      </div>
-
-      <!-- Mostrando cantidad -->
-      <div class="usuarios-count">
-        <p>
-          <Package :size="16" />
-          Mostrando {{ marcasPaginadas.length }} de {{ marcasFiltradas.length }} marcas
-        </p>
-        <div class="alertas-container">
-          <span v-if="marcasInactivas > 0" class="alerta-inactivo">
-            <PowerOff :size="14" />
-            {{ marcasInactivas }} inactivas
-          </span>
         </div>
       </div>
 
       <!-- Paginación -->
       <div class="pagination">
         <button @click="paginaAnterior" :disabled="pagina === 1">
-          <ChevronLeft :size="16" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
           Anterior
         </button>
         <span>Página {{ pagina }} de {{ totalPaginas }}</span>
         <button @click="paginaSiguiente" :disabled="pagina === totalPaginas">
           Siguiente
-          <ChevronRight :size="16" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
         </button>
       </div>
     </div>
@@ -148,12 +161,9 @@
     <!-- Modal Editar Marca -->
     <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
       <div class="modal-content">
-        <button class="modal-close" @click="cerrarModalEditar" title="Cerrar formulario">
-          <X :size="20" />
-        </button>
-        <RegistrarMarca 
+        <EditarMarca 
           :marca="marcaEditando"
-          @marca-registrada="marcaActualizada"
+          @marca-actualizada="marcaActualizada"
           @cancelar="cerrarModalEditar"
         />
       </div>
@@ -164,9 +174,8 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
-import Swal from 'sweetalert2'
 import RegistrarMarca from './RegistrarMarca.vue'
-import { Package, PackageX, Plus, Edit3, Power, CheckCircle, PowerOff, ChevronLeft, ChevronRight, Trash2, X } from 'lucide-vue-next'
+import EditarMarca from './EditarMarca.vue'
 
 const API_BASE = 'http://127.0.0.1:8000'
 
@@ -178,20 +187,90 @@ const mostrarRegistrar = ref(false)
 const mostrarEditar = ref(false)
 const marcaEditando = ref(null)
 
-// Cargar marcas
+// Cargar marcas con productos y proveedores REALES
 const cargarMarcas = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/marcas/`)
-    marcas.value = res.data.sort((a, b) => b.id - a.id)
+    // ✅ CORREGIDO: Rutas sin /usuarios/
+    const [resMarcas, resProductos, resProveedores] = await Promise.all([
+      axios.get(`${API_BASE}/api/marcas/`),
+      axios.get(`${API_BASE}/api/productos/`),
+      axios.get(`${API_BASE}/api/proveedores/`)
+    ])
+    
+    const todasMarcas = resMarcas.data
+    const todosProductos = resProductos.data
+    const todosProveedores = resProveedores.data
+    
+    // 2. Crear mapa de productos por marca y proveedores por marca
+    const productosPorMarca = {}
+    const proveedoresPorMarca = {}
+    
+    // Inicializar estructuras
+    todasMarcas.forEach(marca => {
+      productosPorMarca[marca.id] = {
+        count: 0,
+        productos: []
+      }
+      proveedoresPorMarca[marca.id] = new Set()
+    })
+    
+    // 3. Procesar TODOS los productos
+    todosProductos.forEach(producto => {
+      const marcaId = producto.marca
+      
+      if (marcaId && productosPorMarca[marcaId]) {
+        productosPorMarca[marcaId].count++
+        productosPorMarca[marcaId].productos.push(producto)
+        
+        if (producto.proveedores && Array.isArray(producto.proveedores)) {
+          producto.proveedores.forEach(proveedorId => {
+            const proveedor = todosProveedores.find(p => p.id === proveedorId)
+            if (proveedor) {
+              proveedoresPorMarca[marcaId].add(proveedor.nombre)
+            }
+          })
+        }
+        
+        if (producto.proveedores_nombres && Array.isArray(producto.proveedores_nombres)) {
+          producto.proveedores_nombres.forEach(nombre => {
+            proveedoresPorMarca[marcaId].add(nombre)
+          })
+        }
+      }
+    })
+    
+    // 4. Procesar marcas con datos REALES
+    marcas.value = todasMarcas.map(marca => {
+      const productosInfo = productosPorMarca[marca.id] || { count: 0, productos: [] }
+      const proveedoresDeEstaMarca = Array.from(proveedoresPorMarca[marca.id] || [])
+      
+      return {
+        ...marca,
+        productos_count: productosInfo.count,
+        total_proveedores: proveedoresDeEstaMarca.length,
+        proveedores_nombres: proveedoresDeEstaMarca,
+        updated_at: marca.updated_at || marca.fecha_creacion
+      }
+    }).sort((a, b) => b.id - a.id)
+    
   } catch (err) {
     console.error('❌ Error al cargar marcas:', err)
-    Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo cargar las marcas', confirmButtonColor: '#0ea5e9' })
+    alert('No se pudo cargar las marcas.')
   }
 }
 
 // Formatear fecha
 const formatFecha = (fecha) => {
-  return new Date(fecha).toLocaleDateString('es-AR', { year:'numeric', month:'short', day:'numeric' })
+  if (!fecha) return '-'
+  try {
+    return new Date(fecha).toLocaleDateString('es-AR', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    })
+  } catch (error) {
+    return fecha
+  }
 }
 
 // Clase para estado
@@ -202,18 +281,35 @@ const getEstadoClass = (estado) => {
   return 'estado-secondary'
 }
 
+// Obtener primeros proveedores para mostrar
+const getPrimerosProveedores = (marca) => {
+  if (!marca.proveedores_nombres || !Array.isArray(marca.proveedores_nombres)) {
+    return []
+  }
+  
+  return marca.proveedores_nombres.slice(0, 3).map((nombre, index) => ({ 
+    id: index, 
+    nombre: nombre 
+  }))
+}
+
 // Filtrado
 const marcasFiltradas = computed(() => {
   return marcas.value.filter(m => {
     const busca = filtros.value.busqueda.toLowerCase()
-    const matchBusqueda = !busca || m.nombre.toLowerCase().includes(busca)
+    const matchBusqueda = !busca || 
+      m.nombre.toLowerCase().includes(busca) ||
+      (m.descripcion && m.descripcion.toLowerCase().includes(busca))
+    
     const matchEstado = !filtros.value.estado || m.estado === filtros.value.estado
+    
     return matchBusqueda && matchEstado
   })
 })
 
-// Marcas inactivas
+// Estadísticas
 const marcasInactivas = computed(() => marcasFiltradas.value.filter(m => m.estado === 'inactivo').length)
+const marcasSinProveedores = computed(() => marcasFiltradas.value.filter(m => !m.total_proveedores || m.total_proveedores === 0).length)
 
 // Paginación
 const totalPaginas = computed(() => Math.max(1, Math.ceil(marcasFiltradas.value.length / itemsPorPagina)))
@@ -225,51 +321,67 @@ const marcasPaginadas = computed(() => {
 const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 
-// Cambiar estado
+// Cambiar estado de marca
 const cambiarEstadoMarca = async (marca) => {
   const nuevoEstado = marca.estado === 'activo' ? 'inactivo' : 'activo'
   const accion = nuevoEstado === 'activo' ? 'activar' : 'desactivar'
-
-  const result = await Swal.fire({
-    title: `¿${accion.charAt(0).toUpperCase() + accion.slice(1)} marca?`,
-    text: `¿Está seguro de ${accion} la marca "${marca.nombre}"?`,
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonColor: '#0ea5e9',
-    cancelButtonColor: '#6b7280',
-    confirmButtonText: `Sí, ${accion}`,
-    cancelButtonText: 'Cancelar'
-  })
-
-  if (!result.isConfirmed) return
+  
+  if (!confirm(`¿Está seguro de ${accion} la marca "${marca.nombre}"?`)) {
+    return
+  }
 
   try {
-    await axios.patch(`${API_BASE}/usuarios/api/marcas/${marca.id}/`, { estado: nuevoEstado })
+    // ✅ CORREGIDO: Ruta sin /usuarios/
+    await axios.patch(`${API_BASE}/api/marcas/${marca.id}/cambiar_estado/`, { 
+      estado: nuevoEstado 
+    })
+    
     await cargarMarcas()
-    Swal.fire({ icon: 'success', title: '¡Éxito!', text: `Marca ${accion}da correctamente`, confirmButtonColor: '#0ea5e9' })
+    alert(`Marca ${accion}da correctamente`)
   } catch (err) {
-    console.error(err)
-    Swal.fire({ icon: 'error', title: 'Error', text: `No se pudo ${accion} la marca`, confirmButtonColor: '#0ea5e9' })
+    console.error('Error cambiando estado:', err)
+    alert(`No se pudo ${accion} la marca`)
   }
 }
 
 // Editar marca
-const editarMarca = (marca) => { marcaEditando.value = marca; mostrarEditar.value = true }
+const editarMarca = (marca) => { 
+  marcaEditando.value = marca
+  mostrarEditar.value = true 
+}
 
 // Modales
 const cerrarModal = () => { mostrarRegistrar.value = false }
-const cerrarModalEditar = () => { mostrarEditar.value = false; marcaEditando.value = null }
+const cerrarModalEditar = () => { 
+  mostrarEditar.value = false
+  marcaEditando.value = null 
+}
 
 // Eventos de los modales
-const marcaRegistrada = async () => { cerrarModal(); await cargarMarcas(); pagina.value = 1 }
-const marcaActualizada = async () => { cerrarModalEditar(); await cargarMarcas() }
+const marcaRegistrada = async () => { 
+  cerrarModal()
+  await cargarMarcas()
+  pagina.value = 1 
+}
+
+const marcaActualizada = async () => { 
+  cerrarModalEditar()
+  await cargarMarcas() 
+}
 
 // Limpiar filtros
-const limpiarFiltros = () => { filtros.value = { busqueda: '', estado: '' }; pagina.value = 1 }
+const limpiarFiltros = () => { 
+  filtros.value = { busqueda: '', estado: '' }
+  pagina.value = 1 
+}
 
+// Watch para resetear página cuando cambian filtros
 watch(filtros, () => { pagina.value = 1 }, { deep: true })
 
-onMounted(async () => { await cargarMarcas() })
+// Inicialización
+onMounted(async () => { 
+  await cargarMarcas()
+})
 </script>
 
 <style scoped>
@@ -314,20 +426,6 @@ onMounted(async () => { await cargarMarcas() })
   white-space: nowrap;
 }
 
-.estado-warning {
-  background: var(--bg-tertiary);
-  color: #f59e0b;
-  border: 2px solid #f59e0b;
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
-}
-
-.estado-info {
-  background: var(--bg-tertiary);
-  color: #0ea5e9;
-  border: 2px solid #0ea5e9;
-  box-shadow: 0 0 12px rgba(14, 165, 233, 0.3);
-}
-
 .estado-success {
   background: var(--bg-tertiary);
   color: #10b981;
@@ -349,6 +447,13 @@ onMounted(async () => { await cargarMarcas() })
   color: var(--text-tertiary);
   border: 2px solid var(--text-tertiary);
   box-shadow: 0 0 8px rgba(156, 163, 175, 0.2);
+}
+
+.estado-info {
+  background: var(--bg-tertiary);
+  color: #0ea5e9;
+  border: 2px solid #0ea5e9;
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.3);
 }
 
 /* HEADER - CON VARIABLES */
@@ -544,6 +649,15 @@ onMounted(async () => { await cargarMarcas() })
   transition: all 0.2s ease;
 }
 
+.sin-proveedores-row {
+  background: var(--hover-bg);
+  opacity: 0.9;
+}
+
+.sin-proveedores-row:hover {
+  background: var(--bg-tertiary);
+}
+
 /* Estilos específicos para marcas */
 .descripcion-cell {
   max-width: 200px;
@@ -596,6 +710,12 @@ onMounted(async () => { await cargarMarcas() })
   font-style: italic;
   text-align: center;
   padding: 8px 0;
+}
+
+.fecha-actualizacion {
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 /* BOTONES DE ACCIÓN - CON VARIABLES */
@@ -830,32 +950,6 @@ onMounted(async () => { await cargarMarcas() })
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(40px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-.modal-close {
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  background: var(--bg-tertiary);
-  border: 2px solid var(--error-color);
-  border-radius: 12px;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--error-color);
-  box-shadow: var(--shadow-md);
-  transition: all 0.3s ease;
-  z-index: 1001;
-}
-
-.modal-close:hover {
-  transform: scale(1.15) rotate(90deg);
-  box-shadow: 0 6px 25px rgba(239, 68, 68, 0.6);
-  background: var(--hover-bg);
-  border-color: var(--error-color);
 }
 
 /* SCROLLBAR PERSONALIZADO - CON VARIABLES */

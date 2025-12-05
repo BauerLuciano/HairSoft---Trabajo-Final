@@ -1,5 +1,6 @@
 /* ============================
    base.css – Estilos Globales
+   (Corregido para evitar doble scroll)
    ============================ */
 
 /* Reset mínimo */
@@ -9,11 +10,14 @@
   box-sizing: border-box;
 }
 
+/* NOTA: Quitamos 'min-height: 100vh' de aquí porque 
+   ya lo maneja App.vue con 'overflow: hidden'.
+*/
 html, body {
   font-family: 'Inter', sans-serif;
   line-height: 1.5;
   scroll-behavior: smooth;
-  min-height: 100vh;
+  /* min-height: 100vh; <--- ELIMINADO PARA CORREGIR SCROLL */
   background-color: #0a0a0a;
   color: #f0f0f0;
 }
@@ -31,7 +35,13 @@ html, body {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  min-height: 100vh;
+  
+  /* ✅ CORRECCIÓN CLAVE: 
+     Usamos 100% en vez de 100vh para que se adapte 
+     al espacio disponible dentro de .page-content 
+  */
+  min-height: 100%; 
+  
   padding: 40px 20px;
   background: transparent;
 }

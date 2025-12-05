@@ -155,6 +155,8 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+    'user-rol',
+    'user-id',
 ]
 
 CORS_ALLOW_METHODS = [
@@ -197,7 +199,10 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
-    ]
+    ],
+    # 👇 ESTO ES VITAL: Ponele None para que devuelva listas simples como antes
+    'DEFAULT_PAGINATION_CLASS': None,
+    'PAGE_SIZE': None,
 }
 
 # ================================

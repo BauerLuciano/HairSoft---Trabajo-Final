@@ -1,28 +1,33 @@
 from django.contrib import admin
 from django.urls import path, include, re_path
-from django.views.generic import RedirectView
 from django.views.static import serve
 from django.conf import settings
-from django.shortcuts import redirect
+from django.conf.urls.static import static
 import os
 
+# Función para servir el frontend
+def serve_frontend(request, path=''):
+    frontend_path = os.path.join(settings.BASE_DIR, 'hairsoft-frontend', 'index.html')
+    if os.path.exists(frontend_path):
+        return serve(request, 'index.html', os.path.dirname(frontend_path))
+    else:
+        return serve(request, path, document_root=settings.STATIC_ROOT)
+
 urlpatterns = [
-    # Redirige raíz al listado de usuarios
-    path('', lambda request: redirect('/usuarios/', permanent=False)),
+    # 1. Admin
+    path('admin/', admin.site.urls),
 
-    path('', include('usuarios.urls')),
-
-    # Incluye todas las rutas de la app usuarios
+    # 2. LA CLAVE: Conectar tu archivo usuarios/urls.py bajo el prefijo 'usuarios/'
+    # Esto hace que funcionen las rutas tipo: /usuarios/api/turnos/
     path('usuarios/', include('usuarios.urls')),
 
-    # Admin
-    path('admin/', admin.site.urls),
+    # 3. Soporte extra por si alguna ruta llama directo a /api/
+    path('', include('usuarios.urls')),
+
+    # 4. Archivos estáticos y media
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# 5. Todo lo demás -> Frontend (Vue)
+urlpatterns += [
+    re_path(r'^.*$', serve_frontend),
 ]
-
-# Sirve el index.html del frontend cuando entrás a /usuarios/ o refrescás
-frontend_index = os.path.join(settings.BASE_DIR, 'hairsoft-frontend', 'index.html')
-
-if os.path.exists(frontend_index):
-    urlpatterns += [
-        re_path(r'^usuarios/?$', serve, {'path': 'index.html', 'document_root': os.path.join(settings.BASE_DIR, 'hairsoft-frontend')}),
-    ]

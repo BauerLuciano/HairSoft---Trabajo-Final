@@ -1,149 +1,201 @@
 <template>
   <div class="app-layout">
-    <Sidebar v-if="!route.meta.hideNavbar" /> 
-    
-    <div class="main-content-wrapper">
-      <Header v-if="!route.meta.hideNavbar" /> 
-      
-      <main class="page-content">
+    <template v-if="esLayoutAdmin">
+      <Sidebar />
+      <div class="main-content-wrapper">
+        <Header />
+        <main class="page-content">
+          <router-view />
+        </main>
+      </div>
+    </template>
+
+    <template v-else-if="esLayoutCliente">
+      <div class="main-content-wrapper client-wrapper">
+        <ClientNavbar />
+        <main class="page-content client-content">
+          <router-view />
+        </main>
+      </div>
+    </template>
+
+    <template v-else>
+      <div class="public-page">
         <router-view />
-      </main>
-    </div>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup>
+import { computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import Sidebar from './components/Sidebar.vue'; 
-import Header from './components/Header.vue'; 
+import Sidebar from './components/Sidebar.vue';
+import Header from './components/Header.vue';
+import ClientNavbar from './components/ClientNavbar.vue';
 
 const route = useRoute();
-// La lógica de tema se ejecuta en Header.vue
+
+// Lógica de decisión de layout basada en meta-tags del router
+const esLayoutAdmin = computed(() => {
+  return !route.meta.hideNavbar && (!route.meta.layout || route.meta.layout === 'admin');
+});
+
+const esLayoutCliente = computed(() => {
+  return !route.meta.hideNavbar && route.meta.layout === 'client';
+});
+
+// Cargar estilos globales dinámicamente
+onMounted(() => {
+  import('./styles/reset.css');
+  import('./styles/base.css');
+  import('./styles/formularios.css');
+  import('./styles/modos.css');
+  import('./styles/themes.css');
+});
 </script>
 
 <style>
-/* -------------------------------------- */
-/* ESTILOS GLOBALES Y VARIABLES DE TEMA MODERNAS (Modo Oscuro por defecto) */
-/* -------------------------------------- */
+/* =============================================================================
+   ESTILOS ESTRUCTURALES MAESTROS
+   Estos estilos controlan el layout y evitan el doble scroll.
+   =============================================================================
+*/
 
-/* Variables de Tema Moderno y Minimalista */
+/* Variables Globales (Por defecto Dark Mode) */
 :root {
-  /* MODO OSCURO (Dark Mode - DEFAULT) */
-  --bg-primary: #0f172a;        /* Fondo principal (Más claro que negro) */
-  --bg-secondary: #1e293b;      /* Fondo de barras/tarjetas */
-  --text-primary: #f8fafc;      /* Texto claro (Blanco suave) */
-  --text-secondary: #cbd5e1;    /* Texto secundario (Gris claro) */
-  --accent-color: #8b5cf6;      /* Púrpura vibrante (igual al header/sidebar) */
-  --accent-shadow: rgba(139, 92, 246, 0.4); /* Sombra de acento */
-  --shadow-color: rgba(0, 0, 0, 0.3); /* Sombra de elementos oscuros */
-  --border-color: rgba(255, 255, 255, 0.1); /* Borde sutil */
-  --hover-bg: rgba(255, 255, 255, 0.05); /* Fondo de hover sutil */
+  --bg-primary: #0f172a;        
+  --bg-secondary: #1e293b;      
+  --text-primary: #f8fafc;      
+  --text-secondary: #cbd5e1;    
+  --accent-color: #8b5cf6;
 }
 
-/* Variables para el MODO CLARO (Activado por la clase 'light-mode' en HTML) */
-html.light-mode {
-  --bg-primary: #f1f5f9;      /* Fondo principal (Blanco muy claro) */
-  --bg-secondary: #ffffff;    /* Fondo de barras/tarjetas (Blanco puro) */
-  --text-primary: #1e293b;    /* Texto oscuro */
-  --text-secondary: #334155;  /* Texto secundario (Gris intermedio) */
-  --accent-color: #8b5cf6;    /* Púrpura (consistente en ambos modos) */
-  --accent-shadow: rgba(139, 92, 246, 0.4); 
-  --shadow-color: rgba(0, 0, 0, 0.08); 
-  --border-color: rgba(0, 0, 0, 0.1); 
-  --hover-bg: rgba(0, 0, 0, 0.03); 
-}
-
-/* Estilos base del body/html */
-* {
-  box-sizing: border-box;
-}
-
+/* 1. RESET MAESTRO: Bloqueamos el scroll del navegador */
 html, body {
   margin: 0;
   padding: 0;
-  height: 100%;
-  overflow: hidden; /* IMPORTANTE: Evita el scroll del body */
-  transition: all 0.4s ease;
-}
-
-body {
-  background-color: var(--bg-primary); 
-  color: var(--text-primary);
+  width: 100%;
+  height: 100%; /* Ocupa exactamente el alto de la ventana */
+  overflow: hidden; /* 🔒 CLAVE: Prohíbe scroll en el body */
+  background-color: var(--bg-primary);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
-/* -------------------------------------- */
-/* ESTRUCTURA DE LAYOUT (Header y Sidebar FIJOS) */
-/* -------------------------------------- */
-
+/* 2. CONTENEDOR PRINCIPAL */
 .app-layout {
   display: flex;
-  height: 100vh; /* Altura completa de la ventana */
-  overflow: hidden; /* Sin scroll en el layout principal */
+  width: 100%;
+  height: 100vh; /* Fuerza altura de viewport */
+  overflow: hidden; /* Asegura que nada desborde aquí */
 }
 
-/* El Sidebar ya tiene position: sticky en su propio componente */
-
+/* 3. WRAPPER DE CONTENIDO (Derecha del sidebar o Pantalla completa cliente) */
 .main-content-wrapper {
-  flex: 1; /* Toma todo el espacio restante */
+  flex: 1; /* Toma todo el espacio disponible */
   display: flex;
-  flex-direction: column;
-  height: 100vh; /* Altura completa */
-  overflow: hidden; /* Control de scroll interno */
+  flex-direction: column; /* Apila Header arriba y Contenido abajo */
+  height: 100%; /* ✅ CLAVE: Hereda la altura, no la fuerza */
+  overflow: hidden; /* Evita scroll en el wrapper */
+  position: relative;
 }
 
-/* El Header ya tiene position: sticky en su propio componente */
-
+/* 4. ÁREA DE SCROLL (Donde va el router-view) */
 .page-content {
-  flex: 1; /* Toma el espacio restante después del header */
+  flex: 1; /* Ocupa el espacio restante debajo del header */
   background-color: var(--bg-primary);
-  overflow-y: auto; /* AQUÍ está el scroll - solo el contenido scrollea */
-  overflow-x: hidden;
-  transition: all 0.4s ease;
+  overflow-y: auto; /* ✅ ÚNICO LUGAR CON SCROLL VERTICAL */
+  overflow-x: hidden; /* Evita scroll horizontal */
+  padding: 20px;
+  position: relative;
+  scroll-behavior: smooth;
 }
 
-/* Scrollbar personalizado para el contenido */
-.page-content::-webkit-scrollbar {
+/* =========================================
+   AJUSTES ESPECÍFICOS POR LAYOUT
+   ========================================= */
+
+/* Layout Cliente */
+.client-wrapper {
+  background-color: var(--bg-primary);
+}
+
+.client-content {
+  width: 100%;
+  max-width: 1200px; /* Centrado bonito en monitores grandes */
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* Layout Público (Login, Registro, Landing) */
+/* Este sí puede scrollear completo porque no tiene header fijo */
+.public-page {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto; 
+  background: var(--bg-primary);
+}
+
+/* Estilo de la barra de desplazamiento (Scrollbar) */
+.page-content::-webkit-scrollbar,
+.public-page::-webkit-scrollbar {
   width: 8px;
 }
-
-.page-content::-webkit-scrollbar-track {
+.page-content::-webkit-scrollbar-track,
+.public-page::-webkit-scrollbar-track {
   background: var(--bg-secondary);
-  border-radius: 10px;
 }
-
-.page-content::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 10px;
-  transition: background 0.3s ease;
+.page-content::-webkit-scrollbar-thumb,
+.public-page::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
 }
-
-.page-content::-webkit-scrollbar-thumb:hover {
+.page-content::-webkit-scrollbar-thumb:hover,
+.public-page::-webkit-scrollbar-thumb:hover {
   background: var(--accent-color);
 }
-
-/* Media Query para móvil (ocultar sidebar y expandir contenido) */
-@media (max-width: 768px) {
-  .sidebar {
-    /* Se oculta o se colapsa en móvil */
-    width: 0 !important;
-    padding: 0 !important;
-    border-right: none !important;
-    overflow: hidden !important;
-  }
-  
-  .main-content-wrapper {
-    width: 100%; /* Asegura que el contenido ocupe todo el ancho */
-  }
-  
-  .page-content {
-    padding: 20px;
-  }
+/* Layout Cliente - Corrección completa */
+.client-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-primary);
 }
 
-@media (max-width: 480px) {
-  .page-content {
-    padding: 15px;
+.client-content {
+  flex: 1;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Sobrescribe cualquier min-height problemático */
+.client-content > * {
+  min-height: 0 !important;
+}
+
+/* Scrollbar específico para cliente */
+.client-content::-webkit-scrollbar {
+  width: 8px;
+}
+.client-content::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+.client-content::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+}
+/* Media Query Móvil */
+@media (max-width: 768px) {
+  .page-content, 
+  .client-content {
+    padding: 15px; /* Menos padding en celular */
   }
 }
 </style>

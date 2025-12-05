@@ -1,6 +1,7 @@
 # usuarios/serializers.py
 from rest_framework import serializers, viewsets
 from django.db import transaction
+from decimal import Decimal
 from django.shortcuts import get_object_or_404
 from .models import *
 
@@ -188,10 +189,17 @@ class ProveedorSerializer(serializers.ModelSerializer):
         return instance
 
 #Producto!
-
 class ProductoSerializer(serializers.ModelSerializer):
     codigo = serializers.CharField(read_only=True)
-
+    
+    # ✅ AGREGAR ESTO: CAMPO PRECIO
+    precio = serializers.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        required=True,
+        min_value=("0.01")
+    )
+    
     # ======= CATEGORÍA =======
     categoria_id = serializers.IntegerField(source='categoria.id', read_only=True) 
     categoria_nombre = serializers.CharField(source='categoria.nombre', read_only=True)
@@ -208,8 +216,13 @@ class ProductoSerializer(serializers.ModelSerializer):
         required=True
     )
 
-    # ======= ESTADO =======  # ✅ NUEVO
-    estado = serializers.ChoiceField(choices=Producto.ESTADOS, required=False)
+    # ======= ESTADO =======
+    # ✅ CORREGIR: Cambiar a CharField con default y permitir blanco
+    estado = serializers.CharField(
+        max_length=10, 
+        required=False,
+        default='ACTIVO'  # <-- Valor por defecto
+    )
 
     # ======= STOCK =======
     stock_actual = serializers.IntegerField(read_only=True)
@@ -233,7 +246,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             'precio',
             'codigo',
             'descripcion',
-            'estado',  # ✅ NUEVO
+            'estado',  # ✅ Mantener
 
             # Stock
             'stock_actual',
@@ -253,12 +266,19 @@ class ProductoSerializer(serializers.ModelSerializer):
             'proveedores',
             'proveedores_nombres',
         ]
+        extra_kwargs = {
+            'estado': {'required': False, 'default': 'ACTIVO'}  # ✅ Asegurar default
+        }
 
     def get_proveedores_nombres(self, obj):
         return [p.nombre for p in obj.proveedores.all()]
 
     def create(self, validated_data):
         print("🔍 DEBUG - Datos que llegan al serializer:", validated_data)
+        
+        # ✅ Asegurar que el estado tenga un valor por defecto
+        if 'estado' not in validated_data:
+            validated_data['estado'] = 'ACTIVO'
         
         # Extraer proveedores si existen
         proveedores_data = validated_data.pop('proveedores', [])

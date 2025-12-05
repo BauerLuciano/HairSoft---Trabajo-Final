@@ -229,7 +229,8 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import axios from 'axios'
+// ✅ IMPORTAR AXIOS CONFIGURADO
+import axios from '../../utils/axiosConfig' 
 import Swal from 'sweetalert2'
 import RegistrarProducto from './RegistrarProducto.vue'
 import ModificarProducto from './ModificarProducto.vue'
@@ -239,7 +240,7 @@ import {
   ChevronLeft, ChevronRight, Trash2, X, AlertTriangle
 } from 'lucide-vue-next'
 
-const API_BASE = 'http://127.0.0.1:8000'
+// ✅ Sin API_BASE manual
 
 const productos = ref([])
 const categorias = ref([])
@@ -255,42 +256,39 @@ const mostrarEditar = ref(false)
 const mostrarRegistrarMarca = ref(false)
 const productoEditando = ref(null)
 
+// --- FUNCIONES DE CARGA SEGURAS ---
 const cargarProductos = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/productos/`)
-    productos.value = res.data.sort((a, b) => b.id - a.id)
+    const res = await axios.get('/usuarios/api/productos/')
+    const data = Array.isArray(res.data) ? res.data : (res.data.results || []);
+    productos.value = data.sort((a, b) => b.id - a.id)
   } catch (err) {
     console.error('❌ Error al cargar productos:', err)
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'No se pudo cargar la lista de productos',
-      confirmButtonColor: '#0ea5e9'
-    })
   }
 }
 
 const cargarCategorias = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`)
-    categorias.value = res.data
+    const res = await axios.get('/usuarios/api/categorias/productos/')
+    categorias.value = Array.isArray(res.data) ? res.data : (res.data.results || []);
   } catch (err) { console.error(err) }
 }
 
 const cargarProveedores = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
-    proveedores.value = res.data
+    const res = await axios.get('/usuarios/api/proveedores/')
+    proveedores.value = Array.isArray(res.data) ? res.data : (res.data.results || []);
   } catch (err) { console.error(err) }
 }
 
 const cargarMarcas = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/marcas/`)
-    marcas.value = res.data
+    const res = await axios.get('/usuarios/api/marcas/')
+    marcas.value = Array.isArray(res.data) ? res.data : (res.data.results || []);
   } catch (err) { console.error(err) }
 }
 
+// --- HELPERS ---
 const getCategoriaNombre = (producto) => {
   if (producto.categoria_nombre) return producto.categoria_nombre
   if (producto.categoria) {
@@ -310,6 +308,7 @@ const getMarcaNombre = (producto) => {
 }
 
 const getProveedoresNombres = (producto) => {
+  // Validación extra para evitar "map is not a function"
   if (!producto.proveedores || !Array.isArray(producto.proveedores)) return []
   return producto.proveedores.map(provId => {
     const proveedor = proveedores.value.find(p => p.id === provId)
@@ -325,24 +324,18 @@ const getPrimerosProveedores = (producto) => {
 
 const getEstadoClass = (estado) => {
   const estadoLower = estado?.toLowerCase() || ''
-  if (estadoLower === 'activo') return 'estado-success'
-  if (estadoLower === 'inactivo') return 'estado-danger'
-  return 'estado-secondary'
+  return estadoLower === 'activo' ? 'estado-success' : (estadoLower === 'inactivo' ? 'estado-danger' : 'estado-secondary')
 }
 
-const getStockClass = (stock) => {
-  if (stock <= 5) return 'estado-danger'
-  if (stock <= 10) return 'estado-warning'
-  return 'estado-success'
-}
+const getStockClass = (stock) => (stock <= 5 ? 'estado-danger' : (stock <= 10 ? 'estado-warning' : 'estado-success'))
 
 onMounted(async () => {
-  await cargarCategorias()
-  await cargarProveedores()
-  await cargarMarcas()
+  // Carga secuencial para asegurar que dependencias (marcas, cat) estén listas antes de mostrar nombres
+  await Promise.all([cargarCategorias(), cargarProveedores(), cargarMarcas()])
   await cargarProductos()
 })
 
+// --- COMPUTED Y PAGINACIÓN (IGUAL) ---
 const productosFiltrados = computed(() => {
   return productos.value.filter(p => {
     const busca = filtros.value.busqueda.toLowerCase()
@@ -357,9 +350,7 @@ const productosFiltrados = computed(() => {
 
 const productosStockBajo = computed(() => productosFiltrados.value.filter(p => p.stock_actual <= 10).length)
 const productosInactivos = computed(() => productosFiltrados.value.filter(p => p.estado === 'INACTIVO').length)
-
 const totalPaginas = computed(() => Math.max(1, Math.ceil(productosFiltrados.value.length / itemsPorPagina)))
-
 const productosPaginados = computed(() => {
   const inicio = (pagina.value - 1) * itemsPorPagina
   return productosFiltrados.value.slice(inicio, inicio + itemsPorPagina)
@@ -369,59 +360,34 @@ const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 
 const editarProducto = (producto) => { productoEditando.value = producto; mostrarEditar.value = true }
-
 const productoRegistrado = async () => { await cargarProductos(); cerrarModal(); pagina.value = 1 }
 const productoActualizado = async () => { await cargarProductos(); cerrarModalEditar() }
 
 const cambiarEstadoProducto = async (producto) => {
   const nuevoEstado = producto.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO'
-  const accion = nuevoEstado === 'ACTIVO' ? 'activar' : 'desactivar'
   
   const result = await Swal.fire({
-    title: `¿${accion.charAt(0).toUpperCase() + accion.slice(1)} producto?`,
-    text: `¿Está seguro de ${accion} el producto "${producto.nombre}"?`,
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonColor: '#0ea5e9',
-    cancelButtonColor: '#6b7280',
-    confirmButtonText: `Sí, ${accion}`,
-    cancelButtonText: 'Cancelar'
+    title: `¿Cambiar estado?`,
+    text: `Pasará a estado ${nuevoEstado}`,
+    icon: 'question', showCancelButton: true, confirmButtonText: 'Sí, cambiar'
   })
   
   if (!result.isConfirmed) return
   
   try {
-    await axios.patch(`${API_BASE}/usuarios/api/productos/${producto.id}/`, {
-      estado: nuevoEstado
-    })
+    await axios.patch(`/usuarios/api/productos/${producto.id}/`, { estado: nuevoEstado })
     await cargarProductos()
-    
-    Swal.fire({
-      icon: 'success',
-      title: '¡Éxito!',
-      text: `Producto ${accion}do correctamente`,
-      confirmButtonColor: '#0ea5e9'
-    })
+    Swal.fire('¡Éxito!', 'Estado actualizado', 'success')
   } catch (err) { 
-    console.error(err)
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: `No se pudo ${accion} el producto`,
-      confirmButtonColor: '#0ea5e9'
-    })
+    Swal.fire('Error', 'No se pudo cambiar el estado', 'error')
   }
 }
 
-const limpiarFiltros = () => { 
-  filtros.value = { busqueda: '', categoria: '', stockBajo: '', marca: '', estado: '' }
-  pagina.value = 1 
-}
-
+const limpiarFiltros = () => { filtros.value = { busqueda: '', categoria: '', stockBajo: '', marca: '', estado: '' }; pagina.value = 1 }
 const cerrarModal = () => { mostrarRegistrar.value = false }
 const cerrarModalEditar = () => { mostrarEditar.value = false; productoEditando.value = null }
 const cerrarModalMarca = () => { mostrarRegistrarMarca.value = false }
-const marcaRegistrada = async () => { cerrarModalMarca() }
+const marcaRegistrada = async () => { cerrarModalMarca(); await cargarMarcas() }
 
 watch(filtros, () => { pagina.value = 1 }, { deep: true })
 </script>

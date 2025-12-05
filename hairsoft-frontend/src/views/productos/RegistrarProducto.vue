@@ -165,7 +165,7 @@
         <div class="card-icon">
           <Truck :size="20" />
         </div>
-        <h3>Proveedores</h3>
+        <h3>Proveedores (Opcional)</h3>
         <span v-if="proveedoresActivos.length > 0" class="badge-count">
           {{ proveedoresActivos.length }}
         </span>
@@ -216,7 +216,7 @@
           ✅ {{ producto.proveedores_seleccionados.length }} proveedor(es) seleccionado(s)
         </div>
         <div class="mensaje-ayuda" v-else>
-          Seleccione al menos un proveedor
+          Seleccione al menos un proveedor (opcional)
         </div>
       </div>
     </div>
@@ -286,17 +286,44 @@ const cargandoMarcas = ref(false)
 // ------------------------------
 // VALIDACIONES POR CAMPO (SOLO EN BLUR)
 // ------------------------------
-const validarNombre = () => {
+const validarNombre = async () => {
   const valor = producto.value.nombre.trim()
+  
   if (!valor) {
     errores.value.nombre = "El nombre es obligatorio"
-  } else if (valor.length < 2) {
-    errores.value.nombre = "El nombre debe tener al menos 2 caracteres"
-  } else if (valor.length > 100) {
-    errores.value.nombre = "El nombre no puede exceder los 100 caracteres"
-  } else {
-    errores.value.nombre = ""
+    return
   }
+  if (valor.length < 2) {
+    errores.value.nombre = "El nombre debe tener al menos 2 caracteres"
+    return
+  }
+  if (valor.length > 100) {
+    errores.value.nombre = "El nombre no puede exceder los 100 caracteres"
+    return
+  }
+
+  // VALIDAR DUPLICADO
+  if (producto.value.marca) {
+    try {
+      const response = await axios.get(`${API_BASE}/usuarios/api/productos/`)
+      const productos = response.data
+      
+      const duplicado = productos.find(p => 
+        p.nombre.toLowerCase() === valor.toLowerCase() && 
+        p.marca === producto.value.marca
+      )
+      
+      if (duplicado) {
+        const marcaNombre = marcas.value.find(m => m.id === producto.value.marca)?.nombre
+        errores.value.nombre = `Ya existe "${valor}" para ${marcaNombre || 'esta marca'}`
+        return
+      }
+    } catch (error) {
+      console.error('Error validando:', error)
+    }
+  }
+
+  errores.value.nombre = ""
 }
 
 const validarMarca = () => {
@@ -339,9 +366,11 @@ const validarStock = () => {
 
 const validarProveedores = () => {
   if (producto.value.proveedores_seleccionados.length === 0 && proveedoresActivos.value.length > 0) {
-    errores.value.proveedores = "Seleccione al menos un proveedor"
+    errores.value.proveedores = "" // Vacío, no es error
+    return false 
   } else {
     errores.value.proveedores = ""
+    return true
   }
 }
 
@@ -353,7 +382,6 @@ const formularioValido = computed(() => {
     producto.value.categoria &&
     producto.value.marca &&
     producto.value.codigo &&
-    producto.value.proveedores_seleccionados.length > 0 &&
     Object.values(errores.value).every(error => !error)
   )
 })
@@ -471,6 +499,11 @@ watch(() => producto.value.categoria, (newVal) => {
   }
 })
 
+watch(() => producto.value.marca, () => {
+  if (producto.value.nombre.trim()) {
+    setTimeout(() => validarNombre(), 300)
+  }
+})
 // ================================
 // VALIDAR FORMULARIO COMPLETO
 // ================================
@@ -489,6 +522,7 @@ const validarFormulario = () => {
 // ================================
 // REGISTRAR PRODUCTO
 // ================================
+// En el método registrarProducto (~línea 270)
 const registrarProducto = async () => {
   if (!validarFormulario()) {
     Swal.fire({
@@ -512,50 +546,61 @@ const registrarProducto = async () => {
       stock: producto.value.stock_actual,
       categoria: Number(producto.value.categoria),
       marca: Number(producto.value.marca),
-      proveedores: producto.value.proveedores_seleccionados
+      // ✅ CAMBIO: Enviar array vacío si no hay proveedores
+      proveedores: producto.value.proveedores_seleccionados || []
     }
 
     const res = await axios.post(`${API_BASE}/usuarios/api/productos/`, payload)
 
+    // ✅ Mensaje diferente si no tiene proveedores
+    const mensaje = producto.value.proveedores_seleccionados.length > 0
+      ? 'El producto se creó correctamente'
+      : 'Producto registrado sin proveedores.'
+
     Swal.fire({
       icon: 'success',
-      title: 'Producto registrado',
-      text: 'El producto se creó correctamente',
+      title: '✅ Producto registrado',
+      text: mensaje,
       confirmButtonColor: '#007bff',
       background: '#fff',
-      color: '#1a1a1a'
-    })
-    
-    emit("producto-registrado", res.data)
-    resetForm()
-
-  } catch (err) {
-    console.error('❌ Error en registrarProducto:', err.response?.data || err)
-    
-    let errorMessage = 'Ocurrió un error inesperado.'
-    if (err.response?.data) {
-      if (typeof err.response.data === 'string') {
-        errorMessage = err.response.data
-      } else if (err.response.data.message) {
-        errorMessage = err.response.data.message
-      } else if (err.response.data.error) {
-        errorMessage = err.response.data.error
-      } else if (typeof err.response.data === 'object') {
-        errorMessage = Object.values(err.response.data).flat().join(', ')
+      color: '#1a1a1a',
+      confirmButtonText: 'Continuar'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        emit("producto-registrado", res.data)
+        resetForm()
+      } else if (result.dismiss === Swal.DismissReason.cancel) {
+        // Si cancela, redirigir a gestión de listas de precios
+        router.push('/listas-precios')
       }
-    }
-    
-    Swal.fire({
-      icon: 'error',
-      title: 'Error al registrar producto',
-      text: errorMessage,
-      confirmButtonColor: '#007bff',
-      background: '#fff',
-      color: '#1a1a1a'
     })
-  } finally {
-    cargando.value = false
+
+} catch (err) {
+  console.error('Error:', err.response?.data || err)
+  
+  let mensaje = 'Error al guardar'
+  const data = err.response?.data
+  
+  if (data) {
+    if (data.nombre) mensaje = data.nombre
+    else if (data.non_field_errors) mensaje = data.non_field_errors
+    else if (typeof data === 'string') mensaje = data
+    else if (typeof data === 'object') {
+      mensaje = Object.entries(data)
+        .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+        .join('\n')
+    }
   }
+  Swal.fire({
+    icon: 'error',
+    title: 'Error',
+    text: mensaje,
+    confirmButtonColor: '#007bff'
+  })
+} finally {
+  cargando.value = false
+}
+
 }
 
 const resetForm = () => {

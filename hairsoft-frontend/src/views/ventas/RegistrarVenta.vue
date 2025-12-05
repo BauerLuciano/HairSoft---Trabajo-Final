@@ -1,235 +1,291 @@
 <template>
-  <!-- FONDO DEGRADADO Y TARJETA BLANCA -->
   <div class="page-background">
     <div class="main-card-container">
       <div class="venta-container">
+        <!-- HEADER -->
         <div class="header-section">
-          <h2>
-            <span class="header-icon">💰</span>
-            Registrar Venta de Productos
-          </h2>
-          <button @click="volverAlListado" class="btn-back">
-            <span>←</span>
-            Volver
-          </button>
-        </div>
-
-        <!-- Filtros de productos -->
-        <div class="card-modern">
-          <div class="card-header">
-            <div class="card-icon">🔍</div>
-            <h3>Filtros de Búsqueda</h3>
+          <div class="header-title">
+            <h2>
+              <span class="header-icon">💰</span>
+              Registrar Venta de Productos
+            </h2>
+            <p class="header-subtitle">Agrega productos al carrito y completa la venta</p>
           </div>
-          <div class="input-group">
-            <div class="row-search">
-              <div class="search-wrapper">
-                <span class="search-icon">🔍</span>
-                <input
-                  v-model="filtroNombre"
-                  placeholder="Buscar producto por nombre"
-                  class="input-modern"
-                />
-              </div>
-              <select v-model="filtroCategoria" class="select-modern">
-                <option value="">Todas las categorías</option>
-                <option v-for="cat in categorias" :key="cat.id" :value="cat.id">{{ cat.nombre }}</option>
-              </select>
-            </div>
+          <div class="header-actions">
+            <button @click="volverAlListado" class="btn-back">
+              <span>←</span>
+              Volver al Listado
+            </button>
           </div>
         </div>
 
-        <!-- Lista de productos -->
-        <div class="card-modern">
-          <div class="card-header">
-            <div class="card-icon">📦</div>
-            <h3>Productos Disponibles</h3>
-            <div class="badge-count" v-if="productosFiltrados.length > 0">
-              {{ productosFiltrados.length }} {{ productosFiltrados.length === 1 ? 'producto' : 'productos' }}
-            </div>
-          </div>
-
-          <div v-if="productos.length" class="productos-grid">
-            <div 
-              v-for="producto in productosFiltrados" 
-              :key="producto.id" 
-              class="card-producto"
-              :class="{
-                'producto-sin-stock': producto.stock === 0,
-                'producto-selected': productoEnCarrito(producto.id)
-              }"
-            >
-              <div class="producto-check" v-if="productoEnCarrito(producto.id)">
-                ✓
+        <!-- CONTENIDO PRINCIPAL EN 2 COLUMNAS -->
+        <div class="main-content">
+          <!-- COLUMNA IZQUIERDA: PRODUCTOS -->
+          <div class="left-column">
+            <!-- FILTROS -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <h3>Buscar Productos</h3>
+                  <p class="card-subtitle">Filtra por nombre o categoría</p>
+                </div>
               </div>
-              <div class="producto-content">
-                <div class="producto-header">
-                  <span class="producto-nombre">{{ producto.nombre }}</span>
-                  <span class="producto-precio">${{ producto.precio }}</span>
-                </div>
-                
-                <div class="producto-details">
-                  <div class="detail-chip">
-                    <span>ID:</span>
-                    <strong>{{ producto.id }}</strong>
-                  </div>
-                  <div class="detail-chip">
-                    <span>Categoría:</span>
-                    <strong>{{ obtenerNombreCategoria(producto.categoria_id) }}</strong>
-                  </div>
-                  <div class="detail-chip" :class="{
-                    'stock-critico': producto.stock === 0,
-                    'stock-bajo': producto.stock > 0 && producto.stock <= 5,
-                    'stock-normal': producto.stock > 5
-                  }">
-                    <span>Stock:</span>
-                    <strong>{{ producto.stock }}</strong>
-                    <span v-if="producto.stock === 0" class="stock-badge">SIN STOCK</span>
-                    <span v-else-if="producto.stock <= 5" class="stock-badge">BAJO</span>
-                  </div>
-                </div>
-
-                <div class="producto-controls">
-                  <div class="control-group">
-                    <label for="cantidad">
-                      <span>Cantidad:</span>
-                    </label>
-                    <input 
-                      id="cantidad"
-                      type="number" 
-                      min="1" 
-                      :max="stockDisponibleReal(producto)" 
-                      v-model.number="cantidades[producto.id]" 
-                      :disabled="producto.stock === 0"
-                      class="input-cantidad-small"
-                      :class="{'input-disabled': producto.stock === 0}"
-                      @change="validarCantidad(producto)"
+              
+              <div class="filters-grid">
+                <div class="filter-group">
+                  <label class="filter-label">Nombre del Producto</label>
+                  <div class="search-wrapper">
+                    <input
+                      v-model="filtroNombre"
+                      placeholder="Escribe el nombre del producto..."
+                      class="input-search"
+                      @input="filtrarProductos"
                     />
                   </div>
-                  <button 
-                    @click="agregarAlCarrito(producto)" 
-                    :disabled="!puedeAgregarAlCarrito(producto)"
-                    class="btn-agregar-producto"
-                    :class="{'btn-disabled': !puedeAgregarAlCarrito(producto)}"
-                  >
-                    {{ obtenerTextoBoton(producto) }}
+                </div>
+                <div class="filter-group">
+                  <label class="filter-label">Categoría</label>
+                  <select v-model="filtroCategoria" class="select-category">
+                    <option value="">Todas las categorías</option>
+                    <option v-for="cat in categorias" :key="cat.id" :value="cat.id">
+                      {{ cat.nombre }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- LISTA DE PRODUCTOS -->
+            <div class="card products-card">
+              <div class="card-header">
+                <div class="card-title">
+                  <h3>Productos Disponibles</h3>
+                  <p class="card-subtitle">
+                    {{ productosFiltrados.length }} 
+                    {{ productosFiltrados.length === 1 ? 'producto disponible' : 'productos disponibles' }}
+                  </p>
+                </div>
+                <button @click="restablecerFiltros" class="btn-reset">
+                  🔄 Restablecer
+                </button>
+              </div>
+
+              <!-- TABLA DE PRODUCTOS -->
+              <div class="table-container" v-if="productos.length">
+                <div class="table-wrapper">
+                  <table class="products-table">
+                    <thead>
+                      <tr>
+                        <th class="col-check"></th>
+                        <th class="col-name">Producto</th>
+                        <th class="col-category">Categoría</th>
+                        <th class="col-stock">Stock</th>
+                        <th class="col-price">Precio</th>
+                        <th class="col-quantity">Cantidad</th>
+                        <th class="col-actions"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr 
+                        v-for="producto in productosFiltrados" 
+                        :key="producto.id"
+                        :class="{
+                          'row-selected': productoEnCarrito(producto.id),
+                          'row-no-stock': producto.stock === 0
+                        }"
+                      >
+                        <td class="col-check">
+                          <div v-if="productoEnCarrito(producto.id)" class="selected-badge">
+                            ✓
+                          </div>
+                        </td>
+                        <td class="col-name">
+                          <div class="product-info">
+                            <span class="product-name">{{ producto.nombre }}</span>
+                            <span class="product-id">ID: {{ producto.id }}</span>
+                          </div>
+                        </td>
+                        <td class="col-category">
+                          <span class="category-tag">
+                            {{ obtenerNombreCategoria(producto.categoria_id) }}
+                          </span>
+                        </td>
+                        <td class="col-stock">
+                          <div class="stock-badge" :class="getStockClass(producto.stock)">
+                            <span class="stock-value">{{ producto.stock }}</span>
+                            <span v-if="producto.stock === 0" class="stock-label">SIN STOCK</span>
+                            <span v-else-if="producto.stock <= 5" class="stock-label">BAJO</span>
+                          </div>
+                        </td>
+                        <td class="col-price">
+                          <span class="price">${{ producto.precio }}</span>
+                        </td>
+                        <td class="col-quantity">
+                          <input 
+                            type="number" 
+                            min="1" 
+                            :max="stockDisponibleReal(producto)" 
+                            v-model.number="cantidades[producto.id]" 
+                            :disabled="producto.stock === 0"
+                            class="quantity-input"
+                            @change="validarCantidad(producto)"
+                          />
+                        </td>
+                        <td class="col-actions">
+                          <button 
+                            @click="agregarAlCarrito(producto)" 
+                            :disabled="!puedeAgregarAlCarrito(producto)"
+                            class="btn-add"
+                            :class="{'btn-disabled': !puedeAgregarAlCarrito(producto)}"
+                          >
+                            {{ obtenerTextoBoton(producto) }}
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              
+              <div v-else class="empty-state">
+                <div class="empty-icon">📦</div>
+                <div class="empty-content">
+                  <h4>No hay productos disponibles</h4>
+                  <p>Intenta ajustar los filtros de búsqueda</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- COLUMNA DERECHA: CARRITO -->
+          <div class="right-column">
+            <!-- CARRITO -->
+            <div class="card cart-card" v-if="carrito.length > 0">
+              <div class="card-header">
+                <div class="card-title">
+                  <h3>Carrito de Compras</h3>
+                  <p class="card-subtitle">
+                    {{ carrito.length }} 
+                    {{ carrito.length === 1 ? 'producto agregado' : 'productos agregados' }}
+                  </p>
+                </div>
+                <button @click="vaciarCarrito" class="btn-clear">
+                  🗑️ Vaciar
+                </button>
+              </div>
+              
+              <!-- ITEMS DEL CARRITO -->
+              <div class="cart-items">
+                <div v-for="item in carrito" :key="item.producto.id" class="cart-item">
+                  <div class="item-content">
+                    <div class="item-header">
+                      <span class="item-name">{{ item.producto.nombre }}</span>
+                      <span class="item-price">${{ item.producto.precio }} c/u</span>
+                    </div>
+                    <div class="item-details">
+                      <span class="detail">
+                        <strong>Categoría:</strong> {{ obtenerNombreCategoria(item.producto.categoria_id) }}
+                      </span>
+                      <span class="detail">
+                        <strong>Cantidad:</strong> {{ item.cantidad }}
+                      </span>
+                    </div>
+                    <div class="item-subtotal">
+                      <span>Subtotal:</span>
+                      <strong>${{ item.subtotal }}</strong>
+                    </div>
+                  </div>
+                  <button @click="quitarDelCarrito(item.producto.id)" class="btn-remove">
+                    ✕
                   </button>
                 </div>
               </div>
             </div>
-          </div>
-          
-          <div v-else class="no-resultados">
-            <div class="no-resultados-icon">📦</div>
-            <p>No hay productos disponibles</p>
-            <small>Intenta ajustar los filtros de búsqueda</small>
-          </div>
-        </div>
 
-        <!-- Carrito de Compras -->
-        <div class="card-modern" v-if="carrito.length > 0">
-          <div class="card-header">
-            <div class="card-icon">🛒</div>
-            <h3>Carrito de Compras</h3>
-            <div class="badge-count">
-              {{ carrito.length }} {{ carrito.length === 1 ? 'producto' : 'productos' }}
-            </div>
-          </div>
-          
-          <div class="detalles-carrito">
-            <div v-for="item in carrito" :key="item.producto.id" class="item-carrito">
-              <div class="item-info">
-                <div class="item-header">
-                  <span class="item-nombre">{{ item.producto.nombre }}</span>
-                  <span class="item-categoria">
-                    {{ obtenerNombreCategoria(item.producto.categoria_id) }}
-                  </span>
+            <!-- RESUMEN Y PAGO -->
+            <div class="card summary-card" v-if="carrito.length > 0">
+              <div class="card-header">
+                <div class="card-title">
+                  <h3>Completar Venta</h3>
+                  <p class="card-subtitle">Selecciona el método de pago</p>
                 </div>
-                <div class="item-details">
-                  <div class="detail-small">
-                    <span>ID:</span>
-                    <strong>{{ item.producto.id }}</strong>
-                  </div>
-                  <div class="detail-small">
-                    <span>Precio:</span>
-                    <strong>${{ item.producto.precio }}</strong>
-                  </div>
-                  <div class="detail-small">
-                    <span>Cantidad:</span>
-                    <strong>{{ item.cantidad }}</strong>
+              </div>
+              
+              <!-- RESUMEN -->
+              <div class="summary-section">
+                <div class="summary-row total-row">
+                  <span>TOTAL A PAGAR:</span>
+                  <span class="total-amount">${{ total.toFixed(2) }}</span>
+                </div>
+              </div>
+
+              <!-- MÉTODO DE PAGO -->
+              <div class="payment-section">
+                <h4 class="payment-title">Método de Pago</h4>
+                <div class="payment-options">
+                  <div 
+                    v-for="mp in metodosPago" 
+                    :key="mp.id"
+                    class="payment-option"
+                    :class="{'payment-option-selected': datosVenta.medio_pago === mp.id}"
+                    @click="datosVenta.medio_pago = mp.id"
+                  >
+                    <div class="payment-info">
+                      <span class="payment-name">{{ mp.nombre }}</span>
+                      <span class="payment-desc">{{ mp.descripcion }}</span>
+                    </div>
+                    <div class="payment-check" v-if="datosVenta.medio_pago === mp.id">
+                      ✓
+                    </div>
                   </div>
                 </div>
               </div>
-              <div class="item-actions">
-                <div class="item-subtotal">
-                  <span>Subtotal:</span>
-                  <strong>${{ item.subtotal }}</strong>
+
+              <!-- BOTÓN DE CONFIRMACIÓN -->
+              <button 
+                @click="registrarVenta" 
+                :disabled="!datosVenta.medio_pago || procesandoVenta" 
+                class="btn-confirm"
+                :class="{'btn-processing': procesandoVenta}"
+              >
+                <template v-if="!procesandoVenta">
+                  <span class="btn-text">Confirmar Venta</span>
+                  <span class="btn-total">${{ total.toFixed(2) }}</span>
+                </template>
+                <template v-else>
+                  <span class="spinner">⏳</span>
+                  <span>Procesando...</span>
+                </template>
+              </button>
+            </div>
+
+            <!-- CARRITO VACÍO -->
+            <div class="card empty-cart-card" v-if="carrito.length === 0">
+              <div class="empty-cart">
+                <div class="empty-icon">🛒</div>
+                <div class="empty-content">
+                  <h4>Tu carrito está vacío</h4>
+                  <p>Agrega productos desde la lista de la izquierda</p>
                 </div>
-                <button @click="quitarDelCarrito(item.producto.id)" class="btn-eliminar-item" title="Quitar del carrito">
-                  🗑️
-                </button>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Información de Pago -->
-        <div class="card-modern slide-in" v-if="carrito.length > 0">
-          <div class="card-header">
-            <div class="card-icon">💳</div>
-            <h3>Información de Pago</h3>
-          </div>
-          
-          <div class="resumen-venta">
-            <div class="resumen-item total">
-              <span>Total a Pagar:</span>
-              <strong>${{ total.toFixed(2) }}</strong>
+        <!-- NOTIFICACIONES -->
+        <transition name="slide-up">
+          <div v-if="mensaje" class="notification" :class="mensajeTipo">
+            <div class="notification-content">
+              <span class="notification-icon">
+                <template v-if="mensajeTipo === 'success'">✅</template>
+                <template v-else-if="mensajeTipo === 'error'">❌</template>
+                <template v-else-if="mensajeTipo === 'warning'">⚠️</template>
+                <template v-else>ℹ️</template>
+              </span>
+              <span class="notification-text">{{ mensaje }}</span>
             </div>
-          </div>
-
-          <div class="pago-section">
-            <div class="input-group">
-              <label class="label-modern">Método de Pago</label>
-              <select v-model.number="datosVenta.medio_pago" class="select-modern">
-                <option :value="null" disabled>Seleccione método de pago</option>
-                <option v-for="mp in metodosPago" :key="mp.id" :value="mp.id">
-                  {{ mp.nombre }}
-                </option>
-              </select>
-            </div>
-          </div>
-
-          <button 
-            @click="registrarVenta" 
-            :disabled="!datosVenta.medio_pago || procesandoVenta" 
-            class="btn-confirmar-premium"
-            :class="{'btn-processing': procesandoVenta}"
-          >
-            <span v-if="!procesandoVenta">
-              <span class="btn-icon">💳</span>
-              Registrar Venta - ${{ total.toFixed(2) }}
-            </span>
-            <span v-else>
-              <span class="btn-spinner">⏳</span>
-              Procesando...
-            </span>
-          </button>
-        </div>
-
-        <!-- Estado vacío del carrito -->
-        <div class="card-modern" v-if="carrito.length === 0">
-          <div class="no-resultados">
-            <div class="no-resultados-icon">🛒</div>
-            <p>Tu carrito está vacío</p>
-            <small>Agrega productos desde la lista arriba</small>
-          </div>
-        </div>
-
-        <!-- Mensajes de confirmación -->
-        <transition name="fade">
-          <div v-if="mensaje" class="toast-message" :class="mensajeTipo">
-            <span v-if="mensajeTipo === 'success'">✅</span>
-            <span v-else>❌</span>
-            {{ mensaje }}
+            <button @click="mensaje = ''" class="notification-close">✕</button>
           </div>
         </transition>
       </div>
@@ -271,10 +327,6 @@ export default {
         },
         total() {
             return this.carrito.reduce((acc, item) => acc + item.subtotal, 0)
-        },
-        metodoPagoSeleccionado() {
-            if (!this.datosVenta.medio_pago) return null;
-            return this.metodosPago.find(mp => mp.id === this.datosVenta.medio_pago);
         }
     },
     methods: {
@@ -311,10 +363,16 @@ export default {
             
             const cantidadEnCarrito = this.cantidadEnCarrito(producto.id);
             if (cantidadEnCarrito > 0) {
-                return `Agregar (+${cantidadEnCarrito})`;
+                return `Agregar (${cantidadEnCarrito})`;
             }
             
-            return 'Agregar al Carrito';
+            return 'Agregar';
+        },
+
+        getStockClass(stock) {
+            if (stock === 0) return 'stock-critical';
+            if (stock <= 5) return 'stock-low';
+            return 'stock-normal';
         },
 
         validarCantidad(producto) {
@@ -327,26 +385,49 @@ export default {
           }
         },
 
+        filtrarProductos() {
+            // Búsqueda en tiempo real
+        },
+
+        restablecerFiltros() {
+            this.filtroNombre = '';
+            this.filtroCategoria = '';
+        },
+
+        vaciarCarrito() {
+            Swal.fire({
+                title: '¿Vaciar carrito?',
+                text: 'Se eliminarán todos los productos del carrito',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: 'Sí, vaciar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    this.carrito.forEach(item => {
+                        this.actualizarStockVisual(item.producto.id, item.cantidad);
+                    });
+                    this.carrito = [];
+                    this.mostrarMensaje('Carrito vaciado', 'info');
+                }
+            });
+        },
+
         async cargarMetodosPago() {
             try {
                 const res = await axios.get(`${API_BASE_URL}/usuarios/api/metodos-pago/`); 
                 const todosMetodos = Array.isArray(res.data) ? res.data : [];
                 
-                // ✅ CORRECCIÓN: Filtrar y agrupar para mostrar SOLO 3 tipos básicos
-                // Igual que en los turnos: EFECTIVO, TARJETA, TRANSFERENCIA
-                
-                // 1. Filtrar solo métodos activos
                 const metodosActivos = todosMetodos.filter(mp => mp.activo !== false);
-                
-                // 2. Mapear a los 3 tipos básicos
                 const metodosAgrupados = [];
-                const tiposUsados = new Set(); // Para evitar duplicados
+                const tiposUsados = new Set();
                 
                 metodosActivos.forEach(mp => {
                     let tipoMostrar = '';
                     let idMostrar = mp.id;
                     
-                    // Determinar el tipo básico según el nombre
                     if (mp.nombre.toLowerCase().includes('efectivo')) {
                         tipoMostrar = 'Efectivo';
                     } 
@@ -361,7 +442,6 @@ export default {
                         tipoMostrar = 'Transferencia';
                     }
                     
-                    // Solo agregar si encontramos un tipo válido y no está duplicado
                     if (tipoMostrar && !tiposUsados.has(tipoMostrar)) {
                         tiposUsados.add(tipoMostrar);
                         metodosAgrupados.push({
@@ -374,7 +454,6 @@ export default {
                     }
                 });
                 
-                // ✅ Asegurar que tengamos al menos los 3 básicos
                 const tiposNecesarios = ['Efectivo', 'Tarjeta', 'Transferencia'];
                 tiposNecesarios.forEach(tipo => {
                     if (!tiposUsados.has(tipo)) {
@@ -388,31 +467,25 @@ export default {
                     }
                 });
                 
-                // Ordenar: Efectivo, Tarjeta, Transferencia
                 const orden = ['Efectivo', 'Tarjeta', 'Transferencia'];
                 this.metodosPago = metodosAgrupados.sort((a, b) => 
                     orden.indexOf(a.nombre) - orden.indexOf(b.nombre)
                 );
                 
-                // ✅ Establecer Efectivo como seleccionado por defecto
                 if (this.metodosPago.length > 0) {
-                    const efectivo = this.metodosPago.find(mp => mp.nombre === 'Efectivo') || this.metodosPago[0];
-                    this.datosVenta.medio_pago = efectivo.id;
+                    this.datosVenta.medio_pago = this.metodosPago[0].id;
                 }
-                
-                console.log('✅ Métodos de pago cargados (simplificados):', this.metodosPago);
                 
             } catch (err) { 
                 console.error("❌ Error al cargar métodos de pago:", err);
                 
-                // ✅ Fallback: Mostrar los 3 básicos aunque falle la API
                 this.metodosPago = [
                     { id: 1, nombre: 'Efectivo', tipo_original: 'EFECTIVO', descripcion: 'Pago en efectivo', requiere_confirmacion: false },
                     { id: 2, nombre: 'Tarjeta', tipo_original: 'TARJETA', descripcion: 'Pago con tarjeta', requiere_confirmacion: true },
                     { id: 3, nombre: 'Transferencia', tipo_original: 'TRANSFERENCIA', descripcion: 'Transferencia bancaria o QR', requiere_confirmacion: true }
                 ];
                 
-                this.datosVenta.medio_pago = 1; // Efectivo por defecto
+                this.datosVenta.medio_pago = 1;
             }
         },
         
@@ -462,6 +535,7 @@ export default {
             if (itemExistente) {
                 itemExistente.cantidad += cantidad;
                 itemExistente.subtotal = itemExistente.cantidad * producto.precio;
+                this.mostrarMensaje(`${cantidad} unidad(es) agregadas a ${producto.nombre}`, 'success');
             } else {
                 this.carrito.push({
                     producto: {
@@ -473,12 +547,11 @@ export default {
                     cantidad,
                     subtotal: cantidad * producto.precio
                 });
+                this.mostrarMensaje(`${producto.nombre} agregado al carrito`, 'success');
             }
             
             this.actualizarStockVisual(producto.id, -cantidad);
             this.cantidades[producto.id] = 1;
-
-            this.mostrarMensaje(`${producto.nombre} agregado al carrito`, 'success');
         },
         
         validarStockDisponible(producto, cantidad) {
@@ -534,7 +607,6 @@ export default {
 
             this.procesandoVenta = true;
 
-            // Mostrar loading durante el registro
             Swal.fire({
                 title: 'Registrando Venta...',
                 text: 'Por favor espere',
@@ -595,20 +667,15 @@ export default {
         async procesarVentaExitosa(ventaData) {
             console.log("🔄 procesarVentaExitosa iniciado:", ventaData);
             
-            // 1. Guardamos el total REAL que viene del backend antes de limpiar nada
-            const totalConfirmado = parseFloat(ventaData.total); // <--- CLAVE
+            const totalConfirmado = parseFloat(ventaData.total);
 
-            // Cerrar loading
             Swal.close();
             
-            // 2. Limpiamos el formulario (esto pone this.total en 0)
             this.limpiarFormulario();
             await this.cargarProductos();
             
-            // Emitir para actualizar listado
             this.$emit('venta-registrada', ventaData);
             
-            // 3. Mostrar Modal usando 'totalConfirmado' en vez de 'this.total'
             const result = await Swal.fire({
                 title: '¡Venta Registrada Exitosamente!',
                 html: `
@@ -659,30 +726,25 @@ export default {
             const pdfUrl = `${API_BASE_URL}/usuarios/api/ventas/${ventaId}/comprobante-pdf/`;
             window.open(pdfUrl, '_blank');
             
-            // ✅ EMITIR PARA CERRAR REGISTRO Y MOSTRAR LISTADO
             this.$emit('venta-completada');
         },
 
         continuarSinAbrir() {
             console.log("➡️ Continuando sin comprobante...");
-            
-            // ✅ EMITIR PARA CERRAR REGISTRO Y MOSTRAR LISTADO
             this.$emit('venta-completada');
         },
 
         limpiarFormulario() {
             console.log("🧹 Limpiando formulario...");
             this.carrito = [];
-            this.datosVenta.medio_pago = null;
+            this.datosVenta.medio_pago = this.metodosPago[0]?.id || null;
             this.filtroNombre = '';
             this.filtroCategoria = '';
-            this.mostrarMensaje('Venta registrada exitosamente', 'success');
         },
 
         async manejarErrorVenta(err) {
             console.error("❌ Error completo:", err);
             
-            // Cerrar loading
             Swal.close();
             
             let errorMessage = 'Error al registrar venta';
@@ -711,11 +773,28 @@ export default {
             
             setTimeout(() => {
                 this.mensaje = '';
-            }, 3000);
+            }, 4000);
         },
 
         volverAlListado() {
-            this.$emit('volver-al-listado');
+            if (this.carrito.length > 0) {
+                Swal.fire({
+                    title: '¿Salir sin completar la venta?',
+                    text: 'Tienes productos en el carrito que se perderán',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#ef4444',
+                    cancelButtonColor: '#6b7280',
+                    confirmButtonText: 'Sí, salir',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        this.$emit('volver-al-listado');
+                    }
+                });
+            } else {
+                this.$emit('volver-al-listado');
+            }
         }
     },
     
@@ -730,478 +809,537 @@ export default {
 
 <style scoped>
 /* ============================================
-   FONDO DE PÁGINA Y CONTENEDOR PRINCIPAL
+   FONDO Y LAYOUT PRINCIPAL
    ============================================ */
 .page-background {
   min-height: 100vh;
-  padding: 0px 1px;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
+  padding: 20px;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
 }
 
 .main-card-container {
   background: white;
   border-radius: 24px;
   width: 100%;
-  max-width: 1500px;
+  max-width: 1800px;
   margin: 0 auto;
-  padding: 20px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  position: relative;
-  overflow: hidden;
+  padding: 30px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .venta-container {
   width: 100%;
   padding: 0;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
 /* ============================================
-   HEADER SECTION
+   HEADER
    ============================================ */
 .header-section {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
-  padding: 25px;
+  margin-bottom: 40px;
+  padding: 25px 30px;
   background: linear-gradient(135deg, #1f2937, #374151);
-  border-radius: 16px;
+  border-radius: 20px;
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
 }
 
-.header-section h2 {
-  margin: 0;
+.header-title h2 {
+  margin: 0 0 8px 0;
   color: white;
-  font-size: 1.8em;
+  font-size: 2em;
   font-weight: 700;
   display: flex;
   align-items: center;
   gap: 12px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-.header-icon { 
-  color: #60a5fa; 
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+.header-icon {
+  color: #60a5fa;
+}
+
+.header-subtitle {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 1.1em;
 }
 
 .btn-back {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.15);
   color: white;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  padding: 10px 20px;
-  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  padding: 12px 24px;
+  border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
+  font-size: 1em;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
   gap: 8px;
-  backdrop-filter: blur(10px);
 }
 
 .btn-back:hover { 
-  background: rgba(255, 255, 255, 0.2); 
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: translateY(-1px); 
+  background: rgba(255, 255, 255, 0.25); 
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-2px); 
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 
 /* ============================================
-   CARDS MODERNAS
+   LAYOUT DE 2 COLUMNAS
    ============================================ */
-.card-modern {
-  background: #fff;
-  border-radius: 16px;
-  border: 1px solid #e5e7eb;
-  padding: 25px;
-  margin-bottom: 25px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  transition: all 0.3s ease;
+.main-content {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 30px;
 }
 
-.card-modern:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  transform: translateY(-2px);
+.left-column, .right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+}
+
+/* ============================================
+   CARDS GENERALES
+   ============================================ */
+.card {
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid #e5e7eb;
+  padding: 30px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
 }
 
 .card-header {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 25px;
+  padding-bottom: 20px;
   border-bottom: 2px solid #f1f3f4;
 }
 
-.card-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  border-radius: 12px;
-  color: white;
-  box-shadow: 0 6px 12px rgba(59, 130, 246, 0.3);
-  flex-shrink: 0;
-  font-size: 1.2em;
-}
-
-.card-header h3 {
-  margin: 0;
+.card-title h3 {
+  margin: 0 0 6px 0;
   color: #1f2937;
-  font-size: 1.3em;
+  font-size: 1.4em;
   font-weight: 700;
-  flex: 1;
-  letter-spacing: -0.5px;
 }
 
-.badge-count {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 0.9em;
-  font-weight: 600;
-  box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
+.card-subtitle {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.95em;
 }
 
 /* ============================================
-   INPUTS Y CONTROLES
+   FILTROS
    ============================================ */
-.input-group {
-  margin-bottom: 15px;
+.filters-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 25px;
 }
 
-.row-search {
+.filter-group {
   display: flex;
-  gap: 12px;
-  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.filter-label {
+  font-weight: 600;
+  color: #374151;
+  font-size: 1em;
+  margin-left: 4px;
 }
 
 .search-wrapper {
-  flex: 1;
   position: relative;
 }
 
-.search-icon {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #6b7280;
-  font-size: 1.1em;
-}
-
-.input-modern, .select-modern {
+.input-search {
   width: 100%;
-  padding: 14px 16px;
-  padding-left: 46px;
-  border: 2px solid #e1e5e9;
-  border-radius: 10px;
-  background: #f8f9fa;
-  font-size: 15px;
-  transition: all 0.3s ease;
-  color: #1f2937;
-}
-
-.select-modern {
-  padding-left: 16px;
-}
-
-.input-modern:focus, .select-modern:focus {
-  border-color: #3b82f6;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  outline: none;
-}
-
-.label-modern {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 10px;
-  color: #1f2937;
-  font-size: 1rem;
-}
-
-/* ============================================
-   PRODUCTOS GRID
-   ============================================ */
-.productos-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
-  margin-top: 20px;
-}
-
-.card-producto {
-  background: #fff;
+  padding: 16px 20px;
   border: 2px solid #e5e7eb;
   border-radius: 12px;
-  padding: 20px;
-  position: relative;
+  background: #f9fafb;
+  font-size: 1em;
   transition: all 0.3s ease;
-  overflow: hidden;
-}
-
-.card-producto:hover {
-  border-color: #3b82f6;
-  transform: translateY(-3px);
-  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.15);
-}
-
-.producto-selected {
-  border-color: #10b981;
-  background: #f0fdf4;
-}
-
-.producto-sin-stock {
-  opacity: 0.7;
-  background: #f3f4f6;
-}
-
-.producto-check {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 24px;
-  height: 24px;
-  background: #10b981;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: bold;
-}
-
-.producto-content {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.producto-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.producto-nombre {
-  font-weight: 700;
   color: #1f2937;
-  font-size: 1.1rem;
-  flex: 1;
-  margin-right: 10px;
-}
-
-.producto-precio {
-  color: #059669;
-  font-weight: 700;
-  font-size: 1.2rem;
-}
-
-.producto-details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.detail-chip {
-  background: #f3f4f6;
-  color: #6b7280;
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 0.85em;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.detail-chip.stock-critico {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.detail-chip.stock-bajo {
-  background: #fef3c7;
-  color: #d97706;
-}
-
-.detail-chip.stock-normal {
-  background: #d1fae5;
-  color: #059669;
-}
-
-.stock-badge {
-  font-size: 0.8em;
-  font-weight: 700;
-  margin-left: 4px;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.stock-critico .stock-badge {
-  background: #dc2626;
-  color: white;
-}
-
-.stock-bajo .stock-badge {
-  background: #d97706;
-  color: white;
-}
-
-.producto-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-}
-
-.control-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.control-group label {
-  font-size: 0.85em;
-  color: #6b7280;
   font-weight: 500;
 }
 
-.input-cantidad-small {
-  width: 70px;
-  text-align: center;
-  padding: 8px;
-  border: 2px solid #e5e7eb;
-  border-radius: 6px;
+.input-search:focus {
+  border-color: #3b82f6;
   background: #fff;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.input-cantidad-small:focus {
-  border-color: #3b82f6;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
   outline: none;
 }
 
-.input-cantidad-small.input-disabled {
-  background: #f3f4f6;
-  cursor: not-allowed;
-  opacity: 0.6;
+.select-category {
+  width: 100%;
+  padding: 16px 20px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f9fafb;
+  font-size: 1em;
+  transition: all 0.3s ease;
+  color: #1f2937;
+  font-weight: 500;
+  cursor: pointer;
 }
 
-.btn-agregar-producto {
-  flex: 1;
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  color: white;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 8px;
+.select-category:focus {
+  border-color: #3b82f6;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+  outline: none;
+}
+
+.btn-reset {
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 2px solid #e5e7eb;
+  padding: 10px 20px;
+  border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
   font-size: 0.9em;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  gap: 8px;
 }
 
-.btn-agregar-producto:hover:not(.btn-disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-.btn-agregar-producto.btn-disabled {
-  background: #9ca3af;
-  cursor: not-allowed;
-  opacity: 0.6;
-  transform: none;
+.btn-reset:hover {
+  background: #e5e7eb;
+  color: #374151;
 }
 
 /* ============================================
-   CARRITO DE COMPRAS
+   TABLA DE PRODUCTOS
    ============================================ */
-.detalles-carrito {
+.table-container {
+  margin-top: 15px;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  border-radius: 14px;
+  border: 1px solid #e5e7eb;
+}
+
+.products-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1000px;
+}
+
+.products-table thead {
+  background: #f8fafc;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.products-table th {
+  padding: 18px 16px;
+  text-align: left;
+  color: #374151;
+  font-weight: 600;
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.products-table tbody tr {
+  border-bottom: 1px solid #f1f3f4;
+  transition: all 0.2s ease;
+}
+
+.products-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.products-table tbody tr.row-selected {
+  background: #f0fdf4;
+  border-left: 4px solid #10b981;
+}
+
+.products-table tbody tr.row-no-stock {
+  opacity: 0.7;
+  background: #f9fafb;
+}
+
+.products-table td {
+  padding: 16px 16px;
+  vertical-align: middle;
+}
+
+/* Columnas específicas */
+.col-check {
+  width: 60px;
+  text-align: center;
+}
+
+.selected-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: #10b981;
+  border-radius: 50%;
+  color: white;
+  font-weight: bold;
+  font-size: 0.9em;
+}
+
+.col-name {
+  min-width: 250px;
+}
+
+.product-info {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 4px;
 }
 
-.item-carrito {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  background: #f8f9fa;
-  border-radius: 12px;
-  border: 1px solid #e9ecef;
-  transition: all 0.3s ease;
-}
-
-.item-carrito:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
-}
-
-.item-info {
-  flex: 1;
-}
-
-.item-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.item-nombre {
+.product-name {
   font-weight: 600;
   color: #1f2937;
   font-size: 1.05em;
 }
 
-.item-categoria {
+.product-id {
+  color: #6b7280;
+  font-size: 0.85em;
+  font-family: monospace;
+}
+
+.col-category {
+  min-width: 150px;
+}
+
+.category-tag {
   background: #e7f3ff;
   color: #1d4ed8;
-  padding: 4px 8px;
+  padding: 6px 12px;
   border-radius: 6px;
-  font-size: 0.8em;
+  font-size: 0.85em;
   font-weight: 500;
   border: 1px solid #b3d9ff;
+  display: inline-block;
+}
+
+.col-stock {
+  min-width: 120px;
+}
+
+.stock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.stock-badge.stock-critical {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.stock-badge.stock-low {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.stock-badge.stock-normal {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.stock-value {
+  font-size: 1.1em;
+}
+
+.stock-label {
+  font-size: 0.8em;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.stock-critical .stock-label {
+  background: #dc2626;
+  color: white;
+}
+
+.stock-low .stock-label {
+  background: #d97706;
+  color: white;
+}
+
+.col-price {
+  min-width: 120px;
+}
+
+.price {
+  font-weight: 700;
+  color: #059669;
+  font-size: 1.1em;
+}
+
+.col-quantity {
+  min-width: 140px;
+}
+
+.quantity-input {
+  width: 100px;
+  text-align: center;
+  padding: 12px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 1em;
+}
+
+.quantity-input:focus {
+  border-color: #3b82f6;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.quantity-input:disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.col-actions {
+  min-width: 150px;
+  text-align: right;
+}
+
+.btn-add {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95em;
+  transition: all 0.3s ease;
+  min-width: 120px;
+}
+
+.btn-add:hover:not(.btn-disabled) {
+  background: #2563eb;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.btn-add.btn-disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ============================================
+   CARRITO
+   ============================================ */
+.cart-items {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.cart-items::-webkit-scrollbar {
+  width: 6px;
+}
+
+.cart-items::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.cart-items::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.cart-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px;
+  background: #f8fafc;
+  border-radius: 14px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.3s ease;
+}
+
+.cart-item:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+}
+
+.item-content {
+  flex: 1;
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.item-name {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 1.1em;
+  flex: 1;
+}
+
+.item-price {
+  color: #059669;
+  font-weight: 700;
+  font-size: 1.05em;
+  white-space: nowrap;
 }
 
 .item-details {
   display: flex;
-  gap: 12px;
-  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 15px;
 }
 
-.detail-small {
-  font-size: 0.9em;
+.detail {
   color: #6b7280;
+  font-size: 0.9em;
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.item-actions {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
 .item-subtotal {
-  text-align: center;
-  min-width: 100px;
+  text-align: left;
 }
 
 .item-subtotal span {
@@ -1214,103 +1352,201 @@ export default {
 .item-subtotal strong {
   font-weight: 700;
   color: #059669;
-  font-size: 1.1em;
+  font-size: 1.2em;
 }
 
-.btn-eliminar-item {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  color: white;
+.btn-remove {
+  background: #fee2e2;
+  color: #dc2626;
   border: none;
-  padding: 10px;
-  border-radius: 6px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
   cursor: pointer;
+  font-weight: bold;
+  font-size: 1.1em;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  height: 44px;
+  flex-shrink: 0;
 }
 
-.btn-eliminar-item:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
+.btn-remove:hover {
+  background: #fecaca;
+  transform: scale(1.1);
+}
+
+.btn-clear {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 2px solid #fecaca;
+  padding: 10px 20px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9em;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-clear:hover {
+  background: #fecaca;
+  color: #b91c1c;
 }
 
 /* ============================================
-   RESUMEN Y PAGO
+   RESUMEN
    ============================================ */
-.resumen-venta {
+.summary-section {
   margin: 20px 0;
   padding: 20px;
   background: #f8fafc;
-  border-radius: 12px;
+  border-radius: 14px;
   border: 2px solid #e5e7eb;
 }
 
-.resumen-item {
+.total-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   padding: 12px 0;
-  border-bottom: 1px solid #e5e7eb;
+  font-size: 1.3em;
+  font-weight: 700;
   color: #1f2937;
 }
 
-.resumen-item.total {
-  font-size: 1.3em;
-  font-weight: 700;
-  border-top: 2px solid #e5e7eb;
-  margin-top: 15px;
-  padding-top: 15px;
-  border-bottom: none;
-}
-
-.pago-section {
-  margin: 25px 0;
+.total-amount {
+  color: #059669;
+  font-size: 1.4em;
 }
 
 /* ============================================
-   BOTÓN FINAL PREMIUM
+   MÉTODOS DE PAGO
    ============================================ */
-.btn-confirmar-premium {
+.payment-section {
+  margin: 25px 0;
+}
+
+.payment-title {
+  margin: 0 0 20px 0;
+  color: #1f2937;
+  font-size: 1.1em;
+  font-weight: 600;
+}
+
+.payment-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.payment-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.payment-option:hover {
+  border-color: #93c5fd;
+  background: #f0f9ff;
+}
+
+.payment-option-selected {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.payment-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.payment-name {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 1.1em;
+}
+
+.payment-desc {
+  color: #6b7280;
+  font-size: 0.9em;
+}
+
+.payment-check {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #10b981;
+  border-radius: 50%;
+  color: white;
+  font-weight: bold;
+  font-size: 0.9em;
+  flex-shrink: 0;
+}
+
+/* ============================================
+   BOTÓN DE CONFIRMACIÓN
+   ============================================ */
+.btn-confirm {
   width: 100%;
   background: linear-gradient(135deg, #059669, #047857);
   color: white;
-  padding: 18px;
+  padding: 20px;
   border: none;
-  border-radius: 12px;
+  border-radius: 14px;
   font-size: 1.1em;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.3s ease;
-  letter-spacing: 0.5px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 15px;
+  margin-top: 20px;
 }
 
-.btn-confirmar-premium:hover:not(.btn-processing):not(:disabled) {
-  transform: translateY(-3px);
-  box-shadow: 0 10px 25px rgba(5, 150, 105, 0.4);
+.btn-confirm:hover:not(.btn-processing):not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(5, 150, 105, 0.3);
   background: linear-gradient(135deg, #047857, #065f46);
 }
 
-.btn-confirmar-premium:disabled,
-.btn-confirmar-premium.btn-processing {
+.btn-confirm:disabled,
+.btn-confirm.btn-processing {
   background: #9ca3af;
   cursor: not-allowed;
   transform: none;
   opacity: 0.7;
 }
 
-.btn-icon {
-  font-size: 1.2em;
+.btn-text {
+  flex: 1;
+  text-align: center;
 }
 
-.btn-spinner {
+.btn-total {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 1em;
+}
+
+.spinner {
   animation: spin 1s linear infinite;
-  font-size: 1.2em;
+  margin-right: 10px;
 }
 
 @keyframes spin {
@@ -1321,116 +1557,137 @@ export default {
 /* ============================================
    ESTADOS VACÍOS
    ============================================ */
-.no-resultados {
+.empty-state, .empty-cart {
   text-align: center;
   padding: 50px 20px;
   color: #6b7280;
 }
 
-.no-resultados-icon {
-  opacity: 0.4;
-  margin-bottom: 15px;
+.empty-icon {
+  opacity: 0.5;
+  margin-bottom: 20px;
   font-size: 3em;
   color: #9ca3af;
 }
 
-.no-resultados p {
-  margin: 0 0 8px 0;
-  font-size: 1.1em;
+.empty-state h4, .empty-cart h4 {
+  margin: 0 0 12px 0;
+  font-size: 1.3em;
   color: #1f2937;
+  font-weight: 600;
 }
 
-.no-resultados small {
-  font-size: 0.9em;
+.empty-state p, .empty-cart p {
+  margin: 0;
+  font-size: 1em;
   color: #6b7280;
 }
 
 /* ============================================
-   TOAST MESSAGES
+   NOTIFICACIONES
    ============================================ */
-.toast-message {
+.notification {
   position: fixed;
-  bottom: 30px;
-  right: 30px;
-  padding: 18px 24px;
-  border-radius: 12px;
-  font-weight: 600;
+  bottom: 40px;
+  right: 40px;
+  min-width: 300px;
+  max-width: 400px;
+  background: white;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  z-index: 9999;
+  border-left: 6px solid;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+}
+
+.notification.success {
+  border-left-color: #10b981;
+  background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+}
+
+.notification.error {
+  border-left-color: #ef4444;
+  background: linear-gradient(135deg, #fef2f2, #fee2e2);
+}
+
+.notification.warning {
+  border-left-color: #f59e0b;
+  background: linear-gradient(135deg, #fffbeb, #fef3c7);
+}
+
+.notification.info {
+  border-left-color: #3b82f6;
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+}
+
+.notification-content {
   display: flex;
   align-items: center;
   gap: 12px;
-  z-index: 9999;
-  box-shadow: 0 15px 35px rgba(0,0,0,0.25);
-  min-width: 300px;
-  backdrop-filter: blur(10px);
+  flex: 1;
 }
 
-.toast-message.success {
-  background: rgba(16, 185, 129, 0.95);
-  color: white;
-  border-left: 4px solid #059669;
+.notification-icon {
+  font-size: 1.3em;
 }
 
-.toast-message.error {
-  background: rgba(239, 68, 68, 0.95);
-  color: white;
-  border-left: 4px solid #dc2626;
+.notification-text {
+  color: #1f2937;
+  font-weight: 500;
 }
 
-.toast-message.warning {
-  background: rgba(245, 158, 11, 0.95);
-  color: white;
-  border-left: 4px solid #d97706;
+.notification-close {
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 1.1em;
+  padding: 5px;
+  transition: color 0.2s ease;
 }
 
-.toast-message.info {
-  background: rgba(59, 130, 246, 0.95);
-  color: white;
-  border-left: 4px solid #1d4ed8;
-}
-
-.fade-enter-active, .fade-leave-active {
-  transition: opacity 0.5s ease;
-}
-
-.fade-enter-from, .fade-leave-to {
-  opacity: 0;
+.notification-close:hover {
+  color: #374151;
 }
 
 /* ============================================
    ANIMACIONES
    ============================================ */
-.slide-in {
-  animation: slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+.slide-up-enter-from {
+  opacity: 0;
+  transform: translateY(30px);
+}
+
+.slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(30px);
 }
 
 /* ============================================
    RESPONSIVE
    ============================================ */
-@media (max-width: 1024px) {
-  .main-card-container {
-    padding: 30px;
-    margin: 20px;
+@media (max-width: 1400px) {
+  .main-content {
+    grid-template-columns: 1fr;
   }
   
-  .productos-grid {
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  .main-card-container {
+    max-width: 1200px;
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .page-background {
-    padding: 20px 15px;
+    padding: 15px;
   }
   
   .main-card-container {
@@ -1445,70 +1702,83 @@ export default {
     padding: 20px;
   }
   
+  .header-title {
+    text-align: center;
+  }
+  
   .btn-back {
     width: 100%;
     justify-content: center;
   }
   
-  .productos-grid {
+  .filters-grid {
     grid-template-columns: 1fr;
   }
-  
-  .row-search {
-    flex-direction: column;
+}
+
+@media (max-width: 768px) {
+  .main-card-container {
+    padding: 20px;
+    margin: 10px;
   }
   
-  .item-carrito {
+  .card {
+    padding: 25px;
+  }
+  
+  .card-header {
     flex-direction: column;
     align-items: stretch;
     gap: 15px;
   }
   
-  .item-actions {
-    justify-content: space-between;
-    width: 100%;
+  .table-wrapper {
+    border-radius: 12px;
   }
   
-  .toast-message {
-    left: 15px;
-    right: 15px;
-    bottom: 15px;
+  .products-table th,
+  .products-table td {
+    padding: 14px 12px;
+  }
+  
+  .notification {
+    left: 20px;
+    right: 20px;
+    bottom: 20px;
     min-width: auto;
+    max-width: none;
   }
 }
 
 @media (max-width: 480px) {
   .page-background {
-    padding: 15px 10px;
+    padding: 10px;
   }
   
   .main-card-container {
-    padding: 20px;
+    padding: 15px;
     border-radius: 16px;
   }
   
-  .card-modern {
+  .card {
     padding: 20px;
   }
   
-  .card-header {
+  .header-section h2 {
+    font-size: 1.6em;
+  }
+  
+  .btn-confirm {
+    padding: 18px;
+    font-size: 1em;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
   }
   
-  .card-icon {
-    width: 40px;
-    height: 40px;
-  }
-  
-  .producto-controls {
+  .payment-option {
     flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .btn-agregar-producto {
-    width: 100%;
+    text-align: center;
+    gap: 10px;
   }
 }
 </style>
