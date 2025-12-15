@@ -11,13 +11,12 @@
       </button>
     </div>
 
-    <!-- Información Básica -->
     <div class="card-modern">
       <div class="card-header">
         <div class="card-icon">
           <ClipboardList :size="20" />
         </div>
-        <h3>Información Básica</h3>
+        <h3>Información de la Marca</h3>
       </div>
 
       <div class="input-group">
@@ -49,12 +48,35 @@
           class="textarea-modern"
         ></textarea>
       </div>
+
+      <div class="input-group">
+        <label>
+          <ToggleLeft :size="16" />
+          Proveedores Asociados
+        </label>
+        
+        <div class="chips-wrapper">
+          <div 
+            v-for="prov in proveedores" 
+            :key="prov.id" 
+            class="chip-item"
+            :class="{ 'active': marca.proveedores.includes(prov.id) }"
+            @click="toggleProveedor(prov.id)"
+          >
+            <Check v-if="marca.proveedores.includes(prov.id)" :size="14" class="check-icon" />
+            {{ prov.nombre }}
+          </div>
+          
+          <div v-if="proveedores.length === 0" class="no-data">
+            <Loader2 class="btn-spinner" :size="16" /> Cargando proveedores...
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Botón Final -->
     <button 
-      @click="registrarMarca" 
-      :disabled="!formularioValido || cargando" 
+      @click="guardarMarca" 
+      :disabled="cargando" 
       class="btn-registrar-premium"
       :class="{'btn-processing': cargando}"
     >
@@ -64,14 +86,15 @@
       </span>
       <span v-else class="btn-content">
         <Loader2 :size="20" class="btn-spinner" />
-        Procesando...
+        Guardando...
       </span>
     </button>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router' // Importamos router para redireccionar si se usa como pagina
 import axios from 'axios'
 import Swal from 'sweetalert2'
 import { 
@@ -80,189 +103,83 @@ import {
   Check, ToggleLeft
 } from 'lucide-vue-next'
 
+// Definimos emits para cuando se usa como modal
 const emit = defineEmits(['marca-registrada', 'cancelar'])
+
 const API_BASE = 'http://127.0.0.1:8000'
 
-// Verificar si estamos en modo edición
-const props = defineProps({
-  marca: {
-    type: Object,
-    default: null
-  }
-})
-
-const marca = ref({
+const marca = reactive({
   nombre: '',
   descripcion: '',
-  estado: 'activo'
+  proveedores: []
 })
 
-// 📌 Errores por campo
-const errores = ref({
-  nombre: ''
-})
-
+const errores = reactive({ nombre: '' })
+const proveedores = ref([])
 const cargando = ref(false)
-const nombreOriginal = ref('')
 
-// Inicializar si es edición
-if (props.marca) {
-  marca.value = {
-    nombre: props.marca.nombre || '',
-    descripcion: props.marca.descripcion || '',
-    estado: props.marca.estado || 'activo'
-  }
-  nombreOriginal.value = props.marca.nombre || ''
-}
-
-// ------------------------------
-// VALIDACIONES
-// ------------------------------
-const validarNombre = async () => {
-  const valor = marca.value.nombre.trim()
-  
-  if (!valor) {
-    errores.value.nombre = "El nombre es obligatorio"
-    return
-  }
-  
-  if (valor.length < 2) {
-    errores.value.nombre = "El nombre debe tener al menos 2 caracteres"
-    return
-  }
-  
-  if (valor.length > 50) {
-    errores.value.nombre = "El nombre no puede exceder los 50 caracteres"
-    return
-  }
-  
-  // Validar que no sea solo números
-  if (/^\d+$/.test(valor)) {
-    errores.value.nombre = 'El nombre no puede ser solo números'
-    return
-  }
-  
-  // Validar caracteres permitidos
-  if (!/^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\-&.]+$/.test(valor)) {
-    errores.value.nombre = 'Solo se permiten letras, números, espacios y los caracteres: - & .'
-    return
-  }
-  
-  // Solo validar unicidad si cambió el nombre (en modo edición)
-  if (props.marca && valor === nombreOriginal.value) {
-    errores.value.nombre = ""
-    return
-  }
-  
-  // VALIDAR DUPLICADO
+// Cargar proveedores al iniciar
+const cargarProveedores = async () => {
   try {
-    const response = await axios.get(`${API_BASE}/api/marcas/`)
-    const marcasExistentes = response.data
-    
-    const duplicado = marcasExistentes.find(m => 
-      m.nombre.toLowerCase() === valor.toLowerCase()
-    )
-    
-    if (duplicado) {
-      errores.value.nombre = `Ya existe una marca con el nombre "${valor}"`
-      return
+    const res = await axios.get(`${API_BASE}/api/proveedores/?estado=ACTIVO`)
+    if (Array.isArray(res.data)) {
+      proveedores.value = res.data
+    } else if (res.data.results) {
+      proveedores.value = res.data.results
+    } else {
+      proveedores.value = []
     }
-  } catch (error) {
-    console.error('Error validando:', error)
+  } catch (err) {
+    console.error('Error cargando proveedores', err)
   }
-
-  errores.value.nombre = ""
 }
 
-// Validar formulario completo
-const validarFormulario = () => {
-  validarNombre()
-  return Object.values(errores.value).every(error => !error)
-}
-
-const formularioValido = computed(() => {
-  return (
-    marca.value.nombre.trim() &&
-    Object.values(errores.value).every(error => !error)
-  )
+onMounted(() => {
+  cargarProveedores()
 })
 
-// ================================
-// REGISTRAR/ACTUALIZAR MARCA
-// ================================
-const registrarMarca = async () => {
-  if (!validarFormulario()) {
-    Swal.fire({
-      icon: 'error',
-      title: 'Formulario inválido',
-      text: 'Por favor corrige los errores en el formulario',
-      confirmButtonColor: '#007bff',
-      background: '#fff',
-      color: '#1a1a1a'
-    })
-    return
-  }
+const toggleProveedor = (id) => {
+  const index = marca.proveedores.indexOf(id)
+  if (index === -1) marca.proveedores.push(id)
+  else marca.proveedores.splice(index, 1)
+}
+
+const validarNombre = () => {
+  errores.nombre = marca.nombre.trim() ? '' : 'El nombre es obligatorio'
+}
+
+const guardarMarca = async () => {
+  validarNombre()
+  if (errores.nombre) return
 
   cargando.value = true
   try {
-    const payload = {
-      nombre: marca.value.nombre.trim(),
-      descripcion: marca.value.descripcion.trim(),
-      estado: marca.value.estado
-    }
-
-    let response
-    if (props.marca) {
-      // Modo edición
-      response = await axios.put(`${API_BASE}/api/marcas/${props.marca.id}/`, payload)
-    } else {
-      // Modo registro
-      response = await axios.post(`${API_BASE}/api/marcas/crear/`, payload)
-    }
-
-    const mensaje = props.marca 
-      ? '✅ Marca actualizada correctamente'
-      : '✅ Marca registrada correctamente'
-
-    Swal.fire({
+    // 🔥 ENVÍO CORRECTO: Nombre, Descripción y lista de IDs de proveedores
+    await axios.post(`${API_BASE}/api/marcas/crear/`, {
+      nombre: marca.nombre.trim(),
+      descripcion: marca.descripcion.trim(),
+      proveedores: marca.proveedores
+    })
+    
+    await Swal.fire({
       icon: 'success',
       title: '¡Éxito!',
-      text: mensaje,
-      confirmButtonColor: '#007bff',
+      text: 'Marca registrada correctamente',
+      timer: 1500,
+      showConfirmButton: false,
       background: '#fff',
-      color: '#1a1a1a',
-      confirmButtonText: 'Continuar'
-    }).then((result) => {
-      if (result.isConfirmed) {
-        if (props.marca) {
-          emit("marca-registrada", response.data)
-        } else {
-          emit("marca-registrada", response.data)
-          resetForm()
-        }
-      }
+      color: '#1a1a1a'
     })
+    
+    // Emitir evento para cerrar modal y recargar lista
+    emit('marca-registrada')
 
   } catch (err) {
-    console.error('Error:', err.response?.data || err)
-    
-    let mensaje = 'Error al guardar la marca'
-    const data = err.response?.data
-    
-    if (data) {
-      if (data.nombre) mensaje = data.nombre
-      else if (data.non_field_errors) mensaje = data.non_field_errors
-      else if (typeof data === 'string') mensaje = data
-      else if (typeof data === 'object') {
-        mensaje = Object.entries(data)
-          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
-          .join('\n')
-      }
-    }
+    console.error(err)
     Swal.fire({
       icon: 'error',
       title: 'Error',
-      text: mensaje,
+      text: err.response?.data?.message || 'Error al guardar la marca',
       confirmButtonColor: '#007bff'
     })
   } finally {
@@ -270,383 +187,54 @@ const registrarMarca = async () => {
   }
 }
 
-const resetForm = () => {
-  marca.value = {
-    nombre: '',
-    descripcion: '',
-    estado: 'activo'
-  }
-  errores.value = {
-    nombre: ''
-  }
+const cancelar = () => {
+  emit('cancelar')
 }
-
-const cancelar = () => emit("cancelar")
 </script>
 
 <style scoped>
-/* ESTILOS EXACTAMENTE IGUALES A REGISTRARPRODUCTO.VUE */
-.pedido-container {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 25px;
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
+/* ========================================
+   🔥 TUS ESTILOS EXACTOS (Copiados de ModificarMarca)
+   ======================================== */
 
-.header-section {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 2px solid #f1f3f4;
-}
+.pedido-container { max-width: 1000px; margin: 0 auto; padding: 25px; background: #fff; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.12); font-family: 'Segoe UI', sans-serif; }
+.header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #f1f3f4; }
+.header-section h2 { margin: 0; color: #1a1a1a; font-size: 1.8em; font-weight: 700; display: flex; align-items: center; gap: 12px; }
+.header-icon { color: #007bff; }
+.btn-back { background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; transition: 0.3s; }
+.btn-back:hover { background: #5a6268; }
 
-.header-section h2 {
-  margin: 0;
-  color: #1a1a1a;
-  font-size: 1.8em;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+.card-modern { background: #fff; border-radius: 16px; border: 2px solid #f1f3f4; padding: 25px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+.card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #f1f3f4; }
+.card-icon { background: linear-gradient(135deg, #007bff, #0056b3); padding: 10px; border-radius: 10px; color: white; display: flex; }
+.card-header h3 { margin: 0; color: #1a1a1a; font-size: 1.3em; font-weight: 700; }
 
-.header-icon {
-  color: #007bff;
-}
+.input-group { margin-bottom: 20px; }
+.input-group label { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 8px; color: #495057; }
+.input-modern, .textarea-modern { width: 100%; padding: 12px 16px; border-radius: 10px; border: 2px solid #e1e5e9; background: #f8f9fa; font-size: 14px; color: #1a1a1a; transition: 0.3s; }
+.input-modern:focus, .textarea-modern:focus { border-color: #007bff; background: #fff; box-shadow: 0 0 0 3px rgba(0,123,255,0.1); outline: none; }
+.campo-invalido { border-color: #dc3545 !important; background: rgba(220,53,69,0.05) !important; }
+.mensaje-error { color: #dc3545; font-size: 0.85rem; margin-top: 6px; }
 
-.btn-back {
-  background: #6c757d;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+/* CHIPS PROVEEDORES */
+.chips-wrapper { display: flex; flex-wrap: wrap; gap: 10px; padding: 15px; border: 2px solid #e1e5e9; border-radius: 12px; background: #f8f9fa; min-height: 60px; }
+.chip-item { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #ced4da; padding: 8px 16px; border-radius: 50px; color: #495057; font-size: 0.9rem; cursor: pointer; transition: 0.2s; user-select: none; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.chip-item:hover { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-color: #adb5bd; }
+.chip-item.active { background: linear-gradient(135deg, #007bff, #0056b3); border-color: #0056b3; color: white; box-shadow: 0 4px 10px rgba(0,123,255,0.3); }
+.check-icon { font-weight: bold; }
+.no-data { color: #6c757d; font-style: italic; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
 
-.btn-back:hover {
-  background: #5a6268;
-  transform: translateY(-1px);
-}
-
-/* Cards modernas */
-.card-modern {
-  background: #fff;
-  border-radius: 16px;
-  border: 2px solid #f1f3f4;
-  padding: 25px;
-  margin-bottom: 25px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
-}
-
-.card-modern:hover {
-  border-color: #007bff;
-  box-shadow: 0 6px 20px rgba(0, 123, 255, 0.15);
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 2px solid #f1f3f4;
-}
-
-.card-icon {
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  padding: 10px;
-  border-radius: 10px;
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.card-header h3 {
-  margin: 0;
-  color: #1a1a1a;
-  font-size: 1.3em;
-  font-weight: 700;
-  flex: 1;
-}
-
-/* Inputs y selects */
-.input-group {
-  margin-bottom: 20px;
-  color: rgb(63, 63, 63);
-}
-
-.input-modern {
-  width: 100%;
-  padding: 12px 16px;
-  border-radius: 10px;
-  border: 2px solid #e1e5e9;
-  background: #f8f9fa;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  color: #1a1a1a;
-}
-
-.input-modern:focus {
-  border-color: #007bff;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-  outline: none;
-}
-
-/* Campos inválidos */
-.campo-invalido {
-  border-color: #dc3545 !important;
-  background: rgba(220, 53, 69, 0.05) !important;
-}
-
-.campo-invalido:focus {
-  box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1) !important;
-}
-
-/* Mensajes de error */
-.mensaje-error {
-  color: #dc3545;
-  font-size: 0.85rem;
-  margin-top: 6px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 20px;
-}
-
-.icono-error {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  background: #dc3545;
-  color: white;
-  border-radius: 50%;
-  font-size: 0.7rem;
-  font-weight: bold;
-}
-
-/* Mensajes de ayuda */
-.mensaje-ayuda {
-  color: #6c757d;
-  font-size: 0.85em;
-  margin-top: 8px;
-  display: block;
-}
-
-/* Textarea */
-.textarea-modern {
-  width: 100%;
-  padding: 15px;
-  border: 2px solid #e9ecef;
-  border-radius: 10px;
-  background: #f8f9fa;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  color: #1a1a1a;
-  resize: vertical;
-  min-height: 80px;
-}
-
-.textarea-modern:focus {
-  border-color: #007bff;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-  outline: none;
-}
-
-/* Radio buttons estilo premium */
-.radio-group-horizontal {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 16px;
-}
-
-.radio-option {
-  border: 2px solid #e9ecef;
-  border-radius: 12px;
-  padding: 20px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
-  background: #fff;
-}
-
-.radio-option:hover {
-  border-color: #007bff;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
-}
-
-.radio-option.selected {
-  border-color: #007bff;
-  background: #e7f3ff;
-}
-
-.radio-custom-large {
-  width: 24px;
-  height: 24px;
-  border: 2px solid #dee2e6;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.radio-custom-large.selected {
-  background: #007bff;
-  border-color: #007bff;
-  color: white;
-}
-
-.radio-check {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.radio-content {
-  flex: 1;
-}
-
-.radio-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 8px;
-}
-
-.radio-title {
-  font-weight: 600;
-  color: #1a1a1a;
-  font-size: 1.1em;
-}
-
-.radio-badge {
-  font-size: 0.75em;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.estado-success {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-.estado-danger {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-}
-
-.radio-description {
-  color: #6c757d;
-  font-size: 0.9em;
-  line-height: 1.4;
-  margin: 0;
-}
-
-/* Botón final premium */
-.btn-registrar-premium {
-  width: 100%;
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  color: white;
-  font-size: 1.1em;
-  padding: 18px;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  margin-top: 25px;
-  font-weight: 600;
-  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
-  position: relative;
-  overflow: hidden;
-}
-
-.btn-registrar-premium:hover:not(:disabled):not(.btn-processing) {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4);
-  background: linear-gradient(135deg, #0056b3, #004085);
-}
-
-.btn-registrar-premium:disabled,
-.btn-registrar-premium.btn-processing {
-  background: #6c757d;
-  cursor: not-allowed;
-  opacity: 0.7;
-  transform: none;
-}
-
-.btn-content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.btn-spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
+/* Botón */
+.btn-registrar-premium { width: 100%; background: linear-gradient(135deg, #007bff, #0056b3); color: white; font-size: 1.1em; padding: 16px; border: none; border-radius: 12px; cursor: pointer; transition: 0.3s; margin-top: 20px; font-weight: 600; box-shadow: 0 4px 15px rgba(0,123,255,0.3); }
+.btn-registrar-premium:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,123,255,0.4); }
+.btn-registrar-premium:disabled { background: #6c757d; cursor: not-allowed; opacity: 0.7; }
+.btn-content { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.btn-spinner { animation: spin 1s linear infinite; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
 
 /* Responsive */
 @media (max-width: 768px) {
-  .pedido-container {
-    padding: 15px;
-  }
-  
-  .header-section {
-    flex-direction: column;
-    gap: 15px;
-    align-items: stretch;
-  }
-  
-  .radio-group-horizontal {
-    grid-template-columns: 1fr;
-  }
-  
-  .radio-option {
-    padding: 16px;
-  }
-}
-
-@media (max-width: 480px) {
-  .radio-option {
-    flex-direction: column;
-    gap: 12px;
-  }
-  
-  .radio-header {
-    flex-direction: column;
-    gap: 4px;
-  }
+  .pedido-container { padding: 15px; }
+  .header-section { flex-direction: column; gap: 15px; align-items: stretch; }
 }
 </style>

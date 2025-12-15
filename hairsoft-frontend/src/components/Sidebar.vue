@@ -1,6 +1,5 @@
 <template>
   <nav class="sidebar">
-    <!-- Header del Sidebar -->
     <div class="sidebar-header">
       <div class="logo-wrapper">
         <div class="logo-container">
@@ -12,11 +11,9 @@
       </div>
     </div>
 
-    <!-- Navegación Principal -->
     <div class="nav-section">
       <span class="section-title">MENÚ PRINCIPAL</span>
       
-      <!-- Dashboard - Siempre visible -->
       <ul class="nav-links">
         <li>
           <router-link to="/dashboard" class="nav-link">
@@ -31,7 +28,6 @@
         </li>
       </ul>
 
-      <!-- Acordeón: Gestión Comercial -->
       <div class="acordeon-section">
         <div class="acordeon-header" @click="toggleSection('comercial')">
           <div class="acordeon-header-content">
@@ -62,7 +58,6 @@
         </div>
       </div>
 
-      <!-- Acordeón: Inventario -->
       <div class="acordeon-section">
         <div class="acordeon-header" @click="toggleSection('inventario')">
           <div class="acordeon-header-content">
@@ -93,7 +88,6 @@
         </div>
       </div>
 
-      <!-- Acordeón: Administración -->
       <div class="acordeon-section">
         <div class="acordeon-header" @click="toggleSection('admin')">
           <div class="acordeon-header-content">
@@ -132,7 +126,7 @@
 import { ref } from 'vue';
 import logo from '@/assets/logo.jpg';
 
-const openSection = ref('comercial'); // Por defecto, abre Gestión Comercial
+const openSection = ref('comercial'); 
 
 const menuSections = {
   comercial: [
@@ -151,6 +145,8 @@ const menuSections = {
   admin: [
     { name: 'Usuarios', path: '/usuarios', icon: 'ri-team-line' },
     { name: 'Roles', path: '/roles', icon: 'ri-shield-user-line' },
+    // 🔥 AQUÍ AGREGAMOS LA AUDITORÍA
+    { name: 'Auditoría', path: '/auditoria', icon: 'ri-file-history-line' },
   ]
 };
 
@@ -160,7 +156,7 @@ const toggleSection = (section) => {
 </script>
 
 <style scoped>
-/* Sidebar Principal - Mismo color que el header */
+/* Sidebar Principal */
 .sidebar {
   width: 290px;
   height: 100vh;
@@ -177,7 +173,7 @@ const toggleSection = (section) => {
   overflow-x: hidden;
 }
 
-/* Scrollbar personalizado mejorado */
+/* Scrollbar personalizado */
 .sidebar::-webkit-scrollbar {
   width: 6px;
 }
@@ -198,7 +194,7 @@ const toggleSection = (section) => {
   background: linear-gradient(180deg, #4b5563, #374151);
 }
 
-/* Header del Sidebar - Mejorado */
+/* Header del Sidebar */
 .sidebar-header {
   padding: 32px 20px 28px;
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
@@ -281,15 +277,6 @@ const toggleSection = (section) => {
   text-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
 }
 
-.brand-subtitle {
-  color: #94a3b8;
-  font-size: 0.8rem;
-  letter-spacing: 2.5px;
-  text-transform: uppercase;
-  font-weight: 600;
-  opacity: 0.8;
-}
-
 /* Sección de Navegación */
 .nav-section {
   flex: 1;
@@ -332,7 +319,7 @@ const toggleSection = (section) => {
   gap: 4px;
 }
 
-/* Link Individual - Mejorado */
+/* Link Individual */
 .nav-link {
   position: relative;
   display: flex;
@@ -404,7 +391,7 @@ const toggleSection = (section) => {
   z-index: 1;
 }
 
-/* Hover State - Mejorado */
+/* Hover State */
 .nav-link:hover {
   background: rgba(31, 41, 55, 0.8);
   transform: translateX(4px);
@@ -429,7 +416,7 @@ const toggleSection = (section) => {
   color: #fff;
 }
 
-/* Active State (Router Link Activo) - Mejorado */
+/* Active State */
 .nav-link.router-link-active {
   background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
   box-shadow: 
@@ -457,13 +444,11 @@ const toggleSection = (section) => {
   font-weight: 600;
 }
 
-/* ========== ESTILOS DEL ACORDEÓN MEJORADOS ========== */
-
+/* Acordeón */
 .acordeon-section {
   margin-bottom: 6px;
 }
 
-/* Header del Acordeón - Mejorado */
 .acordeon-header {
   display: flex;
   align-items: center;
@@ -559,7 +544,7 @@ const toggleSection = (section) => {
   color: #60a5fa;
 }
 
-/* Contenido del Acordeón - Mejorado */
+/* Contenido del Acordeón */
 .acordeon-content {
   max-height: 0;
   overflow: hidden;
@@ -578,7 +563,6 @@ const toggleSection = (section) => {
   padding-bottom: 4px;
 }
 
-/* Items dentro del acordeón */
 .acordeon-items {
   margin: 0;
   padding: 0;

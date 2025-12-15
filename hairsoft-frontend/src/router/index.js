@@ -44,6 +44,7 @@ const RegistrarCategoria = () => import('@/views/categorias/RegistrarCategoria.v
 // Roles
 const ListadoRoles = () => import('@/views/roles/ListadoRoles.vue')
 const RegistrarRol = () => import('@/views/roles/RegistrarRol.vue')
+const ModificarRol = () => import('@/views/roles/ModificarRol.vue')
 
 // Productos y Marcas
 const ListadoProductos = () => import('@/views/productos/ListadoProductos.vue')
@@ -51,7 +52,7 @@ const RegistrarProducto = () => import('@/views/productos/RegistrarProducto.vue'
 const ModificarProducto = () => import('@/views/productos/ModificarProducto.vue')
 const ListadoMarcas = () => import('@/views/productos/ListadoMarcas.vue')
 const RegistrarMarca = () => import('@/views/productos/RegistrarMarca.vue')
-const EditarMarca = () => import('@/views/productos/EditarMarca.vue') // Confirma el nombre de este archivo
+const EditarMarca = () => import('@/views/productos/ModificarMarca.vue') // Confirma el nombre de este archivo
 
 // Proveedores
 const ListadoProveedores = () => import('@/views/proveedores/ListadoProveedores.vue')
@@ -74,6 +75,8 @@ const ModificarPedido = () => import('@/views/pedidos/ModificarPedido.vue')
 const RecibirPedido = () => import('@/views/pedidos/RecibirPedido.vue')
 const DetallePedido = () => import('@/views/pedidos/DetallePedido.vue')
 
+//Auditoría
+const ListadoAuditoria = () => import('@/views/auditoria/ListadoAuditoria.vue')
 
 // =============================================================================
 // DEFINICIÓN DE RUTAS CON SEGURIDAD
@@ -180,7 +183,7 @@ const routes = [
   // Roles
   { path: '/roles', name: 'ListadoRoles', component: ListadoRoles, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/roles/crear', name: 'RegistrarRol', component: RegistrarRol, meta: { requiresAuth: true, role: 'ADMIN' } },
-  { path: '/roles/modificar/:id', name: 'ModificarRol', component: RegistrarRol, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
+  { path: '/roles/modificar/:id', name: 'ModificarRol', component: ModificarRol, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
 
   // Productos y Marcas
   { path: '/productos', name: 'ListadoProductos', component: ListadoProductos, meta: { requiresAuth: true, role: 'ADMIN' } },
@@ -209,6 +212,9 @@ const routes = [
   { path: '/pedidos/modificar/:id', name: 'ModificarPedido', component: ModificarPedido, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/pedidos/recibir/:id', name: 'RecibirPedido', component: RecibirPedido, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/pedidos/detalle/:id', name: 'DetallePedido', component: DetallePedido, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
+
+  // Auditoría
+  { path: '/auditoria', name: 'ListadoAuditoria', component: ListadoAuditoria, meta: { requiresAuth: true, role: 'ADMIN' }},
 ]
 
 const router = createRouter({

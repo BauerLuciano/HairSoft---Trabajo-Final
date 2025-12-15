@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Django
+*.sqlite3
+*.log
+.env
+
+# Vue / Node
+node_modules/
+dist/
+
+# Otros
+*.DS_Store

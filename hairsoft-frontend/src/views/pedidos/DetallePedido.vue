@@ -246,10 +246,6 @@
             </button>
           </div>
           <div class="acciones-derecha">
-            <button @click="imprimir" class="action-button info">
-              <Printer :size="16" />
-              Imprimir
-            </button>
             <button @click="$router.push('/pedidos')" class="btn-volver">
               <ChevronLeft :size="16" />
               Volver

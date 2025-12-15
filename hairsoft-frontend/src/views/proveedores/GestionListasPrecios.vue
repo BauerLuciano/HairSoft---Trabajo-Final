@@ -376,6 +376,9 @@
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 
+// --- TUS COMPONENTES ---
+// (Asegurate de importar los iconos que usas en tu template si no son globales)
+
 const API_BASE = 'http://127.0.0.1:8000'
 
 // Estados
@@ -403,43 +406,44 @@ const proveedorSeleccionadoNombre = computed(() => {
 
 // Productos que NO tienen lista de precios activa
 const productosSinLista = computed(() => {
-  const productosConLista = listasPrecios.value
+  const idsEnLista = listasPrecios.value
     .filter(lista => lista.activo)
     .map(lista => lista.producto)
   
   return productosDisponibles.value.filter(producto => 
-    !productosConLista.includes(producto.id)
+    !idsEnLista.includes(producto.id)
   )
 })
 
-// Validar si hay filas válidas
+// 🔥 CORRECCIÓN AQUÍ: Pasamos el 'index' para que no se compare consigo mismo
 const filasValidas = computed(() => {
-  return filasProductos.value.filter(fila => 
-    fila.producto_id && fila.precio_base && fila.precio_base > 0 && !esProductoDuplicado(fila.producto_id, -1)
+  return filasProductos.value.filter((fila, index) => 
+    fila.producto_id && 
+    fila.precio_base && 
+    Number(fila.precio_base) > 0 && 
+    !esProductoDuplicado(fila.producto_id, index) // <--- ESTO ARREGLA EL "0 PRODUCTOS"
   )
 })
 
 // Métodos
 const cargarProveedores = async () => {
   try {
-    const response = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
-    proveedores.value = response.data.filter(p => p.estado === 'ACTIVO')
+    const response = await axios.get(`${API_BASE}/api/proveedores/?estado=ACTIVO`)
+    proveedores.value = Array.isArray(response.data) ? response.data : (response.data.results || [])
   } catch (error) {
     console.error('Error cargando proveedores:', error)
     mostrarToast('Error al cargar proveedores', 'error')
   }
 }
 
-const cargarProductosDelProveedor = async (proveedorId) => {
+// 🔥 CARGA GLOBAL DE PRODUCTOS (Para que aparezcan en proveedores nuevos)
+const cargarTodosLosProductos = async () => {
   try {
-    const response = await axios.get(`${API_BASE}/usuarios/api/productos/`)
-    const todosProductos = response.data
-    
-    productosDisponibles.value = todosProductos.filter(producto => 
-      producto.proveedores && producto.proveedores.includes(parseInt(proveedorId))
-    )
+    // Pedimos todos los productos activos
+    const response = await axios.get(`${API_BASE}/api/productos/?estado=ACTIVO&page_size=1000`)
+    productosDisponibles.value = Array.isArray(response.data) ? response.data : (response.data.results || [])
   } catch (error) {
-    console.error('Error cargando productos del proveedor:', error)
+    console.error('Error cargando productos:', error)
     mostrarToast('Error al cargar productos', 'error')
   }
 }
@@ -447,16 +451,19 @@ const cargarProductosDelProveedor = async (proveedorId) => {
 const cargarListasPrecios = async () => {
   if (!proveedorSeleccionado.value) {
     listasPrecios.value = []
-    productosDisponibles.value = []
     return
   }
 
   cargando.value = true
   try {
-    await cargarProductosDelProveedor(proveedorSeleccionado.value)
-    
-    const response = await axios.get(`${API_BASE}/usuarios/api/listas-precios/por-proveedor/?proveedor_id=${proveedorSeleccionado.value}`)
+    // 1. Cargamos las listas
+    const response = await axios.get(`${API_BASE}/api/listas-precios/por-proveedor/?proveedor_id=${proveedorSeleccionado.value}`)
     listasPrecios.value = response.data
+    
+    // 2. Si no tenemos productos cargados, los cargamos ahora
+    if (productosDisponibles.value.length === 0) {
+        await cargarTodosLosProductos()
+    }
   } catch (error) {
     console.error('Error cargando listas de precios:', error)
     listasPrecios.value = []
@@ -466,21 +473,27 @@ const cargarListasPrecios = async () => {
   }
 }
 
-const abrirFormulario = () => {
+const abrirFormulario = async () => {
   if (!proveedorSeleccionado.value) {
     mostrarToast('Primero seleccioná un proveedor', 'warning')
     return
   }
   
-  if (productosSinLista.value.length === 0) {
-    mostrarToast('Este proveedor no tiene productos disponibles para agregar', 'warning')
-    return
+  if (productosDisponibles.value.length === 0) {
+      await cargarTodosLosProductos()
   }
+  
+  // Limpiamos el form al abrir
+  filasProductos.value = [{ 
+    producto_id: '', 
+    precio_base: '', 
+    margen_ganancia: 30.0,
+    precio_final: '' 
+  }]
   
   mostrarFormulario.value = true
 }
 
-// Métodos para el formulario mejorado
 const agregarFilaProducto = () => {
   filasProductos.value.push({ 
     producto_id: '', 
@@ -496,18 +509,16 @@ const eliminarFila = (index) => {
   }
 }
 
-// Verificar si un producto ya está seleccionado en otra fila
 const esProductoSeleccionado = (productoId, currentIndex) => {
   return filasProductos.value.some((fila, index) => 
-    index !== currentIndex && fila.producto_id === productoId.toString()
+    index !== currentIndex && String(fila.producto_id) === String(productoId)
   )
 }
 
-// Verificar si es producto duplicado
 const esProductoDuplicado = (productoId, currentIndex) => {
   if (!productoId) return false
   return filasProductos.value.some((fila, index) => 
-    index !== currentIndex && fila.producto_id === productoId.toString()
+    index !== currentIndex && String(fila.producto_id) === String(productoId)
   )
 }
 
@@ -520,7 +531,6 @@ const calcularPrecioSugeridoFila = (fila) => {
   const margen = parseFloat(fila.margen_ganancia) || 0
   const precioCalculado = (precioBase * (1 + margen / 100)).toFixed(2)
   
-  // Actualizar el precio final automáticamente
   if (!fila.precio_final) {
     fila.precio_final = precioCalculado
   }
@@ -532,7 +542,6 @@ const actualizarPrecioFinal = (fila) => {
   fila.precio_final = calcularPrecioSugeridoFila(fila)
 }
 
-// Calcular margen cuando se edita el precio final
 const actualizarMargenDesdePrecioFinal = (fila) => {
   const precioBase = parseFloat(fila.precio_base) || 0
   const precioFinal = parseFloat(fila.precio_final) || 0
@@ -543,7 +552,6 @@ const actualizarMargenDesdePrecioFinal = (fila) => {
   }
 }
 
-// Calcular total estimado
 const calcularTotalEstimado = () => {
   return filasValidas.value.reduce((total, fila) => {
     return total + (parseFloat(fila.precio_final) || 0)
@@ -571,30 +579,25 @@ const guardarListasMultiples = async () => {
           activo: true
         }
         
-        await axios.post(`${API_BASE}/usuarios/api/listas-precios/`, datos)
+        await axios.post(`${API_BASE}/api/listas-precios/`, datos)
         exitosas++
       } catch (error) {
         console.error(`Error guardando producto ${fila.producto_id}:`, error.response?.data)
         errores++
-        
-        if (error.response?.status === 400) {
-          const productoNombre = productosDisponibles.value.find(p => p.id == fila.producto_id)?.nombre
-          mostrarToast(`❌ El producto "${productoNombre}" ya tiene una lista de precios activa`, 'error')
-        }
       }
     }
     
     if (exitosas > 0) {
-      mostrarToast(`✅ ${exitosas} productos agregados correctamente${errores > 0 ? `, ${errores} con errores` : ''}`, 'success')
+      mostrarToast(`✅ ${exitosas} productos agregados correctamente`, 'success')
       await cargarListasPrecios()
       cerrarModal()
     } else {
-      mostrarToast('❌ No se pudo guardar ningún producto. Verifica que no estén duplicados.', 'error')
+      mostrarToast('❌ No se pudo guardar ningún producto.', 'error')
     }
     
   } catch (error) {
-    console.error('Error general guardando listas:', error)
-    mostrarToast('Error al guardar las listas de precios', 'error')
+    console.error('Error general:', error)
+    mostrarToast('Error al guardar', 'error')
   } finally {
     guardando.value = false
   }
@@ -614,37 +617,29 @@ const desactivarLista = async (lista) => {
   if (!confirm(`¿Desactivar la lista de precios de ${lista.producto_nombre}?`)) return
   
   try {
-    await axios.post(`${API_BASE}/usuarios/api/listas-precios/${lista.id}/desactivar/`)
+    await axios.post(`${API_BASE}/api/listas-precios/${lista.id}/desactivar/`)
     mostrarToast('Lista desactivada correctamente', 'success')
     await cargarListasPrecios()
   } catch (error) {
-    console.error('Error desactivando lista:', error)
     mostrarToast('Error al desactivar la lista', 'error')
   }
 }
 
 const activarLista = async (lista) => {
   try {
-    await axios.put(`${API_BASE}/usuarios/api/listas-precios/${lista.id}/`, {
+    await axios.put(`${API_BASE}/api/listas-precios/${lista.id}/`, {
       ...lista,
       activo: true
     })
     mostrarToast('Lista activada correctamente', 'success')
     await cargarListasPrecios()
   } catch (error) {
-    console.error('Error activando lista:', error)
     mostrarToast('Error al activar la lista', 'error')
   }
 }
 
 const cerrarModal = () => {
   mostrarFormulario.value = false
-  filasProductos.value = [{ 
-    producto_id: '', 
-    precio_base: '', 
-    margen_ganancia: 30.0,
-    precio_final: '' 
-  }]
 }
 
 const formatFecha = (fecha) => {
@@ -657,25 +652,20 @@ const getMargenClass = (margen) => {
   return 'margen-high'
 }
 
-const calcularPrecioPromedio = () => {
-  const activas = listasPrecios.value.filter(l => l.activo)
-  if (activas.length === 0) return '0.00'
-  
-  const total = activas.reduce((sum, lista) => sum + parseFloat(lista.precio_sugerido_venta), 0)
-  return (total / activas.length).toFixed(2)
-}
-
-const calcularMargenPromedio = () => {
-  const activas = listasPrecios.value.filter(l => l.activo)
-  if (activas.length === 0) return '0.0'
-  
-  const total = activas.reduce((sum, lista) => sum + parseFloat(lista.margen_ganancia), 0)
-  return (total / activas.length).toFixed(1)
-}
-
 const mostrarToast = (mensaje, tipo) => {
-  // Implementar sistema de notificaciones si es necesario
-  alert(mensaje)
+  // Si usas Swal:
+  if (typeof Swal !== 'undefined') {
+      Swal.fire({
+          icon: tipo === 'error' ? 'error' : (tipo === 'warning' ? 'warning' : 'success'),
+          title: mensaje,
+          toast: true,
+          position: 'top-end',
+          showConfirmButton: false,
+          timer: 3000
+      })
+  } else {
+      alert(mensaje)
+  }
 }
 
 // Inicialización

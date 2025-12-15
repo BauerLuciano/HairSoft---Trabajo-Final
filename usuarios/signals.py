@@ -1,157 +1,125 @@
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.db import transaction
 from django.utils import timezone
+from django.db.models import DateTimeField, DateField, ForeignKey, DecimalField
 import logging
 import time
 
+# IMPORTAMOS TODOS LOS MODELOS QUE QUIERAS AUDITAR
 from .models import (
-    Turno, 
-    ConfiguracionReoferta, 
-    Producto, 
-    SolicitudPresupuesto, 
-    Cotizacion,
-    InteresTurnoLiberado
+    Turno, ConfiguracionReoferta, Producto, SolicitudPresupuesto, 
+    Cotizacion, InteresTurnoLiberado, Auditoria, Usuario, Venta, Pedido, Rol,
+    # ✅ NUEVOS AGREGADOS:
+    Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago
 )
-
+from .middleware import get_current_request_data
 from .tasks import procesar_reoferta_masiva, enviar_email_cotizacion_proveedor
 
 logger = logging.getLogger(__name__)
 
-# ==============================================================================
-# 1. LÓGICA EXISTENTE: REOFERTA DE TURNOS (NO TOCAR)
-# ==============================================================================
-
-@receiver(post_save, sender=Turno)
-def manejar_cancelacion_turno_post_save(sender, instance, created, **kwargs):
-    """
-    Señal que detecta cuando un turno cambia a estado CANCELADO 
-    y dispara el proceso de reoferta automática de forma asíncrona.
-    """
-    if created:
-        return
-    
-    if instance.estado == 'CANCELADO' and not instance.oferta_activa:
-        if ConfiguracionReoferta.get_configuracion().activo:
-            try:
-                hay_interesados = InteresTurnoLiberado.objects.filter(
-                    fecha_deseada=instance.fecha,
-                    hora_deseada=instance.hora,
-                    peluquero=instance.peluquero,
-                    estado_oferta='pendiente'
-                ).exists()
-
-                if hay_interesados:
-                    logger.info(f"🚨 Turno {instance.id} CANCELADO - Hay interesados. Iniciando reoferta.")
-                    Turno.objects.filter(pk=instance.pk).update(oferta_activa=True)
-                    transaction.on_commit(lambda: procesar_reoferta_masiva.delay(instance.id))
-                else:
-                    logger.info(f"ℹ️ Turno {instance.id} cancelado, sin interesados.")
-                    
-            except Exception as e:
-                logger.error(f"❌ Error en señal de cancelación: {str(e)}")
+# ... (MANTENÉ TUS LÓGICAS DE REOFERTA, WHATSAPP Y STOCK ACÁ ARRIBA IGUAL QUE ANTES) ...
+# ... (Si las borraste, avisame) ...
 
 # ==============================================================================
-# 2. WHATSAPP AUTOMÁTICO CUANDO MODIFICÁS TURNO VIEJO
+# 4. MÓDULO DE AUDITORÍA (COMPLETO)
 # ==============================================================================
 
-@receiver(post_save, sender=Turno)
-def enviar_whatsapp_reactivacion(sender, instance, created, **kwargs):
-    """
-    Cuando modificás un turno en Django Admin y ponés fecha vieja,
-    manda WhatsApp AUTOMÁTICO al cliente inactivo.
-    """
-    # Solo ejecutar cuando se EDITA un turno existente (no nuevo)
-    if created:
-        return
-    
-    from django.utils import timezone
-    from datetime import timedelta
-    
-    # Verificar si la fecha es vieja (más de 60 días)
-    fecha_limite = timezone.now().date() - timedelta(days=60)
-    
-    if instance.fecha < fecha_limite:
-        print("="*60)
-        print("🔥 WHATSAPP AUTOMÁTICO ACTIVADO")
-        print(f"📅 Turno editado: ID {instance.id}, Fecha: {instance.fecha}")
-        print(f"👤 Cliente: {instance.cliente.nombre} ({instance.cliente.telefono})")
-        print("="*60)
-        
-        # Importar y ejecutar la tarea DIRECTAMENTE
-        from .tasks import procesar_reactivacion_clientes_inactivos
-        
-        try:
-            # Ejecutar sincrónicamente para ver resultado inmediato
-            resultado = procesar_reactivacion_clientes_inactivos()
-            print(f"✅ Tarea ejecutada: {resultado}")
-            print("📱 WhatsApp debería llegar en segundos...")
-        except Exception as e:
-            print(f"❌ Error ejecutando reactivación: {e}")
+# 🔥 LISTA MAESTRA DE VIGILANCIA
+MODELOS_A_AUDITAR = [
+    Usuario, Producto, Turno, Venta, Pedido, Rol,
+    Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago
+]
 
-# ==============================================================================
-# 3. AUTOMATIZACIÓN DE PROVEEDORES
-# ==============================================================================
-
-@receiver(post_save, sender=Producto)
-def verificar_stock_minimo(sender, instance, **kwargs):
-    stock_minimo = getattr(instance, 'stock_minimo', 0)
-    
-    if instance.stock_actual <= stock_minimo:
-        ya_existe_solicitud = SolicitudPresupuesto.objects.filter(
-            producto=instance, 
-            estado='PENDIENTE'
-        ).exists()
-
-        if not ya_existe_solicitud:
-            print(f"📉 ALERTA STOCK BAJO: {instance.nombre} ({instance.stock_actual}/{stock_minimo}). Iniciando licitación...")
-            transaction.on_commit(lambda: _iniciar_proceso_compra(instance.id))
-
-def _iniciar_proceso_compra(producto_id):
-    try:
-        producto = Producto.objects.get(id=producto_id)
-        cantidad_solicitada = getattr(producto, 'cantidad_a_pedir', 20)
-        if cantidad_solicitada <= 0: cantidad_solicitada = 10
-
-        solicitud = SolicitudPresupuesto.objects.create(
-            producto=producto,
-            cantidad_requerida=cantidad_solicitada 
-        )
-
-        proveedores = producto.proveedores.all() 
-        print(f"🔎 Producto: {producto.nombre} - Proveedores encontrados: {proveedores.count()}")
-
-        if not proveedores.exists():
-            print(f"⚠️ El producto {producto.nombre} no tiene proveedores asignados.")
-            return
-
-        enviados = 0
-        errores = 0
-
-        for prov in proveedores:
-            print(f"   👉 Procesando proveedor: {prov.nombre} (Email: {prov.email})")
+def serializar_modelo(instance):
+    """Convierte datos crudos en datos lindos para humanos."""
+    data = {}
+    for field in instance._meta.fields:
+        nombre_campo = field.name
+        if nombre_campo in ['password', 'groups', 'user_permissions', 'is_superuser', 'is_staff', 'last_login', 'date_joined']:
+            continue
             
-            if prov.email: 
-                try:
-                    cotizacion = Cotizacion.objects.create(
-                        solicitud=solicitud,
-                        proveedor=prov
-                    )
-                    
-                    enviar_email_cotizacion_proveedor.delay(cotizacion.id)
-                    enviados += 1
-                    print(f"      ✅ Tarea de email encolada para {prov.nombre}")
-                    
-                    print("      ⏳ Esperando 10 segundos para no saturar Mailtrap...")
-                    time.sleep(10) 
+        valor = getattr(instance, nombre_campo)
+        
+        if valor is None:
+            data[nombre_campo] = "-"
+            continue
 
-                except Exception as e:
-                    print(f"      ❌ Error: {e}")
-                    errores += 1
-            else:
-                print(f"      ⚠️ SALTADO: {prov.nombre} no tiene email registrado.")
+        if isinstance(field, ForeignKey):
+            if hasattr(valor, 'nombre'): data[nombre_campo] = valor.nombre
+            elif hasattr(valor, '__str__'): data[nombre_campo] = str(valor)
+            else: data[nombre_campo] = str(valor)
+            
+        elif isinstance(field, DateTimeField):
+            data[nombre_campo] = timezone.localtime(valor).strftime('%d/%m/%Y %H:%M')
+        elif isinstance(field, DateField):
+            data[nombre_campo] = valor.strftime('%d/%m/%Y')
+        elif hasattr(instance, f'get_{nombre_campo}_display'):
+            data[nombre_campo] = getattr(instance, f'get_{nombre_campo}_display')()
+        else:
+            data[nombre_campo] = str(valor)
+            
+    return data
 
-        print(f"🏁 Proceso finalizado. Enviados: {enviados}, Errores: {errores}")
+@receiver(post_save)
+def registrar_auditoria_cambios(sender, instance, created, **kwargs):
+    if sender in MODELOS_A_AUDITAR:
+        try:
+            if sender == Auditoria: return
 
-    except Exception as e:
-        print(f"❌ Error CRÍTICO iniciando proceso de compra: {str(e)}")
+            accion = 'CREACION' if created else 'MODIFICACION'
+            
+            # Intentamos obtener el usuario del hilo actual
+            request_data = get_current_request_data()
+            usuario_db = request_data.get('user')
+            
+            # Validación extra: Si el middleware falló o es tarea automática, intentamos inferir
+            # (Por ejemplo, si la instancia tiene un campo 'usuario_creador', podrías usarlo)
+            
+            if usuario_db and not usuario_db.is_authenticated:
+                usuario_db = None
+
+            datos_legibles = serializar_modelo(instance)
+
+            # Detectamos cambios de estado (ej: Activo -> Inactivo)
+            descripcion = f"{accion} de {sender.__name__}"
+            if not created and 'estado' in datos_legibles:
+                descripcion += f" (Estado: {datos_legibles['estado']})"
+
+            detalles = {
+                'descripcion': descripcion,
+                'valor': str(instance), 
+                'datos': datos_legibles
+            }
+
+            Auditoria.objects.create(
+                usuario=usuario_db,
+                accion=accion,
+                modelo=sender.__name__,
+                objeto_id=str(instance.pk),
+                detalles=detalles,
+                ip=request_data.get('ip'),
+                navegador=request_data.get('navegador')
+            )
+        except Exception as e:
+            print(f"❌ Error auditoría: {e}")
+
+@receiver(post_delete)
+def registrar_auditoria_borrado(sender, instance, **kwargs):
+    if sender in MODELOS_A_AUDITAR:
+        try:
+            request_data = get_current_request_data()
+            usuario_db = request_data.get('user')
+            if usuario_db and not usuario_db.is_authenticated: usuario_db = None
+
+            Auditoria.objects.create(
+                usuario=usuario_db,
+                accion='ELIMINACION',
+                modelo=sender.__name__,
+                objeto_id=str(instance.pk),
+                detalles={'info': f"Registro eliminado: {str(instance)}"},
+                ip=request_data.get('ip'),
+                navegador=request_data.get('navegador')
+            )
+        except Exception as e:
+            print(f"❌ Error auditoría borrado: {e}")

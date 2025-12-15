@@ -2,87 +2,74 @@
   <div class="page-background">
     <div class="main-card-container">
       <div class="venta-container">
-        <!-- HEADER -->
         <div class="header-section">
-          <div class="header-title">
-            <h2>
-              <span class="header-icon">💰</span>
-              Registrar Venta de Productos
-            </h2>
-            <p class="header-subtitle">Agrega productos al carrito y completa la venta</p>
-          </div>
-          <div class="header-actions">
-            <button @click="volverAlListado" class="btn-back">
-              <span>←</span>
-              Volver al Listado
-            </button>
-          </div>
+          <h2>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="header-icon"><path d="M21 12H3M21 12V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v7"></path><path d="M12 14v8M9 20h6"></path></svg>
+            Registrar Venta (Productos)
+          </h2>
+          <button @click="volverAlListado" class="btn-back">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            Volver
+          </button>
         </div>
 
-        <!-- CONTENIDO PRINCIPAL EN 2 COLUMNAS -->
         <div class="main-content">
-          <!-- COLUMNA IZQUIERDA: PRODUCTOS -->
           <div class="left-column">
-            <!-- FILTROS -->
-            <div class="card">
+            
+            <div class="card-modern">
               <div class="card-header">
-                <div class="card-title">
-                  <h3>Buscar Productos</h3>
-                  <p class="card-subtitle">Filtra por nombre o categoría</p>
+                <div class="card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                 </div>
+                <h3>Buscar Productos</h3>
               </div>
               
               <div class="filters-grid">
-                <div class="filter-group">
-                  <label class="filter-label">Nombre del Producto</label>
-                  <div class="search-wrapper">
-                    <input
-                      v-model="filtroNombre"
-                      placeholder="Escribe el nombre del producto..."
-                      class="input-search"
-                      @input="filtrarProductos"
-                    />
-                  </div>
+                <div class="input-group">
+                  <label class="label-modern">Nombre/Código</label>
+                  <input
+                    v-model="filtroNombre"
+                    placeholder="Escribe el nombre o código..."
+                    class="input-modern"
+                    @input="filtrarProductos"
+                  />
                 </div>
-                <div class="filter-group">
-                  <label class="filter-label">Categoría</label>
-                  <select v-model="filtroCategoria" class="select-category">
-                    <option value="">Todas las categorías</option>
+                <div class="input-group">
+                  <label class="label-modern">Categoría</label>
+                  <select v-model="filtroCategoria" class="select-modern">
+                    <option value="">Todas</option>
                     <option v-for="cat in categorias" :key="cat.id" :value="cat.id">
                       {{ cat.nombre }}
                     </option>
                   </select>
                 </div>
+                <button @click="restablecerFiltros" class="clear-filters-btn">
+                    🔄 Restablecer
+                </button>
               </div>
             </div>
 
-            <!-- LISTA DE PRODUCTOS -->
-            <div class="card products-card">
+            <div class="card-modern products-card">
               <div class="card-header">
-                <div class="card-title">
-                  <h3>Productos Disponibles</h3>
-                  <p class="card-subtitle">
-                    {{ productosFiltrados.length }} 
-                    {{ productosFiltrados.length === 1 ? 'producto disponible' : 'productos disponibles' }}
-                  </p>
+                <div class="card-icon">
+                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                 </div>
-                <button @click="restablecerFiltros" class="btn-reset">
-                  🔄 Restablecer
-                </button>
+                <h3>Lista de Productos</h3>
+                <p class="card-subtitle-right">
+                  {{ productosFiltrados.length }} disponibles
+                </p>
               </div>
 
-              <!-- TABLA DE PRODUCTOS -->
-              <div class="table-container" v-if="productos.length">
+              <div class="table-container" v-if="productosFiltrados.length > 0">
                 <div class="table-wrapper">
                   <table class="products-table">
                     <thead>
                       <tr>
-                        <th class="col-check"></th>
-                        <th class="col-name">Producto</th>
+                        <th class="col-name-prod">Producto</th>
                         <th class="col-category">Categoría</th>
-                        <th class="col-stock">Stock</th>
                         <th class="col-price">Precio</th>
-                        <th class="col-quantity">Cantidad</th>
+                        <th class="col-stock">Stock</th>
+                        <th class="col-quantity">Cant.</th>
                         <th class="col-actions"></th>
                       </tr>
                     </thead>
@@ -90,36 +77,26 @@
                       <tr 
                         v-for="producto in productosFiltrados" 
                         :key="producto.id"
-                        :class="{
-                          'row-selected': productoEnCarrito(producto.id),
-                          'row-no-stock': producto.stock === 0
-                        }"
+                        :class="{'row-selected': productoEnCarrito(producto.id), 'row-no-stock': producto.stock === 0}"
                       >
-                        <td class="col-check">
-                          <div v-if="productoEnCarrito(producto.id)" class="selected-badge">
-                            ✓
-                          </div>
-                        </td>
-                        <td class="col-name">
+                        <td class="col-name-prod">
                           <div class="product-info">
                             <span class="product-name">{{ producto.nombre }}</span>
-                            <span class="product-id">ID: {{ producto.id }}</span>
+                            <span class="product-id" v-if="productoEnCarrito(producto.id)">✓ En Carrito</span>
                           </div>
                         </td>
                         <td class="col-category">
                           <span class="category-tag">
-                            {{ obtenerNombreCategoria(producto.categoria_id) }}
+                            {{ obtenerNombreCategoria(producto.categoria) }}
                           </span>
+                        </td>
+                        <td class="col-price">
+                          <span class="price">${{ parseFloat(producto.precio).toFixed(2) }}</span>
                         </td>
                         <td class="col-stock">
                           <div class="stock-badge" :class="getStockClass(producto.stock)">
-                            <span class="stock-value">{{ producto.stock }}</span>
-                            <span v-if="producto.stock === 0" class="stock-label">SIN STOCK</span>
-                            <span v-else-if="producto.stock <= 5" class="stock-label">BAJO</span>
+                            {{ producto.stock }}
                           </div>
-                        </td>
-                        <td class="col-price">
-                          <span class="price">${{ producto.precio }}</span>
                         </td>
                         <td class="col-quantity">
                           <input 
@@ -137,7 +114,6 @@
                             @click="agregarAlCarrito(producto)" 
                             :disabled="!puedeAgregarAlCarrito(producto)"
                             class="btn-add"
-                            :class="{'btn-disabled': !puedeAgregarAlCarrito(producto)}"
                           >
                             {{ obtenerTextoBoton(producto) }}
                           </button>
@@ -148,110 +124,84 @@
                 </div>
               </div>
               
-              <div v-else class="empty-state">
-                <div class="empty-icon">📦</div>
-                <div class="empty-content">
-                  <h4>No hay productos disponibles</h4>
-                  <p>Intenta ajustar los filtros de búsqueda</p>
-                </div>
+              <div v-else class="no-resultados">
+                <p>No hay productos activos o con stock disponible.</p>
               </div>
             </div>
           </div>
 
-          <!-- COLUMNA DERECHA: CARRITO -->
           <div class="right-column">
-            <!-- CARRITO -->
-            <div class="card cart-card" v-if="carrito.length > 0">
+            
+            <div class="card-modern cart-card">
               <div class="card-header">
-                <div class="card-title">
-                  <h3>Carrito de Compras</h3>
-                  <p class="card-subtitle">
-                    {{ carrito.length }} 
-                    {{ carrito.length === 1 ? 'producto agregado' : 'productos agregados' }}
-                  </p>
+                <div class="card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
                 </div>
-                <button @click="vaciarCarrito" class="btn-clear">
-                  🗑️ Vaciar
-                </button>
+                <h3>Carrito ({{ carrito.length }})</h3>
               </div>
               
-              <!-- ITEMS DEL CARRITO -->
-              <div class="cart-items">
-                <div v-for="item in carrito" :key="item.producto.id" class="cart-item">
-                  <div class="item-content">
-                    <div class="item-header">
-                      <span class="item-name">{{ item.producto.nombre }}</span>
-                      <span class="item-price">${{ item.producto.precio }} c/u</span>
+              <div v-if="carrito.length === 0" class="empty-cart">
+                <div class="empty-icon">🛒</div>
+                <p>Agrega productos</p>
+              </div>
+
+              <div v-else>
+                <div class="cart-items">
+                  <div v-for="item in carrito" :key="item.producto.id" class="cart-item">
+                    <div class="item-content">
+                      <div class="item-header">
+                        <span class="item-name">{{ item.producto.nombre }}</span>
+                        <span class="item-price">${{ parseFloat(item.producto.precio).toFixed(2) }}</span>
+                      </div>
+                      <div class="item-details">
+                        <span class="detail">Cant.: <strong>{{ item.cantidad }}</strong></span>
+                        <span class="detail">Subtotal: <strong>${{ parseFloat(item.subtotal).toFixed(2) }}</strong></span>
+                      </div>
                     </div>
-                    <div class="item-details">
-                      <span class="detail">
-                        <strong>Categoría:</strong> {{ obtenerNombreCategoria(item.producto.categoria_id) }}
-                      </span>
-                      <span class="detail">
-                        <strong>Cantidad:</strong> {{ item.cantidad }}
-                      </span>
-                    </div>
-                    <div class="item-subtotal">
-                      <span>Subtotal:</span>
-                      <strong>${{ item.subtotal }}</strong>
-                    </div>
+                    <button @click="quitarDelCarrito(item.producto.id)" class="btn-remove">✕</button>
                   </div>
-                  <button @click="quitarDelCarrito(item.producto.id)" class="btn-remove">
-                    ✕
-                  </button>
                 </div>
+
+                <button @click="vaciarCarrito" class="btn-secondary-full">🗑️ Vaciar Carrito</button>
               </div>
             </div>
 
-            <!-- RESUMEN Y PAGO -->
-            <div class="card summary-card" v-if="carrito.length > 0">
+            <div class="card-modern summary-card" v-if="carrito.length > 0">
               <div class="card-header">
-                <div class="card-title">
-                  <h3>Completar Venta</h3>
-                  <p class="card-subtitle">Selecciona el método de pago</p>
+                <div class="card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-4"></path><path d="M6 10h12M12 15h1"></path><path d="M17 17h5M17 14v4"></path></svg>
                 </div>
+                <h3>Total y Pago</h3>
               </div>
               
-              <!-- RESUMEN -->
-              <div class="summary-section">
-                <div class="summary-row total-row">
+              <div class="resumen-grid">
+                <div class="resumen-item total">
                   <span>TOTAL A PAGAR:</span>
-                  <span class="total-amount">${{ total.toFixed(2) }}</span>
+                  <strong class="total-amount">${{ total.toFixed(2) }}</strong>
                 </div>
               </div>
 
-              <!-- MÉTODO DE PAGO -->
-              <div class="payment-section">
-                <h4 class="payment-title">Método de Pago</h4>
-                <div class="payment-options">
-                  <div 
+              <div class="input-group">
+                <label class="label-modern">Método de Pago *</label>
+                <select v-model="datosVenta.medio_pago" class="select-modern">
+                  <option :value="null">-- Seleccionar --</option>
+                  <option 
                     v-for="mp in metodosPago" 
-                    :key="mp.id"
-                    class="payment-option"
-                    :class="{'payment-option-selected': datosVenta.medio_pago === mp.id}"
-                    @click="datosVenta.medio_pago = mp.id"
+                    :key="mp.id" 
+                    :value="mp.id"
                   >
-                    <div class="payment-info">
-                      <span class="payment-name">{{ mp.nombre }}</span>
-                      <span class="payment-desc">{{ mp.descripcion }}</span>
-                    </div>
-                    <div class="payment-check" v-if="datosVenta.medio_pago === mp.id">
-                      ✓
-                    </div>
-                  </div>
-                </div>
+                    {{ mp.nombre }}
+                  </option>
+                </select>
               </div>
 
-              <!-- BOTÓN DE CONFIRMACIÓN -->
               <button 
                 @click="registrarVenta" 
-                :disabled="!datosVenta.medio_pago || procesandoVenta" 
-                class="btn-confirm"
-                :class="{'btn-processing': procesandoVenta}"
+                :disabled="!datosVenta.medio_pago || procesandoVenta || carrito.length === 0" 
+                class="btn-confirmar-premium"
               >
                 <template v-if="!procesandoVenta">
-                  <span class="btn-text">Confirmar Venta</span>
-                  <span class="btn-total">${{ total.toFixed(2) }}</span>
+                  Confirmar Venta (${{ total.toFixed(2) }})
                 </template>
                 <template v-else>
                   <span class="spinner">⏳</span>
@@ -259,33 +209,17 @@
                 </template>
               </button>
             </div>
-
-            <!-- CARRITO VACÍO -->
-            <div class="card empty-cart-card" v-if="carrito.length === 0">
-              <div class="empty-cart">
-                <div class="empty-icon">🛒</div>
-                <div class="empty-content">
-                  <h4>Tu carrito está vacío</h4>
-                  <p>Agrega productos desde la lista de la izquierda</p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
-        <!-- NOTIFICACIONES -->
-        <transition name="slide-up">
-          <div v-if="mensaje" class="notification" :class="mensajeTipo">
-            <div class="notification-content">
-              <span class="notification-icon">
+        <transition name="fade">
+          <div v-if="mensaje" class="toast-message" :class="mensajeTipo">
+            <span class="notification-icon">
                 <template v-if="mensajeTipo === 'success'">✅</template>
                 <template v-else-if="mensajeTipo === 'error'">❌</template>
                 <template v-else-if="mensajeTipo === 'warning'">⚠️</template>
-                <template v-else>ℹ️</template>
-              </span>
-              <span class="notification-text">{{ mensaje }}</span>
-            </div>
-            <button @click="mensaje = ''" class="notification-close">✕</button>
+            </span>
+            {{ mensaje }}
           </div>
         </transition>
       </div>
@@ -294,12 +228,17 @@
 </template>
 
 <script>
-import axios from 'axios'
+import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2';
 
-const API_BASE_URL = 'http://localhost:8000'; 
+const API_BASE_URL = 'http://127.0.0.1:8000';
 
 export default {
+    name: 'RegistrarVenta',
+    
+    // ✅ AGREGAR ESTO para inyectar el router
+    inject: ['router'] || [],
+    
     data() {
         return {
             productos: [],
@@ -311,25 +250,130 @@ export default {
             carrito: [],
             procesandoVenta: false,
             datosVenta: {
-                medio_pago: null
+                medio_pago: null,
+                usuario: 1 
             },
             mensaje: '',
             mensajeTipo: 'success'
         }
     },
+    
+    // ✅ AGREGAR computed para el router si es necesario
     computed: {
+        // ... tus computed actuales ...
         productosFiltrados() {
             return this.productos.filter(p => {
                 const nombreMatch = p.nombre.toLowerCase().includes(this.filtroNombre.toLowerCase())
-                const categoriaMatch = this.filtroCategoria ? p.categoria_id === parseInt(this.filtroCategoria) : true 
-                return nombreMatch && categoriaMatch
+                const categoriaMatch = this.filtroCategoria ? p.categoria === parseInt(this.filtroCategoria) : true 
+                return nombreMatch && categoriaMatch && p.estado === 'ACTIVO' 
             })
         },
         total() {
             return this.carrito.reduce((acc, item) => acc + item.subtotal, 0)
         }
     },
+    
     methods: {
+        navegarAListado() {
+            console.log("🚀 Iniciando navegación al listado de ventas");
+            
+            // PRIMERO: Verificar si ya estamos en /ventas
+            if (this.$route.path === '/ventas') {
+                console.log("⚠️ Ya estamos en /ventas, recargando...");
+                window.location.reload();
+                return;
+            }
+            
+            // SEGUNDO: Intentar navegación Vue Router
+            this.$router.push('/ventas')
+                .then(() => {
+                    console.log("✅ Vue Router: Navegación exitosa");
+                    
+                    // Si después de 500ms aún no cambió, forzar recarga
+                    setTimeout(() => {
+                        if (this.$route.path !== '/ventas') {
+                            console.log("⏰ Timeout: Forzando navegación directa");
+                            window.location.href = '/ventas';
+                        }
+                    }, 500);
+                })
+                .catch((error) => {
+                    console.error("❌ Vue Router error:", error);
+                    console.log("🔄 Usando navegación directa como fallback");
+                    window.location.href = '/ventas';
+                });
+        },
+
+        volverAlListado() {
+            if (this.carrito.length > 0) {
+                Swal.fire({
+                    title: '¿Salir sin completar la venta?',
+                    text: 'Se perderán los productos agregados al carrito',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Sí, salir',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        this.navegarAListado();
+                    }
+                });
+            } else {
+                this.navegarAListado();
+            }
+        },
+
+        async procesarVentaExitosa(ventaData) {
+            Swal.close();
+            this.limpiarFormulario();
+            await this.cargarProductos(); 
+
+            const totalConfirmado = parseFloat(ventaData.total);
+            
+            // 🔥 FLUJO DE COMPROBANTE REQUERIDO
+            const result = await Swal.fire({
+                title: '¡Venta Registrada Exitosamente!',
+                html: `
+                    <div style="text-align: left; margin: 20px 0;">
+                        <div style="background: #f8fafc; padding: 15px; border-radius: 10px; border-left: 4px solid #059669; color: #1f2937;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <strong>N° de Venta:</strong>
+                                <span>#${ventaData.id}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <strong>Total:</strong>
+                                <span style="color: #059669; font-weight: bold;">$${totalConfirmado.toFixed(2)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p style="text-align: center; margin: 20px 0 10px 0; color: #6c757d;">
+                        ¿Desea abrir el comprobante de venta?
+                    </p>
+                `,
+                icon: 'success',
+                showCancelButton: true,
+                confirmButtonText: '📄 Sí, abrir comprobante',
+                cancelButtonText: '➡️ Continuar (ir a Listado)',
+                confirmButtonColor: '#3b82f6',
+                cancelButtonColor: '#6c757d',
+                reverseButtons: true,
+                backdrop: true,
+                allowOutsideClick: false
+            });
+
+            if (result.isConfirmed) {
+                this.abrirComprobante(ventaData.id);
+                // Esperar un momento y luego navegar
+                setTimeout(() => {
+                    this.navegarAListado();
+                }, 500);
+            } else {
+                // Redirigir inmediatamente cuando se hace clic en "Continuar"
+                this.navegarAListado();
+            }
+        },
+
+        // ... TUS OTROS MÉTODOS SIN CAMBIOS ...
         obtenerNombreCategoria(categoriaId) {
             const categoria = this.categorias.find(c => c.id === categoriaId);
             return categoria ? categoria.nombre : 'Sin categoría';
@@ -353,19 +397,17 @@ export default {
             if (producto.stock === 0) return false;
             
             const cantidad = this.cantidades[producto.id] || 1;
-            const stockDisponible = this.stockDisponibleReal(producto);
+            const stockDisponible = producto.stock;
+            const cantidadEnCarrito = this.cantidadEnCarrito(producto.id);
             
-            return cantidad >= 1 && cantidad <= stockDisponible;
+            return cantidad >= 1 && (cantidad + cantidadEnCarrito) <= stockDisponible;
         },
         
         obtenerTextoBoton(producto) {
             if (producto.stock === 0) return 'Sin Stock';
-            
-            const cantidadEnCarrito = this.cantidadEnCarrito(producto.id);
-            if (cantidadEnCarrito > 0) {
-                return `Agregar (${cantidadEnCarrito})`;
+            if (this.productoEnCarrito(producto.id)) {
+                return 'Añadir más';
             }
-            
             return 'Agregar';
         },
 
@@ -376,19 +418,20 @@ export default {
         },
 
         validarCantidad(producto) {
-          const cantidad = this.cantidades[producto.id] || 0;
-          const stockDisponible = this.stockDisponibleReal(producto);
+          let cantidad = this.cantidades[producto.id] || 0;
+          const stockTotal = producto.stock;
+          const cantidadEnCarrito = this.cantidadEnCarrito(producto.id);
           
-          if (cantidad > stockDisponible) {
-            this.cantidades[producto.id] = stockDisponible;
-            this.mostrarMensaje('Cantidad ajustada al stock disponible', 'info');
+          if (cantidad < 1) {
+              this.cantidades[producto.id] = 1;
+          } else if (cantidad + cantidadEnCarrito > stockTotal) {
+            cantidad = stockTotal - cantidadEnCarrito;
+            this.cantidades[producto.id] = Math.max(1, cantidad);
+            this.mostrarMensaje('Cantidad ajustada para no exceder el stock total', 'warning');
           }
         },
-
-        filtrarProductos() {
-            // Búsqueda en tiempo real
-        },
-
+        
+        filtrarProductos() {}, 
         restablecerFiltros() {
             this.filtroNombre = '';
             this.filtroCategoria = '';
@@ -401,9 +444,7 @@ export default {
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#ef4444',
-                cancelButtonColor: '#6b7280',
                 confirmButtonText: 'Sí, vaciar',
-                cancelButtonText: 'Cancelar'
             }).then((result) => {
                 if (result.isConfirmed) {
                     this.carrito.forEach(item => {
@@ -418,168 +459,77 @@ export default {
         async cargarMetodosPago() {
             try {
                 const res = await axios.get(`${API_BASE_URL}/usuarios/api/metodos-pago/`); 
-                const todosMetodos = Array.isArray(res.data) ? res.data : [];
-                
-                const metodosActivos = todosMetodos.filter(mp => mp.activo !== false);
-                const metodosAgrupados = [];
-                const tiposUsados = new Set();
-                
-                metodosActivos.forEach(mp => {
-                    let tipoMostrar = '';
-                    let idMostrar = mp.id;
-                    
-                    if (mp.nombre.toLowerCase().includes('efectivo')) {
-                        tipoMostrar = 'Efectivo';
-                    } 
-                    else if (mp.nombre.toLowerCase().includes('crédito') || 
-                             mp.nombre.toLowerCase().includes('debito') || 
-                             mp.nombre.toLowerCase().includes('débito') || 
-                             mp.nombre.toLowerCase().includes('tarjeta')) {
-                        tipoMostrar = 'Tarjeta';
-                    }
-                    else if (mp.nombre.toLowerCase().includes('mercado') || 
-                             mp.nombre.toLowerCase().includes('transferencia')) {
-                        tipoMostrar = 'Transferencia';
-                    }
-                    
-                    if (tipoMostrar && !tiposUsados.has(tipoMostrar)) {
-                        tiposUsados.add(tipoMostrar);
-                        metodosAgrupados.push({
-                            id: idMostrar,
-                            nombre: tipoMostrar,
-                            tipo_original: mp.tipo,
-                            descripcion: mp.descripcion || tipoMostrar,
-                            requiere_confirmacion: mp.requiere_confirmacion || false
-                        });
-                    }
-                });
-                
-                const tiposNecesarios = ['Efectivo', 'Tarjeta', 'Transferencia'];
-                tiposNecesarios.forEach(tipo => {
-                    if (!tiposUsados.has(tipo)) {
-                        metodosAgrupados.push({
-                            id: metodosAgrupados.length + 1,
-                            nombre: tipo,
-                            tipo_original: tipo.toUpperCase(),
-                            descripcion: tipo,
-                            requiere_confirmacion: tipo === 'Transferencia'
-                        });
-                    }
-                });
-                
-                const orden = ['Efectivo', 'Tarjeta', 'Transferencia'];
-                this.metodosPago = metodosAgrupados.sort((a, b) => 
-                    orden.indexOf(a.nombre) - orden.indexOf(b.nombre)
-                );
-                
+                this.metodosPago = Array.isArray(res.data) ? res.data.filter(mp => mp.activo !== false) : [];
                 if (this.metodosPago.length > 0) {
                     this.datosVenta.medio_pago = this.metodosPago[0].id;
                 }
-                
             } catch (err) { 
                 console.error("❌ Error al cargar métodos de pago:", err);
-                
-                this.metodosPago = [
-                    { id: 1, nombre: 'Efectivo', tipo_original: 'EFECTIVO', descripcion: 'Pago en efectivo', requiere_confirmacion: false },
-                    { id: 2, nombre: 'Tarjeta', tipo_original: 'TARJETA', descripcion: 'Pago con tarjeta', requiere_confirmacion: true },
-                    { id: 3, nombre: 'Transferencia', tipo_original: 'TRANSFERENCIA', descripcion: 'Transferencia bancaria o QR', requiere_confirmacion: true }
-                ];
-                
-                this.datosVenta.medio_pago = 1;
             }
         },
         
         async cargarProductos() {
             try {
                 const res = await axios.get(`${API_BASE_URL}/usuarios/api/productos/`);
-                const datosCrudos = Array.isArray(res.data) ? res.data : [];
-                
-                this.productos = datosCrudos.map(prod => ({
+                this.productos = (Array.isArray(res.data) ? res.data : []).map(prod => ({
                     ...prod,
-                    stock: prod.stock_actual
+                    stock: parseInt(prod.stock_actual) || 0, 
+                    precio: parseFloat(prod.precio) || 0,
                 }));
-
-                this.inicializarCantidades();
+                this.productos.forEach(p => { 
+                    this.cantidades[p.id] = Math.min(1, p.stock);
+                });
             } catch (err) { 
                 console.error("Error al cargar productos:", err);
-                this.productos = [] 
             }
         },
 
-        inicializarCantidades() {
-            this.productos.forEach(p => { 
-                p.stock = parseInt(p.stock) || 0;
-                this.cantidades[p.id] = Math.min(1, p.stock);
-            });
-        },
-        
         async cargarCategorias() {
             try {
                 const res = await axios.get(`${API_BASE_URL}/usuarios/api/categorias/productos/`)
                 this.categorias = Array.isArray(res.data) ? res.data : []
             } catch (err) { 
                 console.error("Error al cargar categorías:", err);
-                this.categorias = [] 
             }
         },
         
         agregarAlCarrito(producto) {
-            const cantidad = this.cantidades[producto.id];
+            const cantidadAAgregar = this.cantidades[producto.id];
             
-            if (!this.validarStockDisponible(producto, cantidad)) {
-                return;
+            if ((cantidadAAgregar + this.cantidadEnCarrito(producto.id)) > producto.stock) {
+                 this.mostrarMensaje(`No puedes agregar ${cantidadAAgregar}. Stock máximo excedido.`, 'error');
+                 return;
             }
 
-            const itemExistente = this.carrito.find(item => item.producto.id === producto.id);
+            const itemIndex = this.carrito.findIndex(item => item.producto.id === producto.id);
             
-            if (itemExistente) {
-                itemExistente.cantidad += cantidad;
-                itemExistente.subtotal = itemExistente.cantidad * producto.precio;
-                this.mostrarMensaje(`${cantidad} unidad(es) agregadas a ${producto.nombre}`, 'success');
+            if (itemIndex !== -1) {
+                const itemExistente = this.carrito[itemIndex];
+                itemExistente.cantidad += cantidadAAgregar;
+                itemExistente.subtotal = itemExistente.cantidad * itemExistente.producto.precio;
+                this.mostrarMensaje(`Se añadió(eron) ${cantidadAAgregar} unidad(es) de ${producto.nombre}.`, 'success');
             } else {
                 this.carrito.push({
                     producto: {
                         id: producto.id,
                         nombre: producto.nombre,
-                        precio: parseFloat(producto.precio),
-                        categoria_id: producto.categoria_id
+                        precio: producto.precio,
+                        categoria: producto.categoria
                     },
-                    cantidad,
-                    subtotal: cantidad * producto.precio
+                    cantidad: cantidadAAgregar,
+                    subtotal: cantidadAAgregar * producto.precio
                 });
                 this.mostrarMensaje(`${producto.nombre} agregado al carrito`, 'success');
             }
             
-            this.actualizarStockVisual(producto.id, -cantidad);
+            this.productos.find(p => p.id === producto.id).stock -= cantidadAAgregar;
             this.cantidades[producto.id] = 1;
-        },
-        
-        validarStockDisponible(producto, cantidad) {
-          if (cantidad < 1) {
-            this.mostrarMensaje('La cantidad debe ser al menos 1', 'error');
-            return false;
-          }
-          
-          const stockDisponible = this.stockDisponibleReal(producto);
-          
-          if (cantidad > stockDisponible) {
-            this.mostrarMensaje(`Stock insuficiente. Disponible: ${stockDisponible} unidades`, 'error');
-            this.cantidades[producto.id] = stockDisponible;
-            return false;
-          }
-          
-          if (producto.stock === 0) {
-            this.mostrarMensaje('Este producto no tiene stock disponible', 'error');
-            return false;
-          }
-          
-          return true;
         },
         
         actualizarStockVisual(productoId, cambio) {
             const producto = this.productos.find(p => p.id === productoId);
             if (producto) {
-                producto.stock = Math.max(0, producto.stock + cambio);
+                producto.stock = Math.min(producto.stock_actual, producto.stock + cambio);
                 if (producto.stock === 0) {
                     this.cantidades[productoId] = 0;
                 }
@@ -590,45 +540,35 @@ export default {
             const itemIndex = this.carrito.findIndex(item => item.producto.id === productoId);
             if (itemIndex !== -1) {
                 const item = this.carrito[itemIndex];
-                const cantidadDevuelta = item.cantidad;
-                const productoNombre = item.producto.nombre;
-                
-                this.actualizarStockVisual(productoId, cantidadDevuelta);
+                this.actualizarStockVisual(productoId, item.cantidad);
                 this.carrito.splice(itemIndex, 1);
-
-                this.mostrarMensaje(`${productoNombre} removido del carrito`, 'info');
+                this.mostrarMensaje(`${item.producto.nombre} removido del carrito`, 'info');
             }
         },
         
         async registrarVenta() {
-            console.log("🔄 Iniciando registro de venta...");
-            
             if (!this.validarVenta()) return;
 
             this.procesandoVenta = true;
-
+            
             Swal.fire({
                 title: 'Registrando Venta...',
                 text: 'Por favor espere',
                 allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
+                didOpen: () => { Swal.showLoading(); }
             });
 
             try {
                 const payload = this.prepararPayloadVenta();
-                console.log("📦 Payload enviado:", payload);
-
                 const response = await axios.post(`${API_BASE_URL}/usuarios/api/ventas/registrar/`, payload);
                 
                 if (response.status === 201) {
-                    console.log("✅ Venta registrada en backend");
-                    await this.procesarVentaExitosa(response.data);
+                    await this.procesarVentaExitosa(response.data); 
+                } else {
+                     throw new Error(`Respuesta inesperada del servidor: ${response.status}`);
                 }
             } catch (err) {
-                console.error("❌ Error en registrarVenta:", err);
-                await this.manejarErrorVenta(err);
+                this.manejarErrorVenta(err);
             } finally {
                 this.procesandoVenta = false;
             }
@@ -651,7 +591,9 @@ export default {
                 producto: item.producto.id,
                 cantidad: item.cantidad,
                 precio_unitario: parseFloat(item.producto.precio),
-                subtotal: parseFloat(item.subtotal)
+                subtotal: parseFloat(item.subtotal),
+                servicio: null,
+                turno: null 
             }));
             
             return { 
@@ -660,99 +602,23 @@ export default {
                 medio_pago: parseInt(this.datosVenta.medio_pago),
                 detalles,
                 cliente: null,
-                usuario: 1
+                usuario: this.datosVenta.usuario 
             };
-        },
-
-        async procesarVentaExitosa(ventaData) {
-            console.log("🔄 procesarVentaExitosa iniciado:", ventaData);
-            
-            const totalConfirmado = parseFloat(ventaData.total);
-
-            Swal.close();
-            
-            this.limpiarFormulario();
-            await this.cargarProductos();
-            
-            this.$emit('venta-registrada', ventaData);
-            
-            const result = await Swal.fire({
-                title: '¡Venta Registrada Exitosamente!',
-                html: `
-                    <div style="text-align: left; margin: 20px 0;">
-                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; border-left: 4px solid #28a745;">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <strong>N° de Venta:</strong>
-                                <span>#${ventaData.id}</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <strong>Total:</strong>
-                                <span style="color: #28a745; font-weight: bold;">$${totalConfirmado.toFixed(2)}</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <strong>Método de Pago:</strong>
-                                <span>${ventaData.medio_pago_nombre || 'Efectivo'}</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between;">
-                                <strong>Fecha:</strong>
-                                <span>${new Date().toLocaleDateString('es-ES')}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <p style="text-align: center; margin: 20px 0 10px 0; color: #6c757d;">
-                        ¿Desea abrir el comprobante de venta?
-                    </p>
-                `,
-                icon: 'success',
-                showCancelButton: true,
-                confirmButtonText: '📄 Sí, abrir comprobante',
-                cancelButtonText: '➡️ Continuar sin abrir',
-                confirmButtonColor: '#28a745',
-                cancelButtonColor: '#6c757d',
-                reverseButtons: true,
-                backdrop: true,
-                allowOutsideClick: false
-            });
-
-            if (result.isConfirmed) {
-                this.abrirComprobante(ventaData.id);
-            } else {
-                this.continuarSinAbrir();
-            }
         },
 
         abrirComprobante(ventaId) {
             console.log("📄 Abriendo comprobante...");
             const pdfUrl = `${API_BASE_URL}/usuarios/api/ventas/${ventaId}/comprobante-pdf/`;
             window.open(pdfUrl, '_blank');
-            
-            this.$emit('venta-completada');
         },
 
-        continuarSinAbrir() {
-            console.log("➡️ Continuando sin comprobante...");
-            this.$emit('venta-completada');
-        },
-
-        limpiarFormulario() {
-            console.log("🧹 Limpiando formulario...");
-            this.carrito = [];
-            this.datosVenta.medio_pago = this.metodosPago[0]?.id || null;
-            this.filtroNombre = '';
-            this.filtroCategoria = '';
-        },
-
-        async manejarErrorVenta(err) {
-            console.error("❌ Error completo:", err);
-            
+        manejarErrorVenta(err) {
             Swal.close();
-            
-            let errorMessage = 'Error al registrar venta';
-            
-            if (err.response?.data) {
+            let errorMessage = 'Error desconocido al registrar venta.';
+            if (err.response) {
                 if (err.response.status === 401) {
-                    errorMessage = 'Debe iniciar sesión para registrar una venta.';
-                } else {
+                    errorMessage = 'Permiso denegado. Debe iniciar sesión.';
+                } else if (err.response.data) {
                     errorMessage = JSON.stringify(err.response.data);
                 }
             }
@@ -761,45 +627,29 @@ export default {
                 icon: 'error',
                 title: 'Error al Registrar Venta',
                 text: errorMessage,
-                confirmButtonText: 'Entendido'
+                confirmButtonColor: '#ef4444'
             });
-            
-            await this.cargarProductos();
+            this.cargarProductos();
         },
 
         mostrarMensaje(texto, tipo = 'info') {
             this.mensaje = texto;
             this.mensajeTipo = tipo;
-            
-            setTimeout(() => {
-                this.mensaje = '';
-            }, 4000);
+            setTimeout(() => { this.mensaje = ''; }, 4000);
         },
 
-        volverAlListado() {
-            if (this.carrito.length > 0) {
-                Swal.fire({
-                    title: '¿Salir sin completar la venta?',
-                    text: 'Tienes productos en el carrito que se perderán',
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonColor: '#ef4444',
-                    cancelButtonColor: '#6b7280',
-                    confirmButtonText: 'Sí, salir',
-                    cancelButtonText: 'Cancelar'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        this.$emit('volver-al-listado');
-                    }
-                });
-            } else {
-                this.$emit('volver-al-listado');
-            }
+        limpiarFormulario() {
+            this.carrito = [];
+            this.datosVenta.medio_pago = this.metodosPago[0]?.id || null;
+            this.filtroNombre = '';
+            this.filtroCategoria = '';
         }
     },
     
     mounted() {
-        console.log("🚀 Componente RegistrarVenta.vue cargado");
+        console.log("Componente montado. Router disponible:", this.$router);
+        console.log("Router inyectado:", this.router);
+        
         this.cargarProductos();
         this.cargarCategorias();
         this.cargarMetodosPago();
@@ -808,94 +658,89 @@ export default {
 </script>
 
 <style scoped>
-/* ============================================
-   FONDO Y LAYOUT PRINCIPAL
-   ============================================ */
+/* ========================================================
+   🔥 ESTILOS DE TURNOS PRESENCIALES (Copia limpia)
+   ======================================================== */
 .page-background {
   min-height: 100vh;
-  padding: 20px;
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  padding: 30px 20px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
 }
 
 .main-card-container {
   background: white;
   border-radius: 24px;
   width: 100%;
-  max-width: 1800px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 30px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 40px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+  overflow: hidden;
 }
 
 .venta-container {
   width: 100%;
   padding: 0;
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* ============================================
-   HEADER
-   ============================================ */
+/* --- HEADER --- */
 .header-section {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 40px;
-  padding: 25px 30px;
+  margin-bottom: 30px;
+  padding: 25px;
   background: linear-gradient(135deg, #1f2937, #374151);
-  border-radius: 20px;
+  border-radius: 16px;
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
 }
 
-.header-title h2 {
-  margin: 0 0 8px 0;
+.header-section h2 {
+  margin: 0;
   color: white;
-  font-size: 2em;
+  font-size: 1.8em;
   font-weight: 700;
   display: flex;
   align-items: center;
   gap: 12px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-.header-icon {
-  color: #60a5fa;
-}
-
-.header-subtitle {
-  margin: 0;
-  color: #cbd5e1;
-  font-size: 1.1em;
+.header-icon { 
+  color: #60a5fa; 
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
 
 .btn-back {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.1);
   color: white;
-  border: 2px solid rgba(255, 255, 255, 0.25);
-  padding: 12px 24px;
-  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  padding: 10px 20px;
+  border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 1em;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
   gap: 8px;
+  backdrop-filter: blur(10px);
 }
 
 .btn-back:hover { 
-  background: rgba(255, 255, 255, 0.25); 
-  border-color: rgba(255, 255, 255, 0.4);
-  transform: translateY(-2px); 
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.2); 
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px); 
 }
 
-/* ============================================
-   LAYOUT DE 2 COLUMNAS
-   ============================================ */
+/* --- LAYOUT DE 2 COLUMNAS (ADAPTACIÓN) --- */
 .main-content {
   display: grid;
-  grid-template-columns: 1.5fr 1fr;
+  grid-template-columns: 2fr 1fr; 
   gap: 30px;
 }
 
@@ -905,880 +750,233 @@ export default {
   gap: 25px;
 }
 
-/* ============================================
-   CARDS GENERALES
-   ============================================ */
-.card {
+/* --- CARDS MODERNAS (Estilo Turnos) --- */
+.card-modern {
   background: #fff;
-  border-radius: 18px;
+  border-radius: 16px;
   border: 1px solid #e5e7eb;
-  padding: 30px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  padding: 25px;
+  margin-bottom: 0px; 
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.card-modern:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
 }
 
 .card-header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 25px;
-  padding-bottom: 20px;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
   border-bottom: 2px solid #f1f3f4;
 }
 
-.card-title h3 {
-  margin: 0 0 6px 0;
-  color: #1f2937;
-  font-size: 1.4em;
-  font-weight: 700;
+.card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  border-radius: 12px;
+  color: white;
+  box-shadow: 0 6px 12px rgba(59, 130, 246, 0.3);
+  flex-shrink: 0;
 }
 
-.card-subtitle {
+.card-header h3 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 1.3em;
+  font-weight: 700;
+  flex: 1;
+}
+
+.card-subtitle-right {
   margin: 0;
   color: #6b7280;
-  font-size: 0.95em;
+  font-size: 0.9em;
 }
 
-/* ============================================
-   FILTROS
-   ============================================ */
-.filters-grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 25px;
+/* --- FORM Y FILTROS --- */
+.input-group {
+    margin-bottom: 15px;
 }
 
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.filter-label {
+.label-modern {
+  display: block;
   font-weight: 600;
-  color: #374151;
-  font-size: 1em;
-  margin-left: 4px;
+  margin-bottom: 8px;
+  color: #1f2937;
+  font-size: 1rem;
 }
 
-.search-wrapper {
-  position: relative;
-}
-
-.input-search {
+.input-modern, .select-modern {
   width: 100%;
-  padding: 16px 20px;
-  border: 2px solid #e5e7eb;
-  border-radius: 12px;
-  background: #f9fafb;
-  font-size: 1em;
+  padding: 12px 16px;
+  border: 2px solid #e1e5e9;
+  border-radius: 10px;
+  background: #f8f9fa;
+  font-size: 15px;
   transition: all 0.3s ease;
   color: #1f2937;
-  font-weight: 500;
 }
 
-.input-search:focus {
+.input-modern:focus, .select-modern:focus {
   border-color: #3b82f6;
   background: #fff;
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   outline: none;
 }
 
-.select-category {
-  width: 100%;
-  padding: 16px 20px;
-  border: 2px solid #e5e7eb;
-  border-radius: 12px;
-  background: #f9fafb;
-  font-size: 1em;
-  transition: all 0.3s ease;
-  color: #1f2937;
-  font-weight: 500;
-  cursor: pointer;
+.filters-grid { 
+    display: grid; 
+    grid-template-columns: 1fr 1fr auto; 
+    gap: 15px;
+    align-items: end;
 }
 
-.select-category:focus {
-  border-color: #3b82f6;
-  background: #fff;
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
-  outline: none;
-}
-
-.btn-reset {
+.clear-filters-btn {
   background: #f3f4f6;
   color: #6b7280;
-  border: 2px solid #e5e7eb;
-  padding: 10px 20px;
+  border: 1px solid #d1d5db;
+  padding: 12px 18px;
   border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 0.9em;
   transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  height: 48px;
 }
+.clear-filters-btn:hover { background: #e5e7eb; }
 
-.btn-reset:hover {
-  background: #e5e7eb;
-  color: #374151;
-}
-
-/* ============================================
-   TABLA DE PRODUCTOS
-   ============================================ */
+/* --- TABLA (Estilo de Listado) --- */
 .table-container {
   margin-top: 15px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
 }
 
 .table-wrapper {
   overflow-x: auto;
-  border-radius: 14px;
-  border: 1px solid #e5e7eb;
 }
 
 .products-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1000px;
-}
-
-.products-table thead {
-  background: #f8fafc;
-  border-bottom: 2px solid #e5e7eb;
+  min-width: 800px;
 }
 
 .products-table th {
-  padding: 18px 16px;
+  padding: 16px 14px;
   text-align: left;
+  background: #f8fafc;
   color: #374151;
   font-weight: 600;
-  font-size: 0.9em;
+  font-size: 0.85em;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-}
-
-.products-table tbody tr {
-  border-bottom: 1px solid #f1f3f4;
-  transition: all 0.2s ease;
-}
-
-.products-table tbody tr:hover {
-  background: #f8fafc;
-}
-
-.products-table tbody tr.row-selected {
-  background: #f0fdf4;
-  border-left: 4px solid #10b981;
-}
-
-.products-table tbody tr.row-no-stock {
-  opacity: 0.7;
-  background: #f9fafb;
 }
 
 .products-table td {
-  padding: 16px 16px;
+  padding: 14px;
+  border-bottom: 1px solid #f1f3f4;
   vertical-align: middle;
 }
 
-/* Columnas específicas */
-.col-check {
-  width: 60px;
-  text-align: center;
-}
+.products-table tbody tr:hover { background: #f8fafc; }
+.row-selected { background: #f0fdf4 !important; border-left: 4px solid #10b981; }
+.row-no-stock { opacity: 0.7; background: #f9fafb; }
 
-.selected-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  background: #10b981;
-  border-radius: 50%;
-  color: white;
-  font-weight: bold;
-  font-size: 0.9em;
-}
+.product-name { font-weight: 600; color: #1f2937; }
+.product-id { color: #6b7280; font-size: 0.8em; display: block; }
+.category-tag { background: #e7f3ff; color: #1d4ed8; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; }
 
-.col-name {
-  min-width: 250px;
-}
+.stock-badge { padding: 4px 8px; border-radius: 4px; font-weight: 700; font-size: 0.9em; min-width: 60px; text-align: center;}
+.stock-critical { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
+.stock-low { background: #fef3c7; color: #d97706; border: 1px solid #fcd34d; }
+.stock-normal { background: #d1fae5; color: #059669; border: 1px solid #6ee7b7; }
 
-.product-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+.quantity-input { width: 60px; text-align: center; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; }
+.btn-add { background: #3b82f6; color: white; border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; transition: all 0.3s ease; }
+.btn-add:hover:not(.btn-disabled) { background: #2563eb; }
+.btn-add.btn-disabled { background: #9ca3af; cursor: not-allowed; }
 
-.product-name {
-  font-weight: 600;
-  color: #1f2937;
-  font-size: 1.05em;
-}
 
-.product-id {
-  color: #6b7280;
-  font-size: 0.85em;
-  font-family: monospace;
-}
+/* --- CARRITO / DERECHA --- */
+.cart-items { display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto; padding-right: 10px; }
+.cart-item { padding: 15px; background: #f8fafc; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+.item-name { font-weight: 600; color: #1f2937; }
+.item-details { color: #6b7280; font-size: 0.9em; }
+.item-details strong { color: #1f2937; }
+.btn-remove { background: #fee2e2; color: #dc2626; border: none; width: 30px; height: 30px; border-radius: 6px; }
+.btn-secondary-full { background: #f3f4f6; color: #dc2626; border: 1px solid #e5e7eb; padding: 12px; border-radius: 10px; font-weight: 600; width: 100%; margin-top: 15px; }
 
-.col-category {
-  min-width: 150px;
-}
+/* --- RESUMEN Y PAGO --- */
+.resumen-grid { margin: 20px 0 10px 0; }
+.resumen-item.total { padding: 12px 0; font-size: 1.3em; font-weight: 700; border-top: 2px solid #f1f3f4; margin-top: 10px; padding-top: 10px; }
+.total-amount { color: #059669; font-size: 1.4em; }
 
-.category-tag {
-  background: #e7f3ff;
-  color: #1d4ed8;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 0.85em;
-  font-weight: 500;
-  border: 1px solid #b3d9ff;
-  display: inline-block;
-}
-
-.col-stock {
-  min-width: 120px;
-}
-
-.stock-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 0.9em;
-}
-
-.stock-badge.stock-critical {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.stock-badge.stock-low {
-  background: #fef3c7;
-  color: #d97706;
-}
-
-.stock-badge.stock-normal {
-  background: #d1fae5;
-  color: #059669;
-}
-
-.stock-value {
-  font-size: 1.1em;
-}
-
-.stock-label {
-  font-size: 0.8em;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 4px;
-}
-
-.stock-critical .stock-label {
-  background: #dc2626;
-  color: white;
-}
-
-.stock-low .stock-label {
-  background: #d97706;
-  color: white;
-}
-
-.col-price {
-  min-width: 120px;
-}
-
-.price {
-  font-weight: 700;
-  color: #059669;
-  font-size: 1.1em;
-}
-
-.col-quantity {
-  min-width: 140px;
-}
-
-.quantity-input {
-  width: 100px;
-  text-align: center;
-  padding: 12px;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  background: #fff;
-  font-weight: 600;
-  color: #1f2937;
-  font-size: 1em;
-}
-
-.quantity-input:focus {
-  border-color: #3b82f6;
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.quantity-input:disabled {
-  background: #f3f4f6;
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.col-actions {
-  min-width: 150px;
-  text-align: right;
-}
-
-.btn-add {
-  background: #3b82f6;
-  color: white;
+/* Botón Final (Estilo Confirmar Turno) */
+.btn-confirmar-premium {
+  width: 100%; 
+  background: linear-gradient(135deg, #059669, #047857); 
+  color: white; 
+  padding: 18px; 
   border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.95em;
+  border-radius: 12px; 
+  font-size: 1.1em; 
+  font-weight: 700; 
+  cursor: pointer; 
   transition: all 0.3s ease;
-  min-width: 120px;
+  letter-spacing: 0.5px;
 }
 
-.btn-add:hover:not(.btn-disabled) {
-  background: #2563eb;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+.btn-confirmar-premium:hover:not(:disabled) { 
+  transform: translateY(-3px); 
+  box-shadow: 0 10px 25px rgba(5, 150, 105, 0.4);
 }
 
-.btn-add.btn-disabled {
-  background: #9ca3af;
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-/* ============================================
-   CARRITO
-   ============================================ */
-.cart-items {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  max-height: 400px;
-  overflow-y: auto;
-  padding-right: 10px;
-}
-
-.cart-items::-webkit-scrollbar {
-  width: 6px;
-}
-
-.cart-items::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 3px;
-}
-
-.cart-items::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-
-.cart-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 20px;
-  background: #f8fafc;
-  border-radius: 14px;
-  border: 1px solid #e5e7eb;
-  transition: all 0.3s ease;
-}
-
-.cart-item:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
-}
-
-.item-content {
-  flex: 1;
-}
-
-.item-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 10px;
-}
-
-.item-name {
-  font-weight: 600;
-  color: #1f2937;
-  font-size: 1.1em;
-  flex: 1;
-}
-
-.item-price {
-  color: #059669;
-  font-weight: 700;
-  font-size: 1.05em;
-  white-space: nowrap;
-}
-
-.item-details {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-  margin-bottom: 15px;
-}
-
-.detail {
-  color: #6b7280;
-  font-size: 0.9em;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.item-subtotal {
-  text-align: left;
-}
-
-.item-subtotal span {
-  display: block;
-  font-size: 0.85em;
-  color: #6b7280;
-  margin-bottom: 4px;
-}
-
-.item-subtotal strong {
-  font-weight: 700;
-  color: #059669;
-  font-size: 1.2em;
-}
-
-.btn-remove {
-  background: #fee2e2;
-  color: #dc2626;
-  border: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: bold;
-  font-size: 1.1em;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.btn-remove:hover {
-  background: #fecaca;
-  transform: scale(1.1);
-}
-
-.btn-clear {
-  background: #fee2e2;
-  color: #dc2626;
-  border: 2px solid #fecaca;
-  padding: 10px 20px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.9em;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.btn-clear:hover {
-  background: #fecaca;
-  color: #b91c1c;
-}
-
-/* ============================================
-   RESUMEN
-   ============================================ */
-.summary-section {
-  margin: 20px 0;
-  padding: 20px;
-  background: #f8fafc;
-  border-radius: 14px;
-  border: 2px solid #e5e7eb;
-}
-
-.total-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 0;
-  font-size: 1.3em;
-  font-weight: 700;
-  color: #1f2937;
-}
-
-.total-amount {
-  color: #059669;
-  font-size: 1.4em;
-}
-
-/* ============================================
-   MÉTODOS DE PAGO
-   ============================================ */
-.payment-section {
-  margin: 25px 0;
-}
-
-.payment-title {
-  margin: 0 0 20px 0;
-  color: #1f2937;
-  font-size: 1.1em;
-  font-weight: 600;
-}
-
-.payment-options {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.payment-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px;
-  background: #f9fafb;
-  border: 2px solid #e5e7eb;
-  border-radius: 14px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.payment-option:hover {
-  border-color: #93c5fd;
-  background: #f0f9ff;
-}
-
-.payment-option-selected {
-  border-color: #3b82f6;
-  background: #eff6ff;
-}
-
-.payment-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.payment-name {
-  font-weight: 600;
-  color: #1f2937;
-  font-size: 1.1em;
-}
-
-.payment-desc {
-  color: #6b7280;
-  font-size: 0.9em;
-}
-
-.payment-check {
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #10b981;
-  border-radius: 50%;
-  color: white;
-  font-weight: bold;
-  font-size: 0.9em;
-  flex-shrink: 0;
-}
-
-/* ============================================
-   BOTÓN DE CONFIRMACIÓN
-   ============================================ */
-.btn-confirm {
-  width: 100%;
-  background: linear-gradient(135deg, #059669, #047857);
-  color: white;
-  padding: 20px;
-  border: none;
-  border-radius: 14px;
-  font-size: 1.1em;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 15px;
-  margin-top: 20px;
-}
-
-.btn-confirm:hover:not(.btn-processing):not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(5, 150, 105, 0.3);
-  background: linear-gradient(135deg, #047857, #065f46);
-}
-
-.btn-confirm:disabled,
-.btn-confirm.btn-processing {
-  background: #9ca3af;
-  cursor: not-allowed;
-  transform: none;
+.btn-confirmar-premium:disabled { 
+  background: #9ca3af; 
+  cursor: not-allowed; 
   opacity: 0.7;
 }
 
-.btn-text {
-  flex: 1;
-  text-align: center;
-}
+.spinner { animation: spin 1s linear infinite; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
 
-.btn-total {
-  background: rgba(255, 255, 255, 0.2);
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-weight: 800;
-  font-size: 1em;
-}
+/* --- ESTADOS VACÍOS --- */
+.empty-cart, .no-resultados { text-align: center; padding: 30px 20px; color: #6b7280; }
+.empty-icon { opacity: 0.5; margin-bottom: 15px; font-size: 2em; color: #9ca3af; }
+.empty-cart p, .no-resultados p { margin: 0; font-size: 0.95em; color: #6b7280; }
+.empty-cart h4, .no-resultados h4 { margin: 0 0 8px 0; font-size: 1.2em; color: #1f2937; font-weight: 600; }
 
-.spinner {
-  animation: spin 1s linear infinite;
-  margin-right: 10px;
-}
+/* --- NOTIFICACIONES --- */
+.toast-message { position: fixed; bottom: 30px; right: 30px; padding: 15px 20px; border-radius: 10px; font-weight: 600; z-index: 9999; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+.toast-message.success { background: #d1fae5; color: #059669; }
+.toast-message.error { background: #fee2e2; color: #dc2626; }
+.toast-message.warning { background: #fef3c7; color: #d97706; }
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* ============================================
-   ESTADOS VACÍOS
-   ============================================ */
-.empty-state, .empty-cart {
-  text-align: center;
-  padding: 50px 20px;
-  color: #6b7280;
-}
-
-.empty-icon {
-  opacity: 0.5;
-  margin-bottom: 20px;
-  font-size: 3em;
-  color: #9ca3af;
-}
-
-.empty-state h4, .empty-cart h4 {
-  margin: 0 0 12px 0;
-  font-size: 1.3em;
-  color: #1f2937;
-  font-weight: 600;
-}
-
-.empty-state p, .empty-cart p {
-  margin: 0;
-  font-size: 1em;
-  color: #6b7280;
-}
-
-/* ============================================
-   NOTIFICACIONES
-   ============================================ */
-.notification {
-  position: fixed;
-  bottom: 40px;
-  right: 40px;
-  min-width: 300px;
-  max-width: 400px;
-  background: white;
-  border-radius: 14px;
-  padding: 20px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  z-index: 9999;
-  border-left: 6px solid;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 15px;
-}
-
-.notification.success {
-  border-left-color: #10b981;
-  background: linear-gradient(135deg, #f0fdf4, #dcfce7);
-}
-
-.notification.error {
-  border-left-color: #ef4444;
-  background: linear-gradient(135deg, #fef2f2, #fee2e2);
-}
-
-.notification.warning {
-  border-left-color: #f59e0b;
-  background: linear-gradient(135deg, #fffbeb, #fef3c7);
-}
-
-.notification.info {
-  border-left-color: #3b82f6;
-  background: linear-gradient(135deg, #eff6ff, #dbeafe);
-}
-
-.notification-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-}
-
-.notification-icon {
-  font-size: 1.3em;
-}
-
-.notification-text {
-  color: #1f2937;
-  font-weight: 500;
-}
-
-.notification-close {
-  background: none;
-  border: none;
-  color: #6b7280;
-  cursor: pointer;
-  font-size: 1.1em;
-  padding: 5px;
-  transition: color 0.2s ease;
-}
-
-.notification-close:hover {
-  color: #374151;
-}
-
-/* ============================================
-   ANIMACIONES
-   ============================================ */
-.slide-up-enter-active,
-.slide-up-leave-active {
-  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-.slide-up-enter-from {
-  opacity: 0;
-  transform: translateY(30px);
-}
-
-.slide-up-leave-to {
-  opacity: 0;
-  transform: translateY(30px);
-}
-
-/* ============================================
-   RESPONSIVE
-   ============================================ */
-@media (max-width: 1400px) {
-  .main-content {
-    grid-template-columns: 1fr;
-  }
-  
-  .main-card-container {
-    max-width: 1200px;
-  }
-}
-
-@media (max-width: 1024px) {
-  .page-background {
-    padding: 15px;
-  }
-  
-  .main-card-container {
-    padding: 25px;
-    border-radius: 20px;
-  }
-  
-  .header-section {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 20px;
-    padding: 20px;
-  }
-  
-  .header-title {
-    text-align: center;
-  }
-  
-  .btn-back {
-    width: 100%;
-    justify-content: center;
-  }
-  
-  .filters-grid {
-    grid-template-columns: 1fr;
-  }
+/* --- RESPONSIVE --- */
+@media (max-width: 1200px) {
+  .main-content { grid-template-columns: 1fr; }
+  .main-card-container { max-width: 900px; }
+  .right-column { min-width: 100%; }
 }
 
 @media (max-width: 768px) {
-  .main-card-container {
-    padding: 20px;
-    margin: 10px;
-  }
-  
-  .card {
-    padding: 25px;
-  }
-  
-  .card-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 15px;
-  }
-  
-  .table-wrapper {
-    border-radius: 12px;
-  }
-  
-  .products-table th,
-  .products-table td {
-    padding: 14px 12px;
-  }
-  
-  .notification {
-    left: 20px;
-    right: 20px;
-    bottom: 20px;
-    min-width: auto;
-    max-width: none;
-  }
-}
-
-@media (max-width: 480px) {
-  .page-background {
-    padding: 10px;
-  }
-  
-  .main-card-container {
-    padding: 15px;
-    border-radius: 16px;
-  }
-  
-  .card {
-    padding: 20px;
-  }
-  
-  .header-section h2 {
-    font-size: 1.6em;
-  }
-  
-  .btn-confirm {
-    padding: 18px;
-    font-size: 1em;
-    flex-direction: column;
-    gap: 10px;
-  }
-  
-  .payment-option {
-    flex-direction: column;
-    text-align: center;
-    gap: 10px;
-  }
+  .main-card-container { padding: 25px; border-radius: 20px; }
+  .header-section { flex-direction: column; align-items: stretch; gap: 15px; padding: 20px; }
+  .btn-back { width: 100%; justify-content: center; }
+  .card-modern { padding: 20px; }
+  .filters-grid { grid-template-columns: 1fr 1fr; }
+  .filters-grid .clear-filters-btn { grid-column: span 2; height: auto; }
+  .products-table { min-width: 600px; }
+  .total-amount { font-size: 1.3em; }
 }
 </style>

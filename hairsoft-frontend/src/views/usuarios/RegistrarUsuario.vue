@@ -86,7 +86,7 @@
         <div class="input-field">
           <div class="field-header">
             <label>Teléfono</label>
-            <span class="optional-badge">Opcional</span>
+            <span class="required-badge">Requerido</span>
           </div>
           <div class="input-wrapper">
             <input 
@@ -457,13 +457,15 @@ const validarDNI = () => {
 
 const validarTelefono = () => {
   const val = form.value.telefono.trim()
+  
+  // 1. Validar que no esté vacío
   if (!val) {
-    errores.value.telefono = ''
+    errores.value.telefono = 'El teléfono es obligatorio'
     return
   }
 
+  // 2. Validar formato (el código que ya tenías)
   const limpio = val.replace(/\s+/g, '')
-  
   if (!/^\+54\s?9\d{10}$/.test(limpio)) {
     errores.value.telefono = 'Formato: +54 9 3755 558911'
   } else {

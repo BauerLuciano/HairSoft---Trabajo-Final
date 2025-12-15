@@ -188,16 +188,17 @@ class ProveedorSerializer(serializers.ModelSerializer):
             instance.categorias.set(categorias_data)
         return instance
 
-#Producto!
+from decimal import Decimal  # ✅ IMPORTAR Decimal
+
 class ProductoSerializer(serializers.ModelSerializer):
     codigo = serializers.CharField(read_only=True)
     
-    # ✅ AGREGAR ESTO: CAMPO PRECIO
+    # ✅ CORREGIDO: Usar Decimal en lugar de string
     precio = serializers.DecimalField(
         max_digits=10, 
         decimal_places=2,
         required=True,
-        min_value=("0.01")
+        min_value=Decimal('0.01')  # ✅ CAMBIAR "0.01" por Decimal('0.01')
     )
     
     # ======= CATEGORÍA =======
@@ -217,11 +218,10 @@ class ProductoSerializer(serializers.ModelSerializer):
     )
 
     # ======= ESTADO =======
-    # ✅ CORREGIR: Cambiar a CharField con default y permitir blanco
     estado = serializers.CharField(
         max_length=10, 
         required=False,
-        default='ACTIVO'  # <-- Valor por defecto
+        default='ACTIVO'
     )
 
     # ======= STOCK =======
@@ -246,28 +246,20 @@ class ProductoSerializer(serializers.ModelSerializer):
             'precio',
             'codigo',
             'descripcion',
-            'estado',  # ✅ Mantener
-
-            # Stock
+            'estado',
             'stock_actual',
             'stock',
-
-            # Categoría
             'categoria',
             'categoria_id',
             'categoria_nombre',
-
-            # Marca
             'marca',
             'marca_id',
             'marca_nombre',
-
-            # Proveedores
             'proveedores',
             'proveedores_nombres',
         ]
         extra_kwargs = {
-            'estado': {'required': False, 'default': 'ACTIVO'}  # ✅ Asegurar default
+            'estado': {'required': False, 'default': 'ACTIVO'}
         }
 
     def get_proveedores_nombres(self, obj):
@@ -276,19 +268,15 @@ class ProductoSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         print("🔍 DEBUG - Datos que llegan al serializer:", validated_data)
         
-        # ✅ Asegurar que el estado tenga un valor por defecto
         if 'estado' not in validated_data:
             validated_data['estado'] = 'ACTIVO'
         
-        # Extraer proveedores si existen
         proveedores_data = validated_data.pop('proveedores', [])
         
-        # Crear el producto
         producto = Producto.objects.create(**validated_data)
         
         print(f"✅ Producto creado - ID: {producto.id}, Categoría: {producto.categoria}, Código: {producto.codigo}")
         
-        # Asignar proveedores
         if proveedores_data:
             producto.proveedores.set(proveedores_data)
             
@@ -822,3 +810,11 @@ class SolicitudPresupuestoSerializer(serializers.ModelSerializer):
         # Ordenamos por score (menor es mejor)
         mejor = sorted(candidatas, key=lambda x: x.score)[0]
         return mejor.id
+
+class AuditoriaSerializer(serializers.ModelSerializer):
+    usuario_nombre = serializers.CharField(source='usuario.nombre', read_only=True, default='Sistema')
+    usuario_apellido = serializers.CharField(source='usuario.apellido', read_only=True, default='')
+
+    class Meta:
+        model = Auditoria
+        fields = '__all__'

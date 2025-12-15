@@ -153,9 +153,16 @@ const formularioValido = computed(() =>
 )
 
 const categoriasProductos = computed(() => categorias.value)
-const proveedoresActivos = computed(() =>
-  proveedores.value.filter(p => p.estado === 'ACTIVO' || p.activo)
-)
+// ✅ CORREGIDO: Asegurar que proveedores.value sea un array
+const proveedoresActivos = computed(() => {
+  if (!Array.isArray(proveedores.value)) {
+    console.warn('proveedores.value no es un array:', proveedores.value)
+    return []
+  }
+  return proveedores.value.filter(p => 
+    p.estado === 'ACTIVO' || p.activo === true || p.activo === 'true'
+  )
+})
 
 // ================================
 // CARGAR DATOS DEL PRODUCTO
@@ -163,8 +170,18 @@ const proveedoresActivos = computed(() =>
 const cargarProducto = async () => {
   try {
     console.log(`Cargando producto ID: ${props.productoId}`)
-    const response = await axios.get(`${API_BASE}/usuarios/api/productos/${props.productoId}/`)
+    const response = await axios.get(`${API_BASE}/api/productos/${props.productoId}/`)
     const productoData = response.data
+    
+    console.log('Producto data recibida:', productoData)
+    
+    // Asegurar que proveedores_seleccionados sea un array
+    let proveedoresSeleccionados = []
+    if (Array.isArray(productoData.proveedores)) {
+      proveedoresSeleccionados = productoData.proveedores
+    } else if (productoData.proveedores_ids) {
+      proveedoresSeleccionados = productoData.proveedores_ids
+    }
     
     // Mapear los datos del producto al formato del formulario
     producto.value = {
@@ -173,12 +190,12 @@ const cargarProducto = async () => {
       descripcion: productoData.descripcion || '',
       precio: parseFloat(productoData.precio) || 0,
       stock_actual: productoData.stock_actual || 0,
-      categoria: productoData.categoria || productoData.categoria_id || '',
-      marca: productoData.marca || productoData.marca_id || '',
-      proveedores_seleccionados: productoData.proveedores || []
+      categoria: productoData.categoria || productoData.categoria_id || productoData.categoria?.id || '',
+      marca: productoData.marca || productoData.marca_id || productoData.marca?.id || '',
+      proveedores_seleccionados: proveedoresSeleccionados
     }
     
-    console.log('Producto cargado:', producto.value)
+    console.log('Producto mapeado:', producto.value)
   } catch (err) {
     console.error('Error al cargar producto:', err)
     alert('❌ Error al cargar los datos del producto')
@@ -191,10 +208,12 @@ const cargarProducto = async () => {
 const cargarMarcas = async () => {
   cargandoMarcas.value = true
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/marcas/`)
-    marcas.value = res.data
+    const res = await axios.get(`${API_BASE}/api/marcas/`)
+    marcas.value = res.data || []
+    console.log('Marcas cargadas:', marcas.value)
   } catch (err) {
     console.error("Error cargando marcas:", err)
+    marcas.value = []
   } finally {
     cargandoMarcas.value = false
   }
@@ -203,10 +222,12 @@ const cargarMarcas = async () => {
 const cargarCategorias = async () => {
   cargandoCategorias.value = true
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`)
-    categorias.value = res.data
+    const res = await axios.get(`${API_BASE}/api/categorias/productos/`)
+    categorias.value = res.data || []
+    console.log('Categorías cargadas:', categorias.value)
   } catch (err) {
     console.error('Error cargando categorías:', err)
+    categorias.value = []
   } finally {
     cargandoCategorias.value = false
   }
@@ -215,17 +236,24 @@ const cargarCategorias = async () => {
 const cargarProveedores = async () => {
   cargandoProveedores.value = true
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
-    proveedores.value = res.data
+    const res = await axios.get(`${API_BASE}/api/proveedores/`)
+    // ✅ Asegurar que sea un array
+    proveedores.value = Array.isArray(res.data) ? res.data : []
+    console.log('Proveedores cargados:', proveedores.value)
   } catch (err) {
     console.error('Error cargando proveedores:', err)
+    proveedores.value = []
   } finally {
     cargandoProveedores.value = false
   }
 }
 
 const cargarDatos = async () => {
-  await Promise.all([cargarMarcas(), cargarCategorias(), cargarProveedores()])
+  await Promise.all([
+    cargarMarcas(), 
+    cargarCategorias(), 
+    cargarProveedores()
+  ])
 }
 
 // ================================
@@ -243,25 +271,45 @@ const modificarProducto = async () => {
 
   cargando.value = true
   try {
+    // ✅ CORREGIDO: Usar 'stock' en lugar de 'stock_actual' porque el serializer lo espera así
     const payload = {
       nombre: producto.value.nombre.trim(),
-      codigo: producto.value.codigo,
+      codigo: producto.value.codigo.toString().trim(),
       descripcion: producto.value.descripcion.trim(),
-      precio: producto.value.precio,
-      stock: producto.value.stock_actual,
+      precio: String(producto.value.precio),
+      stock: Number(producto.value.stock_actual), // ⚠️ CAMBIÉ: stock_actual → stock
       categoria: Number(producto.value.categoria),
       marca: Number(producto.value.marca),
-      proveedores: producto.value.proveedores_seleccionados
+      proveedores: producto.value.proveedores_seleccionados.map(id => Number(id))
     }
 
-    const res = await axios.put(`${API_BASE}/usuarios/api/productos/${props.productoId}/`, payload)
+    console.log('Enviando payload para modificar:', payload)
+    
+    const res = await axios.put(`${API_BASE}/api/productos/${props.productoId}/`, payload)
 
     alert("✅ Producto actualizado correctamente")
     emit("producto-actualizado", res.data)
 
   } catch (err) {
-    console.error('Error al actualizar producto:', err)
-    alert("❌ Error al actualizar el producto")
+    console.error('Error al actualizar producto:', err.response?.data || err)
+    
+    let mensajeError = "❌ Error al actualizar el producto"
+    if (err.response?.data) {
+      // Mostrar errores específicos del backend
+      if (typeof err.response.data === 'string') {
+        mensajeError = err.response.data
+      } else if (err.response.data.precio) {
+        mensajeError = `Error en precio: ${err.response.data.precio}`
+      } else if (err.response.data.nombre) {
+        mensajeError = `Error en nombre: ${err.response.data.nombre}`
+      } else if (err.response.data.stock) {
+        mensajeError = `Error en stock: ${err.response.data.stock}`
+      } else {
+        mensajeError = JSON.stringify(err.response.data)
+      }
+    }
+    
+    alert(mensajeError)
   } finally {
     cargando.value = false
   }
@@ -278,13 +326,17 @@ const cancelar = () => {
 // WATCHERS Y MOUNTED
 // ================================
 onMounted(async () => {
+  console.log('Componente ModificarProducto montado')
   await cargarDatos()
   await cargarProducto()
 })
 
 watch(() => props.productoId, () => {
-  if (props.productoId) cargarProducto()
-})
+  if (props.productoId) {
+    console.log('productoId cambiado:', props.productoId)
+    cargarProducto()
+  }
+}, { immediate: true })
 </script>
 
 <style scoped>

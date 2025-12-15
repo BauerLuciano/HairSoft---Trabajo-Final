@@ -91,7 +91,7 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     apellido = models.CharField(max_length=50)
     dni = models.CharField(max_length=20, unique=True)
     contrasena = models.CharField(max_length=128)
-    telefono = models.CharField(max_length=20, blank=True, null=True)
+    telefono = models.CharField(max_length=20)
     correo = models.EmailField(unique=True)
     
     # ✅ CAMPOS REQUERIDOS PARA AbstractBaseUser
@@ -1067,3 +1067,31 @@ class PromocionReactivacion(models.Model):
     def esta_vigente(self):
         """Verifica si la promo se puede usar hoy"""
         return self.estado == 'ACTIVA' and timezone.now() <= self.fecha_vencimiento
+
+#AUDITORIAAAAAAA
+
+# En usuarios/models.py
+
+class Auditoria(models.Model):
+    ACCIONES = (
+        ('CREACION', 'Creación'),
+        ('MODIFICACION', 'Modificación'),
+        ('ELIMINACION', 'Eliminación'),
+        ('LOGIN', 'Inicio de Sesión'),
+        ('LOGOUT', 'Cierre de Sesión'),
+    )
+
+    usuario = models.ForeignKey('Usuario', on_delete=models.SET_NULL, null=True, blank=True)
+    accion = models.CharField(max_length=20, choices=ACCIONES)
+    modelo = models.CharField(max_length=50)
+    objeto_id = models.CharField(max_length=50, null=True, blank=True)
+    detalles = models.JSONField(null=True, blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+    
+    # ✅ NUEVOS CAMPOS
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    navegador = models.CharField(max_length=255, null=True, blank=True) # Para guardar Chrome, Firefox, etc.
+
+    class Meta:
+        db_table = "auditoria"
+        ordering = ['-fecha']

@@ -15,10 +15,10 @@ from rest_framework.response import Response
 from django.utils.decorators import method_decorator
 from datetime import datetime, timedelta
 from django.utils import timezone
-from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, PromocionReactivacion
+from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, PromocionReactivacion, Auditoria
 from .mercadopago_service import MercadoPagoService
-import json, re, requests
-from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer, ListaPrecioProveedorSerializer, HistorialPreciosSerializer, PrecioSugeridoSerializer, ActualizarListaPreciosSerializer, CotizacionExternaSerializer, SolicitudPresupuestoSerializer, MarcaSerializer
+import json, re, requests, unicodedata
+from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer, ListaPrecioProveedorSerializer, HistorialPreciosSerializer, PrecioSugeridoSerializer, ActualizarListaPreciosSerializer, CotizacionExternaSerializer, SolicitudPresupuestoSerializer, MarcaSerializer, AuditoriaSerializer
 from django.contrib.auth.hashers import check_password
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -565,23 +565,33 @@ def listado_productos(request):
     ]
     return JsonResponse(data, safe=False)
 
+# En usuarios/views.py
+
 class ProductoListCreateAPIView(generics.ListCreateAPIView):
     queryset = Producto.objects.select_related('categoria', 'marca').prefetch_related('proveedores').all()
     serializer_class = ProductoSerializer
+    # pagination_class = None  <-- Opcional, si querés que el dropdown traiga todo de una vez
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        
+        # Filtro por nombre
         nombre = self.request.query_params.get('nombre')
         if nombre:
             queryset = queryset.filter(nombre__icontains=nombre)
 
+        # Filtro por categoría
         categoria_id = self.request.query_params.get('categoria')
         if categoria_id:
             try:
-                categoria_id = int(categoria_id)
-                queryset = queryset.filter(categoria_id=categoria_id)
+                queryset = queryset.filter(categoria_id=int(categoria_id))
             except ValueError:
                 pass
+        
+        # 🔥 NUEVO FILTRO: Estado (para el dropdown de precios)
+        estado = self.request.query_params.get('estado')
+        if estado:
+             queryset = queryset.filter(estado__iexact=estado) # 'ACTIVO' o 'activo'
 
         return queryset
 
@@ -1589,12 +1599,21 @@ class CategoriaProductoListAPIView(generics.ListAPIView):
     # Asegúrate de que CategoriaProductoSerializer esté importado en views.py
     # from .serializers import ..., CategoriaProductoSerializer
     serializer_class = CategoriaProductoSerializer
+    pagination_class = None
 
 
 
 # ================================
 # Categorías CRUD
 # ================================
+# --- FUNCIÓN AUXILIAR PARA COMPARAR SIN ACENTOS ---
+def normalizar_texto(texto):
+    """Elimina acentos y pasa a minúsculas para comparar (ej: 'Coloración' -> 'coloracion')"""
+    if not texto:
+        return ""
+    return ''.join(c for c in unicodedata.normalize('NFD', texto) 
+                  if unicodedata.category(c) != 'Mn').lower().strip()
+
 @csrf_exempt
 def crear_categoria_servicio(request):
     if request.method != 'POST':
@@ -1603,16 +1622,23 @@ def crear_categoria_servicio(request):
         data = json.loads(request.body)
         nombre = data.get('nombre', '').strip()
         descripcion = data.get('descripcion', '').strip()
+        
         if not nombre:
-            return JsonResponse({'status': 'error', 'message': 'Nombre obligatorio'}, status=400)
-        if CategoriaServicio.objects.filter(nombre__iexact=nombre).exists():
-            return JsonResponse({'status': 'error', 'message': 'La categoría ya existe'}, status=400)
+            return JsonResponse({'status': 'error', 'message': 'El nombre es obligatorio'}, status=400)
+            
+        # 🔥 VALIDACIÓN INSENSIBLE A ACENTOS
+        nombre_norm = normalizar_texto(nombre)
+        # Traemos todos los nombres y chequeamos en Python
+        categorias = CategoriaServicio.objects.all()
+        for cat in categorias:
+            if normalizar_texto(cat.nombre) == nombre_norm:
+                return JsonResponse({'status': 'error', 'message': f'Ya existe la categoría "{cat.nombre}"'}, status=400)
+            
         cat = CategoriaServicio.objects.create(nombre=nombre, descripcion=descripcion)
         return JsonResponse({'status': 'ok', 'id': cat.id})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
-
-
+    
 @csrf_exempt
 def editar_categoria_servicio(request, pk):
     cat = get_object_or_404(CategoriaServicio, pk=pk)
@@ -1622,12 +1648,19 @@ def editar_categoria_servicio(request, pk):
         data = json.loads(request.body)
         nombre = data.get('nombre', '').strip()
         descripcion = data.get('descripcion', '').strip()
+        
         if nombre:
-            if CategoriaServicio.objects.filter(nombre__iexact=nombre).exclude(pk=pk).exists():
-                return JsonResponse({'status': 'error', 'message': 'Otra categoría con ese nombre ya existe'}, status=400)
+            # 🔥 VALIDACIÓN INSENSIBLE A ACENTOS (Excluyendo la propia)
+            nombre_norm = normalizar_texto(nombre)
+            categorias = CategoriaServicio.objects.exclude(pk=pk)
+            for c in categorias:
+                if normalizar_texto(c.nombre) == nombre_norm:
+                    return JsonResponse({'status': 'error', 'message': f'Ya existe otra categoría llamada "{c.nombre}"'}, status=400)
             cat.nombre = nombre
-        if descripcion:
+            
+        if descripcion is not None:
             cat.descripcion = descripcion
+            
         cat.save()
         return JsonResponse({'status': 'ok', 'id': cat.id})
     except Exception as e:
@@ -1645,7 +1678,6 @@ def eliminar_categoria_servicio(request, pk):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-
 @csrf_exempt
 def crear_categoria_producto(request):
     if request.method != 'POST':
@@ -1654,16 +1686,22 @@ def crear_categoria_producto(request):
         data = json.loads(request.body)
         nombre = data.get('nombre', '').strip()
         descripcion = data.get('descripcion', '').strip()
+        
         if not nombre:
-            return JsonResponse({'status': 'error', 'message': 'Nombre obligatorio'}, status=400)
-        if CategoriaProducto.objects.filter(nombre__iexact=nombre).exists():
-            return JsonResponse({'status': 'error', 'message': 'La categoría ya existe'}, status=400)
+            return JsonResponse({'status': 'error', 'message': 'El nombre es obligatorio'}, status=400)
+            
+        # 🔥 VALIDACIÓN INSENSIBLE A ACENTOS
+        nombre_norm = normalizar_texto(nombre)
+        categorias = CategoriaProducto.objects.all()
+        for cat in categorias:
+            if normalizar_texto(cat.nombre) == nombre_norm:
+                return JsonResponse({'status': 'error', 'message': f'Ya existe la categoría "{cat.nombre}" (los acentos no cuentan)'}, status=400)
+            
         cat = CategoriaProducto.objects.create(nombre=nombre, descripcion=descripcion)
         return JsonResponse({'status': 'ok', 'id': cat.id})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
-
-
+    
 @csrf_exempt
 def editar_categoria_producto(request, pk):
     cat = get_object_or_404(CategoriaProducto, pk=pk)
@@ -1673,18 +1711,24 @@ def editar_categoria_producto(request, pk):
         data = json.loads(request.body)
         nombre = data.get('nombre', '').strip()
         descripcion = data.get('descripcion', '').strip()
+        
         if nombre:
-            if CategoriaProducto.objects.filter(nombre__iexact=nombre).exclude(pk=pk).exists():
-                return JsonResponse({'status': 'error', 'message': 'Otra categoría con ese nombre ya existe'}, status=400)
+            # 🔥 VALIDACIÓN INSENSIBLE A ACENTOS
+            nombre_norm = normalizar_texto(nombre)
+            categorias = CategoriaProducto.objects.exclude(pk=pk)
+            for c in categorias:
+                if normalizar_texto(c.nombre) == nombre_norm:
+                    return JsonResponse({'status': 'error', 'message': f'Ya existe otra categoría llamada "{c.nombre}"'}, status=400)
             cat.nombre = nombre
-        if descripcion:
+            
+        if descripcion is not None:
             cat.descripcion = descripcion
+            
         cat.save()
         return JsonResponse({'status': 'ok', 'id': cat.id})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
-
-
+    
 @csrf_exempt
 def eliminar_categoria_producto(request, pk):
     cat = get_object_or_404(CategoriaProducto, pk=pk)
@@ -1717,53 +1761,86 @@ def listado_roles(request):
     ]
     return JsonResponse(data, safe=False)
 
-@csrf_exempt
-def crear_rol(request):
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+# En usuarios/views.py
 
+@api_view(['POST'])
+@permission_classes([AllowAny]) # O IsAuthenticated según prefieras
+def crear_rol(request):
     try:
-        data = json.loads(request.body)
+        data = request.data
         nombre = data.get('nombre', '').strip()
         descripcion = data.get('descripcion', '').strip()
+        permisos_ids = data.get('permisos', [])
 
         if not nombre:
-            return JsonResponse({'status': 'error', 'message': 'El nombre del rol es obligatorio'}, status=400)
+            return Response({'message': 'El nombre del rol es obligatorio'}, status=400)
 
-        if Rol.objects.filter(nombre__iexact=nombre).exists():
-            return JsonResponse({'status': 'error', 'message': 'Ya existe un rol con ese nombre'}, status=400)
+        # 🔥 VALIDACIÓN DUPLICADO (INSENSIBLE A MAYÚSCULAS/ACENTOS)
+        nombre_norm = normalizar_texto(nombre)
+        for r in Rol.objects.all():
+            if normalizar_texto(r.nombre) == nombre_norm:
+                return Response({'message': f'Ya existe el rol "{r.nombre}"'}, status=400)
 
-        rol = Rol.objects.create(nombre=nombre, descripcion=descripcion)
-        return JsonResponse({'status': 'ok', 'id': rol.id})
+        with transaction.atomic():
+            rol = Rol.objects.create(nombre=nombre, descripcion=descripcion)
+            if permisos_ids:
+                permisos = Permiso.objects.filter(id__in=permisos_ids)
+                rol.permisos.set(permisos)
+
+        return Response({'status': 'ok', 'id': rol.id})
     except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+        return Response({'message': str(e)}, status=500)
 
 
-@csrf_exempt
+
+# En usuarios/views.py
+
+@api_view(['GET', 'PUT', 'PATCH'])
+@permission_classes([AllowAny])
 def editar_rol(request, pk):
     rol = get_object_or_404(Rol, pk=pk)
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
 
+    # 1. GET: Cargar datos en el formulario
+    if request.method == 'GET':
+        return Response({
+            'id': rol.id,
+            'nombre': rol.nombre,
+            'descripcion': rol.descripcion or '',
+            'activo': rol.activo,
+            'permisos': list(rol.permisos.values_list('id', flat=True)) # Lista de IDs [1, 5, 8]
+        })
+
+    # 2. PUT/PATCH: Guardar cambios
     try:
-        data = json.loads(request.body)
-        nombre = data.get('nombre', '').strip()
-        descripcion = data.get('descripcion', '').strip()
-        activo = data.get('activo', True)
+        data = request.data
+        
+        if 'nombre' in data:
+            nuevo_nombre = data['nombre'].strip()
+            # Validar duplicado solo si cambió el nombre
+            if nuevo_nombre.lower() != rol.nombre.lower():
+                # Normalizar para comparar (función auxiliar que agregamos antes)
+                # Si no la tenés, usá: Rol.objects.exclude(pk=pk).filter(nombre__iexact=nuevo_nombre).exists()
+                if Rol.objects.exclude(pk=pk).filter(nombre__iexact=nuevo_nombre).exists():
+                    return Response({'message': f'Ya existe el rol "{nuevo_nombre}"'}, status=400)
+            rol.nombre = nuevo_nombre
 
-        if nombre:
-            if Rol.objects.filter(nombre__iexact=nombre).exclude(pk=pk).exists():
-                return JsonResponse({'status': 'error', 'message': 'Otro rol con ese nombre ya existe'}, status=400)
-            rol.nombre = nombre
+        if 'descripcion' in data:
+            rol.descripcion = data['descripcion'].strip()
+            
+        if 'activo' in data:
+            rol.activo = data['activo']
 
-        rol.descripcion = descripcion
-        rol.activo = activo
+        if 'permisos' in data:
+            permisos_ids = data['permisos']
+            if permisos_ids is not None:
+                permisos = Permiso.objects.filter(id__in=permisos_ids)
+                rol.permisos.set(permisos)
+            
         rol.save()
-
-        return JsonResponse({'status': 'ok', 'id': rol.id})
+        return Response({'status': 'ok', 'message': 'Rol actualizado correctamente'})
+        
     except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
-
+        return Response({'error': str(e)}, status=500)
 
 @csrf_exempt
 def eliminar_rol(request, pk):
@@ -1805,40 +1882,56 @@ def crear_rol(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
-# ✅ Editar rol con permisos
-@csrf_exempt
+# En usuarios/views.py
+
+@api_view(['GET', 'PUT', 'PATCH']) # ✅ Agregamos PATCH
+@permission_classes([AllowAny])
 def editar_rol(request, pk):
     rol = get_object_or_404(Rol, pk=pk)
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
 
+    # 1. GET: Datos para el formulario
+    if request.method == 'GET':
+        return Response({
+            'id': rol.id,
+            'nombre': rol.nombre,
+            'descripcion': rol.descripcion,
+            'activo': rol.activo,
+            'permisos': list(rol.permisos.values_list('id', flat=True))
+        })
+
+    # 2. PUT/PATCH: Guardar cambios
     try:
-        data = json.loads(request.body)
+        data = request.data
+        
+        # Actualizamos solo lo que venga en el request
+        if 'nombre' in data:
+            nuevo_nombre = data['nombre'].strip()
+            # Validar duplicado solo si cambió el nombre
+            if nuevo_nombre.lower() != rol.nombre.lower():
+                nombre_norm = normalizar_texto(nuevo_nombre)
+                otros = Rol.objects.exclude(pk=pk)
+                for r in otros:
+                    if normalizar_texto(r.nombre) == nombre_norm:
+                        return Response({'message': f'Ya existe el rol "{r.nombre}"'}, status=400)
+            rol.nombre = nuevo_nombre
 
-        nombre = data.get('nombre', '').strip()
-        descripcion = data.get('descripcion', '').strip()
-        permisos_ids = data.get('permisos', [])  # 🟢 lista de IDs
-        activo = data.get('activo', True)
-
-        if not nombre:
-            return JsonResponse({'status': 'error', 'message': 'El nombre del rol es obligatorio'}, status=400)
-
-        if Rol.objects.exclude(pk=pk).filter(nombre__iexact=nombre).exists():
-            return JsonResponse({'status': 'error', 'message': 'Ya existe otro rol con ese nombre'}, status=400)
-
-        rol.nombre = nombre
-        rol.descripcion = descripcion
-        rol.activo = activo
+        if 'descripcion' in data:
+            rol.descripcion = data['descripcion'].strip()
+            
+        if 'activo' in data:
+            rol.activo = data['activo']
+        
+        if 'permisos' in data:
+            permisos_ids = data['permisos']
+            if permisos_ids is not None:
+                permisos = Permiso.objects.filter(id__in=permisos_ids)
+                rol.permisos.set(permisos)
+            
         rol.save()
-
-        # 🔗 Actualizar los permisos del rol
-        if permisos_ids is not None:
-            permisos = Permiso.objects.filter(id__in=permisos_ids)
-            rol.permisos.set(permisos)
-
-        return JsonResponse({'status': 'ok', 'id': rol.id})
+        return Response({'status': 'ok', 'message': 'Rol actualizado correctamente'})
+        
     except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+        return Response({'message': str(e)}, status=500)
 
 # ================================
 # Permisos
@@ -3835,18 +3928,23 @@ def procesar_respuesta_oferta(request, interes_id):
         }, status=500)
 
 
+# EN usuarios/views.py
+
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def listar_marcas(request):
+    """
+    Devuelve las marcas con la lista de nombres de sus proveedores.
+    """
     marcas = Marca.objects.all().annotate(
         productos_count=models.Count("productos"),
         total_proveedores=models.Count("proveedores"),
-    )
+    ).order_by('nombre')
 
     data = []
     for marca in marcas:
-        proveedores_nombres = list(
-            marca.proveedores.values_list("nombre", flat=True)
-        )
+        # 🔥 CLAVE: Esto manda una lista de strings ["Loreal", "Sedal"]
+        proveedores_nombres = list(marca.proveedores.values_list("nombre", flat=True))
 
         data.append({
             "id": marca.id,
@@ -3856,33 +3954,86 @@ def listar_marcas(request):
             "estado_display": marca.get_estado_display(),
             "productos_count": marca.productos_count,
             "total_proveedores": marca.total_proveedores,
-            "proveedores_nombres": proveedores_nombres,
+            "proveedores_nombres": proveedores_nombres, 
             "fecha_creacion": marca.fecha_creacion,
         })
 
     return Response(data)
 
-
-# Crear una nueva marca
-@csrf_exempt
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def crear_marca(request):
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({'message': 'JSON inválido'}, status=400)
-        
+    """Crea marca y asocia proveedores"""
+    try:
+        data = request.data
         nombre = data.get('nombre')
+        
         if not nombre:
-            return JsonResponse({'message': 'El nombre es obligatorio'}, status=400)
+            return Response({'message': 'El nombre es obligatorio'}, status=400)
+            
+        if Marca.objects.filter(nombre__iexact=nombre).exists():
+            return Response({'message': 'La marca ya existe'}, status=400)
+            
+        marca = Marca.objects.create(
+            nombre=nombre,
+            descripcion=data.get('descripcion', ''),
+            estado=data.get('estado', 'activo')
+        )
         
-        if Marca.objects.filter(nombre=nombre).exists():
-            return JsonResponse({'message': 'La marca ya existe'}, status=400)
+        # Guardar proveedores si vienen
+        if 'proveedores' in data and isinstance(data['proveedores'], list):
+            marca.proveedores.set(data['proveedores'])
+            
+        return Response({'id': marca.id, 'nombre': marca.nombre}, status=201)
+    except Exception as e:
+        return Response({'message': str(e)}, status=400)
+
+# En usuarios/views.py
+
+@api_view(['GET', 'PUT'])
+@permission_classes([AllowAny])
+def actualizar_marca(request, pk):
+    marca = get_object_or_404(Marca, pk=pk)
+
+    if request.method == 'GET':
+        # Recuperamos los IDs de forma segura
+        ids_proveedores = list(marca.proveedores.values_list('id', flat=True))
         
-        marca = Marca.objects.create(nombre=nombre)
-        return JsonResponse({'id': marca.id, 'nombre': marca.nombre})
-    
-    return JsonResponse({'message': 'Método no permitido'}, status=405)
+        return Response({
+            'id': marca.id,
+            'nombre': marca.nombre,
+            'descripcion': marca.descripcion or '', # Si es Null, manda cadena vacía
+            'estado': marca.estado,
+            'proveedores': ids_proveedores
+        })
+
+    if request.method == 'PUT':
+        try:
+            data = request.data
+            
+            # Actualizamos campos básicos
+            marca.nombre = data.get('nombre', marca.nombre)
+            marca.descripcion = data.get('descripcion', marca.descripcion)
+            marca.estado = data.get('estado', marca.estado)
+            
+            # 🔥 CORRECCIÓN CLAVE: Manejo seguro de la lista de proveedores
+            proveedores_data = data.get('proveedores')
+            
+            # Solo intentamos actualizar si proveedores_data es una lista válida
+            if proveedores_data is not None and isinstance(proveedores_data, list):
+                # Filtramos IDs vacíos o nulos por seguridad
+                ids_limpios = [id for id in proveedores_data if id]
+                marca.proveedores.set(ids_limpios)
+            elif proveedores_data == []: 
+                # Si mandan lista vacía explícita, limpiamos las relaciones
+                marca.proveedores.clear()
+            
+            marca.save()
+            return Response({'status': 'ok', 'message': 'Marca actualizada correctamente'})
+            
+        except Exception as e:
+            print(f"❌ Error al actualizar marca {pk}: {str(e)}") # Log para ver en terminal
+            return Response({'error': f'Error interno: {str(e)}'}, status=400)
 
 @csrf_exempt
 def cambiar_estado_marca(request, pk):
@@ -4644,3 +4795,12 @@ def mis_turnos(request):
         import traceback
         traceback.print_exc()
         return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny]) # Cambialo a IsAuthenticated cuando quieras cerrar el grifo
+def listado_auditoria(request):
+    # Traemos todo ordenado por fecha (lo más nuevo arriba)
+    logs = Auditoria.objects.all().select_related('usuario').order_by('-fecha')
+    serializer = AuditoriaSerializer(logs, many=True)
+    return Response(serializer.data)

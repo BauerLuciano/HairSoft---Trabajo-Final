@@ -2,124 +2,146 @@
   <div class="form-card">
     <div class="form-header">
       <h1>Registrar Proveedor</h1>
-      <p>Completa los datos del proveedor</p>
+      <p>Completa los datos obligatorios para el alta</p>
     </div>
 
     <form @submit.prevent="registrarProveedor" class="form-grid" autocomplete="off">
-      <!-- Nombre -->
+      
       <div class="input-group">
-        <label>Nombre del Proveedor <span class="required">*</span></label>
+        <div class="label-row">
+          <label>Razón Social / Nombre</label>
+          <span class="badge-required">Requerido</span>
+        </div>
         <input 
           v-model="proveedor.nombre" 
           type="text" 
-          placeholder="Ingrese el nombre del proveedor" 
-          required 
+          placeholder="Ej: Distribuidora Norte S.A." 
+          @blur="validarNombre"
+          :class="{ 'error': errores.nombre }"
         />
+        <div v-if="errores.nombre" class="field-error">{{ errores.nombre }}</div>
       </div>
 
-      <!-- CUIT -->
       <div class="input-group">
-        <label>CUIT</label>
+        <div class="label-row">
+          <label>CUIT</label>
+          <span class="badge-required">Requerido</span>
+        </div>
         <input 
           v-model="proveedor.cuit"
           type="text"
-          placeholder="Ingrese el CUIT del proveedor"
-          @input="filtrarCuit"
+          placeholder="20-12345678-9"
+          @input="formatearCuitInput"
+          @blur="validarCuit"
+          :class="{ 'error': errores.cuit }"
+          maxlength="13"
         />
+        <div v-if="errores.cuit" class="field-error">{{ errores.cuit }}</div>
       </div>
 
-      <!-- Contacto -->
       <div class="input-group">
-        <label>Persona de Contacto</label>
+        <div class="label-row">
+          <label>Persona de Contacto</label>
+          <span class="badge-required">Requerido</span>
+        </div>
         <input 
           v-model="proveedor.contacto" 
           type="text" 
-          placeholder="Nombre del contacto principal" 
+          placeholder="Ej: Juan Pérez" 
+          @blur="validarContacto"
+          :class="{ 'error': errores.contacto }"
         />
+        <div v-if="errores.contacto" class="field-error">{{ errores.contacto }}</div>
       </div>
 
-      <!-- Teléfono -->
       <div class="input-group">
-        <label>Teléfono <span class="required">*</span></label>
+        <div class="label-row">
+          <label>Teléfono / Celular</label>
+          <span class="badge-required">Requerido</span>
+        </div>
         <input 
           v-model="proveedor.telefono" 
           type="tel" 
-          placeholder="Número de teléfono" 
-          required 
+          placeholder="+54 9 3755 558911" 
+          @blur="validarTelefono"
+          @input="formatearTelefono"
+          :class="{ 'error': errores.telefono }"
         />
+        <div v-if="errores.telefono" class="field-error">{{ errores.telefono }}</div>
       </div>
 
-      <!-- Email -->
-      <div class="input-group">
-        <label>Email</label>
+      <div class="input-group full-width">
+        <div class="label-row">
+          <label>Correo Electrónico</label>
+          <span class="badge-required">Requerido</span>
+        </div>
         <input 
           v-model="proveedor.email" 
           type="email" 
-          placeholder="correo@proveedor.com" 
+          placeholder="contacto@empresa.com"
+          @blur="validarEmail"
+          :class="{ 'error': errores.email }"
         />
+        <div v-if="errores.email" class="field-error">{{ errores.email }}</div>
       </div>
 
-      <!-- Dirección -->
-      <div class="input-group">
-        <label>Dirección</label>
+      <div class="input-group full-width">
+        <div class="label-row">
+          <label>Dirección Física</label>
+          <span class="badge-optional">Opcional</span>
+        </div>
         <input 
           v-model="proveedor.direccion" 
           type="text" 
-          placeholder="Dirección del proveedor" 
+          placeholder="Calle 123, Ciudad, Provincia" 
         />
       </div>
 
-      <!-- Categorías que Ofrece -->
       <div class="input-group full-width">
-        <label>Categorías que Ofrece</label>
-        <div class="categorias-grid">
-          <label v-for="categoria in categorias" :key="categoria.id" class="checkbox-label">
-            <input 
-              type="checkbox" 
-              :value="categoria.id" 
-              v-model="proveedor.categorias_seleccionadas"
-              class="checkbox-input"
-            />
-            <span class="checkbox-custom"></span>
+        <div class="label-row">
+          <label>Categorías que provee</label>
+          <span class="badge-required">Seleccione al menos una</span>
+        </div>
+        
+        <div class="chips-wrapper">
+          <div 
+            v-for="categoria in categorias" 
+            :key="categoria.id" 
+            class="chip-item"
+            :class="{ 'active': proveedor.categorias_seleccionadas.includes(categoria.id) }"
+            @click="toggleCategoria(categoria.id)"
+          >
+            <span class="check-icon" v-if="proveedor.categorias_seleccionadas.includes(categoria.id)">✓</span>
             {{ categoria.nombre }}
-          </label>
+          </div>
+          
+          <div v-if="categorias.length === 0" class="no-data">
+            Cargando categorías... (o no hay ninguna creada)
+          </div>
         </div>
+        
+        <div v-if="errores.categorias" class="field-error">{{ errores.categorias }}</div>
       </div>
 
-      <!-- Productos que ofrece (Opcional) -->
       <div class="input-group full-width">
-        <label>Productos que ofrece (Opcional)</label>
-        <div class="productos-grid">
-          <label v-for="producto in productos" :key="producto.id" class="checkbox-label">
-            <input 
-              type="checkbox" 
-              :value="producto.id" 
-              v-model="proveedor.productos_seleccionados"
-              class="checkbox-input"
-            />
-            <span class="checkbox-custom"></span>
-            {{ producto.nombre }}
-          </label>
+        <div class="label-row">
+          <label>Notas / Productos Específicos</label>
+          <span class="badge-optional">Opcional</span>
         </div>
-      </div>
-
-      <!-- ✅ NUEVO CAMPO -->
-      <div class="input-group full-width">
-        <label>Productos específicos (opcional)</label>
         <textarea
           v-model="proveedor.productos_especificos"
-          placeholder="Ejemplo: tinturas, shampoos, máquinas, tijeras..."
+          class="form-textarea"
+          placeholder="Ej: Solo tinturas marca X, etc."
           rows="3"
         ></textarea>
       </div>
 
-      <!-- Botones -->
       <div class="full-width form-actions">
         <button type="button" @click="volver" class="btn btn-secondary">
-          ← Volver
+          Cancelar
         </button>
         <button type="submit" :disabled="cargando" class="btn btn-primary">
-          {{ cargando ? 'Registrando...' : 'Guardar Proveedor' }}
+          {{ cargando ? 'Guardando...' : 'Registrar Proveedor' }}
         </button>
       </div>
     </form>
@@ -129,6 +151,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import axios from 'axios'
+import Swal from 'sweetalert2'
 
 const emit = defineEmits(['proveedor-registrado', 'cancelar'])
 const API_BASE = 'http://127.0.0.1:8000'
@@ -140,53 +163,162 @@ const proveedor = reactive({
   telefono: '',
   email: '',
   direccion: '',
-  categorias_seleccionadas: [],
-  productos_seleccionados: [],
-  productos_especificos: '' // ✅ AGREGADO
+  categorias_seleccionadas: [], 
+  productos_especificos: ''
+})
+
+const errores = reactive({
+  nombre: '',
+  cuit: '',
+  contacto: '',
+  telefono: '',
+  email: '',
+  categorias: ''
 })
 
 const categorias = ref([])
-const productos = ref([])
 const cargando = ref(false)
 
-const filtrarCuit = (event) => {
-  event.target.value = event.target.value.replace(/[^0-9-]/g, '')
-  proveedor.cuit = event.target.value
+// ==========================================
+// 🛡️ VALIDACIONES Y FORMATOS
+// ==========================================
+
+const validarNombre = () => {
+  errores.nombre = proveedor.nombre.trim() ? '' : 'El nombre es obligatorio'
 }
 
-const cargarCategorias = async () => {
-  try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`)
-    categorias.value = res.data
-  } catch (err) {
-    console.error('Error al cargar categorías:', err)
-    categorias.value = []
-    alert('No se pudieron cargar las categorías. Intente nuevamente.')
+const validarContacto = () => {
+  errores.contacto = proveedor.contacto.trim() ? '' : 'El contacto es obligatorio'
+}
+
+// ✅ AUTO-FORMATO DE CUIT (XX-XXXXXXXX-X)
+const formatearCuitInput = (event) => {
+  let val = event.target.value.replace(/\D/g, '') // Solo números
+  
+  if (val.length > 2) val = val.substring(0, 2) + '-' + val.substring(2)
+  if (val.length > 11) val = val.substring(0, 11) + '-' + val.substring(11)
+  if (val.length > 13) val = val.substring(0, 13) // Limitar largo total
+
+  proveedor.cuit = val
+}
+
+const validarCuit = () => {
+  const val = proveedor.cuit
+  const regexCuit = /^\d{2}-\d{8}-\d{1}$/
+  
+  if (!val) {
+    errores.cuit = 'El CUIT es obligatorio'
+  } else if (!regexCuit.test(val)) {
+    errores.cuit = 'Formato inválido. Debe ser XX-XXXXXXXX-X'
+  } else {
+    errores.cuit = ''
   }
 }
 
-const cargarProductos = async () => {
+// ✅ AUTO-FORMATO TELÉFONO
+const formatearTelefono = () => {
+  let tel = proveedor.telefono.replace(/\D/g, '')
+  if (tel.length === 0) { proveedor.telefono = ''; return }
+  
+  if (tel.startsWith('549')) proveedor.telefono = '+54 ' + tel.slice(2)
+  else if (tel.startsWith('54')) proveedor.telefono = '+54 ' + tel.slice(2)
+  else if (tel.startsWith('9')) proveedor.telefono = '+54 ' + tel
+  else proveedor.telefono = '+54 9' + tel
+}
+
+const validarTelefono = () => {
+  const val = proveedor.telefono.trim()
+  if (!val) {
+    errores.telefono = 'El teléfono es obligatorio'
+    return
+  }
+  if (!/^\+54\s?9\d{10,11}$/.test(val.replace(/\s+/g, ''))) {
+    errores.telefono = 'Formato: +54 9 3755 558911'
+  } else {
+    errores.telefono = ''
+  }
+}
+
+const validarEmail = () => {
+  const val = proveedor.email.trim()
+  if (!val) {
+    errores.email = 'El email es obligatorio'
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+    errores.email = 'Correo electrónico inválido'
+  } else {
+    errores.email = ''
+  }
+}
+
+const validarCategorias = () => {
+  errores.categorias = proveedor.categorias_seleccionadas.length === 0 
+    ? 'Seleccione al menos una categoría' 
+    : ''
+}
+
+const toggleCategoria = (id) => {
+  const index = proveedor.categorias_seleccionadas.indexOf(id)
+  if (index === -1) proveedor.categorias_seleccionadas.push(id)
+  else proveedor.categorias_seleccionadas.splice(index, 1)
+  validarCategorias()
+}
+
+const hayErrores = () => {
+  validarNombre()
+  validarCuit()
+  validarContacto()
+  validarTelefono()
+  validarEmail()
+  validarCategorias()
+  return Object.values(errores).some(msg => msg !== '')
+}
+
+// ==========================================
+// 📡 API
+// ==========================================
+
+const cargarCategorias = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/productos/`)
-    productos.value = res.data
+    // 🔥 TRUCO: Agregamos ?page_size=1000 para forzar que traiga todas si hay paginación
+    const res = await axios.get(`${API_BASE}/api/categorias/productos/?page_size=1000`)
+    
+    // Detectar si viene paginado (objeto con .results) o lista directa (array)
+    let lista = []
+    if (res.data.results && Array.isArray(res.data.results)) {
+      lista = res.data.results
+    } else if (Array.isArray(res.data)) {
+      lista = res.data
+    } else {
+      console.error("Formato de categorías desconocido:", res.data)
+    }
+    
+    categorias.value = lista
+    console.log(`✅ Categorías cargadas: ${lista.length}`)
+
   } catch (err) {
-    console.error('Error al cargar productos:', err)
-    productos.value = []
+    console.error('Error cargando categorías', err)
+    Swal.fire('Error', 'No se pudieron cargar las categorías', 'error')
   }
 }
 
 onMounted(() => {
   cargarCategorias()
-  cargarProductos()
 })
 
 const registrarProveedor = async () => {
-  if (!validarProveedor()) return
+  if (hayErrores()) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Atención',
+      text: 'Revisa los campos marcados en rojo.',
+      background: '#1e293b',
+      color: '#f1f5f9'
+    })
+    return
+  }
 
   cargando.value = true
   try {
-    const categoriasIds = proveedor.categorias_seleccionadas.map(id => Number(id))
-
     const payload = {
       nombre: proveedor.nombre.trim(),
       cuit: proveedor.cuit.trim(),
@@ -194,293 +326,243 @@ const registrarProveedor = async () => {
       telefono: proveedor.telefono.trim(),
       email: proveedor.email.trim(),
       direccion: proveedor.direccion.trim(),
-      categorias: categoriasIds,
-      productos_especificos: proveedor.productos_especificos?.trim() || '' // ✅ CORRECTO
+      categorias: proveedor.categorias_seleccionadas,
+      productos_especificos: proveedor.productos_especificos.trim()
     }
 
-    console.log('Payload proveedor:', payload)
+    const response = await axios.post(`${API_BASE}/api/proveedores/`, payload)
+    
+    await Swal.fire({
+      icon: 'success',
+      title: '¡Registrado!',
+      text: 'Proveedor guardado exitosamente',
+      background: '#1e293b',
+      color: '#f1f5f9',
+      timer: 1500,
+      showConfirmButton: false
+    })
 
-    const response = await axios.post(`${API_BASE}/usuarios/api/proveedores/`, payload)
-    alert('✅ Proveedor registrado con éxito')
-
-    resetForm()
     emit('proveedor-registrado', response.data)
     
   } catch (err) {
-    console.error(err.response?.data)
-    alert('❌ Error al registrar el proveedor: ' + JSON.stringify(err.response?.data))
+    console.error(err)
+    let msg = 'Error al registrar.'
+    if (err.response?.data?.cuit) msg = 'Ese CUIT ya está registrado.'
+    
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: msg,
+      background: '#1e293b',
+      color: '#f1f5f9'
+    })
   } finally {
     cargando.value = false
   }
 }
 
-const validarProveedor = () => {
-  if (!proveedor.nombre.trim()) {
-    alert('❌ El nombre del proveedor es obligatorio')
-    return false
-  }
-  if (!proveedor.telefono.trim()) {
-    alert('❌ El teléfono es obligatorio')
-    return false
-  }
-  return true
-}
-
-const resetForm = () => {
-  proveedor.nombre = ''
-  proveedor.cuit = ''
-  proveedor.contacto = ''
-  proveedor.telefono = ''
-  proveedor.email = ''
-  proveedor.direccion = ''
-  proveedor.categorias_seleccionadas = []
-  proveedor.productos_seleccionados = []
-  proveedor.productos_especificos = '' // ✅ LIMPIAR TAMBIÉN ESTE
-}
-
-const volver = () => {
-  emit('cancelar')
-}
+const volver = () => emit('cancelar')
 </script>
 
 <style scoped>
 /* =============================
-   ESTILOS DIRECTOS DEL FORMULARIO
+   ESTILOS MODERNOS Y LIMPIOS
 ============================= */
 .form-card {
-  background: rgba(23, 23, 23, 0.8);
-  border: 2px solid #374151;
-  border-radius: 20px;
-  padding: 30px 50px; /* reducido un poco para no empujar los botones */
+  background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+  border: 1px solid #334155;
+  border-radius: 16px;
+  padding: 30px 40px;
   width: 100%;
-  max-width: 950px;
-  max-height: 90vh; /* altura máxima con scroll */
-  overflow-y: auto;  /* scroll vertical si excede altura */
-  box-shadow: 0 25px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
-  backdrop-filter: blur(10px);
-  position: relative;
+  max-width: 900px;
   margin: 0 auto;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  /* Eliminamos overflow y height fijo aquí para que crezca */
 }
 
-.form-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0; height: 3px;
-  background: linear-gradient(90deg, #6b7280, #9ca3af, #6b7280);
-  border-radius: 20px 20px 0 0;
-}
-
-.form-header { 
-  text-align: center; 
-  margin-bottom: 50px; 
-}
-
-.form-header h1 { 
-  font-size: 2.5rem; 
-  font-weight: 800; 
-  color: #ffffff; 
-  margin-bottom: 12px; 
-}
-
-.form-header p { 
-  color: #d1d5db; 
-  font-size: 1.1rem; 
-  font-weight: 500; 
-}
+.form-header { text-align: center; margin-bottom: 30px; }
+.form-header h1 { font-size: 2rem; color: #f1f5f9; margin: 0; }
+.form-header p { color: #94a3b8; font-size: 0.95rem; margin-top: 5px; }
 
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 25px;
+  gap: 24px;
 }
 
-.input-group {
+.input-group { display: flex; flex-direction: column; }
+.input-group.full-width { grid-column: 1 / -1; }
+
+.label-row {
   display: flex;
-  flex-direction: column;
-}
-
-.input-group.full-width {
-  grid-column: 1 / -1;
-}
-
-label {
-  color: #d1d5db;
-  font-weight: 600;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 8px;
-  font-size: 0.95rem;
 }
 
-.required {
+label { color: #cbd5e1; font-weight: 600; font-size: 0.9rem; }
+
+.badge-required {
+  background: rgba(239, 68, 68, 0.15);
   color: #ef4444;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.badge-optional {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 input, .form-textarea {
-  background: rgba(17, 24, 39, 0.8);
-  border: 1px solid #4b5563;
-  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid #334155;
+  border-radius: 10px;
   padding: 12px 16px;
-  color: white;
-  font-size: 14px;
+  color: #f1f5f9;
+  font-size: 15px;
   transition: all 0.3s ease;
 }
 
 input:focus, .form-textarea:focus {
   outline: none;
   border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
 }
 
-.form-textarea {
-  resize: vertical;
-  min-height: 80px;
-  font-family: inherit;
+input.error {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
 }
 
-/* Checkboxes para categorías y productos */
-.categorias-grid,
-.productos-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-  margin-top: 8px;
+.field-error {
+  color: #ef4444;
+  font-size: 0.8rem;
+  margin-top: 6px;
+  font-weight: 500;
+  animation: fadeIn 0.3s ease;
 }
 
-.checkbox-label {
+
+.chips-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.3);
+    /* max-height: 250px; */
+  /* overflow-y: auto; */
+    height: auto;
+  min-height: 50px;
+}
+
+/* Scrollbar personalizado para el wrapper */
+.chips-wrapper::-webkit-scrollbar {
+  width: 6px;
+}
+.chips-wrapper::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 3px;
+}
+
+.chip-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  background: rgba(51, 65, 85, 0.4);
+  border: 1px solid #475569;
+  padding: 8px 16px;
+  border-radius: 20px;
+  color: #cbd5e1;
+  font-size: 0.9rem;
   cursor: pointer;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.05);
-  transition: all 0.3s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
 }
 
-.checkbox-label:hover {
-  background: rgba(255, 255, 255, 0.1);
+.chip-item:hover {
+  background: rgba(51, 65, 85, 0.8);
+  transform: translateY(-1px);
 }
 
-.checkbox-input {
-  display: none;
-}
-
-.checkbox-custom {
-  width: 18px;
-  height: 18px;
-  border: 2px solid #4b5563;
-  border-radius: 4px;
-  position: relative;
-  transition: all 0.3s ease;
-}
-
-.checkbox-input:checked + .checkbox-custom {
-  background: #3b82f6;
+.chip-item.active {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   border-color: #3b82f6;
-}
-
-.checkbox-input:checked + .checkbox-custom::after {
-  content: '✓';
-  position: absolute;
   color: white;
-  font-size: 12px;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  font-weight: 500;
 }
 
-/* Botones */
+.check-icon {
+  font-weight: 800;
+  font-size: 0.8rem;
+}
+
+.no-data {
+  color: #64748b;
+  font-style: italic;
+  font-size: 0.9rem;
+  padding: 10px;
+}
+
+/* BOTONES */
 .form-actions {
   display: flex;
   gap: 15px;
   justify-content: flex-end;
-  margin-top: 20px; /* reducido de 30px */
-  padding-top: 15px; /* reducido de 25px */
-  border-top: 1px solid #374151;
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid #334155;
 }
 
 .btn {
   padding: 12px 24px;
-  border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
-  min-width: 120px;
-  font-size: 0.95rem;
+  transition: all 0.2s;
+  border: none;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
   color: white;
 }
-
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, #059669, #047857);
+  box-shadow: 0 4px 15px rgba(14, 165, 233, 0.4);
   transform: translateY(-2px);
 }
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
-}
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-secondary {
-  background: linear-gradient(135deg, #6b7280, #4b5563);
-  color: white;
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid #475569;
 }
-
 .btn-secondary:hover {
-  background: linear-gradient(135deg, #4b5563, #374151);
-  transform: translateY(-2px);
+  background: #1e293b;
+  color: #f1f5f9;
+  border-color: #cbd5e1;
 }
 
-/* Responsive */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @media (max-width: 768px) {
-  .form-card { 
-    padding: 35px 25px; 
-    margin: 20px;
-  }
-  
-  .form-grid { 
-    grid-template-columns: 1fr; 
-  }
-  
-  .form-header h1 { 
-    font-size: 2rem; 
-  }
-  
-  .form-header p { 
-    font-size: 1rem; 
-  }
-  
-  .categorias-grid,
-  .productos-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .form-actions {
-    flex-direction: column;
-  }
-  
-  .btn {
-    width: 100%;
-  }
-}
-
-@media (max-width: 480px) {
-  .form-card { 
-    padding: 25px 20px; 
-    border-radius: 16px; 
-    margin: 10px;
-  }
-  
-  .form-header { 
-    margin-bottom: 35px; 
-  }
-  
-  .form-header h1 { 
-    font-size: 1.8rem; 
-  }
+  .form-grid { grid-template-columns: 1fr; }
+  .form-card { padding: 20px; }
 }
 </style>

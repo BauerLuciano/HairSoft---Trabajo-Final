@@ -1,114 +1,167 @@
 <template>
-  <div class="form-container">
-    <div class="form-card">
-      <div class="form-header">
-        <h1>Registrar Rol</h1>
-        <p>Ingresa los datos del nuevo rol y asigna sus permisos</p>
+  <div class="pedido-container">
+    <div class="header-section">
+      <h2>
+        <Shield class="header-icon" />
+        Nuevo Rol de Usuario
+      </h2>
+      <button @click="cancelar" class="btn-back">
+        <ArrowLeft :size="18" />
+        Volver
+      </button>
+    </div>
+
+    <div class="card-modern">
+      <div class="card-header">
+        <div class="card-icon">
+          <UserCog :size="20" />
+        </div>
+        <h3>Información del Rol</h3>
       </div>
 
-      <form @submit.prevent="guardarRol" class="form-grid">
-        <!-- Nombre del rol -->
-        <div class="input-group">
-          <label>Nombre del Rol <span class="required">*</span></label>
-          <input
-            v-model="rol.nombre"
-            type="text"
-            placeholder="Ingrese el nombre del rol"
-            required
-          />
+      <div class="input-group">
+        <label>Nombre del Rol *</label>
+        <input 
+          v-model="rol.nombre" 
+          type="text" 
+          placeholder="Ej: Encargado de Stock" 
+          class="input-modern"
+          @blur="validarNombre"
+          :class="{ 'campo-invalido': errores.nombre }"
+        />
+        <div class="mensaje-error" v-if="errores.nombre">{{ errores.nombre }}</div>
+      </div>
+
+      <div class="input-group">
+        <label>Descripción</label>
+        <textarea 
+          v-model="rol.descripcion" 
+          rows="2" 
+          placeholder="Breve descripción de las responsabilidades..." 
+          class="textarea-modern"
+        ></textarea>
+      </div>
+    </div>
+
+    <div class="card-modern">
+      <div class="card-header">
+        <div class="card-icon">
+          <Lock :size="20" />
         </div>
+        <h3>Asignar Permisos</h3>
+        <span class="badge-count">{{ rol.permisos.length }}</span>
+      </div>
 
-        <!-- Descripción -->
-        <div class="input-group">
-          <label>Descripción</label>
-          <textarea
-            v-model="rol.descripcion"
-            placeholder="Descripción del rol"
-          ></textarea>
-        </div>
-
-        <!-- Permisos -->
-        <div class="input-group permisos-section">
-          <label>Permisos disponibles</label>
-
-          <div v-if="permisos.length" class="permisos-list">
-            <div
-              v-for="perm in permisos"
-              :key="perm.id"
-              class="permiso-item"
-            >
-              <input
-                type="checkbox"
-                :id="'perm-' + perm.id"
-                :value="perm.id"
-                v-model="rol.permisos"
-              />
-              <label :for="'perm-' + perm.id">
-                {{ perm.nombre }}
-                <small v-if="perm.descripcion"> - {{ perm.descripcion }}</small>
-              </label>
+      <div v-if="permisosDisponibles.length > 0" class="permisos-grid">
+        <div 
+          v-for="permiso in permisosDisponibles" 
+          :key="permiso.id" 
+          class="producto-item"
+          :class="{ 'selected': rol.permisos.includes(permiso.id) }"
+          @click="togglePermiso(permiso.id)"
+        >
+          <div class="producto-seleccion">
+            <div class="producto-checkbox" :class="{ 'checked': rol.permisos.includes(permiso.id) }">
+              <Check v-if="rol.permisos.includes(permiso.id)" :size="14" />
             </div>
           </div>
-
-          <div v-else class="loading">Cargando permisos...</div>
+          <div class="producto-info">
+            <span class="producto-nombre">{{ permiso.nombre }}</span>
+            <small style="color: #6c757d; display: block;">{{ permiso.descripcion }}</small>
+          </div>
         </div>
+      </div>
 
-        <!-- Botones -->
-        <div class="button-group">
-          <button type="submit" class="save-btn">💾 Guardar</button>
-          <button type="button" @click="cancelar" class="cancel-btn">❌ Cancelar</button>
-        </div>
-      </form>
+      <div v-else class="no-resultados">
+        <Loader2 class="btn-spinner" :size="24" />
+        <p>Cargando permisos...</p>
+      </div>
     </div>
+
+    <button 
+      @click="guardarRol" 
+      :disabled="cargando" 
+      class="btn-registrar-premium"
+      :class="{'btn-processing': cargando}"
+    >
+      <span v-if="!cargando" class="btn-content">
+        <CheckCircle2 :size="20" />
+        Crear Rol
+      </span>
+      <span v-else class="btn-content">
+        <Loader2 :size="20" class="btn-spinner" />
+        Guardando...
+      </span>
+    </button>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+import Swal from 'sweetalert2'
+import { 
+  Shield, ArrowLeft, UserCog, Lock, Check, 
+  CheckCircle2, Loader2 
+} from 'lucide-vue-next'
 
 const router = useRouter()
 const API_BASE = 'http://127.0.0.1:8000'
 
-const rol = ref({
+const rol = reactive({
   nombre: '',
   descripcion: '',
-  permisos: [], // <-- Aquí guardamos los IDs seleccionados
+  permisos: []
 })
 
-const permisos = ref([])
+const errores = reactive({ nombre: '' })
+const permisosDisponibles = ref([])
+const cargando = ref(false)
 
-// 🔹 Cargar todos los permisos desde el backend
-const cargarPermisos = async () => {
+onMounted(async () => {
   try {
     const res = await axios.get(`${API_BASE}/usuarios/api/permisos/`)
-    console.log('Permisos recibidos:', res.data) // 🔹 esto te permite depurar
-    permisos.value = res.data
-  } catch (err) {
-    console.error('Error al cargar permisos:', err)
-  }
-}
-
-
-onMounted(() => {
-  cargarPermisos()
-})
-
-// 🔹 Crear rol con permisos
-const guardarRol = async () => {
-  if (!rol.value.nombre.trim()) {
-    alert('El nombre del rol es obligatorio')
-    return
-  }
-
-  try {
-    await axios.post(`${API_BASE}/usuarios/api/roles/crear/`, rol.value)
-    alert('✅ Rol creado con éxito')
-    router.push({ path: '/roles' })
+    permisosDisponibles.value = res.data
   } catch (err) {
     console.error(err)
-    alert('❌ No se pudo crear el rol')
+    Swal.fire('Error', 'No se pudieron cargar los permisos', 'error')
+  }
+})
+
+const togglePermiso = (id) => {
+  const index = rol.permisos.indexOf(id)
+  if (index === -1) rol.permisos.push(id)
+  else rol.permisos.splice(index, 1)
+}
+
+const validarNombre = () => {
+  errores.nombre = rol.nombre.trim() ? '' : 'El nombre es obligatorio'
+}
+
+const guardarRol = async () => {
+  validarNombre()
+  if (errores.nombre) return
+
+  cargando.value = true
+  try {
+    await axios.post(`${API_BASE}/usuarios/api/roles/crear/`, rol)
+    
+    await Swal.fire({
+      icon: 'success',
+      title: 'Rol Creado',
+      text: 'El rol se registró correctamente',
+      timer: 1500,
+      showConfirmButton: false
+    })
+    
+    router.push('/roles')
+  } catch (err) {
+    const msg = err.response?.data?.message || 'Error al guardar'
+    if (msg.includes('existe')) errores.nombre = msg
+    else Swal.fire('Error', msg, 'error')
+  } finally {
+    cargando.value = false
   }
 }
 
@@ -116,45 +169,41 @@ const cancelar = () => router.push('/roles')
 </script>
 
 <style scoped>
-.permisos-section {
-  margin-top: 1rem;
-}
+/* COPIAR ESTILOS DE TU RegistrarPedido.vue AQUÍ */
+/* He resumido los más importantes para que funcione visualmente igual */
+.pedido-container { max-width: 800px; margin: 0 auto; padding: 25px; background: #fff; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.12); font-family: 'Segoe UI', sans-serif; }
+.header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 2px solid #f1f3f4; padding-bottom: 20px; }
+.header-section h2 { margin: 0; color: #1a1a1a; font-size: 1.8em; font-weight: 700; display: flex; align-items: center; gap: 12px; }
+.header-icon { color: #007bff; }
+.btn-back { background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; gap: 8px; align-items: center; }
 
-.permisos-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 8px;
-  background: #f9f9f9;
-  padding: 10px;
-  border-radius: 10px;
-}
+.card-modern { background: #fff; border-radius: 16px; border: 2px solid #f1f3f4; padding: 25px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+.card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #f1f3f4; }
+.card-icon { background: linear-gradient(135deg, #007bff, #0056b3); padding: 10px; border-radius: 10px; color: white; display: flex; }
+.card-header h3 { margin: 0; font-size: 1.3em; font-weight: 700; color: #1a1a1a; }
+.badge-count { background: #28a745; color: white; padding: 4px 10px; border-radius: 20px; font-weight: bold; font-size: 0.9em; margin-left: auto; }
 
-.permiso-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-}
+.input-group { margin-bottom: 20px; }
+.input-group label { display: block; font-weight: 600; margin-bottom: 8px; color: #495057; }
+.input-modern, .textarea-modern { width: 100%; padding: 12px 16px; border-radius: 10px; border: 2px solid #e1e5e9; background: #f8f9fa; font-size: 14px; transition: 0.3s; }
+.input-modern:focus, .textarea-modern:focus { border-color: #007bff; background: #fff; outline: none; }
+.campo-invalido { border-color: #dc3545 !important; background: rgba(220,53,69,0.05) !important; }
+.mensaje-error { color: #dc3545; font-size: 0.85rem; margin-top: 6px; }
 
-.loading {
-  font-style: italic;
-  color: gray;
-}
-</style>
+/* Grid de Permisos (Estilo Productos) */
+.permisos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.producto-item { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border: 2px solid #e9ecef; border-radius: 12px; cursor: pointer; transition: 0.3s; background: #fff; }
+.producto-item:hover { border-color: #007bff; transform: translateY(-2px); }
+.producto-item.selected { border-color: #007bff; background: #e7f3ff; }
+.producto-checkbox { width: 20px; height: 20px; border: 2px solid #dee2e6; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: 0.3s; color: transparent; flex-shrink: 0; margin-top: 2px; }
+.producto-checkbox.checked { background: #007bff; border-color: #007bff; color: white; }
+.producto-nombre { font-weight: 600; color: #1a1a1a; font-size: 0.95em; }
 
-
-<style scoped>
-.form-card { background: rgba(23,23,23,0.8); border-radius:24px; padding:40px; max-width:600px; margin:auto; box-shadow:0 25px 50px rgba(0,0,0,0.5) }
-.form-header { margin-bottom:30px }
-.form-header h1 { font-size:1.8rem; margin-bottom:6px }
-.form-header p { color:#aaa; font-size:0.9rem }
-.form-grid { display:flex; flex-direction:column; gap:20px }
-.input-group { display:flex; flex-direction:column }
-.input-group label { font-weight:600; margin-bottom:6px }
-.input-group input, .input-group textarea { padding:8px 12px; border-radius:6px; border:none; background:#f3f3f3; font-size:1rem }
-textarea { resize:vertical; min-height:80px }
-.button-group { display:flex; gap:12px; justify-content:flex-end }
-.save-btn { background:#3b82f6; color:white; padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font-weight:600 }
-.cancel-btn { background:#ef4444; color:white; padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font-weight:600 }
-.required { color:#ef4444 }
+.btn-registrar-premium { width: 100%; background: linear-gradient(135deg, #007bff, #0056b3); color: white; font-size: 1.1em; padding: 18px; border: none; border-radius: 12px; cursor: pointer; transition: 0.3s; margin-top: 10px; font-weight: 600; box-shadow: 0 4px 15px rgba(0,123,255,0.3); }
+.btn-registrar-premium:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,123,255,0.4); }
+.btn-registrar-premium:disabled { opacity: 0.7; cursor: not-allowed; }
+.btn-content { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.btn-spinner { animation: spin 1s linear infinite; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
+.no-resultados { text-align: center; padding: 20px; color: #6c757d; }
 </style>

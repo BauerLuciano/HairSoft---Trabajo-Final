@@ -60,7 +60,8 @@ urlpatterns = [
     path('api/marcas/', func_views.listar_marcas, name='listar_marcas'),
     path('api/marcas/crear/', func_views.crear_marca, name='crear_marca'),
     path('api/marcas/<int:pk>/cambiar_estado/', func_views.cambiar_estado_marca, name='cambiar_estado_marca'),
-    path('api/marcas/<int:pk>/', func_views.eliminar_marca, name='eliminar_marca'),
+    path('api/marcas/<int:pk>/', func_views.actualizar_marca, name='actualizar_marca'),
+    path('api/marcas/<int:pk>/eliminar/', func_views.eliminar_marca, name='eliminar_marca'),
 
     # ================================
     # Usuarios (USAN FUNCIONES)
@@ -138,10 +139,12 @@ urlpatterns = [
     # ==============================
     path('api/roles/', func_views.listado_roles, name='listado_roles'),
     path('api/roles/crear/', func_views.crear_rol, name='crear_rol'),
-    path('api/roles/editar/<int:pk>/', func_views.editar_rol, name='editar_rol'),
+    #path('api/roles/editar/<int:pk>/', func_views.editar_rol, name='editar_rol'),
+        path('api/roles/<int:pk>/', func_views.editar_rol, name='detalle_rol'),
     path('api/roles/eliminar/<int:pk>/', func_views.eliminar_rol, name='eliminar_rol'),
     path('api/permisos/', func_views.listado_permisos, name='listado_permisos'),
 
+    
     # ==============================
     # API MERCADOPAGO (USAN FUNCIONES)
     # ==============================
@@ -262,4 +265,5 @@ urlpatterns = [
 
     # ✅ RUTA PARA VALIDAR CUPÓN
     path('api/promociones/validar/<str:codigo>/', validar_cupon, name='validar_cupon'),
+    path('api/auditoria/', func_views.listado_auditoria, name='listado_auditoria'),
 ]

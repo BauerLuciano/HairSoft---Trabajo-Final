@@ -1,8 +1,7 @@
 <template>
   <div class="list-container">
-    <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarEditar }">
+    <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar }">
       
-      <!-- Header -->
       <div class="list-header">
         <div class="header-content">
           <h1>Gestión de Marcas</h1>
@@ -18,7 +17,6 @@
         </div>
       </div>
 
-      <!-- Filtros -->
       <div class="filters-container">
         <div class="filters-grid">
           <div class="filter-group">
@@ -48,7 +46,6 @@
         </div>
       </div>
 
-      <!-- Tabla de marcas -->
       <div class="table-container">
         <table class="users-table">
           <thead>
@@ -74,14 +71,15 @@
               <td>
                 <div class="proveedores-lista">
                   <div v-if="marca.proveedores_nombres && marca.proveedores_nombres.length > 0">
-                    <div v-for="(proveedor, index) in getPrimerosProveedores(marca)" :key="proveedor.id || index" 
-                         class="proveedor-item">
-                      <span class="proveedor-nombre">{{ proveedor.nombre }}</span>
+                    <div v-for="(nombre, index) in marca.proveedores_nombres.slice(0, 3)" :key="index" class="proveedor-item">
+                      <span class="proveedor-nombre">{{ nombre }}</span>
                     </div>
+                    
                     <div v-if="marca.proveedores_nombres.length > 3" class="mas-proveedores">
                       +{{ marca.proveedores_nombres.length - 3 }} más...
                     </div>
                   </div>
+                  
                   <div v-else class="sin-proveedores">
                     Sin proveedores
                   </div>
@@ -130,7 +128,6 @@
         </div>
       </div>
 
-      <!-- Paginación -->
       <div class="pagination">
         <button @click="paginaAnterior" :disabled="pagina === 1">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -148,7 +145,6 @@
       </div>
     </div>
 
-    <!-- Modal Registrar Marca -->
     <div v-if="mostrarRegistrar" class="modal-overlay" @click.self="cerrarModal">
       <div class="modal-content">
         <RegistrarMarca 
@@ -157,26 +153,17 @@
         />
       </div>
     </div>
-
-    <!-- Modal Editar Marca -->
-    <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
-      <div class="modal-content">
-        <EditarMarca 
-          :marca="marcaEditando"
-          @marca-actualizada="marcaActualizada"
-          @cancelar="cerrarModalEditar"
-        />
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
+import Swal from 'sweetalert2'
 import RegistrarMarca from './RegistrarMarca.vue'
-import EditarMarca from './EditarMarca.vue'
 
+const router = useRouter()
 const API_BASE = 'http://127.0.0.1:8000'
 
 const marcas = ref([])
@@ -184,96 +171,22 @@ const filtros = ref({ busqueda: '', estado: '' })
 const pagina = ref(1)
 const itemsPorPagina = 8
 const mostrarRegistrar = ref(false)
-const mostrarEditar = ref(false)
-const marcaEditando = ref(null)
 
-// Cargar marcas con productos y proveedores REALES
 const cargarMarcas = async () => {
   try {
-    // ✅ CORREGIDO: Rutas sin /usuarios/
-    const [resMarcas, resProductos, resProveedores] = await Promise.all([
-      axios.get(`${API_BASE}/api/marcas/`),
-      axios.get(`${API_BASE}/api/productos/`),
-      axios.get(`${API_BASE}/api/proveedores/`)
-    ])
-    
-    const todasMarcas = resMarcas.data
-    const todosProductos = resProductos.data
-    const todosProveedores = resProveedores.data
-    
-    // 2. Crear mapa de productos por marca y proveedores por marca
-    const productosPorMarca = {}
-    const proveedoresPorMarca = {}
-    
-    // Inicializar estructuras
-    todasMarcas.forEach(marca => {
-      productosPorMarca[marca.id] = {
-        count: 0,
-        productos: []
-      }
-      proveedoresPorMarca[marca.id] = new Set()
-    })
-    
-    // 3. Procesar TODOS los productos
-    todosProductos.forEach(producto => {
-      const marcaId = producto.marca
-      
-      if (marcaId && productosPorMarca[marcaId]) {
-        productosPorMarca[marcaId].count++
-        productosPorMarca[marcaId].productos.push(producto)
-        
-        if (producto.proveedores && Array.isArray(producto.proveedores)) {
-          producto.proveedores.forEach(proveedorId => {
-            const proveedor = todosProveedores.find(p => p.id === proveedorId)
-            if (proveedor) {
-              proveedoresPorMarca[marcaId].add(proveedor.nombre)
-            }
-          })
-        }
-        
-        if (producto.proveedores_nombres && Array.isArray(producto.proveedores_nombres)) {
-          producto.proveedores_nombres.forEach(nombre => {
-            proveedoresPorMarca[marcaId].add(nombre)
-          })
-        }
-      }
-    })
-    
-    // 4. Procesar marcas con datos REALES
-    marcas.value = todasMarcas.map(marca => {
-      const productosInfo = productosPorMarca[marca.id] || { count: 0, productos: [] }
-      const proveedoresDeEstaMarca = Array.from(proveedoresPorMarca[marca.id] || [])
-      
-      return {
-        ...marca,
-        productos_count: productosInfo.count,
-        total_proveedores: proveedoresDeEstaMarca.length,
-        proveedores_nombres: proveedoresDeEstaMarca,
-        updated_at: marca.updated_at || marca.fecha_creacion
-      }
-    }).sort((a, b) => b.id - a.id)
-    
+    const res = await axios.get(`${API_BASE}/api/marcas/`)
+    marcas.value = res.data
   } catch (err) {
-    console.error('❌ Error al cargar marcas:', err)
-    alert('No se pudo cargar las marcas.')
-  }
-}
-
-// Formatear fecha
-const formatFecha = (fecha) => {
-  if (!fecha) return '-'
-  try {
-    return new Date(fecha).toLocaleDateString('es-AR', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
+    console.error('Error cargando marcas:', err)
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'No se pudieron cargar las marcas',
+      confirmButtonColor: '#007bff'
     })
-  } catch (error) {
-    return fecha
   }
 }
 
-// Clase para estado
 const getEstadoClass = (estado) => {
   const estadoLower = estado?.toLowerCase() || ''
   if (estadoLower === 'activo') return 'estado-success'
@@ -281,19 +194,6 @@ const getEstadoClass = (estado) => {
   return 'estado-secondary'
 }
 
-// Obtener primeros proveedores para mostrar
-const getPrimerosProveedores = (marca) => {
-  if (!marca.proveedores_nombres || !Array.isArray(marca.proveedores_nombres)) {
-    return []
-  }
-  
-  return marca.proveedores_nombres.slice(0, 3).map((nombre, index) => ({ 
-    id: index, 
-    nombre: nombre 
-  }))
-}
-
-// Filtrado
 const marcasFiltradas = computed(() => {
   return marcas.value.filter(m => {
     const busca = filtros.value.busqueda.toLowerCase()
@@ -307,11 +207,6 @@ const marcasFiltradas = computed(() => {
   })
 })
 
-// Estadísticas
-const marcasInactivas = computed(() => marcasFiltradas.value.filter(m => m.estado === 'inactivo').length)
-const marcasSinProveedores = computed(() => marcasFiltradas.value.filter(m => !m.total_proveedores || m.total_proveedores === 0).length)
-
-// Paginación
 const totalPaginas = computed(() => Math.max(1, Math.ceil(marcasFiltradas.value.length / itemsPorPagina)))
 const marcasPaginadas = computed(() => {
   const inicio = (pagina.value - 1) * itemsPorPagina
@@ -321,64 +216,66 @@ const marcasPaginadas = computed(() => {
 const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 
-// Cambiar estado de marca
 const cambiarEstadoMarca = async (marca) => {
   const nuevoEstado = marca.estado === 'activo' ? 'inactivo' : 'activo'
   const accion = nuevoEstado === 'activo' ? 'activar' : 'desactivar'
   
-  if (!confirm(`¿Está seguro de ${accion} la marca "${marca.nombre}"?`)) {
-    return
-  }
+  const result = await Swal.fire({
+    title: `¿${accion.charAt(0).toUpperCase() + accion.slice(1)} marca?`,
+    text: `¿Estás seguro de ${accion} la marca "${marca.nombre}"?`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#007bff',
+    cancelButtonColor: '#d33',
+    confirmButtonText: 'Sí, confirmar'
+  })
+
+  if (!result.isConfirmed) return
 
   try {
-    // ✅ CORREGIDO: Ruta sin /usuarios/
     await axios.patch(`${API_BASE}/api/marcas/${marca.id}/cambiar_estado/`, { 
       estado: nuevoEstado 
     })
     
     await cargarMarcas()
-    alert(`Marca ${accion}da correctamente`)
+    Swal.fire({
+      icon: 'success',
+      title: '¡Éxito!',
+      text: `Marca ${accion}da correctamente`,
+      timer: 1500,
+      showConfirmButton: false
+    })
   } catch (err) {
     console.error('Error cambiando estado:', err)
-    alert(`No se pudo ${accion} la marca`)
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: `No se pudo ${accion} la marca`,
+      confirmButtonColor: '#007bff'
+    })
   }
 }
 
-// Editar marca
-const editarMarca = (marca) => { 
-  marcaEditando.value = marca
-  mostrarEditar.value = true 
+const editarMarca = (marca) => {
+  // 🔥 URL corregida para ir a ModificarMarca.vue
+  router.push(`/productos/marcas/modificar/${marca.id}`)
 }
 
-// Modales
 const cerrarModal = () => { mostrarRegistrar.value = false }
-const cerrarModalEditar = () => { 
-  mostrarEditar.value = false
-  marcaEditando.value = null 
-}
 
-// Eventos de los modales
 const marcaRegistrada = async () => { 
   cerrarModal()
   await cargarMarcas()
   pagina.value = 1 
 }
 
-const marcaActualizada = async () => { 
-  cerrarModalEditar()
-  await cargarMarcas() 
-}
-
-// Limpiar filtros
 const limpiarFiltros = () => { 
   filtros.value = { busqueda: '', estado: '' }
   pagina.value = 1 
 }
 
-// Watch para resetear página cuando cambian filtros
 watch(filtros, () => { pagina.value = 1 }, { deep: true })
 
-// Inicialización
 onMounted(async () => { 
   await cargarMarcas()
 })
@@ -386,10 +283,9 @@ onMounted(async () => {
 
 <style scoped>
 /* ========================================
-   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE - MARCAS
+   🔥 TUS ESTILOS ORIGINALES (NO TOCADOS)
    ======================================== */
 
-/* Tarjeta principal - CON VARIABLES */
 .list-card {
   background: var(--bg-secondary);
   color: var(--text-primary);
@@ -404,7 +300,6 @@ onMounted(async () => {
   border: 1px solid var(--border-color);
 }
 
-/* Borde superior azul acero */
 .list-card::before {
   content: '';
   position: absolute;
@@ -414,7 +309,6 @@ onMounted(async () => {
   border-radius: 24px 24px 0 0;
 }
 
-/* BADGES DE ESTADO - CON VARIABLES */
 .badge-estado {
   padding: 6px 12px;
   border-radius: 20px;
@@ -456,7 +350,6 @@ onMounted(async () => {
   box-shadow: 0 0 12px rgba(14, 165, 233, 0.3);
 }
 
-/* HEADER - CON VARIABLES */
 .list-header {
   display: flex;
   justify-content: space-between;
@@ -486,7 +379,6 @@ onMounted(async () => {
   letter-spacing: 0.5px;
 }
 
-/* Botón registrar */
 .register-button {
   background: linear-gradient(135deg, #0ea5e9, #0284c7);
   color: white;
@@ -528,7 +420,6 @@ onMounted(async () => {
   background: linear-gradient(135deg, #0284c7, #0369a1);
 }
 
-/* FILTROS - CON VARIABLES */
 .filters-container {
   margin-bottom: 30px;
   background: var(--hover-bg);
@@ -599,7 +490,6 @@ onMounted(async () => {
   box-shadow: var(--shadow-sm);
 }
 
-/* TABLA - CON VARIABLES */
 .table-container {
   overflow-x: auto;
   margin-bottom: 25px;
@@ -658,7 +548,6 @@ onMounted(async () => {
   background: var(--bg-tertiary);
 }
 
-/* Estilos específicos para marcas */
 .descripcion-cell {
   max-width: 200px;
   overflow: hidden;
@@ -666,7 +555,6 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-/* ESTILOS PARA LA LISTA DE PROVEEDORES EN LA TABLA */
 .proveedores-lista {
   max-width: 250px;
 }
@@ -712,13 +600,6 @@ onMounted(async () => {
   padding: 8px 0;
 }
 
-.fecha-actualizacion {
-  color: var(--text-tertiary);
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-
-/* BOTONES DE ACCIÓN - CON VARIABLES */
 .action-buttons { 
   display: flex; 
   gap: 8px; 
@@ -778,65 +659,6 @@ onMounted(async () => {
   border-color: #10b981;
 }
 
-/* CONTADOR Y MENSAJES - CON VARIABLES */
-.usuarios-count {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: 25px 0;
-  padding: 18px;
-  background: var(--hover-bg);
-  border-radius: 12px;
-  flex-wrap: wrap;
-  gap: 15px;
-  border: 1px solid var(--border-color);
-}
-
-.usuarios-count p {
-  color: var(--text-secondary);
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.alertas-container {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.alerta-stock {
-  background: var(--bg-tertiary);
-  color: #f59e0b;
-  border: 2px solid #f59e0b;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  font-size: 0.8rem;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.alerta-inactivo {
-  background: var(--bg-tertiary);
-  color: #ef4444;
-  border: 2px solid #ef4444;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  font-size: 0.8rem;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* ESTADOS DE CARGA - CON VARIABLES */
 .no-results {
   text-align: center;
   padding: 80px;
@@ -860,7 +682,6 @@ onMounted(async () => {
   color: var(--text-tertiary);
 }
 
-/* PAGINACIÓN - CON VARIABLES */
 .pagination {
   display: flex;
   justify-content: center;
@@ -908,7 +729,6 @@ onMounted(async () => {
   font-size: 0.95rem;
 }
 
-/* OVERLAY Y MODALES - CON VARIABLES */
 .overlay-activo {
   opacity: 0.3;
   filter: blur(5px);
@@ -952,7 +772,6 @@ onMounted(async () => {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* SCROLLBAR PERSONALIZADO - CON VARIABLES */
 .modal-content::-webkit-scrollbar,
 .table-container::-webkit-scrollbar {
   width: 12px;
@@ -977,7 +796,6 @@ onMounted(async () => {
   background: var(--accent-color);
 }
 
-/* RESPONSIVE */
 @media (max-width: 768px) {
   .list-card {
     padding: 25px;

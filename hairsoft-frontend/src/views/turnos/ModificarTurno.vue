@@ -344,7 +344,8 @@ const route = useRoute()
 const router = useRouter()
 const turnoId = route.params.id
 
-const API_URL = "http://localhost:8000/usuarios/api"
+// ✅ CORREGIDO: Ruta sin /usuarios/
+const API_URL = "http://localhost:8000/api"
 
 // Estados de carga
 const cargando = ref(true)
@@ -501,21 +502,25 @@ const cargarDatosTurno = async () => {
   try {
     cargando.value = true
     
-    // Cargar datos maestros
-    const [turnoRes, catRes, servRes, pelRes, catServRes] = await Promise.all([
+    // ✅ CORREGIDO: Rutas sin /usuarios/
+    const [turnoRes, catRes, servRes, pelRes] = await Promise.all([
       fetch(`${API_URL}/turnos/${turnoId}/`),
       fetch(`${API_URL}/categorias/servicios/`),
       fetch(`${API_URL}/servicios/`),
       fetch(`${API_URL}/peluqueros/`)
     ])
 
-    if (!turnoRes.ok) throw new Error("Turno no encontrado")
+    // Verificar si el turno existe
+    if (!turnoRes.ok) {
+      throw new Error("Turno no encontrado")
+    }
     
     const turno = await turnoRes.json()
     categorias.value = await catRes.json()
     servicios.value = await servRes.json()
     peluqueros.value = await pelRes.json()
     
+    console.log("📦 Turno cargado:", turno)
     turnoData.value = turno
     
     // Asignar datos del turno al formulario
@@ -553,8 +558,18 @@ const cargarDatosTurno = async () => {
     }
     
   } catch (err) {
-    console.error("Error cargando turno:", err)
+    console.error("❌ Error cargando turno:", err)
     error.value = "No se pudo cargar el turno. Verifica que exista."
+    
+    // Mostrar error con SweetAlert
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'No se pudo cargar el turno. Verifica que exista.',
+      confirmButtonText: 'Volver al listado'
+    }).then(() => {
+      router.push('/turnos')
+    })
   } finally {
     cargando.value = false
   }
@@ -580,6 +595,7 @@ const cargarHorariosOcupados = async (fecha) => {
   slotsOcupadosReales.value = [] 
   
   try {
+    // ✅ CORREGIDO: Ruta sin /usuarios/
     const url = `${API_URL}/turnos/?fecha=${fecha}&peluquero_id=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
     const res = await fetch(url)
     const turnos = await res.json()
@@ -678,6 +694,7 @@ const actualizarBusquedaClienteModal = async () => {
     return
   }
   try {
+    // ✅ CORREGIDO: Ruta sin /usuarios/
     const res = await fetch(`${API_URL}/clientes/?q=${busquedaClienteModal.value}`)
     const data = await res.json()
     clientesSugeridosModal.value = data.results || data || []
@@ -697,7 +714,6 @@ const seleccionarClienteModal = (c) => {
   form.value.clienteDni = c.dni || ""
   cerrarModalCliente()
   
-  // Si había seleccionado el mismo peluquero que el cliente, resetear
   if (form.value.peluquero === c.id) {
       form.value.peluquero = ""
       resetFechas()
@@ -731,6 +747,7 @@ const modificarTurno = async () => {
 
   try {
     const token = localStorage.getItem('token')
+    // ✅ CORREGIDO: Ruta sin /usuarios/
     const res = await fetch(`${API_URL}/turnos/${turnoId}/modificar/`, {
       method: "POST",
       headers: {

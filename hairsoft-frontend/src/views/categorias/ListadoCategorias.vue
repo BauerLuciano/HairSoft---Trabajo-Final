@@ -121,24 +121,35 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-// ✅ USAMOS TU AXIOS CONFIGURADO
-import axios from '../../utils/axiosConfig'
+import axios from 'axios'
+import Swal from 'sweetalert2'
+
+// Configuración API
+const API_BASE = 'http://127.0.0.1:8000' // Ajusta si usas otra URL
 
 const categorias = ref([])
 const filtros = ref({ busqueda: '', tipo: '' })
 const pagina = ref(1)
 const itemsPorPagina = 8
 const modalVisible = ref(false)
-const form = reactive({ id: null, nombre: '', descripcion: '', tipo: '' })
-const errores = reactive({ nombre: '' })
 
-// --- CARGA SEGURA (CORREGIDO: SIN /usuarios/) ---
+const form = reactive({ 
+  id: null, 
+  nombre: '', 
+  descripcion: '', 
+  tipo: '' 
+})
+
+const errores = reactive({ 
+  nombre: '' 
+})
+
+// --- CARGA DE DATOS ---
 const cargarCategorias = async () => {
   try {
-    // CORREGIDO: Rutas con /api/ en lugar de /usuarios/api/
     const [resServicios, resProductos] = await Promise.all([
-      axios.get('/api/categorias/servicios/').catch(() => ({ data: [] })),
-      axios.get('/api/categorias/productos/').catch(() => ({ data: [] }))
+      axios.get(`${API_BASE}/api/categorias/servicios/`).catch(() => ({ data: [] })),
+      axios.get(`${API_BASE}/api/categorias/productos/`).catch(() => ({ data: [] }))
     ])
 
     const dataServicios = Array.isArray(resServicios.data) ? resServicios.data : (resServicios.data?.results || [])
@@ -175,65 +186,104 @@ const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.va
 // --- ACCIONES ---
 const abrirModalCrear = () => {
   Object.assign(form, { id: null, nombre: '', descripcion: '', tipo: '' })
+  errores.nombre = ''
   modalVisible.value = true
 }
+
 const abrirModalEditar = (cat) => {
   Object.assign(form, { id: cat.id, nombre: cat.nombre, descripcion: cat.descripcion, tipo: cat.tipo })
+  errores.nombre = ''
   modalVisible.value = true
 }
+
 const cerrarModal = () => { modalVisible.value = false }
 
 const guardarCategoria = async () => {
+  // Validación local básica
   if (!form.nombre.trim()) {
     errores.nombre = 'El nombre es requerido'
     return
   }
-  errores.nombre = ''
+  if (!form.tipo) {
+    Swal.fire('Atención', 'Selecciona un tipo', 'warning')
+    return
+  }
+  errores.nombre = '' // Limpiamos errores previos
   
   try {
     let url = ''
-    // CORREGIDO: Rutas con /api/ en lugar de /usuarios/api/
     if (form.tipo === 'Servicio') {
-      url = form.id ? `/api/categorias/servicios/editar/${form.id}/` : `/api/categorias/servicios/crear/`
+      url = form.id 
+        ? `${API_BASE}/api/categorias/servicios/editar/${form.id}/` 
+        : `${API_BASE}/api/categorias/servicios/crear/`
     } else {
-      url = form.id ? `/api/categorias/productos/editar/${form.id}/` : `/api/categorias/productos/crear/`
+      url = form.id 
+        ? `${API_BASE}/api/categorias/productos/editar/${form.id}/` 
+        : `${API_BASE}/api/categorias/productos/crear/`
     }
-    await axios.post(url, { nombre: form.nombre, descripcion: form.descripcion })
+    
+    await axios.post(url, { 
+      nombre: form.nombre, 
+      descripcion: form.descripcion 
+    })
+    
+    // Si llegamos acá es éxito
     cerrarModal()
-    cargarCategorias()
+    await cargarCategorias()
+    
+    Swal.fire({
+      icon: 'success',
+      title: form.id ? 'Actualizada' : 'Creada',
+      timer: 1500,
+      showConfirmButton: false,
+      background: '#fff', color: '#1a1a1a'
+    })
+
   } catch (err) { 
-    console.error('Error guardando categoría:', err)
-    if (err.response?.data?.nombre) {
+    console.error('Error guardando:', err)
+    
+    // 🔥 AQUÍ ESTÁ EL FIX: Capturar el mensaje personalizado del backend
+    if (err.response?.data?.message) {
+      // Backend devolvió: { status: 'error', message: 'Ya existe...' }
+      errores.nombre = err.response.data.message
+    } else if (err.response?.data?.nombre) {
+      // Backend devolvió error de serializer estándar
       errores.nombre = err.response.data.nombre[0]
+    } else {
+      Swal.fire('Error', 'Ocurrió un error inesperado', 'error')
     }
   }
 }
 
 const eliminarCategoria = async (cat) => {
-  if (!confirm('¿Está seguro de eliminar esta categoría?')) return
-  try {
-    // CORREGIDO: Rutas con /api/ en lugar de /usuarios/api/
-    const url = cat.tipo === 'Servicio' 
-      ? `/api/categorias/servicios/eliminar/${cat.id}/` 
-      : `/api/categorias/productos/eliminar/${cat.id}/`
-    await axios.post(url)
-    cargarCategorias()
-  } catch (err) { 
-    console.error('Error eliminando categoría:', err)
-    alert('No se pudo eliminar la categoría')
+  const result = await Swal.fire({
+    title: '¿Eliminar?',
+    text: "No se puede deshacer",
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#d33',
+    confirmButtonText: 'Eliminar'
+  })
+
+  if (result.isConfirmed) {
+    try {
+      const url = cat.tipo === 'Servicio' 
+        ? `${API_BASE}/api/categorias/servicios/eliminar/${cat.id}/` 
+        : `${API_BASE}/api/categorias/productos/eliminar/${cat.id}/`
+        
+      await axios.post(url)
+      cargarCategorias()
+      Swal.fire('Eliminada', '', 'success')
+    } catch (err) { 
+      Swal.fire('Error', 'No se pudo eliminar', 'error')
+    }
   }
 }
 
 const limpiarFiltros = () => { filtros.value = { busqueda: '', tipo: '' }; pagina.value = 1 }
 const getTipoClass = (t) => t === 'Servicio' ? 'estado-info' : 'estado-success'
 
-// Cargar datos al montar el componente
-onMounted(() => {
-  console.log('Componente de categorías montado')
-  cargarCategorias()
-})
-
-// Reiniciar paginación al cambiar filtros
+onMounted(cargarCategorias)
 watch(filtros, () => { pagina.value = 1 }, { deep: true })
 </script>
 

@@ -1,7 +1,6 @@
 <template>
   <div class="list-container">
     <div class="list-card">
-      <!-- Header -->
       <div class="list-header">
         <div class="header-content">
           <h1>Gestión de Roles</h1>
@@ -15,7 +14,6 @@
         </div>
       </div>
 
-      <!-- Filtros -->
       <div class="filters-container">
         <div class="filters-grid">
           <div class="filter-group">
@@ -40,7 +38,6 @@
         </div>
       </div>
 
-      <!-- Tabla de Roles -->
       <div class="table-container">
         <table class="roles-table">
           <thead>
@@ -99,7 +96,6 @@
         </div>
       </div>
 
-      <!-- Mostrando cantidad -->
       <div class="roles-count">
         <p>
           <Shield :size="16" />
@@ -113,7 +109,6 @@
         </div>
       </div>
 
-      <!-- Paginación -->
       <div class="pagination">
         <button @click="paginaAnterior" :disabled="pagina === 1">
           <ChevronLeft :size="16" />
@@ -201,6 +196,7 @@ const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.va
 const irARegistrar = () => router.push({ path: '/roles/crear', query: { reload: new Date().getTime() } })
 const editarRol = (rol) => router.push(`/roles/modificar/${rol.id}`)
 
+// 🔥 LÓGICA CORREGIDA: Apunta a la nueva ruta /api/roles/{id}/
 const cambiarEstadoRol = async (rol) => {
   const nuevoEstado = !rol.activo
   const accion = nuevoEstado ? 'activar' : 'desactivar'
@@ -219,37 +215,29 @@ const cambiarEstadoRol = async (rol) => {
   if (!result.isConfirmed) return
   
   try {
-    await axios.patch(`${API_BASE}/usuarios/api/roles/${rol.id}/`, {
+    // 👇 URL CORREGIDA (Sin /editar/ ni /eliminar/)
+    await axios.patch(`${API_BASE}/api/roles/${rol.id}/`, {
       activo: nuevoEstado
     })
+    
     await cargarRoles()
     
     Swal.fire({
       icon: 'success',
       title: '¡Éxito!',
       text: `Rol ${accion}do correctamente`,
-      confirmButtonColor: '#0ea5e9'
+      confirmButtonColor: '#0ea5e9',
+      timer: 1500,
+      showConfirmButton: false
     })
   } catch (err) { 
     console.error(err)
     Swal.fire({
       icon: 'error',
       title: 'Error',
-      text: `No se pudo ${accion} el rol`,
+      text: `No se pudo ${accion} el rol. Verifica la consola.`,
       confirmButtonColor: '#0ea5e9'
     })
-  }
-}
-
-const eliminarRol = async (rol) => {
-  if (!confirm(`¿Eliminar el rol ${rol.nombre}?`)) return
-  try {
-    await axios.post(`${API_BASE}/usuarios/api/roles/eliminar/${rol.id}/`)
-    roles.value = roles.value.filter(r => r.id !== rol.id)
-    alert('Rol eliminado con éxito')
-  } catch (err) {
-    console.error(err)
-    alert('No se pudo eliminar el rol')
   }
 }
 
@@ -273,9 +261,9 @@ onMounted(() => { cargarRoles() })
 <style scoped>
 /* ========================================
    🔥 ESTILO BARBERÍA MASCULINO ELEGANTE - ROLES
+   (EXACTAMENTE IGUAL AL TUYO)
    ======================================== */
 
-/* Tarjeta principal - CON VARIABLES */
 .list-card {
   background: var(--bg-secondary);
   color: var(--text-primary);
@@ -290,7 +278,6 @@ onMounted(() => { cargarRoles() })
   border: 1px solid var(--border-color);
 }
 
-/* Borde superior azul acero */
 .list-card::before {
   content: '';
   position: absolute;
@@ -300,7 +287,6 @@ onMounted(() => { cargarRoles() })
   border-radius: 24px 24px 0 0;
 }
 
-/* BADGES DE ESTADO - CON VARIABLES */
 .badge-estado {
   padding: 6px 12px;
   border-radius: 20px;
@@ -328,7 +314,6 @@ onMounted(() => { cargarRoles() })
   opacity: 0.75;
 }
 
-/* HEADER - CON VARIABLES */
 .list-header {
   display: flex;
   justify-content: space-between;
@@ -358,7 +343,6 @@ onMounted(() => { cargarRoles() })
   letter-spacing: 0.5px;
 }
 
-/* Botón registrar */
 .register-button {
   background: linear-gradient(135deg, #0ea5e9, #0284c7);
   color: white;
@@ -400,7 +384,6 @@ onMounted(() => { cargarRoles() })
   background: linear-gradient(135deg, #0284c7, #0369a1);
 }
 
-/* FILTROS - CON VARIABLES */
 .filters-container {
   margin-bottom: 30px;
   background: var(--hover-bg);
@@ -484,7 +467,6 @@ onMounted(() => { cargarRoles() })
   box-shadow: var(--shadow-sm);
 }
 
-/* TABLA - CON VARIABLES */
 .table-container {
   overflow-x: auto;
   margin-bottom: 25px;
@@ -534,7 +516,6 @@ onMounted(() => { cargarRoles() })
   transition: all 0.2s ease;
 }
 
-/* Estilos específicos de roles */
 .descripcion-cell {
   max-width: 250px;
   overflow: hidden;
@@ -542,7 +523,6 @@ onMounted(() => { cargarRoles() })
   white-space: nowrap;
 }
 
-/* ESTILOS PARA LA LISTA DE PERMISOS EN LA TABLA */
 .permisos-lista {
   max-width: 300px;
 }
@@ -588,7 +568,6 @@ onMounted(() => { cargarRoles() })
   padding: 8px 0;
 }
 
-/* BOTONES DE ACCIÓN - CON VARIABLES */
 .action-buttons { 
   display: flex; 
   gap: 8px; 
@@ -648,7 +627,6 @@ onMounted(() => { cargarRoles() })
   border-color: #10b981;
 }
 
-/* CONTADOR Y MENSAJES - CON VARIABLES */
 .roles-count {
   display: flex;
   justify-content: space-between;
@@ -692,7 +670,6 @@ onMounted(() => { cargarRoles() })
   gap: 6px;
 }
 
-/* ESTADOS DE CARGA - CON VARIABLES */
 .no-results {
   text-align: center;
   padding: 80px;
@@ -716,7 +693,6 @@ onMounted(() => { cargarRoles() })
   color: var(--text-tertiary);
 }
 
-/* PAGINACIÓN - CON VARIABLES */
 .pagination {
   display: flex;
   justify-content: center;
@@ -764,7 +740,6 @@ onMounted(() => { cargarRoles() })
   font-size: 0.95rem;
 }
 
-/* SCROLLBAR PERSONALIZADO - CON VARIABLES */
 .table-container::-webkit-scrollbar {
   width: 12px;
   height: 12px;
@@ -785,7 +760,6 @@ onMounted(() => { cargarRoles() })
   background: var(--accent-color);
 }
 
-/* RESPONSIVE */
 @media (max-width: 768px) {
   .list-card {
     padding: 25px;
