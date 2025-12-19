@@ -1,11 +1,14 @@
-from django.urls import path
+from django.urls import path, include
 from django.shortcuts import redirect
 from rest_framework.routers import DefaultRouter
 
 # ✅ 1. Importación para funciones: Renombrar 'views' a 'func_views'
 from . import views as func_views 
 
-# ✅ 2. Importación para CLASES: Importar todas las clases que usan .as_view()
+# ✅ 2. Importamos api_views para la Auditoría (y lo que tengas ahí)
+from . import api_views
+
+# ✅ 3. Importación para CLASES: Importar todas las clases que usan .as_view() desde views.py
 from .views import (
     VentaViewSet, 
     ProductoListCreateAPIView, 
@@ -34,7 +37,15 @@ from .views import (
 )
 
 # ================================
-# Configuración de ViewSet para Ventas
+# Configuración del Router para ViewSets (AUDITORÍA)
+# ================================
+router = DefaultRouter()
+# Registramos el ViewSet de Auditoría que creamos en api_views.py
+# Esto genera automáticamente: /api/auditoria/ y /api/auditoria/{id}/
+router.register(r'auditoria', api_views.AuditoriaViewSet, basename='auditoria')
+
+# ================================
+# Configuración de ViewSet Manual para Ventas (Mantener lógica existente)
 # ================================
 venta_list = VentaViewSet.as_view({
     'get': 'list',
@@ -50,6 +61,7 @@ urlpatterns = [
     # Autenticación y Perfil (USAN FUNCIONES)
     # ==============================
     path('api/auth/login/', func_views.login_auth, name='api_login'), 
+    path('api/auth/logout/', func_views.logout_view, name='api_logout'),
     path('api/me/', func_views.me_api_view, name='me_api_view'), 
     path('api/usuario_actual/', func_views.me_api_view, name='usuario_actual'),
     path('usuarios/api/me/', func_views.me_api_view, name='me_api_view_alias'),
@@ -70,7 +82,8 @@ urlpatterns = [
     path('api/usuarios/crear/', func_views.crear_usuario, name='crear_usuario'),
     path('api/usuarios/editar/<int:pk>/', func_views.editar_usuario, name='editar_usuario'),
     path('api/usuarios/eliminar/<int:pk>/', func_views.eliminar_usuario, name='eliminar_usuario'),
-     #path('api/crear-cliente-desde-turno/', func_views.crear_cliente_desde_turno, name='crear_cliente_desde_turno'),
+    # path('api/crear-cliente-desde-turno/', func_views.crear_cliente_desde_turno, name='crear_cliente_desde_turno'),
+    
     # ================================
     # Clientes Autocomplete (USA FUNCIÓN)
     # ================================
@@ -112,8 +125,7 @@ urlpatterns = [
     path('api/turnos/cancelar-propio/<int:turno_id>/', func_views.cancelar_mi_turno, name='cancelar_mi_turno'),
     path('api/turnos/<int:turno_id>/cambiar-estado/<str:nuevo_estado>/', func_views.cambiar_estado_turno, name='cambiar_estado_turno'),
     path('api/turnos/<int:turno_id>/', func_views.obtener_turno_por_id, name='obtener_turno_por_id'),
-    path('api/turnos/mis-turnos/', func_views.mis_turnos, name='mis_turnos'), # ✅ Agregar esta línea
-
+    path('api/turnos/mis-turnos/', func_views.mis_turnos, name='mis_turnos'),
 
     # ================================
     # ✅✅✅ RUTA CRÍTICA FALTANTE - REGISTRAR INTERÉS
@@ -139,12 +151,10 @@ urlpatterns = [
     # ==============================
     path('api/roles/', func_views.listado_roles, name='listado_roles'),
     path('api/roles/crear/', func_views.crear_rol, name='crear_rol'),
-    #path('api/roles/editar/<int:pk>/', func_views.editar_rol, name='editar_rol'),
-        path('api/roles/<int:pk>/', func_views.editar_rol, name='detalle_rol'),
+    path('api/roles/<int:pk>/', func_views.editar_rol, name='detalle_rol'),
     path('api/roles/eliminar/<int:pk>/', func_views.eliminar_rol, name='eliminar_rol'),
     path('api/permisos/', func_views.listado_permisos, name='listado_permisos'),
 
-    
     # ==============================
     # API MERCADOPAGO (USAN FUNCIONES)
     # ==============================
@@ -265,5 +275,10 @@ urlpatterns = [
 
     # ✅ RUTA PARA VALIDAR CUPÓN
     path('api/promociones/validar/<str:codigo>/', validar_cupon, name='validar_cupon'),
-    path('api/auditoria/', func_views.listado_auditoria, name='listado_auditoria'),
+    
+    # ❌ COMENTADO PORQUE AHORA USAMOS VIEWSET DE AUDITORÍA
+    # path('api/auditoria/', func_views.listado_auditoria, name='listado_auditoria'),
+
+    # ✅ AGREGAMOS EL ROUTER AL FINAL (Cubre /api/auditoria/ y otros ViewSets futuros)
+    path('api/', include(router.urls)),
 ]

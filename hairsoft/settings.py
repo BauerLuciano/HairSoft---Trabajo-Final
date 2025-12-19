@@ -35,18 +35,19 @@ INSTALLED_APPS = [
 ]
 
 # ================================
-# MIDDLEWARE
+# MIDDLEWARE (CORREGIDO)
 # ================================
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
-    'usuarios.middleware.DisableCSRFMiddleware',
+    'usuarios.middleware.DisableCSRFMiddleware', # Tu anti-csrf
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',   
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'usuarios.middleware.AuditoriaMiddleware',
+    'django.middleware.common.CommonMiddleware', 
+    'django.middleware.csrf.CsrfViewMiddleware', # (A veces necesario aunque uses DisableCSRF)
+    'django.contrib.auth.middleware.AuthenticationMiddleware', # <--- CLAVE: Identifica al usuario
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'usuarios.middleware.AuditoriaMiddleware',
 ]
 
 ROOT_URLCONF = 'hairsoft.urls'
@@ -201,7 +202,6 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
     ],
-    # 👇 ESTO ES VITAL: Ponele None para que devuelva listas simples como antes
     'DEFAULT_PAGINATION_CLASS': None,
     'PAGE_SIZE': None,
 }
@@ -231,11 +231,8 @@ EMAIL_HOST = 'sandbox.smtp.mailtrap.io'
 EMAIL_PORT = 2525
 EMAIL_USE_TLS = True
 EMAIL_USE_SSL = False
-
-# Credenciales de Mailtrap proporcionadas
-EMAIL_HOST_USER = 'd78727b2cf71b8'
-EMAIL_HOST_PASSWORD = '1c4217870802e9'
-
+EMAIL_HOST_USER = 'c5b568c8fbd9b8'
+EMAIL_HOST_PASSWORD = '4aecfad93d7271'
 DEFAULT_FROM_EMAIL = 'HairSoft <no-reply@hairsoft.com>'
 EMAIL_FAIL_SILENTLY = False
 

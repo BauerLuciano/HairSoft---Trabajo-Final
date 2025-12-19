@@ -11,7 +11,6 @@
       </button>
     </div>
 
-    <!-- Información Básica -->
     <div class="card-modern">
       <div class="card-header">
         <div class="card-icon">
@@ -29,7 +28,7 @@
           v-model="producto.nombre"
           type="text"
           required
-          placeholder="Ingrese el nombre del producto"
+          placeholder="Ej: Shampoo Keratina 500ml"
           class="input-modern"
           @blur="validarNombre"
           :class="{ 'campo-invalido': errores.nombre }"
@@ -104,41 +103,41 @@
         <textarea
           v-model="producto.descripcion"
           rows="3"
-          placeholder="Descripción del producto..."
+          placeholder="Detalles adicionales del producto..."
           class="textarea-modern"
         ></textarea>
       </div>
     </div>
 
-    <!-- Precio y Stock -->
     <div class="card-modern">
       <div class="card-header">
         <div class="card-icon">
           <DollarSign :size="20" />
         </div>
-        <h3>Precio y Stock</h3>
+        <h3>Configuración de Inventario</h3>
       </div>
 
-      <div class="form-grid">
-        <div class="input-group">
-          <label>
-            <DollarSign :size="16" />
-            Precio de Venta *
-          </label>
-          <input
-            v-model.number="producto.precio"
-            type="number"
-            step="0.01"
-            min="0.01"
-            required
-            placeholder="0.00"
-            class="input-modern"
-            @blur="validarPrecio"
-            :class="{ 'campo-invalido': errores.precio }"
-          />
-          <div class="mensaje-error" v-if="errores.precio">{{ errores.precio }}</div>
-        </div>
+      <div class="input-group">
+        <label>
+          <DollarSign :size="16" />
+          Precio de Venta *
+        </label>
+        <input
+          v-model.number="producto.precio"
+          type="number"
+          step="0.01"
+          min="0.01"
+          required
+          placeholder="0.00"
+          class="input-modern"
+          @blur="validarPrecio"
+          :class="{ 'campo-invalido': errores.precio }"
+        />
+        <div class="mensaje-error" v-if="errores.precio">{{ errores.precio }}</div>
+      </div>
 
+      <div class="form-grid-3">
+        
         <div class="input-group">
           <label>
             <Package :size="16" />
@@ -156,10 +155,44 @@
           />
           <div class="mensaje-error" v-if="errores.stock">{{ errores.stock }}</div>
         </div>
+
+        <div class="input-group">
+          <label title="Avisar cuando baje de esta cantidad">
+            <AlertTriangle :size="16" class="icon-warning" />
+            Stock Mínimo (Alerta) *
+          </label>
+          <input
+            v-model.number="producto.stock_minimo"
+            type="number"
+            min="1"
+            required
+            placeholder="Ej: 5"
+            class="input-modern warning-border"
+            @blur="validarStockMinimo"
+            :class="{ 'campo-invalido': errores.stock_minimo }"
+          />
+          <div class="mensaje-error" v-if="errores.stock_minimo">{{ errores.stock_minimo }}</div>
+        </div>
+
+        <div class="input-group">
+          <label title="Cantidad sugerida a comprar">
+            <Truck :size="16" class="icon-info" />
+            Lote Reposición *
+          </label>
+          <input
+            v-model.number="producto.lote_reposicion"
+            type="number"
+            min="1"
+            required
+            placeholder="Ej: 12"
+            class="input-modern info-border"
+          />
+          <div class="mensaje-ayuda-small">Sugerido para compra</div>
+        </div>
+
       </div>
     </div>
 
-    <!-- Proveedores -->
     <div class="card-modern">
       <div class="card-header">
         <div class="card-icon">
@@ -221,7 +254,6 @@
       </div>
     </div>
 
-    <!-- Botón Final -->
     <button 
       @click="registrarProducto" 
       :disabled="!formularioValido || cargando" 
@@ -242,16 +274,15 @@
 
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
-import axios from 'axios'
+import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2'
 import { 
   Package, ArrowLeft, ClipboardList, Tag, Award, Layers, 
   Barcode, FileText, DollarSign, Truck, User, Phone, 
-  Check, BadgeCheck, CheckCircle2, Loader2
+  Check, BadgeCheck, CheckCircle2, Loader2, AlertTriangle 
 } from 'lucide-vue-next'
 
 const emit = defineEmits(['producto-registrado', 'cancelar'])
-const API_BASE = 'http://127.0.0.1:8000'
 
 const producto = ref({
   nombre: '',
@@ -259,6 +290,8 @@ const producto = ref({
   descripcion: '',
   precio: 0,
   stock_actual: 0,
+  stock_minimo: 5,      // 🚩 Alerta
+  lote_reposicion: 1,   // 📦 Compra (NUEVO)
   categoria: '',
   marca: '',
   proveedores_seleccionados: []
@@ -271,6 +304,7 @@ const errores = ref({
   categoria: '',
   precio: '',
   stock: '',
+  stock_minimo: '',
   proveedores: ''
 })
 
@@ -284,255 +318,101 @@ const cargandoProveedores = ref(false)
 const cargandoMarcas = ref(false)
 
 // ------------------------------
-// VALIDACIONES POR CAMPO (SOLO EN BLUR)
+// VALIDACIONES
 // ------------------------------
 const validarNombre = async () => {
   const valor = producto.value.nombre.trim()
+  if (!valor) { errores.value.nombre = "El nombre es obligatorio"; return }
+  if (valor.length < 2) { errores.value.nombre = "Mínimo 2 caracteres"; return }
   
-  if (!valor) {
-    errores.value.nombre = "El nombre es obligatorio"
-    return
-  }
-  if (valor.length < 2) {
-    errores.value.nombre = "El nombre debe tener al menos 2 caracteres"
-    return
-  }
-  if (valor.length > 100) {
-    errores.value.nombre = "El nombre no puede exceder los 100 caracteres"
-    return
-  }
-
-  // VALIDAR DUPLICADO
   if (producto.value.marca) {
     try {
-      const response = await axios.get(`${API_BASE}/usuarios/api/productos/`)
-      const productos = response.data
-      
-      const duplicado = productos.find(p => 
-        p.nombre.toLowerCase() === valor.toLowerCase() && 
-        p.marca === producto.value.marca
-      )
-      
-      if (duplicado) {
-        const marcaNombre = marcas.value.find(m => m.id === producto.value.marca)?.nombre
-        errores.value.nombre = `Ya existe "${valor}" para ${marcaNombre || 'esta marca'}`
+      const response = await axios.get(`/usuarios/api/productos/?nombre=${valor}&marca=${producto.value.marca}`)
+      const data = Array.isArray(response.data) ? response.data : (response.data.results || [])
+      if (data.length > 0) {
+        errores.value.nombre = `Ya existe "${valor}" para esta marca`
         return
       }
-    } catch (error) {
-      console.error('Error validando:', error)
-    }
+    } catch (e) {}
   }
-
   errores.value.nombre = ""
 }
 
-const validarMarca = () => {
-  if (!producto.value.marca) {
-    errores.value.marca = "Seleccione una marca"
-  } else {
-    errores.value.marca = ""
-  }
-}
-
-const validarCategoria = () => {
-  if (!producto.value.categoria) {
-    errores.value.categoria = "Seleccione una categoría"
-  } else {
-    errores.value.categoria = ""
-  }
-}
-
-const validarPrecio = () => {
-  const precio = producto.value.precio
-  if (!precio || precio <= 0) {
-    errores.value.precio = "El precio debe ser mayor a 0"
-  } else if (precio > 1000000) {
-    errores.value.precio = "El precio no puede exceder 1,000,000"
-  } else {
-    errores.value.precio = ""
-  }
-}
-
-const validarStock = () => {
-  const stock = producto.value.stock_actual
-  if (stock === null || stock === undefined || stock < 0) {
-    errores.value.stock = "El stock no puede ser negativo"
-  } else if (stock > 1000000) {
-    errores.value.stock = "El stock no puede exceder 1,000,000"
-  } else {
-    errores.value.stock = ""
-  }
-}
-
-const validarProveedores = () => {
-  if (producto.value.proveedores_seleccionados.length === 0 && proveedoresActivos.value.length > 0) {
-    errores.value.proveedores = "" // Vacío, no es error
-    return false 
-  } else {
-    errores.value.proveedores = ""
-    return true
-  }
-}
+const validarMarca = () => errores.value.marca = !producto.value.marca ? "Seleccione una marca" : ""
+const validarCategoria = () => errores.value.categoria = !producto.value.categoria ? "Seleccione una categoría" : ""
+const validarPrecio = () => errores.value.precio = (!producto.value.precio || producto.value.precio <= 0) ? "Mayor a 0" : ""
+const validarStock = () => errores.value.stock = (producto.value.stock_actual < 0) ? "No negativo" : ""
+const validarStockMinimo = () => errores.value.stock_minimo = (producto.value.stock_minimo < 1) ? "Mínimo 1" : ""
 
 const formularioValido = computed(() => {
   return (
     producto.value.nombre.trim() &&
     producto.value.precio > 0 &&
     producto.value.stock_actual >= 0 &&
+    producto.value.stock_minimo > 0 &&
+    producto.value.lote_reposicion > 0 && // ✅ Validar Lote
     producto.value.categoria &&
     producto.value.marca &&
-    producto.value.codigo &&
     Object.values(errores.value).every(error => !error)
   )
 })
 
 const categoriasProductos = computed(() => categorias.value)
-const proveedoresActivos = computed(() =>
-  proveedores.value.filter(p => p.estado === 'ACTIVO' || p.activo)
-)
+const proveedoresActivos = computed(() => proveedores.value.filter(p => p.estado === 'ACTIVO' || p.activo))
 
 // Toggle proveedor
-const toggleProveedor = (proveedorId) => {
-  const index = producto.value.proveedores_seleccionados.indexOf(proveedorId)
-  if (index > -1) {
-    producto.value.proveedores_seleccionados.splice(index, 1)
-  } else {
-    producto.value.proveedores_seleccionados.push(proveedorId)
-  }
-  validarProveedores()
+const toggleProveedor = (id) => {
+  const idx = producto.value.proveedores_seleccionados.indexOf(id)
+  if (idx > -1) producto.value.proveedores_seleccionados.splice(idx, 1)
+  else producto.value.proveedores_seleccionados.push(id)
 }
 
-// ================================
-// GENERAR CÓDIGO AUTOMÁTICO
-// ================================
-const generarCodigo = async (categoriaId) => {
-  if (!categoriaId) {
-    producto.value.codigo = ''
-    return
-  }
-
+// Generar Código
+const generarCodigo = async (catId) => {
+  if (!catId) { producto.value.codigo = ''; return }
   try {
-    const categoria = categorias.value.find(c => c.id === categoriaId)
-    if (!categoria) return
-
-    const abreviatura = categoria.nombre.slice(0, 3).toUpperCase()
+    const cat = categorias.value.find(c => c.id === catId)
+    if (!cat) return
+    const abr = cat.nombre.slice(0, 3).toUpperCase()
+    const res = await axios.get(`/usuarios/api/productos/`)
+    const prods = Array.isArray(res.data) ? res.data : (res.data.results || [])
     
-    const res = await axios.get(`${API_BASE}/usuarios/api/productos/`)
-    const todosLosProductos = res.data
-
-    let maxNum = 0
-    todosLosProductos.forEach(p => {
-      if (p.codigo && p.codigo.startsWith(abreviatura + '-')) {
-        const partes = p.codigo.split('-')
-        if (partes.length === 2) {
-          const num = parseInt(partes[1])
-          if (!isNaN(num) && num > maxNum) {
-            maxNum = num
-          }
-        }
+    let max = 0
+    prods.forEach(p => {
+      if (p.codigo?.startsWith(abr + '-')) {
+        const n = parseInt(p.codigo.split('-')[1])
+        if (!isNaN(n) && n > max) max = n
       }
     })
-
-    const nuevoNumero = maxNum + 1
-    producto.value.codigo = `${abreviatura}-${nuevoNumero.toString().padStart(3, '0')}`
-
-  } catch (err) {
-    console.error('Error generando código:', err)
-    const categoria = categorias.value.find(c => c.id === categoriaId)
-    if (categoria) {
-      const abreviatura = categoria.nombre.slice(0, 3).toUpperCase()
-      producto.value.codigo = `${abreviatura}-001`
-    }
-  }
+    producto.value.codigo = `${abr}-${String(max + 1).padStart(3, '0')}`
+  } catch (e) { console.error(e) }
 }
 
-// ================================
-// CARGA DE DATOS
-// ================================
-const cargarMarcas = async () => {
-  cargandoMarcas.value = true
-  try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/marcas/`)
-    marcas.value = res.data
-  } catch (err) {
-    console.error("Error cargando marcas:", err)
-  } finally {
-    cargandoMarcas.value = false
-  }
-}
-
-const cargarCategorias = async () => {
-  cargandoCategorias.value = true
-  try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`)
-    categorias.value = res.data
-  } catch (err) {
-    console.error('Error cargando categorías:', err)
-  } finally {
-    cargandoCategorias.value = false
-  }
-}
-
-const cargarProveedores = async () => {
-  cargandoProveedores.value = true
-  try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
-    proveedores.value = res.data
-  } catch (err) {
-    console.error('Error cargando proveedores:', err)
-  } finally {
-    cargandoProveedores.value = false
-  }
-}
-
+// Carga Inicial
 const cargarDatos = async () => {
-  await Promise.all([cargarMarcas(), cargarCategorias(), cargarProveedores()])
+  cargandoCategorias.value = true; cargandoMarcas.value = true; cargandoProveedores.value = true
+  try {
+    const [resM, resC, resP] = await Promise.all([
+      axios.get('/usuarios/api/marcas/'),
+      axios.get('/usuarios/api/categorias/productos/'),
+      axios.get('/usuarios/api/proveedores/')
+    ])
+    marcas.value = Array.isArray(resM.data) ? resM.data : []
+    categorias.value = Array.isArray(resC.data) ? resC.data : []
+    proveedores.value = Array.isArray(resP.data) ? resP.data : []
+  } catch (e) { console.error(e) }
+  finally {
+    cargandoCategorias.value = false; cargandoMarcas.value = false; cargandoProveedores.value = false
+  }
 }
 
-// ================================
-// WATCHER
-// ================================
-watch(() => producto.value.categoria, (newVal) => {
-  if (newVal) {
-    generarCodigo(Number(newVal))
-    validarCategoria()
-  }
-})
+watch(() => producto.value.categoria, (v) => { if(v) generarCodigo(Number(v)) })
+watch(() => producto.value.marca, () => { if(producto.value.nombre) setTimeout(validarNombre, 300) })
 
-watch(() => producto.value.marca, () => {
-  if (producto.value.nombre.trim()) {
-    setTimeout(() => validarNombre(), 300)
-  }
-})
-// ================================
-// VALIDAR FORMULARIO COMPLETO
-// ================================
-const validarFormulario = () => {
-  validarNombre()
-  validarMarca()
-  validarCategoria()
-  validarPrecio()
-  validarStock()
-  validarProveedores()
-
-  // Verificar si hay algún error
-  return Object.values(errores.value).every(error => !error)
-}
-
-// ================================
-// REGISTRAR PRODUCTO
-// ================================
-// En el método registrarProducto (~línea 270)
+// Registrar
 const registrarProducto = async () => {
-  if (!validarFormulario()) {
-    Swal.fire({
-      icon: 'error',
-      title: 'Formulario inválido',
-      text: 'Por favor corrige los errores en el formulario',
-      confirmButtonColor: '#007bff',
-      background: '#fff',
-      color: '#1a1a1a'
-    })
+  if (!formularioValido.value) {
+    Swal.fire({ icon: 'error', title: 'Error', text: 'Revise los campos requeridos' })
     return
   }
 
@@ -541,92 +421,45 @@ const registrarProducto = async () => {
     const payload = {
       nombre: producto.value.nombre.trim(),
       codigo: producto.value.codigo,
-      descripcion: producto.value.descripcion.trim(),
+      descripcion: producto.value.descripcion,
       precio: producto.value.precio,
-      stock: producto.value.stock_actual,
+      stock_actual: producto.value.stock_actual,
+      stock_minimo: producto.value.stock_minimo, // 🚩
+      lote_reposicion: producto.value.lote_reposicion, // 📦
       categoria: Number(producto.value.categoria),
       marca: Number(producto.value.marca),
-      // ✅ CAMBIO: Enviar array vacío si no hay proveedores
-      proveedores: producto.value.proveedores_seleccionados || []
+      proveedores: producto.value.proveedores_seleccionados
     }
 
-    const res = await axios.post(`${API_BASE}/usuarios/api/productos/`, payload)
-
-    // ✅ Mensaje diferente si no tiene proveedores
-    const mensaje = producto.value.proveedores_seleccionados.length > 0
-      ? 'El producto se creó correctamente'
-      : 'Producto registrado sin proveedores.'
+    const res = await axios.post(`/usuarios/api/productos/`, payload)
 
     Swal.fire({
       icon: 'success',
-      title: '✅ Producto registrado',
-      text: mensaje,
-      confirmButtonColor: '#007bff',
-      background: '#fff',
-      color: '#1a1a1a',
-      confirmButtonText: 'Continuar'
-    }).then((result) => {
-      if (result.isConfirmed) {
-        emit("producto-registrado", res.data)
-        resetForm()
-      } else if (result.dismiss === Swal.DismissReason.cancel) {
-        // Si cancela, redirigir a gestión de listas de precios
-        router.push('/listas-precios')
-      }
+      title: 'Producto Registrado',
+      text: `Se creó correctamente con un lote de reposición de ${producto.value.lote_reposicion} u.`,
+      confirmButtonColor: '#007bff'
+    }).then(() => {
+      emit("producto-registrado", res.data)
+      resetForm()
     })
 
-} catch (err) {
-  console.error('Error:', err.response?.data || err)
-  
-  let mensaje = 'Error al guardar'
-  const data = err.response?.data
-  
-  if (data) {
-    if (data.nombre) mensaje = data.nombre
-    else if (data.non_field_errors) mensaje = data.non_field_errors
-    else if (typeof data === 'string') mensaje = data
-    else if (typeof data === 'object') {
-      mensaje = Object.entries(data)
-        .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
-        .join('\n')
-    }
+  } catch (err) {
+    console.error(err)
+    Swal.fire({ icon: 'error', title: 'Error al guardar', text: err.response?.data?.detail || 'Intente nuevamente' })
+  } finally {
+    cargando.value = false
   }
-  Swal.fire({
-    icon: 'error',
-    title: 'Error',
-    text: mensaje,
-    confirmButtonColor: '#007bff'
-  })
-} finally {
-  cargando.value = false
-}
-
 }
 
 const resetForm = () => {
   producto.value = {
-    nombre: "",
-    codigo: "",
-    descripcion: "",
-    precio: 0,
-    stock_actual: 0,
-    categoria: "",
-    marca: "",
-    proveedores_seleccionados: []
-  }
-
-  errores.value = {
-    nombre: '',
-    marca: '',
-    categoria: '',
-    precio: '',
-    stock: '',
-    proveedores: ''
+    nombre: "", codigo: "", descripcion: "", precio: 0,
+    stock_actual: 0, stock_minimo: 5, lote_reposicion: 1, // Reset
+    categoria: "", marca: "", proveedores_seleccionados: []
   }
 }
 
 const cancelar = () => emit("cancelar")
-
 onMounted(() => cargarDatos())
 </script>
 

@@ -188,17 +188,16 @@ class ProveedorSerializer(serializers.ModelSerializer):
             instance.categorias.set(categorias_data)
         return instance
 
-from decimal import Decimal  # ✅ IMPORTAR Decimal
 
 class ProductoSerializer(serializers.ModelSerializer):
     codigo = serializers.CharField(read_only=True)
     
-    # ✅ CORREGIDO: Usar Decimal en lugar de string
+    # ✅ PRECIO: Decimal
     precio = serializers.DecimalField(
         max_digits=10, 
         decimal_places=2,
         required=True,
-        min_value=Decimal('0.01')  # ✅ CAMBIAR "0.01" por Decimal('0.01')
+        min_value=Decimal('0.01')
     )
     
     # ======= CATEGORÍA =======
@@ -224,9 +223,12 @@ class ProductoSerializer(serializers.ModelSerializer):
         default='ACTIVO'
     )
 
-    # ======= STOCK =======
-    stock_actual = serializers.IntegerField(read_only=True)
-    stock = serializers.IntegerField(source='stock_actual', required=False, write_only=True)
+    # ======= CONFIGURACIÓN DE STOCK =======
+    stock_actual = serializers.IntegerField(required=True, min_value=0)
+    stock_minimo = serializers.IntegerField(required=False, default=5, min_value=0)
+    
+    # ✅ FIX: Habilitamos el lote para que se guarde desde el frontend
+    lote_reposicion = serializers.IntegerField(required=False, default=1, min_value=1)
 
     # ======= PROVEEDORES =======
     proveedores = serializers.PrimaryKeyRelatedField(
@@ -248,7 +250,8 @@ class ProductoSerializer(serializers.ModelSerializer):
             'descripcion',
             'estado',
             'stock_actual',
-            'stock',
+            'stock_minimo',
+            'lote_reposicion', # ✅ AGREGADO A LA LISTA
             'categoria',
             'categoria_id',
             'categoria_nombre',
@@ -266,21 +269,18 @@ class ProductoSerializer(serializers.ModelSerializer):
         return [p.nombre for p in obj.proveedores.all()]
 
     def create(self, validated_data):
-        print("🔍 DEBUG - Datos que llegan al serializer:", validated_data)
-        
-        if 'estado' not in validated_data:
-            validated_data['estado'] = 'ACTIVO'
-        
         proveedores_data = validated_data.pop('proveedores', [])
-        
         producto = Producto.objects.create(**validated_data)
-        
-        print(f"✅ Producto creado - ID: {producto.id}, Categoría: {producto.categoria}, Código: {producto.codigo}")
-        
         if proveedores_data:
             producto.proveedores.set(proveedores_data)
-            
         return producto
+        
+    def update(self, instance, validated_data):
+        # ✅ Esto asegura que el lote de reposición se actualice en la DB al editar
+        if 'proveedores' in validated_data:
+            proveedores_data = validated_data.pop('proveedores')
+            instance.proveedores.set(proveedores_data)
+        return super().update(instance, validated_data)
 # ----------------------------------------------------------------------
 # DETALLEVENTA Y VENTA
 # ----------------------------------------------------------------------
@@ -812,8 +812,11 @@ class SolicitudPresupuestoSerializer(serializers.ModelSerializer):
         return mejor.id
 
 class AuditoriaSerializer(serializers.ModelSerializer):
+    # Campos calculados para mostrar info legible
     usuario_nombre = serializers.CharField(source='usuario.nombre', read_only=True, default='Sistema')
     usuario_apellido = serializers.CharField(source='usuario.apellido', read_only=True, default='')
+    usuario_rol = serializers.CharField(source='usuario.rol.nombre', read_only=True, default='-')
+    usuario_email = serializers.CharField(source='usuario.correo', read_only=True, default='')
 
     class Meta:
         model = Auditoria

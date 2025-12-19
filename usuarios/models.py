@@ -1,12 +1,14 @@
 # hairsoft/models.py
 from django.db import models, transaction
 from datetime import timedelta, datetime
+from django.conf import settings
 from django.core.validators import RegexValidator
 from django.core.exceptions import ValidationError
+from django.core.mail import get_connection, EmailMessage
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
 import uuid
-import secrets
+import secrets, time
 from django.core.signing import Signer
 
 # ===============================
@@ -197,11 +199,15 @@ class Producto(models.Model):
     nombre = models.CharField(max_length=255)
     precio = models.DecimalField(max_digits=10, decimal_places=2)
     descripcion = models.TextField(blank=True, null=True)
+    
     categoria = models.ForeignKey('CategoriaProducto', on_delete=models.CASCADE, null=True, blank=True)
     proveedores = models.ManyToManyField('Proveedor', blank=True, related_name='productos')
     marca = models.ForeignKey('Marca', on_delete=models.SET_NULL, null=True, blank=True, related_name='productos')
+    
     stock_actual = models.IntegerField(default=0)
-    stock_minimo = models.IntegerField(default=5)
+    stock_minimo = models.IntegerField(default=5) 
+    lote_reposicion = models.IntegerField(default=1) 
+
     codigo = models.CharField(max_length=20, unique=True, editable=False)
     estado = models.CharField(max_length=10, choices=ESTADOS, default='ACTIVO')
 
@@ -210,18 +216,18 @@ class Producto(models.Model):
             raise ValidationError({'precio': 'El precio no puede ser negativo'})
         if self.stock_actual is not None and self.stock_actual < 0:
             raise ValidationError({'stock_actual': 'El stock no puede ser negativo'})
+        if self.stock_minimo is not None and self.stock_minimo < 0:
+            raise ValidationError({'stock_minimo': 'El stock mínimo no puede ser negativo'})
+        if self.lote_reposicion is not None and self.lote_reposicion < 1:
+            raise ValidationError({'lote_reposicion': 'El lote de reposición debe ser al menos 1'})
 
     def generar_codigo(self):
         if self.categoria:
             abreviatura = self.categoria.nombre[:3].upper()
-            
-            # Filtrar productos de la misma categoría que ya tienen código
             productos_categoria = Producto.objects.filter(
                 categoria=self.categoria,
                 codigo__startswith=abreviatura + "-"
             )
-            
-            # Si el producto ya existe (está siendo editado), excluirlo
             if self.pk:
                 productos_categoria = productos_categoria.exclude(pk=self.pk)
             
@@ -231,19 +237,148 @@ class Producto(models.Model):
                     partes = producto.codigo.split('-')
                     if len(partes) == 2:
                         num = int(partes[1])
-                        if num > max_num:
-                            max_num = num
+                        if num > max_num: max_num = num
                 except (ValueError, IndexError):
                     continue
-            
             self.codigo = f"{abreviatura}-{max_num + 1:03d}"
 
     def save(self, *args, **kwargs):
-        # Genera el código SIEMPRE si la categoría existe y codigo está vacío
         if self.categoria and not self.codigo:
             self.generar_codigo()
+        
         self.clean()
         super().save(*args, **kwargs)
+
+        print(f"🔄 GUARDANDO: {self.nombre} | Stock: {self.stock_actual}")
+
+        # DISPARADOR DE CORREOS HTML PREMIUM
+        if self.estado == 'ACTIVO' and self.stock_actual <= self.stock_minimo:
+            print("   ⚠️ ALERTA DE STOCK. Iniciando proceso HTML Premium...")
+            
+            from .models import SolicitudPresupuesto, Cotizacion
+            from django.core.mail import send_mail
+            from django.conf import settings
+            from django.utils import timezone
+            import secrets
+            import time
+            
+            fecha_hoy = timezone.now().strftime("%d/%m/%Y")
+            
+            solicitud = SolicitudPresupuesto.objects.create(
+                producto=self,
+                cantidad_requerida=self.lote_reposicion,
+                estado='PENDIENTE'
+            )
+            
+            for proveedor in self.proveedores.all():
+                cotizacion = Cotizacion.objects.create(
+                    solicitud=solicitud,
+                    proveedor=proveedor,
+                    token=secrets.token_urlsafe(32)
+                )
+                
+                if proveedor.email:
+                    link = f"http://localhost:5173/proveedor/cotizar/{cotizacion.token}"
+                    asunto = f"📦 Nueva Solicitud de Compra #{solicitud.id}"
+                    
+                    # --- HTML PREMIUM ---
+                    mensaje_html = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <style>
+                            .btn-hover:hover {{ background-color: #218838 !important; }}
+                        </style>
+                    </head>
+                    <body style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 40px 0;">
+                        
+                        <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
+                            
+                            <div style="background: linear-gradient(135deg, #007bff 0%, #6610f2 100%); padding: 40px 30px; text-align: center;">
+                                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 0.5px;">SOLICITUD DE COMPRA</h1>
+                                <p style="color: rgba(255,255,255,0.8); margin: 10px 0 0; font-size: 14px; font-weight: 500;">
+                                    Los Ultimos Serán Los Primeros • {fecha_hoy}
+                                </p>
+                            </div>
+
+                            <div style="padding: 40px 30px;">
+                                <p style="font-size: 16px; color: #4a4a4a; line-height: 1.6; margin-bottom: 30px;">
+                                    Hola!☺️ <strong>{proveedor.nombre}</strong>,<br>
+                                    Estamos sin stock de este producto y necesitamos reponerlo con urgencia
+                                </p>
+                                
+                                <div style="background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 12px; padding: 25px; margin-bottom: 30px; position: relative;">
+                                    
+                                    <div style="position: absolute; top: -10px; right: 20px; background-color: #dc3545; color: white; font-size: 10px; font-weight: bold; padding: 4px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">
+                                        Stock Bajo
+                                    </div>
+
+                                    <table style="width: 100%; border-collapse: collapse;">
+                                        <tr>
+                                            <td>
+                                                <p style="margin: 0; color: #888; font-size: 12px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">PRODUCTO</p>
+                                                <p style="margin: 5px 0 15px; color: #2d3436; font-size: 18px; font-weight: 700;">{self.nombre}</p>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td>
+                                                <p style="margin: 0; color: #888; font-size: 12px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">CANTIDAD A COTIZAR</p>
+                                                <p style="margin: 5px 0 0; color: #2d3436; font-size: 22px; font-weight: 700; color: #007bff;">{solicitud.cantidad_requerida} u.</p>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+
+                                <div style="text-align: center; margin-bottom: 30px;">
+                                    <a href="{link}" 
+                                       style="background-color: #28a745; color: #ffffff; padding: 18px 40px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);">
+                                       Enviar Presupuesto 
+                                    </a>
+                                </div>
+                                
+                                <p style="font-size: 13px; color: #999; text-align: center; margin: 0;">
+                                    ¿Problemas con el botón? <a href="{link}" style="color: #007bff; text-decoration: none;">Clic aquí</a>
+                                </p>
+                            </div>
+
+                            <div style="background-color: #f8f9fa; padding: 25px; text-align: center; border-top: 1px solid #e9ecef;">
+                                <p style="margin: 0; color: #adb5bd; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
+                                    Los Últimos Serán Los Primeros
+                                </p>
+                                <p style="margin: 8px 0 0; color: #ced4da; font-size: 11px;">
+                                    Sistema Automatizado de Gestión
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div style="text-align: center; padding-top: 20px; color: #999; font-size: 11px;">
+                            © {timezone.now().year} HairSoft - Todos los derechos reservados.
+                        </div>
+
+                    </body>
+                    </html>
+                    """
+                    
+                    mensaje_texto = f"Hola {proveedor.nombre}, necesitamos {solicitud.cantidad_requerida} de {self.nombre}. Link: {link}"
+
+                    print(f"   📤 Enviando HTML Premium a: {proveedor.email}...")
+                    
+                    try:
+                        send_mail(
+                            subject=asunto,
+                            message=mensaje_texto, 
+                            from_email=settings.DEFAULT_FROM_EMAIL,
+                            recipient_list=[proveedor.email],
+                            fail_silently=False,
+                            html_message=mensaje_html 
+                        )
+                        print(f"   ✅ EMAIL ENVIADO OK")
+                        print("   ⏳ Esperando 10s para el próximo...")
+                        time.sleep(10) # 🛑 PAUSA DE SEGURIDAD OBLIGATORIA
+                    except Exception as e:
+                        print(f"   ❌ ERROR ENVIANDO: {e}")
+            
+            print(f"📦 Proceso finalizado.")
 
     def __str__(self):
         if self.marca:
@@ -256,12 +391,11 @@ class Producto(models.Model):
             models.UniqueConstraint(
                 fields=['nombre', 'marca'],
                 name='unique_producto_nombre_marca',
-                condition=models.Q(estado='activo')
+                condition=models.Q(estado='ACTIVO') 
             )
-        ]  
+        ]
 
 #Solicitud  Reabastecimiento
-
 class SolicitudReabastecimiento(models.Model):
     ESTADOS = (
         ('PENDIENTE', 'Esperando Respuestas'),
@@ -1070,28 +1204,26 @@ class PromocionReactivacion(models.Model):
 
 #AUDITORIAAAAAAA
 
-# En usuarios/models.py
-
 class Auditoria(models.Model):
     ACCIONES = (
-        ('CREACION', 'Creación'),
-        ('MODIFICACION', 'Modificación'),
-        ('ELIMINACION', 'Eliminación'),
+        ('CREAR', 'Creación'),
+        ('EDITAR', 'Edición'),
+        ('ELIMINAR', 'Eliminación'),
         ('LOGIN', 'Inicio de Sesión'),
         ('LOGOUT', 'Cierre de Sesión'),
     )
 
-    usuario = models.ForeignKey('Usuario', on_delete=models.SET_NULL, null=True, blank=True)
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    modelo_afectado = models.CharField(max_length=100) # Ej: Turno, Producto
+    objeto_id = models.CharField(max_length=100, null=True, blank=True)
     accion = models.CharField(max_length=20, choices=ACCIONES)
-    modelo = models.CharField(max_length=50)
-    objeto_id = models.CharField(max_length=50, null=True, blank=True)
-    detalles = models.JSONField(null=True, blank=True)
+    detalles = models.JSONField(default=dict) # Aquí guardamos el {antes: x, despues: y}
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
     fecha = models.DateTimeField(auto_now_add=True)
-    
-    # ✅ NUEVOS CAMPOS
-    ip = models.GenericIPAddressField(null=True, blank=True)
-    navegador = models.CharField(max_length=255, null=True, blank=True) # Para guardar Chrome, Firefox, etc.
 
     class Meta:
-        db_table = "auditoria"
         ordering = ['-fecha']
+        verbose_name = "Registro de Auditoría"
+
+    def __str__(self):
+        return f"{self.usuario} - {self.accion} {self.modelo_afectado} - {self.fecha}"

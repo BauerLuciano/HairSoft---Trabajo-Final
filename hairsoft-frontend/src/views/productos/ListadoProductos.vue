@@ -1,7 +1,6 @@
 <template>
   <div class="list-container">
     <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarEditar || mostrarRegistrarMarca }">
-      <!-- Header -->
       <div class="list-header">
         <div class="header-content">
           <h1>Gestión de productos</h1>
@@ -19,7 +18,6 @@
         </div>
       </div>
 
-      <!-- Filtros -->
       <div class="filters-container">
         <div class="filters-grid">
           <div class="filter-group">
@@ -60,7 +58,7 @@
             <label>Stock bajo</label>
             <select v-model="filtros.stockBajo" class="filter-input">
               <option value="">Todos</option>
-              <option value="si">Solo stock bajo (≤ 10)</option>
+              <option value="si">Solo stock crítico</option>
             </select>
           </div>
 
@@ -74,29 +72,26 @@
         </div>
       </div>
 
-      <!-- Tabla de productos -->
       <div class="table-container">
         <table class="users-table">
           <thead>
             <tr>
-              <th>Código</th>
-              <th>Nombre</th>
-              <th>Descripción</th>
-              <th>Categoría</th>
-              <th>Marca</th>
-              <th>Precio</th>
-              <th>Stock</th>
-              <th>Estado</th>
-              <th>Proveedores</th>
-              <th>Acciones</th>
+              <th style="width: 90px;">Código</th>
+              <th style="width: 160px;">Nombre</th>
+              <th style="width: 100px;">Categoría</th>
+              <th style="width: 100px;">Marca</th>
+              <th style="width: 90px;">Precio</th>
+              <th style="width: 110px;">Stock</th>
+              <th style="width: 90px;">Estado</th>
+              <th style="width: 150px;">Proveedores</th>
+              <th style="width: 90px;">Acciones</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="producto in productosPaginados" :key="producto.id" 
-                :class="{'stock-bajo-row': producto.stock_actual <= 10}">
+                :class="getRowClass(producto)">
               <td><strong>{{ producto.codigo || '–' }}</strong></td>
-              <td>{{ producto.nombre || '–' }}</td>
-              <td class="descripcion-cell">{{ producto.descripcion || 'Sin descripción' }}</td>
+              <td class="nombre-cell">{{ producto.nombre || '–' }}</td>
               <td>
                 <span class="badge-estado estado-info">
                   {{ getCategoriaNombre(producto) }}
@@ -108,11 +103,13 @@
                 </span>
               </td>
               <td><strong>${{ producto.precio ? producto.precio.toLocaleString() : '0' }}</strong></td>
+              
               <td>
-                <span class="badge-estado" :class="getStockClass(producto.stock_actual)">
-                  {{ producto.stock_actual || 0 }}
+                <span class="badge-estado" :class="getStockClass(producto)">
+                  {{ producto.stock_actual || 0 }} 
                 </span>
               </td>
+
               <td>
                 <span class="badge-estado" :class="getEstadoClass(producto.estado)">
                   {{ producto.estado === 'ACTIVO' ? 'Activo' : 'Inactivo' }}
@@ -156,7 +153,6 @@
         </div>
       </div>
 
-      <!-- Mostrando cantidad -->
       <div class="usuarios-count">
         <p>
           <Package :size="16" />
@@ -174,7 +170,6 @@
         </div>
       </div>
 
-      <!-- Paginación -->
       <div class="pagination">
         <button @click="paginaAnterior" :disabled="pagina === 1">
           <ChevronLeft :size="16" />
@@ -188,7 +183,6 @@
       </div>
     </div>
 
-    <!-- Modal Registrar Producto -->
     <div v-if="mostrarRegistrar" class="modal-overlay" @click.self="cerrarModal">
       <div class="modal-content">
         <RegistrarProducto 
@@ -198,7 +192,6 @@
       </div>
     </div>
 
-    <!-- Modal Editar Producto -->
     <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
       <div class="modal-content">
         <button class="modal-close" @click="cerrarModalEditar" title="Cerrar formulario">
@@ -212,7 +205,6 @@
       </div>
     </div>
 
-    <!-- Modal Registrar Marca -->
     <div v-if="mostrarRegistrarMarca" class="modal-overlay" @click.self="cerrarModalMarca">
       <div class="modal-content">
         <button class="modal-close" @click="cerrarModalMarca" title="Cerrar formulario">
@@ -229,8 +221,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-// ✅ IMPORTAR AXIOS CONFIGURADO
-import axios from '../../utils/axiosConfig' 
+import axios from '@/utils/axiosConfig' // ✅ USAR CONFIGURACIÓN CENTRAL
 import Swal from 'sweetalert2'
 import RegistrarProducto from './RegistrarProducto.vue'
 import ModificarProducto from './ModificarProducto.vue'
@@ -240,7 +231,9 @@ import {
   ChevronLeft, ChevronRight, Trash2, X, AlertTriangle
 } from 'lucide-vue-next'
 
-// ✅ Sin API_BASE manual
+// ✅ REDIRECCIÓN DESDE DASHBOARD (Query Params)
+import { useRoute } from 'vue-router'
+const route = useRoute()
 
 const productos = ref([])
 const categorias = ref([])
@@ -256,140 +249,120 @@ const mostrarEditar = ref(false)
 const mostrarRegistrarMarca = ref(false)
 const productoEditando = ref(null)
 
-// --- FUNCIONES DE CARGA SEGURAS ---
+// --- CARGA DE DATOS ---
 const cargarProductos = async () => {
   try {
     const res = await axios.get('/usuarios/api/productos/')
     const data = Array.isArray(res.data) ? res.data : (res.data.results || []);
     productos.value = data.sort((a, b) => b.id - a.id)
-  } catch (err) {
-    console.error('❌ Error al cargar productos:', err)
-  }
-}
-
-const cargarCategorias = async () => {
-  try {
-    const res = await axios.get('/usuarios/api/categorias/productos/')
-    categorias.value = Array.isArray(res.data) ? res.data : (res.data.results || []);
   } catch (err) { console.error(err) }
 }
 
-const cargarProveedores = async () => {
+const cargarAuxiliares = async () => {
   try {
-    const res = await axios.get('/usuarios/api/proveedores/')
-    proveedores.value = Array.isArray(res.data) ? res.data : (res.data.results || []);
-  } catch (err) { console.error(err) }
+    const [resC, resP, resM] = await Promise.all([
+      axios.get('/usuarios/api/categorias/productos/'),
+      axios.get('/usuarios/api/proveedores/'),
+      axios.get('/usuarios/api/marcas/')
+    ])
+    categorias.value = resC.data
+    proveedores.value = resP.data
+    marcas.value = resM.data
+  } catch (e) {}
 }
 
-const cargarMarcas = async () => {
-  try {
-    const res = await axios.get('/usuarios/api/marcas/')
-    marcas.value = Array.isArray(res.data) ? res.data : (res.data.results || []);
-  } catch (err) { console.error(err) }
+// --- LOGICA VISUAL ---
+const getCategoriaNombre = (p) => p.categoria_nombre || categorias.value.find(c => c.id === p.categoria)?.nombre || '–'
+const getMarcaNombre = (p) => p.marca_nombre || marcas.value.find(m => m.id === p.marca)?.nombre || '–'
+
+const getProveedoresNombres = (p) => {
+  if (!p.proveedores) return []
+  return p.proveedores.map(id => proveedores.value.find(pr => pr.id === id)?.nombre).filter(Boolean)
+}
+const getPrimerosProveedores = (p) => getProveedoresNombres(p).slice(0, 3).map((n, i) => ({ id: i, nombre: n }))
+
+const getEstadoClass = (e) => (e === 'ACTIVO' ? 'estado-success' : 'estado-danger')
+
+// ✅ LÓGICA DE STOCK MÍNIMO PERSONALIZADO
+const getStockClass = (p) => {
+  const actual = p.stock_actual || 0
+  const minimo = p.stock_minimo || 5 // Fallback
+  
+  if (actual === 0) return 'estado-danger'
+  if (actual <= minimo) return 'estado-warning'
+  return 'estado-success'
 }
 
-// --- HELPERS ---
-const getCategoriaNombre = (producto) => {
-  if (producto.categoria_nombre) return producto.categoria_nombre
-  if (producto.categoria) {
-    const categoria = categorias.value.find(c => c.id === producto.categoria)
-    return categoria ? categoria.nombre : '–'
-  }
-  return '–'
+const getRowClass = (p) => {
+  if ((p.stock_actual || 0) <= (p.stock_minimo || 5)) return 'stock-bajo-row'
+  return ''
 }
 
-const getMarcaNombre = (producto) => {
-  if (producto.marca_nombre) return producto.marca_nombre
-  if (producto.marca) {
-    const marca = marcas.value.find(m => m.id === producto.marca)
-    return marca ? marca.nombre : '–'
-  }
-  return '–'
-}
-
-const getProveedoresNombres = (producto) => {
-  // Validación extra para evitar "map is not a function"
-  if (!producto.proveedores || !Array.isArray(producto.proveedores)) return []
-  return producto.proveedores.map(provId => {
-    const proveedor = proveedores.value.find(p => p.id === provId)
-    return proveedor ? proveedor.nombre : null
-  }).filter(Boolean)
-}
-
-const getPrimerosProveedores = (producto) => {
-  const nombres = getProveedoresNombres(producto)
-  if (!nombres || nombres.length === 0) return []
-  return nombres.slice(0, 3).map((nombre, index) => ({ id: index, nombre }))
-}
-
-const getEstadoClass = (estado) => {
-  const estadoLower = estado?.toLowerCase() || ''
-  return estadoLower === 'activo' ? 'estado-success' : (estadoLower === 'inactivo' ? 'estado-danger' : 'estado-secondary')
-}
-
-const getStockClass = (stock) => (stock <= 5 ? 'estado-danger' : (stock <= 10 ? 'estado-warning' : 'estado-success'))
-
-onMounted(async () => {
-  // Carga secuencial para asegurar que dependencias (marcas, cat) estén listas antes de mostrar nombres
-  await Promise.all([cargarCategorias(), cargarProveedores(), cargarMarcas()])
-  await cargarProductos()
-})
-
-// --- COMPUTED Y PAGINACIÓN (IGUAL) ---
+// --- FILTROS ---
 const productosFiltrados = computed(() => {
   return productos.value.filter(p => {
-    const busca = filtros.value.busqueda.toLowerCase()
-    const matchBusqueda = !busca || (p.nombre?.toLowerCase().includes(busca) || p.codigo?.toLowerCase().includes(busca))
-    const matchCategoria = !filtros.value.categoria || p.categoria == filtros.value.categoria
-    const matchStockBajo = !filtros.value.stockBajo || p.stock_actual <= 10
+    const term = filtros.value.busqueda.toLowerCase()
+    const matchSearch = !term || p.nombre?.toLowerCase().includes(term) || p.codigo?.toLowerCase().includes(term)
+    const matchCat = !filtros.value.categoria || p.categoria == filtros.value.categoria
     const matchMarca = !filtros.value.marca || p.marca == filtros.value.marca
     const matchEstado = !filtros.value.estado || p.estado == filtros.value.estado
-    return matchBusqueda && matchCategoria && matchStockBajo && matchMarca && matchEstado
+    
+    // ✅ FILTRO INTELIGENTE DE STOCK BAJO
+    const minimo = p.stock_minimo || 5
+    const matchStock = !filtros.value.stockBajo || p.stock_actual <= minimo
+    
+    return matchSearch && matchCat && matchStock && matchMarca && matchEstado
   })
 })
 
-const productosStockBajo = computed(() => productosFiltrados.value.filter(p => p.stock_actual <= 10).length)
+const productosStockBajo = computed(() => 
+  productosFiltrados.value.filter(p => p.stock_actual <= (p.stock_minimo || 5)).length
+)
 const productosInactivos = computed(() => productosFiltrados.value.filter(p => p.estado === 'INACTIVO').length)
+
 const totalPaginas = computed(() => Math.max(1, Math.ceil(productosFiltrados.value.length / itemsPorPagina)))
 const productosPaginados = computed(() => {
-  const inicio = (pagina.value - 1) * itemsPorPagina
-  return productosFiltrados.value.slice(inicio, inicio + itemsPorPagina)
+  const start = (pagina.value - 1) * itemsPorPagina
+  return productosFiltrados.value.slice(start, start + itemsPorPagina)
 })
 
 const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 
-const editarProducto = (producto) => { productoEditando.value = producto; mostrarEditar.value = true }
+// --- ACCIONES ---
+const editarProducto = (p) => { productoEditando.value = p; mostrarEditar.value = true }
 const productoRegistrado = async () => { await cargarProductos(); cerrarModal(); pagina.value = 1 }
 const productoActualizado = async () => { await cargarProductos(); cerrarModalEditar() }
 
 const cambiarEstadoProducto = async (producto) => {
-  const nuevoEstado = producto.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO'
-  
-  const result = await Swal.fire({
-    title: `¿Cambiar estado?`,
-    text: `Pasará a estado ${nuevoEstado}`,
-    icon: 'question', showCancelButton: true, confirmButtonText: 'Sí, cambiar'
-  })
-  
-  if (!result.isConfirmed) return
+  const nuevo = producto.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO'
+  const res = await Swal.fire({ title: `¿Cambiar a ${nuevo}?`, icon: 'question', showCancelButton: true })
+  if (!res.isConfirmed) return
   
   try {
-    await axios.patch(`/usuarios/api/productos/${producto.id}/`, { estado: nuevoEstado })
+    await axios.patch(`/usuarios/api/productos/${producto.id}/`, { estado: nuevo })
     await cargarProductos()
-    Swal.fire('¡Éxito!', 'Estado actualizado', 'success')
-  } catch (err) { 
-    Swal.fire('Error', 'No se pudo cambiar el estado', 'error')
-  }
+    Swal.fire('¡Listo!', 'Estado actualizado', 'success')
+  } catch (e) { Swal.fire('Error', 'No se pudo cambiar', 'error') }
 }
 
-const limpiarFiltros = () => { filtros.value = { busqueda: '', categoria: '', stockBajo: '', marca: '', estado: '' }; pagina.value = 1 }
-const cerrarModal = () => { mostrarRegistrar.value = false }
-const cerrarModalEditar = () => { mostrarEditar.value = false; productoEditando.value = null }
-const cerrarModalMarca = () => { mostrarRegistrarMarca.value = false }
+const limpiarFiltros = () => { filtros.value = { busqueda: '', categoria: '', stockBajo: '', marca: '', estado: '' } }
+const cerrarModal = () => mostrarRegistrar.value = false
+const cerrarModalEditar = () => mostrarEditar.value = false
+const cerrarModalMarca = () => mostrarRegistrarMarca.value = false
 const marcaRegistrada = async () => { cerrarModalMarca(); await cargarMarcas() }
 
 watch(filtros, () => { pagina.value = 1 }, { deep: true })
+
+onMounted(async () => {
+  await cargarAuxiliares()
+  await cargarProductos()
+  
+  // ✅ DETECTAR REDIRECCIÓN DESDE DASHBOARD
+  if (route.query.filtro === 'stock_bajo') {
+    filtros.value.stockBajo = 'si'
+  }
+})
 </script>
 
 <style scoped>
@@ -634,12 +607,13 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 .users-table th {
   background: var(--accent-color);
   color: white;
-  padding: 18px 14px;
+  padding: 16px 12px;
   text-align: left;
   font-weight: 900;
   text-transform: uppercase;
-  font-size: 0.8rem;
-  letter-spacing: 1.2px;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+  white-space: nowrap;
 }
 
 .users-table tr {
@@ -647,10 +621,11 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 }
 
 .users-table td {
-  padding: 14px;
+  padding: 12px;
   vertical-align: middle;
   color: var(--text-secondary);
   font-weight: 500;
+  font-size: 0.9rem;
 }
 
 .users-table td strong {
@@ -664,9 +639,9 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   transition: all 0.2s ease;
 }
 
-/* Estilos específicos de productos */
-.descripcion-cell {
-  max-width: 200px;
+/* Celda de nombre con elipsis */
+.nombre-cell {
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -679,7 +654,7 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 
 /* ESTILOS PARA LA LISTA DE PROVEEDORES EN LA TABLA */
 .proveedores-lista {
-  max-width: 250px;
+  max-width: 150px;
 }
 
 .proveedor-item {
@@ -696,7 +671,7 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 
 .proveedor-nombre {
   color: var(--text-primary);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -706,7 +681,7 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 
 .mas-proveedores {
   color: var(--text-tertiary);
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-style: italic;
   text-align: center;
   padding: 4px 0;
@@ -717,17 +692,16 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 
 .sin-proveedores {
   color: var(--text-tertiary);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-style: italic;
   text-align: center;
-  padding: 8px 0;
+  padding: 6px 0;
 }
 
 /* BOTONES DE ACCIÓN - CON VARIABLES */
 .action-buttons { 
   display: flex; 
-  gap: 8px; 
-  flex-wrap: wrap; 
+  gap: 6px; 
 }
 
 .action-button {
@@ -741,8 +715,8 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   align-items: center;
   justify-content: center;
   transition: all 0.3s ease;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
 }
 
 .action-button.edit {

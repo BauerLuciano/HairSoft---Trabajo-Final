@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import logging
 import time
 import secrets
-from django.db.models import Max, Q 
+from django.db.models import Max, Q, F # <--- F es vital para comparar stock_actual vs stock_minimo
 from django.conf import settings
 
 from .models import (
@@ -29,7 +29,6 @@ def enviar_whatsapp_oferta(numero, mensaje):
     """Envía WhatsApp vía Twilio"""
     try:
         from twilio.rest import Client
-        
         account_sid = settings.TWILIO_ACCOUNT_SID 
         auth_token = settings.TWILIO_AUTH_TOKEN
         from_whatsapp_number = settings.TWILIO_WHATSAPP_NUMBER 
@@ -45,7 +44,6 @@ def enviar_whatsapp_oferta(numero, mensaje):
 
 @shared_task
 def enviar_email_oferta(email, mensaje, fecha, hora):
-    """Envía Email (usado en reoferta de turnos)"""
     try:
         from django.core.mail import send_mail
         subject = f"¡Turno disponible! {fecha} {hora} - HairSoft"
@@ -57,10 +55,8 @@ def enviar_email_oferta(email, mensaje, fecha, hora):
 
 @shared_task
 def enviar_email_cotizacion_proveedor(cotizacion_id):
-    """Envía solicitud de presupuesto a proveedores"""
     try:
         from django.core.mail import send_mail
-        
         cotizacion = Cotizacion.objects.get(id=cotizacion_id)
         if not cotizacion.proveedor.email: return False
 
@@ -82,7 +78,6 @@ Ingrese su oferta aquí: {link}
     except Exception as e:
         print(f"❌ Error email proveedor: {str(e)}")
         return False
-
 
 # ==============================================================================
 # 2. TAREAS DE NEGOCIO 
@@ -122,87 +117,90 @@ def notificar_turno_asignado(turno_id):
         return True
     except Exception: return False
 
-
 # ==============================================================================
-# 3. MÓDULO DE FIDELIZACIÓN: REACTIVACIÓN AUTOMÁTICA (VERSIÓN FINAL REAL)
+# 3. MÓDULO DE FIDELIZACIÓN
 # ==============================================================================
 
 @shared_task
 def procesar_reactivacion_clientes_inactivos():
-    """
-    Tarea DIARIA REAL:
-    1. Busca clientes cuyo último turno fue hace más de 60 días.
-    2. Respeta el cooldown de 90 días.
-    3. Envía cupón de 15% OFF.
-    """
     print("🕵️‍♂️ [FIDELIZACIÓN] Iniciando análisis diario de clientes inactivos...")
-    
     DIAS_INACTIVIDAD = 60
-    DIAS_VALIDEZ = 7
     DIAS_COOLDOWN = 90
-    
     hoy = timezone.now()
-    # Fecha límite: Todo turno ANTERIOR a esto es "viejo"
     fecha_limite = hoy - timedelta(days=DIAS_INACTIVIDAD)
     fecha_limite_cooldown = hoy - timedelta(days=DIAS_COOLDOWN)
     
-    # Traemos clientes y la fecha de su último turno
     clientes = Usuario.objects.filter(rol__nombre__iexact='Cliente').annotate(
         ultimo_turno=Max('turnos_cliente__fecha')
     )
     
     enviados = 0
-    
     for cliente in clientes:
-        # 1. Si nunca vino, no es reactivación
-        if not cliente.ultimo_turno: 
-            continue 
-
-        # 2. FILTRO DE FECHA REAL
-        # Si su último turno fue DESPUÉS de la fecha límite (ej: vino ayer), es ACTIVO -> Ignorar
+        if not cliente.ultimo_turno: continue 
         ultimo_turno_dt = timezone.make_aware(datetime.combine(cliente.ultimo_turno, datetime.min.time()))
-        
-        if ultimo_turno_dt >= fecha_limite:
-            # Vino hace poco, no molestar
-            continue 
+        if ultimo_turno_dt >= fecha_limite: continue 
 
-        # 3. Filtro Anti-Spam (Ya tiene promo activa o reciente?)
-        promo_reciente = PromocionReactivacion.objects.filter(
-            cliente=cliente,
-            fecha_creacion__gte=fecha_limite_cooldown
-        ).exists()
-
-        if promo_reciente:
+        if PromocionReactivacion.objects.filter(cliente=cliente, fecha_creacion__gte=fecha_limite_cooldown).exists():
             continue
 
         try:
             if not cliente.telefono: continue
-
             codigo = f"VOLVE-{secrets.token_hex(2).upper()}"
-            vencimiento = hoy + timedelta(days=DIAS_VALIDEZ)
-            
-            PromocionReactivacion.objects.create(
-                cliente=cliente, codigo=codigo, fecha_vencimiento=vencimiento
-            )
-            
-            link = f"http://localhost:5173/turnos/crear-web?cup={codigo}"
-            
-            mensaje = (
-                f"👋 ¡Hola {cliente.nombre}!\n\n"
-                f"Te extrañamos en Los Ultimos Serán Los Primeros ✂️.\n\n"
-                f"🎁 *15% OFF en tu próximo servicio*\n"
-                f"Válido por 7 días.\n\n"
-                f"Reservá acá con el descuento ya aplicado:\n"
-                f"{link}\n\n"
-                f"¡Te esperamos!"
-            )
-            
+            PromocionReactivacion.objects.create(cliente=cliente, codigo=codigo, fecha_vencimiento=hoy + timedelta(days=7))
+            mensaje = f"👋 ¡Hola {cliente.nombre}!\nTe extrañamos ✂️. Reservá con 15% OFF acá: http://localhost:5173/turnos/crear-web?cup={codigo}"
             enviar_whatsapp_oferta.delay(cliente.telefono, mensaje)
-            print(f"   🚀 Cupón enviado a {cliente.nombre} (Inactivo desde {cliente.ultimo_turno})")
             enviados += 1
             time.sleep(2)
-
         except Exception as e:
             print(f"Error con cliente {cliente.nombre}: {e}")
+    return f"Fidelización: {enviados} enviados."
 
-    return f"Proceso real finalizado. {enviados} enviados."
+# ==============================================================================
+# 4. MÓDULO DE INVENTARIO: REPOSICIÓN AUTOMÁTICA (DINÁMICO)
+# ==============================================================================
+@shared_task
+def chequear_stock_y_generar_solicitudes():
+    """
+    Tarea Automática corregida para usar los modelos Reales:
+    SolicitudReabastecimiento y CotizacionProveedor
+    """
+    print("📦 [INVENTARIO] Iniciando chequeo dinámico...")
+    
+    # Buscamos productos que necesiten reponer
+    productos_bajo_stock = Producto.objects.filter(
+        stock_actual__lte=F('stock_minimo'),
+        estado='ACTIVO'
+    )
+    
+    creadas = 0
+    for producto in productos_bajo_stock:
+        # ✅ CORRECCIÓN: Usamos SolicitudReabastecimiento (el nombre de tu modelo)
+        if SolicitudReabastecimiento.objects.filter(producto=producto, estado='PENDIENTE').exists():
+            continue
+            
+        try:
+            # ✅ USAR EL LOTE DE REPOSICIÓN REAL
+            cantidad_a_pedir = producto.lote_reposicion if producto.lote_reposicion >= 1 else 1
+            
+            solicitud = SolicitudReabastecimiento.objects.create(
+                producto=producto,
+                cantidad_solicitada=cantidad_a_pedir,
+                estado='PENDIENTE'
+            )
+            
+            # ✅ CORRECCIÓN: Usamos CotizacionProveedor (el nombre de tu modelo)
+            proveedores = producto.proveedores.all()
+            for proveedor in proveedores:
+                CotizacionProveedor.objects.create(
+                    solicitud=solicitud,
+                    proveedor=proveedor,
+                    token_acceso=uuid.uuid4()
+                )
+                # Nota: Aquí deberías llamar a una tarea de mail si la tienes para este modelo
+                
+            print(f"   ✅ Solicitud #{solicitud.id} para {producto.nombre} generada por {cantidad_a_pedir} u.")
+            creadas += 1
+        except Exception as e:
+            print(f"❌ Error en reposición {producto.nombre}: {e}")
+
+    return f"Proceso finalizado. {creadas} reabastecimientos iniciados."

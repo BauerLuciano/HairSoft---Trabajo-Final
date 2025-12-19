@@ -10,12 +10,15 @@ app.autodiscover_tasks()
 # Tareas periódicas
 app.conf.beat_schedule = {
     'verificar-ofertas-expiradas': {
-        'task': 'usuarios.tasks.verificar_ofertas_expiradas',
-        'schedule': 300.0,  # Cada 5 minutos
+        'task': 'usuarios.tasks.verificar_ofertas_expiradas', # Asegúrate que esta tarea exista o cámbiala si tiene otro nombre
+        'schedule': 300.0,
     },
-    # ✅ AGREGÁ ESTO para que se ejecute automáticamente cada 5 minutos:
     'reactivacion-clientes-inactivos': {
         'task': 'usuarios.tasks.procesar_reactivacion_clientes_inactivos',
-        'schedule': 300.0,  # Cada 5 minutos (igual que la otra)
+        'schedule': 3600.0, 
+    },
+    'reposicion-automatica-stock': {
+        'task': 'usuarios.tasks.chequear_stock_y_generar_solicitudes',
+        'schedule': 60.0,  # Lo bajé a 1 minuto para que pruebes rápido si se dispara
     },
 }

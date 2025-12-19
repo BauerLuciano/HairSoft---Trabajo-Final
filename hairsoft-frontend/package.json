@@ -16,6 +16,8 @@
     "bootstrap": "^5.3.8",
     "chart.js": "^4.5.1",
     "flatpickr": "^4.6.13",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^3.0.4",
     "lucide-vue-next": "^0.552.0",
     "qrcode.vue": "^3.6.0",
     "sweetalert2": "^11.26.3",

@@ -109,6 +109,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import Swal from 'sweetalert2';
+import api from '../services/api';
 
 const router = useRouter();
 const isDarkTheme = ref(true);
@@ -187,12 +188,25 @@ const handleLogout = () => {
     cancelButtonText: 'Cancelar',
     background: isDarkTheme.value ? '#1e293b' : '#fff',
     color: isDarkTheme.value ? '#fff' : '#000'
-  }).then((result) => {
-    if (result.isConfirmed) {
+  }).then(async (result) => {
+      if (result.isConfirmed) {
+        
+        // 🔥 CORRECCIÓN AQUÍ: Quitamos el '/api' que sobraba
+        try {
+          console.log("Intentando notificar logout...");
+          // SOLO 'auth/logout/' (sin /api/ al principio porque Axios ya lo pone)
+          await api.post('auth/logout/'); 
+          console.log("Logout notificado con éxito");
+        } catch (error) {
+          console.error("❌ Error al avisar al backend:", error);
+        }
+
+      // LIMPIEZA LOCAL
       localStorage.removeItem('user_id');
       localStorage.removeItem('user_rol');
       localStorage.removeItem('user_nombre');
       localStorage.removeItem('user_apellido');
+      localStorage.removeItem('token'); 
       
       window.dispatchEvent(new Event('userLoggedOut'));
       router.push('/login');

@@ -4,17 +4,14 @@
     <form @submit.prevent="modificarProducto" class="product-form">
       <div class="form-grid">
 
-        <!-- Información Básica -->
         <div class="form-section">
           <h3>Información Básica</h3>
 
-          <!-- Nombre -->
           <div class="form-group">
             <label for="nombre">Nombre del Producto *</label>
             <input id="nombre" v-model="producto.nombre" type="text" required placeholder="Ingrese el nombre del producto" class="form-input"/>
           </div>
 
-          <!-- Marca -->
           <div class="form-group">
             <label for="marca">Marca *</label>
             <select id="marca" v-model.number="producto.marca" required class="form-select" :disabled="cargandoMarcas || marcas.length === 0">
@@ -23,7 +20,6 @@
             </select>
           </div>
 
-          <!-- Categoría -->
           <div class="form-group">
             <label for="categoria_id">Categoría *</label>
             <select id="categoria_id" v-model.number="producto.categoria" required class="form-select" :disabled="cargandoCategorias || categoriasProductos.length === 0">
@@ -32,34 +28,60 @@
             </select>
           </div>
 
-          <!-- Código autogenerado (solo lectura) -->
           <div class="form-group">
             <label for="codigo">Código del Producto *</label>
             <input id="codigo" v-model="producto.codigo" type="text" required readonly class="form-input readonly"/>
           </div>
 
-          <!-- Descripción -->
           <div class="form-group">
             <label for="descripcion">Descripción</label>
             <textarea id="descripcion" v-model="producto.descripcion" rows="3" placeholder="Descripción del producto (opcional)..." class="form-textarea"></textarea>
           </div>
         </div>
 
-        <!-- Precio, Stock y Proveedores -->
         <div class="form-section">
-          <h3>Precio y Stock</h3>
+          <h3>Configuración de Inventario</h3>
+          
           <div class="form-group">
             <label for="precio">Precio de Venta *</label>
             <input id="precio" v-model.number="producto.precio" type="number" step="0.01" min="0.01" required placeholder="0.00" class="form-input"/>
           </div>
 
-          <div class="form-group">
-            <label for="stock_actual">Stock Actual *</label>
-            <input id="stock_actual" v-model.number="producto.stock_actual" type="number" min="0" required placeholder="0" class="form-input"/>
+          <div class="form-grid-3">
+            
+            <div class="form-group">
+              <label for="stock_actual">Stock Actual *</label>
+              <input 
+                id="stock_actual" 
+                v-model.number="producto.stock_actual" 
+                type="number" min="0" required 
+                class="form-input"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="stock_minimo" title="Avisar cuando baje de esta cantidad">Stock Mínimo 🚩</label>
+              <input 
+                id="stock_minimo" 
+                v-model.number="producto.stock_minimo" 
+                type="number" min="1" required 
+                class="form-input warning-border"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="lote_reposicion" title="Cantidad sugerida a comprar">Lote Reposición 📦</label>
+              <input 
+                id="lote_reposicion" 
+                v-model.number="producto.lote_reposicion" 
+                type="number" min="1" required 
+                class="form-input info-border"
+              />
+            </div>
+
           </div>
 
-          <!-- Proveedores -->
-          <div class="form-group">
+          <div class="form-group mt-3">
             <label>Proveedores *</label>
             <div class="checkbox-group-enhanced">
               <div v-if="cargandoProveedores" class="loading-message">
@@ -85,7 +107,7 @@
                     <div class="proveedor-info">
                       <strong>{{ proveedor.nombre }}</strong>
                       <span class="proveedor-contacto">
-                        {{ proveedor.contacto || 'Sin contacto' }} | {{ proveedor.telefono || 'Sin teléfono' }}
+                        {{ proveedor.contacto || 'Sin contacto' }}
                       </span>
                     </div>
                   </label>
@@ -93,16 +115,15 @@
               </div>
             </div>
             <span class="form-help" :class="{ 'error': producto.proveedores_seleccionados.length === 0 && proveedoresActivos.length > 0 }">
-              {{ producto.proveedores_seleccionados.length === 0 && proveedoresActivos.length > 0 ? '❌ Seleccione al menos un proveedor' : 'Seleccione uno o más proveedores que venden este producto' }}
+              {{ producto.proveedores_seleccionados.length === 0 ? '❌ Seleccione al menos un proveedor' : 'Proveedores seleccionados' }}
             </span>
           </div>
         </div>
       </div>
 
-      <!-- Botones -->
       <div class="form-actions">
         <button type="button" @click="cancelar" class="btn btn-secondary">Cancelar</button>
-        <button type="submit" :disabled="cargando || !formularioValido" class="btn btn-primary">{{ cargando ? 'Actualizando...' : 'Actualizar Producto' }}</button>
+        <button type="submit" :disabled="cargando || !formularioValido" class="btn btn-primary">{{ cargando ? 'Guardando...' : 'Guardar Cambios' }}</button>
       </div>
     </form>
   </div>
@@ -110,17 +131,13 @@
 
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
-import axios from 'axios'
+import axios from '@/utils/axiosConfig'
 
 const props = defineProps({
-  productoId: {
-    type: [String, Number],
-    required: true
-  }
+  productoId: { type: [String, Number], required: true }
 })
 
 const emit = defineEmits(['producto-actualizado', 'cancelar'])
-const API_BASE = 'http://127.0.0.1:8000'
 
 const producto = ref({
   nombre: '',
@@ -128,6 +145,8 @@ const producto = ref({
   descripcion: '',
   precio: 0,
   stock_actual: 0,
+  stock_minimo: 5,      // 🚩 Alerta
+  lote_reposicion: 1,   // 📦 Compra
   categoria: '',
   marca: '',
   proveedores_seleccionados: []
@@ -136,16 +155,18 @@ const producto = ref({
 const categorias = ref([])
 const proveedores = ref([])
 const marcas = ref([])
-
 const cargando = ref(false)
+const cargandoMarcas = ref(false)
 const cargandoCategorias = ref(false)
 const cargandoProveedores = ref(false)
-const cargandoMarcas = ref(false)
 
+// Validación
 const formularioValido = computed(() =>
   producto.value.nombre.trim() &&
   producto.value.precio > 0 &&
   producto.value.stock_actual >= 0 &&
+  producto.value.stock_minimo > 0 &&
+  producto.value.lote_reposicion > 0 && // ✅ Validamos lote
   producto.value.categoria &&
   producto.value.marca &&
   producto.value.codigo &&
@@ -153,190 +174,116 @@ const formularioValido = computed(() =>
 )
 
 const categoriasProductos = computed(() => categorias.value)
-// ✅ CORREGIDO: Asegurar que proveedores.value sea un array
+
 const proveedoresActivos = computed(() => {
-  if (!Array.isArray(proveedores.value)) {
-    console.warn('proveedores.value no es un array:', proveedores.value)
-    return []
-  }
-  return proveedores.value.filter(p => 
-    p.estado === 'ACTIVO' || p.activo === true || p.activo === 'true'
-  )
+  if (!Array.isArray(proveedores.value)) return []
+  return proveedores.value.filter(p => p.estado === 'ACTIVO' || p.activo === true)
 })
 
 // ================================
-// CARGAR DATOS DEL PRODUCTO
+// CARGAR DATOS PRODUCTO
 // ================================
 const cargarProducto = async () => {
   try {
-    console.log(`Cargando producto ID: ${props.productoId}`)
-    const response = await axios.get(`${API_BASE}/api/productos/${props.productoId}/`)
-    const productoData = response.data
+    const response = await axios.get(`/usuarios/api/productos/${props.productoId}/`)
+    const data = response.data
     
-    console.log('Producto data recibida:', productoData)
-    
-    // Asegurar que proveedores_seleccionados sea un array
+    // Mapeo de proveedores (pueden venir como objetos o IDs)
     let proveedoresSeleccionados = []
-    if (Array.isArray(productoData.proveedores)) {
-      proveedoresSeleccionados = productoData.proveedores
-    } else if (productoData.proveedores_ids) {
-      proveedoresSeleccionados = productoData.proveedores_ids
+    if (Array.isArray(data.proveedores)) {
+      // Si son objetos, extraemos IDs, si son IDs los dejamos
+      proveedoresSeleccionados = typeof data.proveedores[0] === 'object' 
+        ? data.proveedores.map(p => p.id) 
+        : data.proveedores
+    } else if (data.proveedores_ids) {
+      proveedoresSeleccionados = data.proveedores_ids
     }
     
-    // Mapear los datos del producto al formato del formulario
     producto.value = {
-      nombre: productoData.nombre || '',
-      codigo: productoData.codigo || '',
-      descripcion: productoData.descripcion || '',
-      precio: parseFloat(productoData.precio) || 0,
-      stock_actual: productoData.stock_actual || 0,
-      categoria: productoData.categoria || productoData.categoria_id || productoData.categoria?.id || '',
-      marca: productoData.marca || productoData.marca_id || productoData.marca?.id || '',
+      nombre: data.nombre || '',
+      codigo: data.codigo || '',
+      descripcion: data.descripcion || '',
+      precio: parseFloat(data.precio) || 0,
+      stock_actual: data.stock_actual || 0,
+      stock_minimo: data.stock_minimo || 5,      // ✅ Cargar valor
+      lote_reposicion: data.lote_reposicion || 1,// ✅ Cargar valor
+      categoria: data.categoria?.id || data.categoria || '',
+      marca: data.marca?.id || data.marca || '',
       proveedores_seleccionados: proveedoresSeleccionados
     }
-    
-    console.log('Producto mapeado:', producto.value)
   } catch (err) {
-    console.error('Error al cargar producto:', err)
+    console.error('Error cargando producto:', err)
     alert('❌ Error al cargar los datos del producto')
   }
 }
 
 // ================================
-// CARGAR DATOS ADICIONALES
+// CARGAR AUXILIARES
 // ================================
-const cargarMarcas = async () => {
-  cargandoMarcas.value = true
+const cargarAuxiliares = async () => {
+  cargandoMarcas.value = true; cargandoCategorias.value = true; cargandoProveedores.value = true
   try {
-    const res = await axios.get(`${API_BASE}/api/marcas/`)
-    marcas.value = res.data || []
-    console.log('Marcas cargadas:', marcas.value)
-  } catch (err) {
-    console.error("Error cargando marcas:", err)
-    marcas.value = []
-  } finally {
-    cargandoMarcas.value = false
+    const [resM, resC, resP] = await Promise.all([
+      axios.get('/usuarios/api/marcas/'),
+      axios.get('/usuarios/api/categorias/productos/'),
+      axios.get('/usuarios/api/proveedores/')
+    ])
+    marcas.value = resM.data || []
+    categorias.value = resC.data || []
+    proveedores.value = resP.data || []
+  } catch (err) { console.error(err) } 
+  finally {
+    cargandoMarcas.value = false; cargandoCategorias.value = false; cargandoProveedores.value = false
   }
-}
-
-const cargarCategorias = async () => {
-  cargandoCategorias.value = true
-  try {
-    const res = await axios.get(`${API_BASE}/api/categorias/productos/`)
-    categorias.value = res.data || []
-    console.log('Categorías cargadas:', categorias.value)
-  } catch (err) {
-    console.error('Error cargando categorías:', err)
-    categorias.value = []
-  } finally {
-    cargandoCategorias.value = false
-  }
-}
-
-const cargarProveedores = async () => {
-  cargandoProveedores.value = true
-  try {
-    const res = await axios.get(`${API_BASE}/api/proveedores/`)
-    // ✅ Asegurar que sea un array
-    proveedores.value = Array.isArray(res.data) ? res.data : []
-    console.log('Proveedores cargados:', proveedores.value)
-  } catch (err) {
-    console.error('Error cargando proveedores:', err)
-    proveedores.value = []
-  } finally {
-    cargandoProveedores.value = false
-  }
-}
-
-const cargarDatos = async () => {
-  await Promise.all([
-    cargarMarcas(), 
-    cargarCategorias(), 
-    cargarProveedores()
-  ])
 }
 
 // ================================
-// MODIFICAR PRODUCTO
+// GUARDAR CAMBIOS
 // ================================
 const modificarProducto = async () => {
   if (!formularioValido.value) {
-    if (producto.value.proveedores_seleccionados.length === 0) {
-      alert("❌ Debe seleccionar al menos un proveedor para el producto.")
-    } else {
-      alert("❌ Complete todos los campos obligatorios.")
-    }
+    alert("❌ Revise los datos. Stocks y precios deben ser válidos.")
     return
   }
 
   cargando.value = true
   try {
-    // ✅ CORREGIDO: Usar 'stock' en lugar de 'stock_actual' porque el serializer lo espera así
     const payload = {
       nombre: producto.value.nombre.trim(),
       codigo: producto.value.codigo.toString().trim(),
       descripcion: producto.value.descripcion.trim(),
       precio: String(producto.value.precio),
-      stock: Number(producto.value.stock_actual), // ⚠️ CAMBIÉ: stock_actual → stock
+      stock_actual: Number(producto.value.stock_actual),
+      stock_minimo: Number(producto.value.stock_minimo),       // ✅
+      lote_reposicion: Number(producto.value.lote_reposicion), // ✅
       categoria: Number(producto.value.categoria),
       marca: Number(producto.value.marca),
       proveedores: producto.value.proveedores_seleccionados.map(id => Number(id))
     }
 
-    console.log('Enviando payload para modificar:', payload)
-    
-    const res = await axios.put(`${API_BASE}/api/productos/${props.productoId}/`, payload)
+    const res = await axios.put(`/usuarios/api/productos/${props.productoId}/`, payload)
 
     alert("✅ Producto actualizado correctamente")
     emit("producto-actualizado", res.data)
 
   } catch (err) {
-    console.error('Error al actualizar producto:', err.response?.data || err)
-    
-    let mensajeError = "❌ Error al actualizar el producto"
-    if (err.response?.data) {
-      // Mostrar errores específicos del backend
-      if (typeof err.response.data === 'string') {
-        mensajeError = err.response.data
-      } else if (err.response.data.precio) {
-        mensajeError = `Error en precio: ${err.response.data.precio}`
-      } else if (err.response.data.nombre) {
-        mensajeError = `Error en nombre: ${err.response.data.nombre}`
-      } else if (err.response.data.stock) {
-        mensajeError = `Error en stock: ${err.response.data.stock}`
-      } else {
-        mensajeError = JSON.stringify(err.response.data)
-      }
-    }
-    
-    alert(mensajeError)
+    console.error('Error update:', err)
+    let msg = "Error al actualizar"
+    if (err.response?.data?.detail) msg = err.response.data.detail
+    alert(msg)
   } finally {
     cargando.value = false
   }
 }
 
-// ================================
-// CANCELAR
-// ================================
-const cancelar = () => {
-  emit("cancelar")
-}
+const cancelar = () => emit("cancelar")
 
-// ================================
-// WATCHERS Y MOUNTED
-// ================================
 onMounted(async () => {
-  console.log('Componente ModificarProducto montado')
-  await cargarDatos()
-  await cargarProducto()
+  await cargarAuxiliares()
+  if (props.productoId) await cargarProducto()
 })
 
-watch(() => props.productoId, () => {
-  if (props.productoId) {
-    console.log('productoId cambiado:', props.productoId)
-    cargarProducto()
-  }
-}, { immediate: true })
+watch(() => props.productoId, (newId) => { if(newId) cargarProducto() })
 </script>
 
 <style scoped>

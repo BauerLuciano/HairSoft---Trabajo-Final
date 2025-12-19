@@ -6,6 +6,7 @@ from django.http import JsonResponse
 from django.views import View
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth import authenticate, login
+from django.contrib.auth.signals import user_logged_in
 from rest_framework import viewsets, status, generics , filters, serializers
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.authtoken.models import Token
@@ -312,16 +313,16 @@ def login_auth(request):
     correo = validated_data.get('username')
     contrasena = validated_data.get('password')
 
-    user = authenticate(username=correo, password=contrasena) # Django usa 'username' interno
+    user = authenticate(username=correo, password=contrasena)
 
     if user:
         # ✅ Generar o recuperar token
         token, created = Token.objects.get_or_create(user=user)
-        
+                
         return Response({
             'status': 'ok',
             'message': 'Login exitoso',
-            'token': token.key,  # <--- ¡AQUÍ ESTÁ LA CLAVE! 🔑
+            'token': token.key,
             'user_id': user.id,
             'nombre': user.nombre,
             'apellido': user.apellido,
@@ -329,6 +330,18 @@ def login_auth(request):
         })
     else:
         return Response({'error': 'Credenciales inválidas'}, status=401)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    try:
+        print(f"🚪 LOGOUT SOLICITADO POR: {request.user}") # <--- DEBUG
+
+        if hasattr(request.user, 'auth_token'):
+            request.user.auth_token.delete()       
+        return Response({'message': 'Chau!'})
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
     
 @api_view(['POST', 'PATCH', 'PUT']) # ✅ Usamos el decorador de DRF para manejar métodos fácil
 @permission_classes([IsAuthenticated]) # ✅ Solo gente logueada
@@ -3593,147 +3606,112 @@ def actualizar_listas_masivo(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-# ================================
-# DASHBOARD ENDPOINT - VERSIÓN SIMPLIFICADA TEMPORAL
-# ================================
-
+#DASHBOARD
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def dashboard_data(request):
-    """Endpoint REAL para dashboard - consulta la base de datos"""
     try:
-        print("✅ Dashboard endpoint llamado - consultando BD real")
-        
-        # Obtener el período del request
+        # 1. RANGO DE FECHAS
         period = request.GET.get('period', 'semana')
+        hoy = timezone.now()
         
-        # 🔥 CONSULTAS REALES A LA BASE DE DATOS
+        if period == 'hoy':
+            start_date = hoy.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date = hoy.replace(hour=23, minute=59, second=59)
+        elif period == 'mes':
+            start_date = hoy.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            end_date = hoy.replace(hour=23, minute=59, second=59)
+        else: # 'semana'
+            start_date = hoy - timedelta(days=6)
+            start_date = start_date.replace(hour=0, minute=0, second=0)
+            end_date = hoy.replace(hour=23, minute=59, second=59)
+
+        # 2. CONSULTAS BASE
+        ventas_periodo = Venta.objects.filter(fecha__range=[start_date, end_date], anulada=False)
+        turnos_periodo = Turno.objects.filter(fecha__range=[start_date, end_date], estado='COMPLETADO')
         
-        # 1. INGRESOS TOTALES (último mes)
-        from datetime import datetime, timedelta
-        from django.utils import timezone
+        # 3. KPIs
+        ingresos_totales = ventas_periodo.aggregate(total=Sum('total'))['total'] or 0
+        servicios_realizados = turnos_periodo.count()
         
-        fecha_inicio = timezone.now() - timedelta(days=30)
-        ingresos_totales = Venta.objects.filter(
-            fecha__gte=fecha_inicio, 
-            anulada=False
-        ).aggregate(total=Sum('total'))['total'] or 0
-        
-        # 2. SERVICIOS REALIZADOS (último mes)
-        servicios_realizados = Turno.objects.filter(
-            fecha__gte=fecha_inicio,
-            estado='COMPLETADO'
-        ).count()
-        
-        # 3. CLIENTES NUEVOS (último mes)
-        clientes_nuevos = Usuario.objects.filter(
-            fecha_creacion__gte=fecha_inicio,
-            rol__nombre__iexact='cliente'
-        ).count()
-        
-        # 4. PRODUCTOS VENDIDOS (último mes)
+        # Productos vendidos
         productos_vendidos = DetalleVenta.objects.filter(
-            venta__fecha__gte=fecha_inicio,
-            venta__anulada=False,
+            venta__in=ventas_periodo,
             producto__isnull=False
         ).aggregate(total=Sum('cantidad'))['total'] or 0
-        
-        # 5. TICKET PROMEDIO
-        ticket_promedio = ingresos_totales / max(servicios_realizados, 1)
-        
-        # 6. STOCK BAJO (productos con stock por debajo del mínimo)
-        # Asumiendo que tienes un campo stock_minimo en Producto
-        stock_bajo = Producto.objects.filter(
-            stock_actual__lte=5  # Ajusta según tu lógica de stock mínimo
-        )[:5]  # Limitar a 5 productos
-        
-        stock_bajo_data = [
-            {
-                'nombre': producto.nombre,
-                'stock_actual': producto.stock_actual,
-                'stock_minimo': 5,  # Ajusta según tu modelo
-                'categoria': producto.categoria.nombre if producto.categoria else 'Sin categoría'
-            }
-            for producto in stock_bajo
-        ]
-        
-        # 7. SERVICIOS TOP (más vendidos)
-        from django.db.models import Count
-        servicios_top = Servicio.objects.annotate(
-            ventas_count=Count('detalleventa')
-        ).order_by('-ventas_count')[:3]
-        
-        servicios_top_data = [
-            {
-                'nombre': servicio.nombre,
-                'cantidad': servicio.ventas_count,
-                'ingresos': servicio.ventas_count * servicio.precio,
-                'tendencia': 0  # Podrías calcular la tendencia vs período anterior
-            }
-            for servicio in servicios_top
-        ]
-        
-        # 8. TOP PELUQUEROS (más servicios completados)
-        top_peluqueros = Usuario.objects.filter(
-            turnos_peluquero__estado='COMPLETADO',
-            turnos_peluquero__fecha__gte=fecha_inicio
-        ).annotate(
-            servicios_count=Count('turnos_peluquero'),
-            ingresos_total=Sum('turnos_peluquero__monto_total')
-        ).order_by('-servicios_count')[:3]
-        
-        top_peluqueros_data = [
-            {
-                'nombre': f"{p.nombre} {p.apellido}",
-                'servicios_completados': p.servicios_count,
-                'ingresos_generados': p.ingresos_total or 0
-            }
-            for p in top_peluqueros
-        ]
-        
-        # 9. VENTAS POR DÍA (últimos 7 días)
-        ventas_por_dia = []
+
+        # 4. GRÁFICO
         labels_dias = []
+        ventas_por_dia = []
+        delta_days = (end_date.date() - start_date.date()).days
         
-        for i in range(6, -1, -1):
-            fecha = timezone.now() - timedelta(days=i)
+        for i in range(delta_days + 1):
+            dia_actual = start_date + timedelta(days=i)
             total_dia = Venta.objects.filter(
-                fecha__date=fecha.date(),
+                fecha__date=dia_actual.date(), 
                 anulada=False
             ).aggregate(total=Sum('total'))['total'] or 0
             
+            nombre_dia = dia_actual.strftime('%a')
+            num_dia = dia_actual.day
+            traduccion = {'Mon':'Lun', 'Tue':'Mar', 'Wed':'Mié', 'Thu':'Jue', 'Fri':'Vie', 'Sat':'Sáb', 'Sun':'Dom'}
+            label = f"{traduccion.get(nombre_dia, nombre_dia)} {num_dia}"
+            
+            labels_dias.append(label)
             ventas_por_dia.append(float(total_dia))
-            labels_dias.append(fecha.strftime('%a'))
-        
-        # Datos REALES de tu base de datos
+
+        # 5. TOP SERVICIOS
+        top_servicios_query = turnos_periodo.values('servicios__nombre').annotate(
+            cantidad=Count('id'),
+            ingresos=Sum('servicios__precio')
+        ).order_by('-cantidad')[:5]
+
+        servicios_top = []
+        for s in top_servicios_query:
+            if s['servicios__nombre']:
+                servicios_top.append({
+                    'nombre': s['servicios__nombre'],
+                    'cantidad': s['cantidad'],
+                    'ingresos': float(s['ingresos'] or 0)
+                })
+
+        # 6. TOP PRODUCTOS
+        top_productos_query = DetalleVenta.objects.filter(
+            venta__in=ventas_periodo,
+            producto__isnull=False
+        ).values('producto__nombre').annotate(
+            cantidad=Sum('cantidad')
+        ).order_by('-cantidad')[:5]
+
+        productos_top = [
+            {'nombre': p['producto__nombre'], 'cantidad': p['cantidad']}
+            for p in top_productos_query
+        ]
+
+        # 7. STOCK BAJO (LÓGICA BLINDADA)
+        # Cuenta TODOS los productos donde (Stock <= Stock Mínimo) O (Stock == 0)
+        # Sin filtrar por estado, igual que tu listado.
+        stock_bajo_count = Producto.objects.filter(
+            Q(stock_actual__lte=F('stock_minimo')) | Q(stock_actual=0)
+        ).count()
+
         data = {
             'ingresosTotales': float(ingresos_totales),
             'serviciosRealizados': servicios_realizados,
-            'clientesNuevos': clientes_nuevos,
             'productosVendidos': productos_vendidos,
-            'ticketPromedio': float(ticket_promedio),
-            'ventasTrend': 0,  # Podrías calcular vs período anterior
-            'metaMensual': 150000.0,
-            'totalClientes': Usuario.objects.filter(rol__nombre__iexact='cliente').count(),
-            'stockBajoCount': stock_bajo.count(),
-            'stockBajo': stock_bajo_data,
-            'serviciosTop': servicios_top_data,
-            'topPeluqueros': top_peluqueros_data,
-            'productosTop': [],  # Podrías implementar similar a servicios_top
+            'stockBajoCount': stock_bajo_count, # Debería ser 15
             'ventasPorDia': ventas_por_dia,
-            'serviciosDistribucion': [],  # Podrías implementar
-            'labelsDias': labels_dias
+            'labelsDias': labels_dias,
+            'serviciosTop': servicios_top,
+            'productosTop': productos_top
         }
-        
-        print(f"✅ Datos REALES enviados - Ingresos: ${ingresos_totales}, Servicios: {servicios_realizados}")
-        return Response(data)
-        
-    except Exception as e:
-        print(f"❌ Error en dashboard REAL: {str(e)}")
-        import traceback
-        print(f"🔍 Traceback: {traceback.format_exc()}")
-        return Response({'error': str(e)}, status=500)
 
+        return Response(data)
+
+    except Exception as e:
+        print(f"❌ Error Dashboard: {e}")
+        return Response({'error': str(e)}, status=500)
+    
 # ================================
 # CONFIGURACIÓN REOFERTA AUTOMÁTICA
 # ================================

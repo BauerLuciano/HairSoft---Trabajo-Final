@@ -1,125 +1,136 @@
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import pre_save, post_save, post_delete
 from django.dispatch import receiver
-from django.db import transaction
-from django.utils import timezone
-from django.db.models import DateTimeField, DateField, ForeignKey, DecimalField
+from decimal import Decimal
+from datetime import date, datetime
 import logging
-import time
 
-# IMPORTAMOS TODOS LOS MODELOS QUE QUIERAS AUDITAR
 from .models import (
-    Turno, ConfiguracionReoferta, Producto, SolicitudPresupuesto, 
-    Cotizacion, InteresTurnoLiberado, Auditoria, Usuario, Venta, Pedido, Rol,
-    # ✅ NUEVOS AGREGADOS:
+    Turno, Producto, Auditoria, Usuario, Venta, Pedido, Rol,
     Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago
 )
 from .middleware import get_current_request_data
-from .tasks import procesar_reoferta_masiva, enviar_email_cotizacion_proveedor
 
 logger = logging.getLogger(__name__)
 
-# ... (MANTENÉ TUS LÓGICAS DE REOFERTA, WHATSAPP Y STOCK ACÁ ARRIBA IGUAL QUE ANTES) ...
-# ... (Si las borraste, avisame) ...
-
-# ==============================================================================
-# 4. MÓDULO DE AUDITORÍA (COMPLETO)
-# ==============================================================================
-
-# 🔥 LISTA MAESTRA DE VIGILANCIA
+# Modelos a vigilar (CRUD)
 MODELOS_A_AUDITAR = [
     Usuario, Producto, Turno, Venta, Pedido, Rol,
     Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago
 ]
 
-def serializar_modelo(instance):
-    """Convierte datos crudos en datos lindos para humanos."""
-    data = {}
-    for field in instance._meta.fields:
-        nombre_campo = field.name
-        if nombre_campo in ['password', 'groups', 'user_permissions', 'is_superuser', 'is_staff', 'last_login', 'date_joined']:
-            continue
-            
-        valor = getattr(instance, nombre_campo)
-        
-        if valor is None:
-            data[nombre_campo] = "-"
-            continue
+def serializar(valor):
+    if isinstance(valor, (Decimal, float)):
+        return float(valor)
+    if isinstance(valor, (date, datetime)):
+        return valor.isoformat()
+    if hasattr(valor, 'pk'): return str(valor)
+    return valor
 
-        if isinstance(field, ForeignKey):
-            if hasattr(valor, 'nombre'): data[nombre_campo] = valor.nombre
-            elif hasattr(valor, '__str__'): data[nombre_campo] = str(valor)
-            else: data[nombre_campo] = str(valor)
-            
-        elif isinstance(field, DateTimeField):
-            data[nombre_campo] = timezone.localtime(valor).strftime('%d/%m/%Y %H:%M')
-        elif isinstance(field, DateField):
-            data[nombre_campo] = valor.strftime('%d/%m/%Y')
-        elif hasattr(instance, f'get_{nombre_campo}_display'):
-            data[nombre_campo] = getattr(instance, f'get_{nombre_campo}_display')()
-        else:
-            data[nombre_campo] = str(valor)
-            
-    return data
+def obtener_datos(instance):
+    try:
+        data = {}
+        for field in instance._meta.fields:
+            if field.name in ['password', 'imagen', 'groups', 'user_permissions', 'last_login']: continue
+            val = getattr(instance, field.name)
+            if hasattr(instance, f'get_{field.name}_display'):
+                val = getattr(instance, f'get_{field.name}_display')()
+            data[field.name] = serializar(val)
+        return data
+    except:
+        return {}
+
+# ---------------------------------------------------------
+# AUDITORÍA DE DATOS (SOLO CRUD)
+# ---------------------------------------------------------
+
+@receiver(pre_save)
+def capturar_estado_previo(sender, instance, **kwargs):
+    if sender in MODELOS_A_AUDITAR and instance.pk:
+        try:
+            viejo = sender.objects.get(pk=instance.pk)
+            instance._estado_anterior = obtener_datos(viejo)
+        except sender.DoesNotExist:
+            instance._estado_anterior = {}
 
 @receiver(post_save)
-def registrar_auditoria_cambios(sender, instance, created, **kwargs):
+def auditar_cambios(sender, instance, created, **kwargs):
     if sender in MODELOS_A_AUDITAR:
-        try:
-            if sender == Auditoria: return
+        if sender == Auditoria: return
 
-            accion = 'CREACION' if created else 'MODIFICACION'
+        try:
+            req_data = get_current_request_data()
+            usuario_db = req_data.get('user')
+            navegador = req_data.get('navegador', 'Desconocido')
             
-            # Intentamos obtener el usuario del hilo actual
-            request_data = get_current_request_data()
-            usuario_db = request_data.get('user')
-            
-            # Validación extra: Si el middleware falló o es tarea automática, intentamos inferir
-            # (Por ejemplo, si la instancia tiene un campo 'usuario_creador', podrías usarlo)
-            
-            if usuario_db and not usuario_db.is_authenticated:
+            if usuario_db and not getattr(usuario_db, 'is_authenticated', False):
                 usuario_db = None
 
-            datos_legibles = serializar_modelo(instance)
+            nombre_modelo = sender.__name__
+            datos_nuevos = obtener_datos(instance)
+            reporte = {}
+            reporte['__meta__'] = {'navegador': navegador, 'timestamp': datetime.now().isoformat()}
+            accion = ''
 
-            # Detectamos cambios de estado (ej: Activo -> Inactivo)
-            descripcion = f"{accion} de {sender.__name__}"
-            if not created and 'estado' in datos_legibles:
-                descripcion += f" (Estado: {datos_legibles['estado']})"
+            if created:
+                accion = 'CREAR'
+                for k, v in datos_nuevos.items():
+                    reporte[k] = {'tipo': 'VALOR', 'valor': v}
+            
+            elif hasattr(instance, '_estado_anterior'):
+                accion = 'EDITAR'
+                datos_viejos = instance._estado_anterior
+                hay_cambios = False
 
-            detalles = {
-                'descripcion': descripcion,
-                'valor': str(instance), 
-                'datos': datos_legibles
-            }
+                for key, val_nuevo in datos_nuevos.items():
+                    val_viejo = datos_viejos.get(key)
+                    v1 = serializar(val_viejo)
+                    v2 = serializar(val_nuevo)
+
+                    if v1 != v2:
+                        hay_cambios = True
+                        reporte[key] = {'tipo': 'CAMBIO', 'anterior': v1, 'nuevo': v2}
+                    else:
+                        reporte[key] = {'tipo': 'VALOR', 'valor': v2}
+                
+                if not hay_cambios: return
+
+            else:
+                return
 
             Auditoria.objects.create(
                 usuario=usuario_db,
-                accion=accion,
-                modelo=sender.__name__,
+                modelo_afectado=nombre_modelo,
                 objeto_id=str(instance.pk),
-                detalles=detalles,
-                ip=request_data.get('ip'),
-                navegador=request_data.get('navegador')
+                accion=accion,
+                detalles=reporte, 
+                ip_address=req_data.get('ip')
             )
+            # print(f"✅ Auditoría CRUD: {accion} {nombre_modelo}")
+
         except Exception as e:
-            print(f"❌ Error auditoría: {e}")
+            print(f"❌ Error Auditoría CRUD: {e}")
 
 @receiver(post_delete)
-def registrar_auditoria_borrado(sender, instance, **kwargs):
+def auditar_borrado(sender, instance, **kwargs):
     if sender in MODELOS_A_AUDITAR:
         try:
-            request_data = get_current_request_data()
-            usuario_db = request_data.get('user')
-            if usuario_db and not usuario_db.is_authenticated: usuario_db = None
+            req_data = get_current_request_data()
+            usuario_db = req_data.get('user')
+            if usuario_db and not getattr(usuario_db, 'is_authenticated', False):
+                usuario_db = None
+            
+            navegador = req_data.get('navegador', 'Desconocido')
+            datos = obtener_datos(instance)
+            reporte = {k: {'tipo': 'VALOR', 'valor': v} for k, v in datos.items()}
+            reporte['__meta__'] = {'navegador': navegador}
 
             Auditoria.objects.create(
                 usuario=usuario_db,
-                accion='ELIMINACION',
-                modelo=sender.__name__,
+                modelo_afectado=sender.__name__,
                 objeto_id=str(instance.pk),
-                detalles={'info': f"Registro eliminado: {str(instance)}"},
-                ip=request_data.get('ip'),
-                navegador=request_data.get('navegador')
+                accion='ELIMINAR',
+                detalles=reporte,
+                ip_address=req_data.get('ip')
             )
         except Exception as e:
-            print(f"❌ Error auditoría borrado: {e}")
+            print(f"❌ Error Auditoría Delete: {e}")
