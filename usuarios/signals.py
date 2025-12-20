@@ -3,6 +3,7 @@ from django.dispatch import receiver
 from decimal import Decimal
 from datetime import date, datetime
 import logging
+import uuid # <--- AGREGADO: Necesario para manejar el token
 
 from .models import (
     Turno, Producto, Auditoria, Usuario, Venta, Pedido, Rol,
@@ -23,6 +24,8 @@ def serializar(valor):
         return float(valor)
     if isinstance(valor, (date, datetime)):
         return valor.isoformat()
+    if isinstance(valor, uuid.UUID): # <--- AGREGADO: La solución al error
+        return str(valor)
     if hasattr(valor, 'pk'): return str(valor)
     return valor
 

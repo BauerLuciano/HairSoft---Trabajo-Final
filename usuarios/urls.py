@@ -6,7 +6,9 @@ from rest_framework.routers import DefaultRouter
 from . import views as func_views 
 
 # ✅ 2. Importamos api_views para la Auditoría (y lo que tengas ahí)
-from . import api_views
+from . import api_views 
+
+from .api_views import ProductoCatalogoView
 
 # ✅ 3. Importación para CLASES: Importar todas las clases que usan .as_view() desde views.py
 from .views import (
@@ -23,6 +25,7 @@ from .views import (
     buscar_pedidos,
     cancelar_pedido,
     recibir_pedido,
+    enviar_pedido_proveedor,
     pedidos_pendientes_recepcion,
     pedidos_para_cancelar,
     datos_crear_pedido,
@@ -113,6 +116,7 @@ urlpatterns = [
     # ✅ MÉTODOS DE PAGO
     path('api/metodos-pago/', MetodoPagoListAPIView.as_view(), name='listado_metodos_pago'),
 
+    path('api/catalogo/', ProductoCatalogoView.as_view(), name='catalogo-publico'),
     # ================================
     # Turnos (USAN FUNCIONES)
     # ================================
@@ -198,6 +202,11 @@ urlpatterns = [
     path('api/pedidos/para-cancelar/', pedidos_para_cancelar, name='pedidos-para-cancelar'),
     path('api/pedidos/datos-crear/', datos_crear_pedido, name='datos-crear-pedido'),
     path('api/pedidos/debug/', debug_crear_pedido, name='debug_crear_pedido'),
+    path('api/pedidos/<int:pedido_id>/enviar/', enviar_pedido_proveedor, name='enviar-pedido'),
+    # RUTAS PARA EL PROVEEDOR (EXTERNAS)
+    path('api/externo/pedido/<str:token>/', func_views.obtener_pedido_externo, name='pedido-externo-get'),
+    path('api/externo/pedido/<str:token>/confirmar/', func_views.confirmar_pedido_externo, name='pedido-externo-post'),
+
 
     # Propuesta y confirmación de precios
     path('api/pedidos/<int:pedido_id>/proponer-precios/', func_views.proponer_precios, name='proponer-precios'),

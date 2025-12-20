@@ -249,3 +249,9 @@ CELERY_TASK_EAGER_PROPAGATES = True
 TWILIO_ACCOUNT_SID = 'ACb3de53c73913d7ec07a5c253ab2ca97f'
 TWILIO_AUTH_TOKEN = '0f70fae6755002f66c23c4a50aff0400'
 TWILIO_WHATSAPP_NUMBER = 'whatsapp:+14155238886'
+
+# ================================
+# CONFIGURACIÓN DE IMAGENES PARA EL CATALOGO
+# ================================
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')

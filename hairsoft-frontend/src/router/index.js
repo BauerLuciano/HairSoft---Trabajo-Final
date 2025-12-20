@@ -61,6 +61,7 @@ const ModificarProveedor = () => import('@/views/proveedores/ModificarProveedor.
 const GestionListasPrecios = () => import('@/views/proveedores/GestionListasPrecios.vue')
 const EvaluacionPresupuestos = () => import('@/views/proveedores/EvaluacionPresupuestos.vue')
 const CotizarExterno = () => import('@/views/proveedores/CotizarExterno.vue')
+const GestionPedidoExterno = () => import('@/views/proveedores/GestionPedidoExterno.vue')
 
 // Ventas
 const ListadoVentas = () => import('@/views/ventas/ListadoVentas.vue')
@@ -109,6 +110,15 @@ const routes = [
     name: 'ProductosPublico', 
     component: ProductosPublico, 
     meta: { layout: 'client' } 
+  },
+  {
+    path: '/externo/pedido/:token',
+    name: 'GestionPedidoExterno',
+    component: GestionPedidoExterno,
+    meta: { 
+      requiresAuth: false, 
+      hideNavbar: true     
+    }
   },
   { 
     path: '/web/registro', 

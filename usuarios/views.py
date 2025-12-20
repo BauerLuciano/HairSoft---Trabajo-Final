@@ -27,6 +27,8 @@ from django.http import HttpResponse
 from .pdf_utils import generar_comprobante_venta
 from decimal import Decimal
 import secrets, logging
+from django.core.mail import send_mail
+from django.conf import settings
 
 # Configuración del logger
 logger = logging.getLogger(__name__)
@@ -2898,9 +2900,11 @@ def anular_venta(request, venta_id):
 # ================================
 # PEDIDOS
 # ================================
-
 class PedidoListCreateAPIView(generics.ListCreateAPIView):
-    """Listar y crear pedidos - VERSIÓN DEBUG"""
+    """
+    Listar y crear pedidos.
+    AL CREAR: Envía un correo HTML con diseño Premium al proveedor.
+    """
     queryset = Pedido.objects.all()\
         .select_related('proveedor', 'usuario_creador')\
         .prefetch_related('detalles__producto')\
@@ -2909,14 +2913,132 @@ class PedidoListCreateAPIView(generics.ListCreateAPIView):
     permission_classes = [AllowAny]
 
     def perform_create(self, serializer):
-        """DEBUG: Permitir que el serializer maneje el usuario_creador"""
         try:
-            # Dejar que el serializer se encargue del usuario_creador
-            serializer.save()
+            # 1. Guardar el pedido
+            usuario = self.request.user if self.request.user.is_authenticated else None
+            pedido = serializer.save(usuario_creador=usuario)
+
+            # 2. 📧 PREPARACIÓN DEL CORREO
+            proveedor = pedido.proveedor
+            
+            if proveedor.email:
+                print(f"🎨 Generando correo con diseño premium para: {proveedor.email}")
+                
+                # Link al portal
+                link = f"http://localhost:5173/externo/pedido/{pedido.token}"
+                
+                asunto = f"📦 Solicitud de Pedido #{pedido.id} | HairSoft"
+                
+                fecha_formato = timezone.localtime(pedido.fecha_pedido).strftime("%d/%m/%Y a las %H:%M")
+                
+                # --- DISEÑO HTML "CHETO" ---
+                mensaje_html = f"""
+                <!DOCTYPE html>
+                <html lang="es">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Nuevo Pedido</title>
+                </head>
+                <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                    
+                    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f3f4f6; padding: 40px 0;">
+                        <tr>
+                            <td align="center">
+                                
+                                <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
+                                    
+                                    <tr>
+                                        <td style="background-color: #1e293b; padding: 30px 40px; text-align: center;">
+                                            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 1px;">HairSoft</h1>
+                                            <p style="color: #94a3b8; margin: 8px 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">Gestión de Compras</p>
+                                        </td>
+                                    </tr>
+
+                                    <tr>
+                                        <td style="padding: 40px;">
+                                            <h2 style="color: #111827; margin-top: 0; font-size: 22px;">¡Hola, {proveedor.nombre}! 👋</h2>
+                                            
+                                            <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+                                                Hemos generado una nueva orden de compra y necesitamos tu confirmación de <strong>stock y precios</strong> para proceder.
+                                            </p>
+
+                                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 30px;">
+                                                <tr>
+                                                    <td style="padding: 20px;">
+                                                        <p style="margin: 0; color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: bold;">Referencia del Pedido</p>
+                                                        <p style="margin: 5px 0 0; color: #0f172a; font-size: 20px; font-weight: 700;">#{pedido.id}</p>
+                                                        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 15px 0;">
+                                                        <p style="margin: 0; color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: bold;">Fecha de Emisión</p>
+                                                        <p style="margin: 5px 0 0; color: #334155; font-size: 16px;">{fecha_formato}</p>
+                                                    </td>
+                                                </tr>
+                                            </table>
+
+                                            <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 30px; text-align: center;">
+                                                Hacé clic en el botón de abajo para ver el detalle de los productos y confirmar la disponibilidad:
+                                            </p>
+
+                                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                                <tr>
+                                                    <td align="center">
+                                                        <a href="{link}" target="_blank" style="background-color: #4f46e5; color: #ffffff; padding: 16px 32px; text-decoration: none; border-radius: 50px; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(79, 70, 229, 0.4);">
+                                                            🚀 Revisar y Confirmar Pedido
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            </table>
+
+                                            <p style="margin-top: 30px; font-size: 13px; color: #9ca3af; text-align: center;">
+                                                Si el botón no funciona, copiá este enlace: <br>
+                                                <a href="{link}" style="color: #4f46e5;">{link}</a>
+                                            </p>
+                                        </td>
+                                    </tr>
+
+                                    <tr>
+                                        <td style="background-color: #f1f5f9; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+                                            <p style="margin: 0; font-size: 12px; color: #64748b;">
+                                                © 2025 HairSoft - Sistema de Gestión.<br>
+                                                Este correo fue enviado automáticamente.
+                                            </p>
+                                        </td>
+                                    </tr>
+                                </table>
+                                
+                                <p style="margin-top: 20px; font-size: 12px; color: #9ca3af;">Enviado a través de HairSoft Platform</p>
+
+                            </td>
+                        </tr>
+                    </table>
+                </body>
+                </html>
+                """
+
+                # Texto plano (Fallback)
+                mensaje_plano = f"Hola {proveedor.nombre}, tenés un nuevo pedido #{pedido.id}. Ingresá aquí: {link}"
+
+                # Enviar
+                send_mail(
+                    subject=asunto,
+                    message=mensaje_plano,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[proveedor.email],
+                    html_message=mensaje_html,
+                    fail_silently=False,
+                )
+                
+                # 3. Actualizar Estado
+                pedido.estado = 'ENVIADO'
+                pedido.save()
+                print("✅ Correo PREMIUM enviado correctamente.")
+
+            else:
+                print("⚠️ Proveedor sin email. Pedido guardado como PENDIENTE.")
+
         except Exception as e:
-            print(f"❌ Error en perform_create: {e}")
-            # Forzar guardado sin usuario_creador
-            serializer.save()
+            print(f"❌ Error en el proceso de creación/envío: {e}")
+            # No hacemos raise para no bloquear la creación del pedido si falla el mail
 
 class PedidoRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
     """Detalle, actualizar y eliminar pedidos"""
@@ -3032,41 +3154,59 @@ def cancelar_pedido(request, pedido_id):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def recibir_pedido(request, pedido_id):
-    """Registrar recepción de un pedido - VERSIÓN SIMPLIFICADA"""
     try:
         pedido = get_object_or_404(Pedido, id=pedido_id)
         
-        # Validación simple
-        if pedido.estado not in ['PENDIENTE', 'CONFIRMADO']:
-            return Response({
-                'error': f'No se puede recibir el pedido. Estado actual: {pedido.estado}'
-            }, status=status.HTTP_400_BAD_REQUEST)
+        if pedido.estado != 'CONFIRMADO':
+            return Response({'error': 'El pedido debe estar CONFIRMADO para recibirse.'}, status=400)
 
-        # Procesar recepción directamente
         with transaction.atomic():
-            # Actualizar stock con cantidades ORIGINALES
             for detalle in pedido.detalles.all():
-                if detalle.producto:
-                    detalle.producto.stock_actual += detalle.cantidad
-                    detalle.producto.save()
+                producto = detalle.producto
+                if producto:
+                    # 1. Sumar Stock
+                    producto.stock_actual += detalle.cantidad
+                    
+                    # 2. LÓGICA DE PRECIO (EL FRENO DE MANO) 🛑
+                    costo_nuevo = detalle.precio_unitario
+                    
+                    if costo_nuevo and costo_nuevo > 0:
+                        try:
+                            # Buscamos tu margen configurado (ej: 30%)
+                            lista = ListaPrecioProveedor.objects.get(proveedor=pedido.proveedor, producto=producto)
+                            margen = lista.margen_ganancia
+                            
+                            # Calculamos el precio nuevo teórico
+                            precio_nuevo_calculado = costo_nuevo * (1 + (margen / 100))
+                            
+                            # PRECIO ACTUAL (El que tenés ahora, ej: 30.000)
+                            precio_actual = producto.precio if producto.precio else 0
+                            
+                            # LA REGLA DE ORO: Solo actualizamos si SUBE.
+                            if precio_nuevo_calculado > precio_actual:
+                                producto.precio = precio_nuevo_calculado
+                                print(f"📈 SUBIÓ: {producto.nombre} pasa de ${precio_actual} a ${precio_nuevo_calculado}")
+                            else:
+                                # Si baja (26.000 < 30.000), NO HACEMOS NADA.
+                                print(f"🛡️ PROTEGIDO: El precio nuevo daba ${precio_nuevo_calculado}, pero nos quedamos con ${precio_actual}")
+                                
+                            # Actualizamos el costo base en la lista del proveedor para referencia futura
+                            lista.precio_base = costo_nuevo
+                            lista.save()
+
+                        except ListaPrecioProveedor.DoesNotExist:
+                            pass
+
+                    producto.save()
             
-            # ✅ CORRECTO: Marcar pedido como ENTREGADO
             pedido.estado = 'ENTREGADO'
             pedido.fecha_recepcion = timezone.now()
             pedido.save()
 
-        return Response({
-            'message': 'Pedido recibido exitosamente.',
-            'pedido_id': pedido.id,
-            'estado': pedido.estado,
-            'fecha_recepcion': pedido.fecha_recepcion
-        })
+        return Response({'message': 'Pedido recibido. Stock actualizado. Precios protegidos contra bajas.'})
 
-    except Pedido.DoesNotExist:
-        return Response({'error': 'Pedido no encontrado'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
+        return Response({'error': str(e)}, status=400)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def pedidos_pendientes_recepcion(request):
@@ -3120,6 +3260,129 @@ def datos_crear_pedido(request):
 
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([AllowAny]) # Ajustá según necesites
+def enviar_pedido_proveedor(request, pedido_id):
+    """
+    Envía un correo al proveedor con el link único para gestionar el pedido.
+    Usa la configuración SMTP que ya tenés en settings.py.
+    """
+    try:
+        pedido = get_object_or_404(Pedido, id=pedido_id)
+        proveedor = pedido.proveedor
+        
+        if not proveedor.email:
+            return Response({'error': 'El proveedor no tiene email cargado'}, status=400)
+
+        # Generamos el link (Asumiendo que tu Vue corre en puerto 5173)
+        # Ajustá la URL base si en producción es distinta
+        link = f"http://localhost:5173/externo/pedido/{pedido.token}"
+        
+        asunto = f"Nuevo Pedido de HairSoft #{pedido.id}"
+        mensaje = f"""
+        Hola {proveedor.nombre},
+        
+        Te enviamos un nuevo pedido de mercadería.
+        Por favor, ingresá al siguiente link para confirmar stock y precios:
+        
+        {link}
+        
+        Gracias,
+        El equipo de HairSoft.
+        """
+        
+        # Enviar mail usando TU configuración actual
+        send_mail(
+            asunto,
+            mensaje,
+            settings.EMAIL_HOST_USER, # Usa tu usuario de Mailtrap actual
+            [proveedor.email],
+            fail_silently=False,
+        )
+        
+        # Actualizamos estado
+        pedido.estado = 'ENVIADO'
+        pedido.save()
+        
+        return Response({'message': f'Correo enviado a {proveedor.email}'})
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+# ==============================================================================
+# GESTIÓN EXTERNA DE PEDIDOS (PARA EL PROVEEDOR) - SIN LOGIN REQUERIDO
+# ==============================================================================
+
+@api_view(['GET'])
+@permission_classes([AllowAny]) # Pública para que entre con el token
+def obtener_pedido_externo(request, token):
+    """
+    Permite al proveedor ver el pedido usando solo el token del link.
+    """
+    try:
+        # Buscamos por el token UUID
+        pedido = get_object_or_404(Pedido, token=token)
+        
+        # Reutilizamos tu serializer existente, funciona perfecto
+        serializer = PedidoSerializer(pedido)
+        return Response(serializer.data)
+    except Exception as e:
+        return Response({'error': 'Pedido no encontrado o enlace inválido'}, status=404)
+
+@api_view(['POST'])
+@permission_classes([AllowAny]) # Pública
+def confirmar_pedido_externo(request, token):
+    """
+    El proveedor confirma cantidades y precios.
+    """
+    try:
+        pedido = get_object_or_404(Pedido, token=token)
+        
+        # Validamos que no se pueda responder dos veces
+        if pedido.estado not in ['ENVIADO', 'PENDIENTE']: # PENDIENTE por si lo mandaste manual
+            return Response({'error': 'Este pedido ya fue respondido o no está disponible.'}, status=400)
+
+        # Recibimos la lista de detalles editada por el proveedor
+        datos_recibidos = request.data.get('detalles', [])
+        
+        with transaction.atomic():
+            cambios_realizados = False
+            
+            for item in datos_recibidos:
+                detalle_id = item.get('id')
+                nueva_cantidad = item.get('cantidad')
+                nuevo_precio = item.get('precio_unitario')
+                
+                # Buscamos el detalle específico dentro de este pedido
+                detalle = pedido.detalles.filter(id=detalle_id).first()
+                
+                if detalle:
+                    if nueva_cantidad is not None:
+                        detalle.cantidad = nueva_cantidad
+                        cambios_realizados = True
+                    if nuevo_precio is not None:
+                        detalle.precio_unitario = nuevo_precio
+                        cambios_realizados = True
+                    
+                    # Recalculamos el subtotal de esa línea
+                    if detalle.precio_unitario and detalle.cantidad:
+                        detalle.subtotal = detalle.cantidad * detalle.precio_unitario
+                    
+                    detalle.save()
+            
+            # Actualizamos totales y estado del pedido padre
+            pedido.total = pedido.calcular_total()
+            pedido.estado = 'CONFIRMADO' # Queda listo para recibir
+            pedido.save()
+
+        return Response({
+            'message': '¡Gracias! El pedido fue confirmado exitosamente.',
+            'nuevo_estado': pedido.estado
+        })
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
 
 #-----TEMPORAAAAAAAALLLLLL
 
@@ -3256,7 +3519,6 @@ def confirmar_precios(request, pedido_id):
 class ListaPrecioProveedorViewSet(viewsets.ModelViewSet):
     queryset = ListaPrecioProveedor.objects.all()
     serializer_class = ListaPrecioProveedorSerializer
-    # QUITAmos TEMPORALMENTE LA AUTENTICACIÓN
     permission_classes = []
 
     def get_queryset(self):
@@ -4525,29 +4787,45 @@ def contar_interesados(request, turno_id):
         return Response({'cantidad': 0})
     
 @api_view(['GET', 'POST'])
-@permission_classes([AllowAny]) # Esto permite que entre sin loguearse
+@permission_classes([AllowAny])
 def gestionar_cotizacion_externa(request, token):
     cotizacion = get_object_or_404(Cotizacion, token=token)
 
     if request.method == 'GET':
         if cotizacion.respondio:
             return Response({"ya_respondido": True})
+        
         serializer = CotizacionExternaSerializer(cotizacion)
-        return Response(serializer.data)
+        data = serializer.data
+        
+        # Le mandamos al front cuánto pedimos originalmente
+        # para que aparezca en el input por defecto
+        if hasattr(cotizacion.solicitud, 'cantidad_requerida'):
+             data['cantidad_requerida'] = cotizacion.solicitud.cantidad_requerida
+             data['producto_nombre'] = cotizacion.solicitud.producto.nombre
+             data['proveedor_nombre'] = cotizacion.proveedor.nombre
+
+        return Response(data)
 
     if request.method == 'POST':
         if cotizacion.respondio:
             return Response({"error": "Ya respondiste esta solicitud"}, status=400)
         
+        # 1. CAPTURAMOS LA CANTIDAD QUE ENVÍA EL PROVEEDOR
+        cantidad_real = request.data.get('cantidad')
+        if cantidad_real:
+            cotizacion.cantidad_ofertada = int(cantidad_real)
+        
+        # 2. Guardamos el resto
         cotizacion.precio_ofrecido = request.data.get('precio_ofrecido')
         cotizacion.dias_entrega = request.data.get('dias_entrega')
         cotizacion.comentarios = request.data.get('comentarios', '')
+        
         cotizacion.respondio = True
         cotizacion.fecha_respuesta = timezone.now()
         cotizacion.save()
+        
         return Response({"mensaje": "Éxito"})
-
-# usuarios/views.py (Al final)
 
 class SolicitudPresupuestoViewSet(viewsets.ReadOnlyModelViewSet):
     """

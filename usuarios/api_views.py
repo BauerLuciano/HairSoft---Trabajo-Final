@@ -1,8 +1,8 @@
-from rest_framework import viewsets, filters, generics
+from rest_framework import viewsets, filters, generics, permissions
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.permissions import IsAdminUser, AllowAny
-from .models import Auditoria, Servicio, Turno, Usuario, Rol
-from .serializers import AuditoriaSerializer, ServicioSerializer, TurnoSerializer, UsuarioSerializer
+from .models import Auditoria, Servicio, Turno, Usuario, Rol, Producto
+from .serializers import AuditoriaSerializer, ServicioSerializer, TurnoSerializer, UsuarioSerializer, ProductoCatalogoSerializer
 
 # ============================================
 # ✅ 1. API DE AUDITORÍA (LO NUEVO)
@@ -65,3 +65,11 @@ class UsuarioListAPIView(generics.ListAPIView):
             queryset = queryset.filter(nombre__icontains=q) | queryset.filter(apellido__icontains=q)
         
         return queryset
+
+class ProductoCatalogoView(generics.ListAPIView):
+    # Solo productos activos y con stock
+    queryset = Producto.objects.filter(estado='ACTIVO', stock_actual__gt=0)
+    serializer_class = ProductoCatalogoSerializer
+    permission_classes = [permissions.AllowAny] # ¡Importante! Acceso público    
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['nombre', 'descripcion', 'marca__nombre']

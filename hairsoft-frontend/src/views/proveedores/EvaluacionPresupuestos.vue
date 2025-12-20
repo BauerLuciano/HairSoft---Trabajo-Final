@@ -2,7 +2,6 @@
   <div class="list-container">
     <div class="list-card" :class="{ 'overlay-activo': generando }">
       
-      <!-- Header -->
       <div class="list-header">
         <div class="header-content">
           <h1>📋 Evaluación de Presupuestos</h1>
@@ -16,7 +15,6 @@
         </div>
       </div>
 
-      <!-- Filtros -->
       <div class="filters-container">
         <div class="filters-grid">
           <div class="filter-group">
@@ -56,7 +54,6 @@
         </div>
       </div>
 
-      <!-- Tabla de licitaciones -->
       <div class="table-container">
         <table class="users-table">
           <thead>
@@ -171,7 +168,6 @@
         </div>
       </div>
 
-      <!-- Mostrando cantidad -->
       <div class="usuarios-count">
         <p>
           <FileText :size="16" />
@@ -193,7 +189,6 @@
         </div>
       </div>
 
-      <!-- Paginación estilo productos -->
       <div class="pagination">
         <button @click="paginaAnterior" :disabled="pagina === 1">
           <ChevronLeft :size="16" />
@@ -208,7 +203,6 @@
 
     </div>
 
-    <!-- Modal Detalles Licitación -->
     <div v-if="mostrarDetalles" class="modal-overlay" @click.self="cerrarModalDetalles">
       <div class="modal-content modal-detalles">
         <button class="modal-close" @click="cerrarModalDetalles" title="Cerrar detalles">
@@ -243,7 +237,6 @@
             </div>
           </div>
 
-          <!-- Sección de recomendación -->
           <div class="recomendacion-detalle" v-if="tieneRecomendacion(licitacionSeleccionada)">
             <div class="recomendacion-header-detalle">
               <Award :size="18" />
@@ -287,7 +280,7 @@
                   <tr>
                     <th>Proveedor</th>
                     <th>Estado</th>
-                    <th>Precio Ofertado</th>
+                    <th>Cant. Oferta</th> <th>Precio Ofertado</th>
                     <th>Tiempo Entrega</th>
                     <th>Calificación</th>
                     <th v-if="licitacionSeleccionada.estado !== 'CERRADA'">Acción</th>
@@ -310,6 +303,15 @@
                         {{ cotizacion.respondio ? 'RESPONDIDO' : 'ESPERANDO' }}
                       </span>
                     </td>
+
+                    <td v-if="cotizacion.respondio">
+                      <span class="font-bold">{{ cotizacion.cantidad_ofertada || licitacionSeleccionada.cantidad_requerida }} u.</span>
+                      <span v-if="cotizacion.cantidad_ofertada && cotizacion.cantidad_ofertada < licitacionSeleccionada.cantidad_requerida" 
+                            style="color: #f59e0b; font-size: 0.75rem; display: block; font-weight: 700;">
+                        ⚠️ Falta {{ licitacionSeleccionada.cantidad_requerida - cotizacion.cantidad_ofertada }}
+                      </span>
+                    </td>
+                    <td v-else class="text-muted">-</td>
 
                     <td v-if="cotizacion.respondio" class="precio-cell">
                       ${{ cotizacion.precio_ofrecido.toLocaleString() }}

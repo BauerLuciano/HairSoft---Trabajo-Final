@@ -108,6 +108,18 @@ class CategoriaProductoSerializer(serializers.ModelSerializer):
         fields = ['id', 'nombre', 'descripcion']
 
 # ----------------------------------------------------------------------
+# CATALOGO DE PRODUCTOS
+# ---------------------------------------------------------------------
+class ProductoCatalogoSerializer(serializers.ModelSerializer):
+    marca_nombre = serializers.CharField(source='marca.nombre', read_only=True, default="Genérico")
+
+    class Meta:
+        model = Producto
+        fields = ['id', 'nombre', 'marca_nombre', 'descripcion', 'precio', 'imagen', 'stock_actual']
+
+
+
+# ----------------------------------------------------------------------
 # PERMISOS Y ROLES
 # ----------------------------------------------------------------------
 class PermisoSerializer(serializers.ModelSerializer):
@@ -768,7 +780,6 @@ class CotizacionExternaSerializer(serializers.ModelSerializer):
 # ==============================================================================
 # EVALUACIÓN DE PRESUPUESTOS (administrador)
 # ==============================================================================
-
 class CotizacionDetalleSerializer(serializers.ModelSerializer):
     proveedor_nombre = serializers.CharField(source='proveedor.nombre', read_only=True)
     score = serializers.SerializerMethodField()
@@ -778,10 +789,11 @@ class CotizacionDetalleSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'proveedor', 'proveedor_nombre', 
             'precio_ofrecido', 'dias_entrega', 
+            'cantidad_ofertada', 
             'comentarios', 'respondio', 'score', 'es_la_mejor'
         ]
+
     def get_score(self, obj):
-        # Si el score es infinito, devolvemos null (o 0, o un string "Pendiente")
         if obj.score == float('inf'):
             return None 
         return obj.score

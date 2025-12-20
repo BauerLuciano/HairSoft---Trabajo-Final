@@ -8,7 +8,6 @@
       </div>
       
       <div class="header-right">
-        <!-- Selector de período predefinido -->
         <div class="period-selector">
           <button 
             v-for="p in periods" 
@@ -28,13 +27,11 @@
           </button>
         </div>
 
-        <!-- Indicador del período activo -->
         <div class="period-display">
           <i class="fas fa-calendar-check"></i>
           <span>{{ getPeriodDisplay }}</span>
         </div>
 
-        <!-- Botón de generar PDF -->
         <button @click="generatePDF" class="pdf-btn" :disabled="loading">
           <i class="fas fa-file-pdf"></i>
           Exportar Reporte Completo
@@ -42,9 +39,8 @@
       </div>
     </header>
 
-    <!-- Panel de fechas personalizadas -->
-    <Transition name="slide-down">
-      <div v-if="customDateRange" class="custom-date-panel">
+    <div v-if="customDateRange" class="custom-date-panel">
+      <div class="custom-date-content">
         <div class="date-inputs">
           <div class="date-input-group">
             <label>
@@ -55,6 +51,7 @@
               type="date" 
               v-model="dateFrom" 
               :max="dateTo || today"
+              class="date-input-custom"
             />
           </div>
           <div class="date-input-group">
@@ -67,19 +64,20 @@
               v-model="dateTo" 
               :min="dateFrom"
               :max="today"
+              class="date-input-custom"
             />
           </div>
-          <button @click="applyCustomRange" class="apply-btn">
+          <button @click="applyCustomRange" class="apply-btn" :disabled="!dateFrom || !dateTo">
             <i class="fas fa-check"></i>
             Aplicar
           </button>
         </div>
         <div class="date-range-info" v-if="dateFrom && dateTo">
           <i class="fas fa-info-circle"></i>
-          Mostrando datos desde <strong>{{ formatDate(dateFrom) }}</strong> hasta <strong>{{ formatDate(dateTo) }}</strong>
+          Mostrando datos desde <strong>{{ formatDateLong(dateFrom) }}</strong> hasta <strong>{{ formatDateLong(dateTo) }}</strong>
         </div>
       </div>
-    </Transition>
+    </div>
 
     <div v-if="loading" class="state-container">
       <div class="loader"></div>
@@ -99,37 +97,7 @@
     </div>
 
     <main v-else class="dashboard-content fade-in" ref="dashboardContent">
-      
-      <!-- 📊 RESÚMEN DEL PERÍODO -->
-      <div class="period-summary-card">
-        <div class="summary-header">
-          <h3><i class="fas fa-chart-bar"></i> Resumen del Período</h3>
-          <div class="period-tag">
-            <i class="fas fa-clock"></i>
-            {{ getPeriodDisplay }}
-          </div>
-        </div>
-        <div class="summary-stats">
-          <div class="summary-stat">
-            <div class="stat-label">Días Analizados</div>
-            <div class="stat-value">{{ dashboardData.ventasPorDia.length }}</div>
-          </div>
-          <div class="summary-stat">
-            <div class="stat-label">Venta Promedio/Día</div>
-            <div class="stat-value">${{ formatNumber(calculateAverageDaily()) }}</div>
-          </div>
-          <div class="summary-stat">
-            <div class="stat-label">Día Pico</div>
-            <div class="stat-value">{{ getPeakDay() }}</div>
-          </div>
-          <div class="summary-stat">
-            <div class="stat-label">Total Transacciones</div>
-            <div class="stat-value">{{ dashboardData.productosVendidos + dashboardData.serviciosRealizados }}</div>
-          </div>
-        </div>
-      </div>
 
-      <!-- 💎 KPI CARDS -->
       <div class="kpi-grid">
         
         <div class="kpi-card income">
@@ -143,12 +111,7 @@
           </div>
           <div class="kpi-sparkline">
             <svg viewBox="0 0 100 24" preserveAspectRatio="none">
-              <polyline
-                points="0,18 20,15 40,10 60,12 80,6 100,4"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              />
+              <polyline points="0,18 20,15 40,10 60,12 80,6 100,4" fill="none" stroke="currentColor" stroke-width="2"/>
             </svg>
           </div>
         </div>
@@ -164,12 +127,7 @@
           </div>
           <div class="kpi-sparkline">
             <svg viewBox="0 0 100 24" preserveAspectRatio="none">
-              <polyline
-                points="0,20 20,16 40,18 60,13 80,10 100,8"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              />
+              <polyline points="0,20 20,16 40,18 60,13 80,10 100,8" fill="none" stroke="currentColor" stroke-width="2"/>
             </svg>
           </div>
         </div>
@@ -185,12 +143,7 @@
           </div>
           <div class="kpi-sparkline">
             <svg viewBox="0 0 100 24" preserveAspectRatio="none">
-              <polyline
-                points="0,14 20,12 40,9 60,11 80,5 100,3"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              />
+              <polyline points="0,14 20,12 40,9 60,11 80,5 100,3" fill="none" stroke="currentColor" stroke-width="2"/>
             </svg>
           </div>
         </div>
@@ -206,307 +159,272 @@
           </div>
           <div class="kpi-sparkline">
             <svg viewBox="0 0 100 24" preserveAspectRatio="none">
-              <polyline
-                points="0,16 20,14 40,12 60,15 80,10 100,8"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              />
+              <polyline points="0,16 20,14 40,12 60,15 80,10 100,8" fill="none" stroke="currentColor" stroke-width="2"/>
             </svg>
           </div>
         </div>
 
       </div>
 
-      <!-- 🔥 SECCIÓN DE GRÁFICOS -->
-      <div class="charts-grid">
-        
-        <!-- GRÁFICO PRINCIPAL -->
-        <div class="section-card chart-section main-chart">
-          <div class="section-header">
-            <h3>
-              <i class="fas fa-chart-line"></i> 
-              Evolución de Ingresos Diarios
-            </h3>
-            <div class="chart-info">
-              <span class="chart-legend">
-                <i class="fas fa-circle" style="color: #3b82f6"></i>
-                Ingresos por día
+      <div class="section-card chart-section">
+        <div class="section-header">
+          <h3>
+            <i class="fas fa-chart-line"></i> 
+            Evolución de Ingresos Diarios
+          </h3>
+          <div class="chart-info">
+            <span class="chart-legend">
+              <i class="fas fa-circle" style="color: #ef4444"></i>
+              Ingresos por día
+            </span>
+          </div>
+        </div>
+        <div class="chart-body">
+          <div v-if="dashboardData.ventasPorDia.length" class="trading-chart-container">
+            
+            <svg class="chart-grid" :viewBox="`0 0 ${chartWidth} ${chartHeight}`">
+              <g v-for="i in 5" :key="`ref-${i}`">
+                <line 
+                  :x1="60" :y1="(chartHeight / 5) * i"
+                  :x2="chartWidth - 20" :y2="(chartHeight / 5) * i"
+                  stroke="#475569" stroke-width="1" stroke-dasharray="5,5" opacity="0.6"/>
+                <text 
+                  :x="10" 
+                  :y="(chartHeight / 5) * i + 5"
+                  fill="#94a3b8"
+                  font-size="11"
+                  font-weight="600"
+                  font-family="system-ui, -apple-system, sans-serif"
+                >
+                  ${{ formatNumberShort(Math.round((getMaxValue() / 5) * (5 - i))) }}
+                </text>
+              </g>
+            </svg>
+
+            <svg class="chart-svg" :viewBox="`0 0 ${chartWidth} ${chartHeight}`">
+              <defs>
+                <linearGradient id="areaGradientRed" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" style="stop-color:#ef4444;stop-opacity:0.35" />
+                  <stop offset="50%" style="stop-color:#f87171;stop-opacity:0.15" />
+                  <stop offset="100%" style="stop-color:#fca5a5;stop-opacity:0.05" />
+                </linearGradient>
+                
+                <filter id="glowRed">
+                  <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                  <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                  </feMerge>
+                </filter>
+              </defs>
+
+              <path :d="getAreaPath()" fill="url(#areaGradientRed)" class="chart-area"/>
+
+              <path 
+                :d="getLinePath()" 
+                fill="none" 
+                stroke="#ef4444" 
+                stroke-width="4" 
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                opacity="0.25"
+                filter="blur(6px)"
+              />
+
+              <path 
+                :d="getLinePath()" 
+                fill="none" 
+                stroke="#ef4444" 
+                stroke-width="3" 
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="chart-line-red"
+                filter="url(#glowRed)"
+              />
+
+              <line 
+                :x1="padding" 
+                :y1="getYPosition(calculateAverageDaily())"
+                :x2="chartWidth - padding" 
+                :y2="getYPosition(calculateAverageDaily())"
+                stroke="#10b981"
+                stroke-width="2"
+                stroke-dasharray="8,4"
+                opacity="0.5"
+              />
+
+              <g v-for="(monto, i) in dashboardData.ventasPorDia" :key="`point-${i}`">
+                <circle 
+                  v-if="monto === Math.max(...dashboardData.ventasPorDia)"
+                  :cx="getXPosition(i)" 
+                  :cy="getYPosition(monto)"
+                  r="9"
+                  fill="#dc2626"
+                  stroke="#ffffff"
+                  stroke-width="3"
+                  class="peak-point"
+                />
+                
+                <circle 
+                  :cx="getXPosition(i)" 
+                  :cy="getYPosition(monto)"
+                  r="12"
+                  fill="#ef4444"
+                  opacity="0.15"
+                  class="point-glow"
+                  :class="{ active: hoveredPoint === i }"
+                />
+                <circle 
+                  :cx="getXPosition(i)" 
+                  :cy="getYPosition(monto)"
+                  r="6"
+                  fill="#0f172a"
+                  stroke="#ef4444"
+                  stroke-width="3"
+                  class="chart-point-red"
+                  :class="{ active: hoveredPoint === i }"
+                  @mouseenter="showTooltip(i, monto, $event)"
+                  @mouseleave="hideTooltip"
+                />
+                <circle 
+                  :cx="getXPosition(i)" 
+                  :cy="getYPosition(monto)"
+                  r="2"
+                  fill="#fca5a5"
+                  class="point-center"
+                  :class="{ active: hoveredPoint === i }"
+                />
+              </g>
+            </svg>
+
+            <div class="chart-labels">
+              <span 
+                v-for="(label, i) in dashboardData.labelsDias" 
+                :key="`label-${i}`"
+                class="day-label"
+                :class="{ active: hoveredPoint === i, peak: dashboardData.ventasPorDia[i] === Math.max(...dashboardData.ventasPorDia) }"
+                :style="{ left: getXPositionPercent(i) + '%' }"
+              >
+                {{ label }}
+                <span v-if="dashboardData.ventasPorDia[i] === Math.max(...dashboardData.ventasPorDia)" class="peak-badge">
+                  <i class="fas fa-fire"></i>
+                </span>
+              </span>
+            </div>
+
+            <Transition name="tooltip">
+              <div 
+                v-if="tooltip.visible" 
+                class="chart-tooltip"
+                :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }"
+              >
+                <div class="tooltip-header">
+                  <i class="fas fa-calendar-day"></i>
+                  {{ tooltip.date }}
+                  <span v-if="tooltip.value === Math.max(...dashboardData.ventasPorDia)" class="tooltip-badge">
+                    <i class="fas fa-crown"></i> DÍA PICO
+                  </span>
+                </div>
+                <div class="tooltip-body">
+                  <div class="tooltip-value">${{ formatNumber(tooltip.value) }}</div>
+                  <div class="tooltip-label">Ingresos del día</div>
+                  <div class="tooltip-comparison" :class="getComparisonClass(tooltip.value)">
+                    <i :class="getComparisonIcon(tooltip.value)"></i>
+                    {{ getComparisonText(tooltip.value) }}
+                  </div>
+                </div>
+              </div>
+            </Transition>
+          </div>
+
+          <div v-else class="no-data">
+            <i class="fas fa-chart-line"></i>
+            <p>No hay ventas registradas en este período</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-card distribution-card">
+        <div class="section-header">
+          <h3><i class="fas fa-chart-pie"></i> Distribución de Actividad</h3>
+          <span class="subtitle-header">Proporción entre servicios y productos</span>
+        </div>
+        <div class="distribution-body">
+          <div class="distribution-chart-container">
+            <svg width="240" height="240" viewBox="0 0 200 200">
+              <defs>
+                <linearGradient id="pieGradient1" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+                  <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+                </linearGradient>
+                <linearGradient id="pieGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+                  <stop offset="100%" style="stop-color:#047857;stop-opacity:1" />
+                </linearGradient>
+                <filter id="pieShadow">
+                  <feDropShadow dx="0" dy="4" stdDeviation="8" flood-opacity="0.3"/>
+                </filter>
+              </defs>
+              
+              <circle cx="100" cy="100" r="85" fill="transparent" stroke="#334155" stroke-width="2" opacity="0.3"/>
+              
+              <path 
+                :d="getPiePath(0, getServicePercentage())" 
+                fill="url(#pieGradient2)"
+                class="pie-sector"
+                filter="url(#pieShadow)"
+              />
+              
+              <path 
+                :d="getPiePath(getServicePercentage(), 100)" 
+                fill="url(#pieGradient1)"
+                class="pie-sector"
+                filter="url(#pieShadow)"
+              />
+              
+              <circle cx="100" cy="100" r="45" fill="#1e293b"/>
+              
+              <text x="100" y="92" text-anchor="middle" fill="#f1f5f9" font-size="20" font-weight="800">
+                {{ getTotalTransactions() }}
+              </text>
+              <text x="100" y="112" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="600">
+                TOTAL
+              </text>
+            </svg>
+          </div>
+          <div class="distribution-legend">
+            <div class="legend-item">
+              <div class="legend-color service"></div>
+              <div class="legend-content">
+                <span class="legend-label">Servicios</span>
+                <span class="legend-value">{{ dashboardData.serviciosRealizados }} turnos</span>
+                <span class="legend-percentage">{{ getServicePercentage().toFixed(1) }}%</span>
+              </div>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color product"></div>
+              <div class="legend-content">
+                <span class="legend-label">Productos</span>
+                <span class="legend-value">{{ dashboardData.productosVendidos }} unidades</span>
+                <span class="legend-percentage">{{ getProductPercentage().toFixed(1) }}%</span>
+              </div>
+            </div>
+            <div class="distribution-insight">
+              <i class="fas fa-lightbulb"></i>
+              <span v-if="getServicePercentage() > getProductPercentage()">
+                Los servicios dominan la actividad con un <strong>{{ (getServicePercentage() - getProductPercentage()).toFixed(1) }}%</strong> de diferencia
+              </span>
+              <span v-else-if="getProductPercentage() > getServicePercentage()">
+                Los productos dominan la actividad con un <strong>{{ (getProductPercentage() - getServicePercentage()).toFixed(1) }}%</strong> de diferencia
+              </span>
+              <span v-else>
+                Balance perfecto entre servicios y productos
               </span>
             </div>
           </div>
-          <div class="chart-body">
-            <div v-if="dashboardData.ventasPorDia.length" class="trading-chart-container">
-              
-              <!-- Grid mejorado -->
-              <svg class="chart-grid" :viewBox="`0 0 ${chartWidth} ${chartHeight}`">
-                <!-- Líneas horizontales de referencia -->
-                <g v-for="i in 5" :key="`ref-${i}`">
-                  <line 
-                    :x1="60" :y1="(chartHeight / 5) * i"
-                    :x2="chartWidth - 20" :y2="(chartHeight / 5) * i"
-                    stroke="#334155" stroke-width="1" stroke-dasharray="5,5" opacity="0.4"/>
-                  <!-- Labels de valores -->
-                  <text 
-                    :x="10" 
-                    :y="(chartHeight / 5) * i + 5"
-                    fill="#64748b"
-                    font-size="11"
-                    font-weight="600"
-                    font-family="system-ui, -apple-system, sans-serif"
-                  >
-                    ${{ formatNumberShort(Math.round((getMaxValue() / 5) * (5 - i))) }}
-                  </text>
-                </g>
-              </svg>
-
-              <!-- Gráfico SVG -->
-              <svg class="chart-svg" :viewBox="`0 0 ${chartWidth} ${chartHeight}`">
-                <defs>
-                  <!-- Gradiente del área -->
-                  <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:0.5" />
-                    <stop offset="50%" style="stop-color:#3b82f6;stop-opacity:0.2" />
-                    <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:0" />
-                  </linearGradient>
-                  
-                  <!-- Glow para la línea -->
-                  <filter id="glow">
-                    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-                    <feMerge>
-                      <feMergeNode in="coloredBlur"/>
-                      <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
-                  </filter>
-
-                  <!-- Gradiente de línea -->
-                  <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" style="stop-color:#3b82f6" />
-                    <stop offset="50%" style="stop-color:#60a5fa" />
-                    <stop offset="100%" style="stop-color:#3b82f6" />
-                  </linearGradient>
-                </defs>
-
-                <!-- Área rellena -->
-                <path 
-                  :d="getAreaPath()" 
-                  fill="url(#areaGradient)" 
-                  class="chart-area"
-                />
-
-                <!-- Sombra de la línea -->
-                <path 
-                  :d="getLinePath()" 
-                  fill="none" 
-                  stroke="#3b82f6" 
-                  stroke-width="5" 
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  opacity="0.15"
-                  filter="blur(8px)"
-                />
-
-                <!-- Línea principal -->
-                <path 
-                  :d="getLinePath()" 
-                  fill="none" 
-                  stroke="url(#lineGradient)" 
-                  stroke-width="3" 
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="chart-line"
-                  filter="url(#glow)"
-                />
-
-                <!-- Línea de promedio -->
-                <line 
-                  :x1="padding" 
-                  :y1="getYPosition(calculateAverageDaily())"
-                  :x2="chartWidth - padding" 
-                  :y2="getYPosition(calculateAverageDaily())"
-                  stroke="#10b981"
-                  stroke-width="2"
-                  stroke-dasharray="8,4"
-                  opacity="0.6"
-                />
-
-                <!-- Puntos interactivos -->
-                <g v-for="(monto, i) in dashboardData.ventasPorDia" :key="`point-${i}`">
-                  <!-- Punto especial para el día pico -->
-                  <circle 
-                    v-if="monto === Math.max(...dashboardData.ventasPorDia)"
-                    :cx="getXPosition(i)" 
-                    :cy="getYPosition(monto)"
-                    r="8"
-                    fill="#ef4444"
-                    stroke="#ffffff"
-                    stroke-width="2"
-                    class="peak-point"
-                  />
-                  
-                  <!-- Glow exterior -->
-                  <circle 
-                    :cx="getXPosition(i)" 
-                    :cy="getYPosition(monto)"
-                    r="12"
-                    fill="#3b82f6"
-                    opacity="0.12"
-                    class="point-glow"
-                    :class="{ active: hoveredPoint === i }"
-                  />
-                  <!-- Círculo principal -->
-                  <circle 
-                    :cx="getXPosition(i)" 
-                    :cy="getYPosition(monto)"
-                    r="6"
-                    fill="#0f172a"
-                    stroke="#3b82f6"
-                    stroke-width="2.5"
-                    class="chart-point"
-                    :class="{ active: hoveredPoint === i }"
-                    @mouseenter="showTooltip(i, monto, $event)"
-                    @mouseleave="hideTooltip"
-                  />
-                  <!-- Centro brillante -->
-                  <circle 
-                    :cx="getXPosition(i)" 
-                    :cy="getYPosition(monto)"
-                    r="2"
-                    fill="#60a5fa"
-                    class="point-center"
-                    :class="{ active: hoveredPoint === i }"
-                  />
-                </g>
-              </svg>
-
-              <!-- Labels de días -->
-              <div class="chart-labels">
-                <span 
-                  v-for="(label, i) in dashboardData.labelsDias" 
-                  :key="`label-${i}`"
-                  class="day-label"
-                  :class="{ active: hoveredPoint === i, peak: dashboardData.ventasPorDia[i] === Math.max(...dashboardData.ventasPorDia) }"
-                  :style="{ left: getXPositionPercent(i) + '%' }"
-                >
-                  {{ label }}
-                  <span v-if="dashboardData.ventasPorDia[i] === Math.max(...dashboardData.ventasPorDia)" class="peak-badge">
-                    <i class="fas fa-fire"></i>
-                  </span>
-                </span>
-              </div>
-
-              <!-- Tooltip -->
-              <Transition name="tooltip">
-                <div 
-                  v-if="tooltip.visible" 
-                  class="chart-tooltip"
-                  :style="{ 
-                    left: tooltip.x + 'px', 
-                    top: tooltip.y + 'px' 
-                  }"
-                >
-                  <div class="tooltip-header">
-                    <i class="fas fa-calendar-day"></i>
-                    {{ tooltip.date }}
-                    <span v-if="tooltip.value === Math.max(...dashboardData.ventasPorDia)" class="tooltip-badge">
-                      <i class="fas fa-crown"></i> DÍA PICO
-                    </span>
-                  </div>
-                  <div class="tooltip-body">
-                    <div class="tooltip-value">${{ formatNumber(tooltip.value) }}</div>
-                    <div class="tooltip-label">Ingresos del día</div>
-                    <div class="tooltip-comparison" :class="getComparisonClass(tooltip.value)">
-                      <i :class="getComparisonIcon(tooltip.value)"></i>
-                      {{ getComparisonText(tooltip.value) }}
-                    </div>
-                  </div>
-                </div>
-              </Transition>
-            </div>
-
-            <div v-else class="no-data">
-              <i class="fas fa-chart-line"></i>
-              <p>No hay ventas registradas en este período</p>
-            </div>
-          </div>
         </div>
-
-        <!-- GRÁFICO DE DISTRIBUCIÓN -->
-        <div class="section-card distribution-card">
-          <div class="section-header">
-            <h3><i class="fas fa-chart-pie"></i> Distribución por Tipo</h3>
-          </div>
-          <div class="distribution-body">
-            <div class="distribution-chart">
-              <svg width="200" height="200" viewBox="0 0 200 200">
-                <defs>
-                  <linearGradient id="pieGradient1" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
-                    <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
-                  </linearGradient>
-                  <linearGradient id="pieGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
-                    <stop offset="100%" style="stop-color:#047857;stop-opacity:1" />
-                  </linearGradient>
-                </defs>
-                
-                <circle cx="100" cy="100" r="80" fill="transparent" stroke="#334155" stroke-width="2"/>
-                
-                <!-- Sector Servicios -->
-                <path 
-                  :d="getPiePath(0, getServicePercentage())" 
-                  fill="url(#pieGradient2)"
-                  class="pie-sector"
-                />
-                
-                <!-- Sector Productos -->
-                <path 
-                  :d="getPiePath(getServicePercentage(), 100)" 
-                  fill="url(#pieGradient1)"
-                  class="pie-sector"
-                />
-                
-                <circle cx="100" cy="100" r="40" fill="#1e293b"/>
-                
-                <text x="100" y="95" text-anchor="middle" fill="#f1f5f9" font-size="18" font-weight="700">
-                  {{ getTotalTransactions() }}
-                </text>
-                <text x="100" y="115" text-anchor="middle" fill="#94a3b8" font-size="12">
-                  Total
-                </text>
-              </svg>
-            </div>
-            <div class="distribution-legend">
-              <div class="legend-item">
-                <div class="legend-color service"></div>
-                <div class="legend-content">
-                  <span class="legend-label">Servicios</span>
-                  <span class="legend-value">{{ dashboardData.serviciosRealizados }} ({{ getServicePercentage().toFixed(1) }}%)</span>
-                </div>
-              </div>
-              <div class="legend-item">
-                <div class="legend-color product"></div>
-                <div class="legend-content">
-                  <span class="legend-label">Productos</span>
-                  <span class="legend-value">{{ dashboardData.productosVendidos }} ({{ getProductPercentage().toFixed(1) }}%)</span>
-                </div>
-              </div>
-              <div class="distribution-insight">
-                <i class="fas fa-lightbulb"></i>
-                <span v-if="getServicePercentage() > getProductPercentage()">
-                  Los servicios generan más actividad que los productos
-                </span>
-                <span v-else>
-                  Los productos son la principal fuente de actividad
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
       </div>
 
-      <!-- 📊 SECCIÓN DE TOP LISTAS -->
       <div class="top-section">
         <h3 class="section-title"><i class="fas fa-trophy"></i> Análisis de Desempeño</h3>
         <p class="section-subtitle">Top performers del período seleccionado</p>
@@ -584,7 +502,6 @@
         </div>
       </div>
 
-      <!-- 📈 ESTADÍSTICAS ADICIONALES -->
       <div class="stats-grid">
         
         <div class="section-card stat-card">
@@ -608,7 +525,6 @@
             </button>
           </div>
         </div>
-
 
         <div class="section-card stat-card insights-card">
           <div class="section-header">
@@ -640,11 +556,155 @@
 
     </main>
 
+    <div id="print-template" style="display: none;">
+      <div class="pdf-page">
+        <div class="pdf-header">
+          <h1 class="pdf-title">HAIRSOFT</h1>
+          <h2 class="pdf-subtitle">Los Últimos Serán Los Primeros</h2>
+          <div class="pdf-divider"></div>
+          <h3 class="pdf-report-title">Reporte de Gestión</h3>
+          <p class="pdf-period">{{ getPeriodDisplay }}</p>
+        </div>
+
+        <div class="pdf-kpis">
+          <div class="pdf-kpi">
+            <div class="pdf-kpi-label">Ingresos</div>
+            <div class="pdf-kpi-value">${{ formatNumber(dashboardData.ingresosTotales) }}</div>
+          </div>
+          <div class="pdf-kpi">
+            <div class="pdf-kpi-label">Servicios</div>
+            <div class="pdf-kpi-value">{{ dashboardData.serviciosRealizados }}</div>
+          </div>
+          <div class="pdf-kpi">
+            <div class="pdf-kpi-label">Productos</div>
+            <div class="pdf-kpi-value">{{ dashboardData.productosVendidos }}</div>
+          </div>
+          <div class="pdf-kpi">
+            <div class="pdf-kpi-label">Clientes</div>
+            <div class="pdf-kpi-value">{{ dashboardData.clientesAtendidos || calcularClientes() }}</div>
+          </div>
+        </div>
+
+        <div class="pdf-chart-section">
+          <h4 class="pdf-section-title">Evolución de Ingresos Diarios</h4>
+          <svg class="pdf-chart" :viewBox="`0 0 ${chartWidth} ${chartHeight + 60}`" width="100%" height="380">
+            <defs>
+              <linearGradient id="pdfAreaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:#ef4444;stop-opacity:0.35" />
+                <stop offset="100%" style="stop-color:#fca5a5;stop-opacity:0.08" />
+              </linearGradient>
+            </defs>
+
+            <g v-for="i in 5" :key="`pdf-ref-${i}`">
+              <line 
+                :x1="60" :y1="(chartHeight / 5) * i"
+                :x2="chartWidth - 20" :y2="(chartHeight / 5) * i"
+                stroke="#d1d5db" stroke-width="2" stroke-dasharray="6,4"/>
+              <text 
+                :x="10" 
+                :y="(chartHeight / 5) * i + 6"
+                fill="#1f2937"
+                font-size="14"
+                font-weight="700"
+              >
+                ${{ formatNumberShort(Math.round((getMaxValue() / 5) * (5 - i))) }}
+              </text>
+            </g>
+
+            <path :d="getAreaPath()" fill="url(#pdfAreaGradient)"/>
+
+            <path 
+              :d="getLinePath()" 
+              fill="none" 
+              stroke="#dc2626" 
+              stroke-width="4" 
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+
+            <g v-for="(monto, i) in dashboardData.ventasPorDia" :key="`pdf-point-${i}`">
+              <circle 
+                :cx="getXPosition(i)" 
+                :cy="getYPosition(monto)"
+                r="6"
+                fill="#ffffff"
+                stroke="#dc2626"
+                stroke-width="3"
+              />
+            </g>
+
+            <g v-for="(label, i) in dashboardData.labelsDias" :key="`pdf-label-${i}`">
+              <text
+                :x="getXPosition(i)"
+                :y="chartHeight - 20"
+                text-anchor="middle"
+                fill="#1f2937"
+                font-size="13"
+                font-weight="700"
+              >
+                {{ label }}
+              </text>
+            </g>
+          </svg>
+        </div>
+
+        <div class="pdf-tables">
+          <div class="pdf-table-container">
+            <h4 class="pdf-section-title">Top 5 Servicios</h4>
+            <table class="pdf-table">
+              <thead>
+                <tr>
+                  <th style="width: 10%">#</th>
+                  <th style="width: 60%">Servicio</th>
+                  <th style="width: 20%">Cant.</th>
+                  <th style="width: 10%">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(s, i) in dashboardData.serviciosTop.slice(0, 5)" :key="i">
+                  <td>{{ i + 1 }}</td>
+                  <td>{{ s.nombre }}</td>
+                  <td>{{ s.cantidad }}</td>
+                  <td>{{ getItemPercentage(s.cantidad, dashboardData.serviciosTop) }}%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pdf-table-container">
+            <h4 class="pdf-section-title">Top 5 Productos</h4>
+            <table class="pdf-table">
+              <thead>
+                <tr>
+                  <th style="width: 10%">#</th>
+                  <th style="width: 60%">Producto</th>
+                  <th style="width: 20%">Unid.</th>
+                  <th style="width: 10%">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(p, i) in dashboardData.productosTop.slice(0, 5)" :key="i">
+                  <td>{{ i + 1 }}</td>
+                  <td>{{ p.nombre }}</td>
+                  <td>{{ p.cantidad }}</td>
+                  <td>{{ getItemPercentage(p.cantidad, dashboardData.productosTop) }}%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="pdf-footer">
+          <p>HAIRSOFT © {{ new Date().getFullYear() }} - Reporte generado el {{ new Date().toLocaleDateString('es-AR') }}</p>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from '@/utils/axiosConfig'
 import html2canvas from 'html2canvas'
@@ -657,7 +717,6 @@ const error = ref(null)
 const hoveredPoint = ref(null)
 const dashboardContent = ref(null)
 
-// Fechas personalizadas
 const customDateRange = ref(false)
 const dateFrom = ref('')
 const dateTo = ref('')
@@ -683,7 +742,6 @@ const dashboardData = ref({
   valorInventario: 0
 })
 
-// Computed properties
 const getPeriodDisplay = computed(() => {
   if (customDateRange.value && dateFrom.value && dateTo.value) {
     return `${formatDate(dateFrom.value)} al ${formatDate(dateTo.value)}`
@@ -702,7 +760,6 @@ const currentDate = computed(() => {
   })
 })
 
-// Dimensiones del gráfico
 const chartWidth = 900
 const chartHeight = 320
 const padding = 60
@@ -760,6 +817,14 @@ const formatDate = (dateStr) => {
   })
 }
 
+const formatDateLong = (dateStr) => {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('es-AR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  })
+}
+
 const formatNumber = (num) => new Intl.NumberFormat('es-AR').format(num || 0)
 
 const formatNumberShort = (num) => {
@@ -768,37 +833,10 @@ const formatNumberShort = (num) => {
   return num.toString()
 }
 
-// Métricas calculadas
 const calculateAverageDaily = () => {
   if (!dashboardData.value.ventasPorDia.length) return 0
   const sum = dashboardData.value.ventasPorDia.reduce((a, b) => a + b, 0)
   return sum / dashboardData.value.ventasPorDia.length
-}
-
-const calculateAverageTicket = () => {
-  const totalTransactions = dashboardData.value.productosVendidos + dashboardData.value.serviciosRealizados
-  if (totalTransactions === 0) return 0
-  return dashboardData.value.ingresosTotales / totalTransactions
-}
-
-const calculateProductsPerSale = () => {
-  if (dashboardData.value.serviciosRealizados === 0) return 0
-  return dashboardData.value.productosVendidos / dashboardData.value.serviciosRealizados
-}
-
-const calculateServicesPerClient = () => {
-  if (dashboardData.value.clientesAtendidos === 0) return 0
-  return dashboardData.value.serviciosRealizados / dashboardData.value.clientesAtendidos
-}
-
-const calculateMargin = () => {
-  // Estimación simple del margen (50% como base)
-  return 50
-}
-
-const calculateGrowth = () => {
-  // Simulación de crecimiento vs período anterior
-  return Math.random() * 20 - 5 // Entre -5% y +15%
 }
 
 const getPeakDay = () => {
@@ -812,7 +850,6 @@ const getMaxValue = () => {
   return Math.max(...dashboardData.value.ventasPorDia, 1)
 }
 
-// Métodos del gráfico
 const getXPosition = (index) => {
   const count = dashboardData.value.ventasPorDia.length
   if (count <= 1) return chartWidth / 2
@@ -949,31 +986,6 @@ const getComparisonText = (value) => {
   return 'En línea con el promedio'
 }
 
-const getTrendClass = (type) => {
-  // Simulación de tendencias
-  const trends = {
-    income: Math.random() > 0.3 ? 'positive' : 'negative',
-    service: Math.random() > 0.4 ? 'positive' : 'negative',
-    product: Math.random() > 0.5 ? 'positive' : 'negative'
-  }
-  return trends[type] || 'positive'
-}
-
-const getTrendIcon = (type) => {
-  const trendClass = getTrendClass(type)
-  return trendClass === 'positive' ? 'fas fa-arrow-up' : 'fas fa-arrow-down'
-}
-
-const getTrendPercentage = (type) => {
-  // Simulación de porcentajes
-  const percentages = {
-    income: (Math.random() * 15 + 5).toFixed(1),
-    service: (Math.random() * 12 + 3).toFixed(1),
-    product: (Math.random() * 18 + 8).toFixed(1)
-  }
-  return percentages[type] || '0.0'
-}
-
 const getRankClass = (index) => {
   if (index === 0) return 'gold'
   if (index === 1) return 'silver'
@@ -991,13 +1003,6 @@ const getItemPercentage = (value, array) => {
   return total > 0 ? ((value / total) * 100).toFixed(1) : '0.0'
 }
 
-const getMarginClass = () => {
-  const margin = calculateMargin()
-  if (margin > 60) return 'positive'
-  if (margin < 40) return 'negative'
-  return 'neutral'
-}
-
 const calcularClientes = () => {
   return Math.round((dashboardData.value.serviciosRealizados + dashboardData.value.productosVendidos) / 2)
 }
@@ -1006,64 +1011,46 @@ const irAInventario = () => {
   router.push({ path: '/productos', query: { filtro: 'stock_bajo' } })
 }
 
-const printReport = () => {
-  window.print()
-}
-
-// Generar PDF mejorado
 const generatePDF = async () => {
   try {
     loading.value = true
     
-    const element = dashboardContent.value
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      backgroundColor: '#0f172a',
+    const printTemplate = document.getElementById('print-template')
+    if (!printTemplate) {
+      throw new Error('Template de impresión no encontrado')
+    }
+
+    printTemplate.style.display = 'block'
+    printTemplate.style.width = '210mm'
+    printTemplate.style.minHeight = '297mm'
+    
+    await new Promise(resolve => setTimeout(resolve, 300))
+    
+    const canvas = await html2canvas(printTemplate, {
+      scale: 3,
+      backgroundColor: '#ffffff',
       logging: false,
-      useCORS: true
+      useCORS: true,
+      allowTaint: true,
+      width: 794,
+      height: 1123,
+      windowWidth: 794,
+      windowHeight: 1123
     })
     
-    const imgData = canvas.toDataURL('image/png')
+    printTemplate.style.display = 'none'
+    
+    const imgData = canvas.toDataURL('image/jpeg', 1.0)
     const pdf = new jsPDF('p', 'mm', 'a4')
     
-    const imgWidth = 210
-    const pageHeight = 297
-    const imgHeight = (canvas.height * imgWidth) / canvas.width
+    pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, '', 'FAST')
     
-    let heightLeft = imgHeight
-    let position = 10
-    
-    // Agregar título y metadata
-    pdf.setFillColor(15, 23, 42)
-    pdf.rect(0, 0, 210, 297, 'F')
-    
-    pdf.setTextColor(255, 255, 255)
-    pdf.setFontSize(20)
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('Reporte Comercial', 105, 20, { align: 'center' })
-    
-    pdf.setFontSize(12)
-    pdf.setFont('helvetica', 'normal')
-    pdf.text(`Período: ${getPeriodDisplay.value}`, 105, 30, { align: 'center' })
-    pdf.text(`Generado: ${currentDate.value}`, 105, 35, { align: 'center' })
-    
-    // Agregar imagen del dashboard
-    pdf.addImage(imgData, 'PNG', 0, 45, imgWidth, imgHeight)
-    
-    // Agregar página si es necesario
-    heightLeft -= pageHeight - 55
-    while (heightLeft >= 0) {
-      position = heightLeft - imgHeight
-      pdf.addPage()
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pageHeight
-    }
-    
-    pdf.save(`reporte-${selectedPeriod.value}-${Date.now()}.pdf`)
+    const filename = `Reporte_HAIRSOFT_${selectedPeriod.value}_${Date.now()}.pdf`
+    pdf.save(filename)
     
   } catch (err) {
     console.error('Error generando PDF:', err)
-    alert('Error al generar el PDF')
+    alert('Error al generar el PDF. Por favor, intente nuevamente.')
   } finally {
     loading.value = false
   }
@@ -1086,14 +1073,14 @@ onMounted(() => fetchDashboardData())
 }
 
 .dashboard-wrapper {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  background: linear-gradient(135deg, #0f172a 0%, #0f172a 100%);
   min-height: 100vh;
   color: #f1f5f9;
   padding: 2rem;
   font-family: 'Segoe UI', system-ui, sans-serif;
+  position: relative;
 }
 
-/* HEADER MEJORADO */
 .dashboard-header {
   display: flex;
   justify-content: space-between;
@@ -1106,6 +1093,7 @@ onMounted(() => fetchDashboardData())
   border-radius: 16px;
   padding: 1.5rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
 }
 
 .dashboard-title {
@@ -1207,73 +1195,137 @@ onMounted(() => fetchDashboardData())
   cursor: not-allowed;
 }
 
-/* RESUMEN DEL PERÍODO */
-.period-summary-card {
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-  border-radius: 18px;
-  padding: 1.5rem;
+.custom-date-panel {
   margin-bottom: 2rem;
+  animation: slideDown 0.3s ease-out;
+}
+
+.custom-date-content {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   border: 1px solid #334155;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
 }
 
-.summary-header {
+.date-inputs {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
+  gap: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
 }
 
-.summary-header h3 {
-  margin: 0;
-  font-size: 1.2rem;
-  font-weight: 700;
-  color: #f1f5f9;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.date-input-group {
+  flex: 1;
+  min-width: 200px;
 }
 
-.period-tag {
-  background: rgba(59, 130, 246, 0.15);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #60a5fa;
+.date-input-group label {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.summary-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1.5rem;
-}
-
-.summary-stat {
-  text-align: center;
-}
-
-.stat-label {
   font-size: 0.85rem;
+  font-weight: 700;
   color: #94a3b8;
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  font-weight: 600;
 }
 
-.stat-value {
-  font-size: 1.8rem;
-  font-weight: 900;
+.date-input-custom {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.8);
+  border: 2px solid #334155;
+  border-radius: 10px;
+  padding: 12px 16px;
   color: #f1f5f9;
-  line-height: 1;
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  transition: all 0.3s;
+  cursor: pointer;
 }
 
-/* KPI CARDS MEJORADAS */
+.date-input-custom:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.date-input-custom:hover {
+  border-color: #475569;
+}
+
+.date-input-custom::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.date-input-custom::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+.apply-btn {
+  background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s;
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.apply-btn:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.6);
+}
+
+.apply-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.date-range-info {
+  margin-top: 1rem;
+  padding: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  color: #60a5fa;
+}
+
+.date-range-info strong {
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -1350,30 +1402,6 @@ onMounted(() => fetchDashboardData())
   transform: scale(1.1) rotate(5deg);
 }
 
-.kpi-trend {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 0.85rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.kpi-trend.positive {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-.kpi-trend.negative {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-}
-
 .kpi-data {
   display: flex;
   flex-direction: column;
@@ -1414,42 +1442,13 @@ onMounted(() => fetchDashboardData())
   opacity: 0.8;
 }
 
-/* GRID DE GRÁFICOS */
-.charts-grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-@media (max-width: 1200px) {
-  .charts-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.main-chart {
-  grid-column: 1;
-}
-
-.distribution-card {
-  grid-column: 2;
-}
-
-@media (max-width: 1200px) {
-  .main-chart,
-  .distribution-card {
-    grid-column: 1;
-  }
-}
-
-/* SECCIÓN DE GRÁFICO PRINCIPAL */
-.chart-section {
+.section-card {
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   border-radius: 18px;
   border: 1px solid #334155;
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  margin-bottom: 2rem;
 }
 
 .section-header {
@@ -1471,6 +1470,13 @@ onMounted(() => fetchDashboardData())
   color: #f1f5f9;
 }
 
+.subtitle-header {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 600;
+  font-style: italic;
+}
+
 .chart-info {
   display: flex;
   align-items: center;
@@ -1488,7 +1494,7 @@ onMounted(() => fetchDashboardData())
 
 .chart-body {
   padding: 2rem;
-  background: linear-gradient(to bottom, rgba(59, 130, 246, 0.03), transparent);
+  background: linear-gradient(to bottom, rgba(239, 68, 68, 0.02), transparent);
 }
 
 .trading-chart-container {
@@ -1516,23 +1522,57 @@ onMounted(() => fetchDashboardData())
   animation: fadeInArea 1.5s ease-out 0.3s forwards;
 }
 
-.chart-line {
+.chart-line-red {
   stroke-dasharray: 3000;
   stroke-dashoffset: 3000;
   animation: drawLine 2s ease-out forwards;
 }
 
+.chart-point-red {
+  transition: all 0.3s;
+  cursor: pointer;
+}
+
+.chart-point-red:hover,
+.chart-point-red.active {
+  r: 8;
+  stroke-width: 4;
+}
+
+.point-glow.active {
+  opacity: 0.3;
+  r: 16;
+}
+
+.point-center.active {
+  r: 3;
+}
+
 .peak-point {
   animation: pulse 2s infinite;
-  filter: drop-shadow(0 0 8px #ef4444);
+  filter: drop-shadow(0 0 8px #dc2626);
 }
 
 @keyframes pulse {
   0%, 100% {
-    r: 8;
+    r: 9;
+    opacity: 1;
   }
   50% {
-    r: 10;
+    r: 11;
+    opacity: 0.8;
+  }
+}
+
+@keyframes drawLine {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes fadeInArea {
+  to {
+    opacity: 1;
   }
 }
 
@@ -1562,7 +1602,7 @@ onMounted(() => fetchDashboardData())
 }
 
 .day-label.active {
-  color: #60a5fa;
+  color: #ef4444;
   transform: translateX(-50%) scale(1.15);
 }
 
@@ -1578,7 +1618,109 @@ onMounted(() => fetchDashboardData())
   color: #fca5a5;
 }
 
-/* GRÁFICO DE DISTRIBUCIÓN */
+.chart-tooltip {
+  position: absolute;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 2px solid #ef4444;
+  border-radius: 16px;
+  padding: 0;
+  pointer-events: none;
+  z-index: 1000;
+  min-width: 200px;
+  box-shadow: 0 20px 50px rgba(239, 68, 68, 0.5);
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.tooltip-enter-active,
+.tooltip-leave-active {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tooltip-enter-from,
+.tooltip-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(0.95);
+}
+
+.tooltip-header {
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.2);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #fca5a5;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.tooltip-badge {
+  margin-left: auto;
+  background: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tooltip-body {
+  padding: 16px;
+  text-align: center;
+}
+
+.tooltip-value {
+  font-size: 2rem;
+  font-weight: 900;
+  color: #fca5a5;
+  line-height: 1;
+  margin-bottom: 8px;
+  text-shadow: 0 2px 8px rgba(239, 68, 68, 0.5);
+}
+
+.tooltip-label {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.tooltip-comparison {
+  font-size: 0.8rem;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.tooltip-comparison.positive {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.tooltip-comparison.negative {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.tooltip-comparison.neutral {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
 .distribution-body {
   padding: 2rem;
   display: flex;
@@ -1586,8 +1728,12 @@ onMounted(() => fetchDashboardData())
   gap: 2rem;
 }
 
-.distribution-chart {
+.distribution-chart-container {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
 }
 
 .pie-sector {
@@ -1652,6 +1798,14 @@ onMounted(() => fetchDashboardData())
   font-weight: 600;
 }
 
+.legend-percentage {
+  display: block;
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: #3b82f6;
+  margin-top: 4px;
+}
+
 .distribution-insight {
   margin-top: 1.5rem;
   padding: 1rem;
@@ -1666,7 +1820,6 @@ onMounted(() => fetchDashboardData())
   font-weight: 600;
 }
 
-/* SECCIÓN TOP */
 .top-section {
   margin-bottom: 2rem;
 }
@@ -1691,16 +1844,6 @@ onMounted(() => fetchDashboardData())
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
   gap: 1.5rem;
-}
-
-.top-card {
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-}
-
-.top-card .section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
 }
 
 .total-count {
@@ -1747,23 +1890,6 @@ onMounted(() => fetchDashboardData())
   color: #94a3b8;
   flex-shrink: 0;
   transition: all 0.3s;
-  position: relative;
-  overflow: hidden;
-}
-
-.rank::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  opacity: 0.1;
-}
-
-.rank.gold::before { background: #fbbf24; }
-.rank.silver::before { background: #e5e7eb; }
-.rank.bronze::before { background: #fb923c; }
-
-.list-item:hover .rank {
-  transform: scale(1.15) rotate(5deg);
 }
 
 .rank.gold {
@@ -1852,16 +1978,11 @@ onMounted(() => fetchDashboardData())
   text-align: center;
 }
 
-/* ESTADÍSTICAS ADICIONALES */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
-}
-
-.stat-card {
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
 }
 
 .stat-body {
@@ -1892,14 +2013,6 @@ onMounted(() => fetchDashboardData())
   color: #f1f5f9;
 }
 
-.stat-value.positive {
-  color: #10b981;
-}
-
-.stat-value.negative {
-  color: #ef4444;
-}
-
 .stat-value.warning {
   color: #f59e0b;
   animation: pulseWarning 2s infinite;
@@ -1914,7 +2027,10 @@ onMounted(() => fetchDashboardData())
   }
 }
 
-.insights-card .stat-body {
+.insights-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
   padding: 1.5rem;
 }
 
@@ -1925,17 +2041,12 @@ onMounted(() => fetchDashboardData())
   padding: 1rem;
   background: rgba(255, 255, 255, 0.03);
   border-radius: 12px;
-  margin-bottom: 1rem;
   transition: all 0.3s;
 }
 
 .insight-item:hover {
   background: rgba(255, 255, 255, 0.05);
   transform: translateX(5px);
-}
-
-.insight-item:last-child {
-  margin-bottom: 0;
 }
 
 .insight-item i {
@@ -1956,17 +2067,6 @@ onMounted(() => fetchDashboardData())
   font-weight: 700;
 }
 
-.insight-content .positive {
-  color: #10b981;
-  font-weight: 800;
-}
-
-.insight-content .negative {
-  color: #ef4444;
-  font-weight: 800;
-}
-
-/* BOTONES */
 .action-btn {
   background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
   color: white;
@@ -1993,174 +2093,6 @@ onMounted(() => fetchDashboardData())
   box-shadow: 0 8px 24px rgba(59, 130, 246, 0.6);
 }
 
-.action-btn.full-width {
-  width: 100%;
-}
-
-/* FOOTER */
-.report-footer {
-  margin-top: 3rem;
-  padding-top: 2rem;
-  border-top: 1px solid #334155;
-}
-
-.footer-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.footer-info {
-  color: #64748b;
-  font-size: 0.9rem;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.footer-actions {
-  display: flex;
-  gap: 1rem;
-}
-
-.footer-btn {
-  background: transparent;
-  border: 1px solid #334155;
-  color: #94a3b8;
-  padding: 10px 20px;
-  border-radius: 10px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transition: all 0.3s;
-}
-
-.footer-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #f1f5f9;
-  border-color: #3b82f6;
-}
-
-.footer-btn.primary {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  color: white;
-  border: none;
-}
-
-.footer-btn.primary:hover {
-  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
-  transform: translateY(-2px);
-}
-
-/* TOOLTIP MEJORADO */
-.chart-tooltip {
-  position: absolute;
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-  border: 2px solid #3b82f6;
-  border-radius: 16px;
-  padding: 0;
-  pointer-events: none;
-  z-index: 1000;
-  min-width: 200px;
-  box-shadow: 0 20px 50px rgba(59, 130, 246, 0.5);
-  overflow: hidden;
-  backdrop-filter: blur(10px);
-}
-
-.tooltip-enter-active,
-.tooltip-leave-active {
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.tooltip-enter-from,
-.tooltip-leave-to {
-  opacity: 0;
-  transform: translateY(8px) scale(0.95);
-}
-
-.tooltip-header {
-  padding: 12px 16px;
-  background: rgba(59, 130, 246, 0.2);
-  border-bottom: 1px solid rgba(59, 130, 246, 0.3);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 0.8rem;
-  font-weight: 800;
-  color: #60a5fa;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.tooltip-badge {
-  margin-left: auto;
-  background: rgba(239, 68, 68, 0.2);
-  color: #fca5a5;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 0.7rem;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.tooltip-body {
-  padding: 16px;
-  text-align: center;
-}
-
-.tooltip-value {
-  font-size: 2rem;
-  font-weight: 900;
-  color: #60a5fa;
-  line-height: 1;
-  margin-bottom: 8px;
-  text-shadow: 0 2px 8px rgba(59, 130, 246, 0.5);
-}
-
-.tooltip-label {
-  font-size: 0.8rem;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  margin-bottom: 12px;
-  font-weight: 600;
-}
-
-.tooltip-comparison {
-  font-size: 0.8rem;
-  padding: 8px 12px;
-  border-radius: 12px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.tooltip-comparison.positive {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-.tooltip-comparison.negative {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-}
-
-.tooltip-comparison.neutral {
-  background: rgba(148, 163, 184, 0.15);
-  color: #94a3b8;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-}
-
-/* ESTADOS */
 .state-container {
   height: 500px;
   display: flex;
@@ -2177,18 +2109,6 @@ onMounted(() => fetchDashboardData())
   border-top-color: #3b82f6;
   border-radius: 50%;
   animation: spin 1s infinite linear;
-  position: relative;
-}
-
-.loader::after {
-  content: '';
-  position: absolute;
-  inset: -8px;
-  border: 5px solid transparent;
-  border-top-color: #60a5fa;
-  border-radius: 50%;
-  animation: spin 2s infinite linear reverse;
-  opacity: 0.5;
 }
 
 @keyframes spin {
@@ -2202,7 +2122,6 @@ onMounted(() => fetchDashboardData())
   font-weight: 700;
   letter-spacing: 0.8px;
   font-size: 1.1rem;
-  text-align: center;
 }
 
 .error-content {
@@ -2220,7 +2139,6 @@ onMounted(() => fetchDashboardData())
 .error-content i {
   font-size: 5rem;
   color: #ef4444;
-  animation: pulse 2s infinite;
 }
 
 .error-content h3 {
@@ -2281,21 +2199,215 @@ onMounted(() => fetchDashboardData())
   }
 }
 
-/* RESPONSIVE */
-@media (max-width: 1024px) {
-  .header-right {
-    width: 100%;
-    justify-content: space-between;
-  }
-  
-  .period-selector {
-    flex: 1;
-    max-width: 400px;
-  }
-  
-  .charts-grid {
-    grid-template-columns: 1fr;
-  }
+.no-data {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem;
+  color: #64748b;
+  gap: 1rem;
+}
+
+.no-data i {
+  font-size: 3rem;
+  opacity: 0.5;
+}
+
+.no-data-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  color: #64748b;
+}
+
+.no-data-text i {
+  font-size: 2rem;
+  opacity: 0.5;
+}
+
+.pdf-page {
+  width: 210mm;
+  min-height: 297mm;
+  background: white;
+  padding: 18mm 20mm;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: #000;
+}
+
+.pdf-header {
+  text-align: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 4px solid #000;
+}
+
+.pdf-title {
+  font-size: 56px;
+  font-weight: 900;
+  margin: 0;
+  color: #000;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+
+.pdf-subtitle {
+  font-size: 20px;
+  color: #666;
+  margin: 10px 0 16px;
+  font-weight: 600;
+  font-style: italic;
+}
+
+.pdf-divider {
+  width: 100px;
+  height: 4px;
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+  margin: 16px auto;
+}
+
+.pdf-report-title {
+  font-size: 34px;
+  font-weight: 800;
+  margin: 14px 0 8px;
+  color: #000;
+}
+
+.pdf-period {
+  font-size: 18px;
+  color: #374151;
+  margin: 6px 0;
+  font-weight: 700;
+}
+
+.pdf-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin: 22px 0;
+}
+
+.pdf-kpi {
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px 16px;
+  text-align: center;
+}
+
+.pdf-kpi-label {
+  font-size: 12px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.pdf-kpi-value {
+  font-size: 32px;
+  font-weight: 900;
+  color: #000;
+  line-height: 1;
+}
+
+.pdf-chart-section {
+  margin: 22px 0;
+  padding: 20px;
+  background: #fafafa;
+  border-radius: 14px;
+  border: 2px solid #e5e7eb;
+}
+
+.pdf-section-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #000;
+  margin: 0 0 16px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.pdf-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  background: white;
+  border-radius: 10px;
+  padding: 16px 12px;
+  border: 2px solid #e5e7eb;
+}
+
+.pdf-tables {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+  margin: 22px 0;
+}
+
+.pdf-table-container {
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 18px;
+}
+
+.pdf-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+
+.pdf-table thead {
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+}
+
+.pdf-table th {
+  padding: 10px 8px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 800;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  border-bottom: 2px solid #d1d5db;
+}
+
+.pdf-table td {
+  padding: 10px 8px;
+  font-size: 13px;
+  color: #374151;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.pdf-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.pdf-table td:first-child {
+  font-weight: 700;
+}
+
+.pdf-table td:last-child {
+  font-weight: 800;
+  color: #ef4444;
+}
+
+.pdf-footer {
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 2px solid #e5e7eb;
+  text-align: center;
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.pdf-footer p {
+  margin: 5px 0;
 }
 
 @media (max-width: 768px) {
@@ -2319,11 +2431,6 @@ onMounted(() => fetchDashboardData())
     flex-wrap: wrap;
   }
   
-  .period-selector button {
-    flex: 1;
-    min-width: 90px;
-  }
-  
   .pdf-btn {
     width: 100%;
     justify-content: center;
@@ -2333,21 +2440,8 @@ onMounted(() => fetchDashboardData())
     flex-direction: column;
   }
   
-  .date-input-group {
-    width: 100%;
-  }
-  
-  .apply-btn {
-    width: 100%;
-    justify-content: center;
-  }
-  
   .kpi-grid {
     grid-template-columns: 1fr;
-  }
-  
-  .summary-stats {
-    grid-template-columns: repeat(2, 1fr);
   }
   
   .top-grid,
@@ -2360,48 +2454,12 @@ onMounted(() => fetchDashboardData())
     text-align: center;
   }
   
-  .footer-content {
-    flex-direction: column;
-    text-align: center;
+  .pdf-kpis {
+    grid-template-columns: repeat(2, 1fr);
   }
-  
-  .footer-actions {
-    width: 100%;
-    justify-content: center;
-  }
-  
-  .trading-chart-container {
-    height: 300px;
-  }
-  
-  .chart-labels {
-    padding: 0 40px;
-  }
-  
-  .day-label {
-    font-size: 0.75rem;
-  }
-}
 
-@media print {
-  .dashboard-wrapper {
-    background: white !important;
-    color: black !important;
-    padding: 0 !important;
-  }
-  
-  .dashboard-header,
-  .period-selector,
-  .pdf-btn,
-  .report-footer,
-  .action-btn {
-    display: none !important;
-  }
-  
-  .section-card {
-    break-inside: avoid;
-    border: 1px solid #ddd !important;
-    box-shadow: none !important;
+  .pdf-tables {
+    grid-template-columns: 1fr;
   }
 }
 </style>

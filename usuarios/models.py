@@ -210,7 +210,8 @@ class Producto(models.Model):
 
     codigo = models.CharField(max_length=20, unique=True, editable=False)
     estado = models.CharField(max_length=10, choices=ESTADOS, default='ACTIVO')
-
+    imagen = models.ImageField(upload_to='productos/', null=True, blank=True, verbose_name="Imagen del Producto")
+    
     def clean(self):
         if self.precio is not None and self.precio < 0:
             raise ValidationError({'precio': 'El precio no puede ser negativo'})
@@ -860,32 +861,41 @@ class DetalleVenta(models.Model):
 # ===============================
 
 class Pedido(models.Model):
-    ESTADO_CHOICES = [
-        ('PENDIENTE', 'Pendiente'),
-        ('CONFIRMADO', 'Confirmado'),
-        ('ENTREGADO', 'Entregado'),
-        ('CANCELADO', 'Cancelado'),
+    # Identificador único para el link externo del proveedor
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+
+    # Definimos los estados posibles
+    ESTADOS = [
+        ('PENDIENTE', 'Pendiente'),               # Creado por vos, borrador
+        ('ENVIADO', 'Enviado a Proveedor'),       # Se mandó el mail con el link
+        ('CONFIRMADO', 'Confirmado por Proveedor'), # El proveedor dio el OK (o vos manual)
+        ('ENTREGADO', 'Recibido en Local'),       # Llegó la caja (Stock + Precio impactado)
+        ('CANCELADO', 'Cancelado')
     ]
 
     proveedor = models.ForeignKey(
-        Proveedor,
+        'Proveedor', # Usá string si Proveedor está definido más abajo o import circular
         on_delete=models.PROTECT,
         related_name='pedidos'
     )
+    
+    # Un solo campo estado, con las opciones nuevas
+    estado = models.CharField(
+        max_length=20, 
+        choices=ESTADOS, 
+        default='PENDIENTE'
+    )
+
     fecha_pedido = models.DateTimeField(auto_now_add=True)
     fecha_esperada_recepcion = models.DateField(null=True, blank=True)
     fecha_recepcion = models.DateTimeField(null=True, blank=True)
-    estado = models.CharField(
-        max_length=20,
-        choices=ESTADO_CHOICES,
-        default='PENDIENTE'
-    )
+    
     observaciones = models.TextField(blank=True, null=True)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     # Auditoría
     usuario_creador = models.ForeignKey(
-        Usuario,
+        'Usuario',
         on_delete=models.PROTECT,
         related_name='pedidos_creados',
         null=True,
@@ -894,69 +904,63 @@ class Pedido(models.Model):
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        db_table = "pedidos"
+        ordering = ['-fecha_pedido']
+        verbose_name = "Pedido"
+        verbose_name_plural = "Pedidos"
+
     def __str__(self):
-        return f"Pedido #{self.id} - {self.proveedor.nombre} ({self.estado})"
+        return f"Pedido #{self.id} - {self.proveedor.nombre} ({self.get_estado_display()})"
 
     def calcular_total(self):
-        """Calcula el total usando los precios de la lista"""
+        """Calcula el total usando los precios de los detalles"""
         return self.detalles.aggregate(total=models.Sum('subtotal'))['total'] or 0
 
-    def puede_ser_confirmado(self):
-        """Solo se puede confirmar si está PENDIENTE"""
+    # --- LÓGICA DE ESTADOS ---
+
+    def puede_ser_enviado(self):
         return self.estado == 'PENDIENTE'
 
+    def puede_ser_confirmado(self):
+        """El proveedor o el admin confirman precios/cantidades"""
+        return self.estado in ['PENDIENTE', 'ENVIADO']
+
     def puede_ser_completado(self):
-        """Solo si ya fue CONFIRMADO"""
+        """
+        Verifica si el pedido puede ser completado (recibido).
+        El serializer busca este nombre exacto.
+        """
         return self.estado == 'CONFIRMADO'
     
-    def puede_ser_recibido(self):
-        """Solo se pueden recibir pedidos PENDIENTES o CONFIRMADOS"""
-        return self.estado in ['PENDIENTE', 'CONFIRMADO']
-    
     def puede_ser_cancelado(self):
-        """Solo se pueden cancelar pedidos PENDIENTES o CONFIRMADOS"""
-        return self.estado in ['PENDIENTE', 'CONFIRMADO']
+        return self.estado in ['PENDIENTE', 'ENVIADO', 'CONFIRMADO']
+
+    # --- MÉTODOS TRANSACCIONALES ---
 
     @transaction.atomic
     def confirmar_pedido(self):
-        """Confirma el pedido con los precios de la lista"""
+        """Pasa a confirmado (listo para recibir)"""
         if not self.puede_ser_confirmado():
-            raise ValueError("El pedido no puede ser confirmado en su estado actual")
+            raise ValueError(f"No se puede confirmar un pedido en estado {self.estado}")
 
         self.estado = 'CONFIRMADO'
         self.total = self.calcular_total()
         self.save()
 
     @transaction.atomic
-    def completar_pedido(self):
-        """Marca el pedido como COMPLETADO y actualiza stock"""
-        if not self.puede_ser_completado():
-            raise ValueError("El pedido no puede ser completado en su estado actual")
-
-        # Actualizar stock
-        for detalle in self.detalles.all():
-            if detalle.producto and detalle.cantidad_recibida > 0:
-                detalle.producto.stock_actual += detalle.cantidad_recibida
-                detalle.producto.save()
-
-        self.estado = 'COMPLETADO'
-        self.fecha_recepcion = timezone.now()
-        self.save()
+    def completar_pedido(self): 
+        # Este método se reemplaza por la lógica de recibir_pedido en la view
+        # pero lo dejamos como helper interno si querés.
+        pass
 
     @transaction.atomic
     def cancelar_pedido(self):
-        """Cancela el pedido"""
         if not self.puede_ser_cancelado():
-            raise ValueError("El pedido no puede ser cancelado en su estado actual")
+            raise ValueError(f"No se puede cancelar un pedido en estado {self.estado}")
             
         self.estado = 'CANCELADO'
         self.save()
-
-    class Meta:
-        db_table = "pedidos"
-        ordering = ['-fecha_pedido']
-        verbose_name = "Pedido"
-        verbose_name_plural = "Pedidos"
 
 class DetallePedido(models.Model):
     pedido = models.ForeignKey(
@@ -1141,9 +1145,12 @@ class Cotizacion(models.Model):
     solicitud = models.ForeignKey(SolicitudPresupuesto, on_delete=models.CASCADE, related_name='cotizaciones')
     proveedor = models.ForeignKey('Proveedor', on_delete=models.CASCADE)
     
-    # Token para que el proveedor entre sin loguearse
     token = models.CharField(max_length=100, unique=True, default=secrets.token_urlsafe)
     
+    # --- CAMPO NUEVO ---
+    cantidad_ofertada = models.IntegerField(null=True, blank=True, help_text="Cantidad real que tiene el proveedor")
+    # -------------------
+
     precio_ofrecido = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     dias_entrega = models.IntegerField(null=True, blank=True, help_text="Días hábiles")
     comentarios = models.TextField(blank=True, null=True)
@@ -1158,14 +1165,11 @@ class Cotizacion(models.Model):
 
     @property
     def score(self):
-        """Calcula qué tan buena es la oferta (Menor es mejor)"""
         if not self.precio_ofrecido:
             return float('inf')
-        # Algoritmo simple: (Precio * 0.7) + (Días * 10)
         p = float(self.precio_ofrecido)
         d = float(self.dias_entrega or 5) 
         return (p * 0.7) + (d * 10)
-
 
 # ==============================================================================
 # MÓDULO DE FIDELIZACIÓN: REACTIVACIÓN DE CLIENTES
