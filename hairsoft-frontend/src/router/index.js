@@ -6,6 +6,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 // Auth
 const Login = () => import('@/views/login.vue')
+const SolicitarRecuperacion = () => import('@/views/auth/SolicitarRecuperacion.vue')
+const NuevaPassword = () => import('@/views/auth/NuevaPassword.vue')
 
 // --- VISTAS PÚBLICAS Y CLIENTE ---
 const ServiciosPublico = () => import('@/views/publico/ServiciosPublico.vue')
@@ -28,7 +30,6 @@ const ModificarUsuario = () => import('@/views/usuarios/ModificarUsuario.vue')
 // Turnos (Gestión Admin)
 const ListadoTurnos = () => import('@/views/turnos/ListadoTurnos.vue')
 const RegistrarTurnoPresencial = () => import('@/views/turnos/RegistrarTurnoPresencial.vue')
-// RegistrarTurnoWeb: Se usa para el cliente (con layout client) y para el admin (con layout admin si se quisiera)
 const RegistrarTurnoWeb = () => import('@/views/turnos/RegistrarTurnoWeb.vue') 
 const ModificarTurno = () => import('@/views/turnos/ModificarTurno.vue')
 const AceptarOferta = () => import('@/views/turnos/AceptarOferta.vue')
@@ -52,7 +53,7 @@ const RegistrarProducto = () => import('@/views/productos/RegistrarProducto.vue'
 const ModificarProducto = () => import('@/views/productos/ModificarProducto.vue')
 const ListadoMarcas = () => import('@/views/productos/ListadoMarcas.vue')
 const RegistrarMarca = () => import('@/views/productos/RegistrarMarca.vue')
-const EditarMarca = () => import('@/views/productos/ModificarMarca.vue') // Confirma el nombre de este archivo
+const EditarMarca = () => import('@/views/productos/ModificarMarca.vue')
 
 // Proveedores
 const ListadoProveedores = () => import('@/views/proveedores/ListadoProveedores.vue')
@@ -89,6 +90,20 @@ const routes = [
   
   // Login
   { path: '/login', name: 'Login', component: Login, meta: { hideNavbar: true } },
+
+  // RECUPERACIÓN DE CONTRASEÑA (NUEVO)
+  { 
+    path: '/recuperar-password', 
+    name: 'RecuperarPassword', 
+    component: SolicitarRecuperacion, 
+    meta: { hideNavbar: true } 
+  },
+  { 
+    path: '/recuperar-password/:token', 
+    name: 'NuevaPassword', 
+    component: NuevaPassword, 
+    meta: { hideNavbar: true } 
+  },
 
   // ---------------------------------------------------------------------------
   // 🌍 ZONA PÚBLICA (Acceso libre)
@@ -163,8 +178,6 @@ const routes = [
 
   // ---------------------------------------------------------------------------
   // 🛡️ ZONA ADMINISTRATIVA (Requiere Auth + Rol ADMIN/STAFF)
-  // IMPORTANTE: Todas estas rutas llevan `requiresAuth: true` y `role: 'ADMIN'`
-  // 'ADMIN' aquí funciona como "Personal Autorizado" (Admin, Recepcionista, Peluquero)
   // ---------------------------------------------------------------------------
   
   // Dashboard
@@ -233,11 +246,11 @@ const router = createRouter({
 })
 
 // =============================================================================
-// 🛡️ GUARDIA DE SEGURIDAD (Esto es lo que faltaba o fallaba)
+// 🛡️ GUARDIA DE SEGURIDAD
 // =============================================================================
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token');
-  const userRol = localStorage.getItem('user_rol'); // Debe coincidir con lo guardado en Login
+  const userRol = localStorage.getItem('user_rol');
 
   // 1. Si la ruta requiere auth y NO hay token -> LOGIN
   if (to.meta.requiresAuth && !token) {
@@ -252,13 +265,10 @@ router.beforeEach((to, from, next) => {
     }
   }
 
-  // 3. Si la ruta es ZONA CLIENTE
   if (to.meta.role === 'CLIENTE') {
-    // (Opcional) Si un Admin quiere entrar, lo dejamos o lo sacamos.
-    // Por ahora lo dejamos pasar para que puedas testear.
+    // Se permite el acceso
   }
 
-  // Si todo está bien, adelante
   next();
 });
 

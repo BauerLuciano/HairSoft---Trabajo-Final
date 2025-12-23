@@ -290,4 +290,8 @@ urlpatterns = [
 
     # ✅ AGREGAMOS EL ROUTER AL FINAL (Cubre /api/auditoria/ y otros ViewSets futuros)
     path('api/', include(router.urls)),
+
+    #Para recuperar la contraseña desde el login!!!!
+    path('api/password-reset/solicitar/', func_views.solicitar_reset_password, name='solicitar-reset'),
+    path('api/password-reset/confirmar/', func_views.confirmar_reset_password, name='confirmar-reset'),
 ]

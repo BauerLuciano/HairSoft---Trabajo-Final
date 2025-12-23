@@ -1231,3 +1231,21 @@ class Auditoria(models.Model):
 
     def __str__(self):
         return f"{self.usuario} - {self.accion} {self.modelo_afectado} - {self.fecha}"
+
+#Para recuperar la contraseña del usuario desde el login
+class PasswordResetToken(models.Model):
+    usuario = models.ForeignKey('Usuario', on_delete=models.CASCADE)
+    token = models.CharField(max_length=100, unique=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+    usado = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            self.token = secrets.token_urlsafe(32) # Genera token seguro
+        super().save(*args, **kwargs)
+
+    @property
+    def es_valido(self):
+        # El token dura 1 hora (60 minutos)
+        expira = self.creado_en + timedelta(hours=1)
+        return timezone.now() < expira and not self.usado

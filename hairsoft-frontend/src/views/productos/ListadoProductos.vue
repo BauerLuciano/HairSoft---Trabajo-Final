@@ -194,9 +194,6 @@
 
     <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
       <div class="modal-content">
-        <button class="modal-close" @click="cerrarModalEditar" title="Cerrar formulario">
-          <X :size="20" />
-        </button>
         <ModificarProducto 
           :producto-id="productoEditando?.id" 
           @producto-actualizado="productoActualizado"
@@ -221,7 +218,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import axios from '@/utils/axiosConfig' // ✅ USAR CONFIGURACIÓN CENTRAL
+import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2'
 import RegistrarProducto from './RegistrarProducto.vue'
 import ModificarProducto from './ModificarProducto.vue'
@@ -231,7 +228,6 @@ import {
   ChevronLeft, ChevronRight, Trash2, X, AlertTriangle
 } from 'lucide-vue-next'
 
-// ✅ REDIRECCIÓN DESDE DASHBOARD (Query Params)
 import { useRoute } from 'vue-router'
 const route = useRoute()
 
@@ -283,10 +279,9 @@ const getPrimerosProveedores = (p) => getProveedoresNombres(p).slice(0, 3).map((
 
 const getEstadoClass = (e) => (e === 'ACTIVO' ? 'estado-success' : 'estado-danger')
 
-// ✅ LÓGICA DE STOCK MÍNIMO PERSONALIZADO
 const getStockClass = (p) => {
   const actual = p.stock_actual || 0
-  const minimo = p.stock_minimo || 5 // Fallback
+  const minimo = p.stock_minimo || 5 
   
   if (actual === 0) return 'estado-danger'
   if (actual <= minimo) return 'estado-warning'
@@ -307,7 +302,6 @@ const productosFiltrados = computed(() => {
     const matchMarca = !filtros.value.marca || p.marca == filtros.value.marca
     const matchEstado = !filtros.value.estado || p.estado == filtros.value.estado
     
-    // ✅ FILTRO INTELIGENTE DE STOCK BAJO
     const minimo = p.stock_minimo || 5
     const matchStock = !filtros.value.stockBajo || p.stock_actual <= minimo
     
@@ -358,7 +352,6 @@ onMounted(async () => {
   await cargarAuxiliares()
   await cargarProductos()
   
-  // ✅ DETECTAR REDIRECCIÓN DESDE DASHBOARD
   if (route.query.filtro === 'stock_bajo') {
     filtros.value.stockBajo = 'si'
   }
@@ -639,12 +632,24 @@ onMounted(async () => {
   transition: all 0.2s ease;
 }
 
-/* Celda de nombre con elipsis */
+/* MODIFICACIÓN AQUÍ: Hacer scrollable la celda de nombre */
 .nombre-cell {
   max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-x: auto; /* Habilitar scroll horizontal */
+  white-space: nowrap; /* Mantener en una línea */
+  scrollbar-width: thin; /* Scrollbar fino para Firefox */
+}
+
+/* Estilo para el scrollbar en Webkit (Chrome, Edge, Safari) para que se vea bien */
+.nombre-cell::-webkit-scrollbar {
+  height: 4px;
+}
+.nombre-cell::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 4px;
+}
+.nombre-cell::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .stock-bajo-row {
@@ -929,32 +934,6 @@ onMounted(async () => {
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(40px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-.modal-close {
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  background: var(--bg-tertiary);
-  border: 2px solid var(--error-color);
-  border-radius: 12px;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--error-color);
-  box-shadow: var(--shadow-md);
-  transition: all 0.3s ease;
-  z-index: 1001;
-}
-
-.modal-close:hover {
-  transform: scale(1.15) rotate(90deg);
-  box-shadow: 0 6px 25px rgba(239, 68, 68, 0.6);
-  background: var(--hover-bg);
-  border-color: var(--error-color);
 }
 
 /* SCROLLBAR PERSONALIZADO - CON VARIABLES */

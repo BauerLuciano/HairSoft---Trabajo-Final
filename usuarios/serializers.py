@@ -238,8 +238,6 @@ class ProductoSerializer(serializers.ModelSerializer):
     # ======= CONFIGURACIÓN DE STOCK =======
     stock_actual = serializers.IntegerField(required=True, min_value=0)
     stock_minimo = serializers.IntegerField(required=False, default=5, min_value=0)
-    
-    # ✅ FIX: Habilitamos el lote para que se guarde desde el frontend
     lote_reposicion = serializers.IntegerField(required=False, default=1, min_value=1)
 
     # ======= PROVEEDORES =======
@@ -252,6 +250,10 @@ class ProductoSerializer(serializers.ModelSerializer):
 
     proveedores_nombres = serializers.SerializerMethodField()
 
+    # ======= IMAGEN (OPCIONAL) =======
+    # Agregamos esto para que el serializer sepa manejar el archivo
+    imagen = serializers.ImageField(required=False, allow_null=True)
+
     class Meta:
         model = Producto
         fields = [
@@ -263,7 +265,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             'estado',
             'stock_actual',
             'stock_minimo',
-            'lote_reposicion', # ✅ AGREGADO A LA LISTA
+            'lote_reposicion',
             'categoria',
             'categoria_id',
             'categoria_nombre',
@@ -272,6 +274,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             'marca_nombre',
             'proveedores',
             'proveedores_nombres',
+            'imagen',  # <--- 🛑 ESTO FALTABA. SI NO ESTÁ ACÁ, DJANGO LA IGNORA.
         ]
         extra_kwargs = {
             'estado': {'required': False, 'default': 'ACTIVO'}
@@ -288,7 +291,6 @@ class ProductoSerializer(serializers.ModelSerializer):
         return producto
         
     def update(self, instance, validated_data):
-        # ✅ Esto asegura que el lote de reposición se actualice en la DB al editar
         if 'proveedores' in validated_data:
             proveedores_data = validated_data.pop('proveedores')
             instance.proveedores.set(proveedores_data)
@@ -833,3 +835,19 @@ class AuditoriaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Auditoria
         fields = '__all__'
+
+# ================================
+# Recuperar contra desde el login
+# ================================
+class SolicitarResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+class ResetPasswordConfirmarSerializer(serializers.Serializer):
+    token = serializers.CharField()
+    nueva_password = serializers.CharField(min_length=6)
+    confirmar_password = serializers.CharField(min_length=6)
+
+    def validate(self, data):
+        if data['nueva_password'] != data['confirmar_password']:
+            raise serializers.ValidationError("Las contraseñas no coinciden.")
+        return data

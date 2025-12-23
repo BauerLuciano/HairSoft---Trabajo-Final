@@ -7,6 +7,7 @@ from django.views import View
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.signals import user_logged_in
+from django.utils.html import strip_tags
 from rest_framework import viewsets, status, generics , filters, serializers
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.authtoken.models import Token
@@ -16,10 +17,10 @@ from rest_framework.response import Response
 from django.utils.decorators import method_decorator
 from datetime import datetime, timedelta
 from django.utils import timezone
-from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, PromocionReactivacion, Auditoria
+from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, PromocionReactivacion, Auditoria, PasswordResetToken
 from .mercadopago_service import MercadoPagoService
 import json, re, requests, unicodedata
-from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer, ListaPrecioProveedorSerializer, HistorialPreciosSerializer, PrecioSugeridoSerializer, ActualizarListaPreciosSerializer, CotizacionExternaSerializer, SolicitudPresupuestoSerializer, MarcaSerializer, AuditoriaSerializer
+from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer, ListaPrecioProveedorSerializer, HistorialPreciosSerializer, PrecioSugeridoSerializer, ActualizarListaPreciosSerializer, CotizacionExternaSerializer, SolicitudPresupuestoSerializer, MarcaSerializer, AuditoriaSerializer, SolicitarResetPasswordSerializer, ResetPasswordConfirmarSerializer
 from django.contrib.auth.hashers import check_password
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -5060,3 +5061,110 @@ def listado_auditoria(request):
     logs = Auditoria.objects.all().select_related('usuario').order_by('-fecha')
     serializer = AuditoriaSerializer(logs, many=True)
     return Response(serializer.data)
+
+#Para recuperar la contraseña desde el login
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def solicitar_reset_password(request):
+    serializer = SolicitarResetPasswordSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+
+    email = serializer.validated_data['email']
+    
+    try:
+        usuario = Usuario.objects.get(correo=email)
+        reset_token = PasswordResetToken.objects.create(usuario=usuario)
+        
+        # Link al Frontend
+        link = f"http://localhost:5173/recuperar-password/{reset_token.token}"
+        
+        # --- DISEÑO DEL EMAIL HTML ---
+        html_message = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; margin: 0; padding: 0; }}
+                .container {{ max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+                .header {{ background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 30px; text-align: center; }}
+                .header h1 {{ color: #ffffff; margin: 0; font-size: 28px; letter-spacing: 1px; }}
+                .content {{ padding: 40px 30px; color: #334155; text-align: center; }}
+                .welcome {{ font-size: 20px; font-weight: 600; margin-bottom: 20px; color: #1e293b; }}
+                .text {{ font-size: 16px; line-height: 1.6; margin-bottom: 30px; }}
+                .btn {{ display: inline-block; background-color: #0ea5e9; color: #ffffff !important; padding: 16px 32px; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 16px; transition: background 0.3s; }}
+                .btn:hover {{ background-color: #0284c7; }}
+                .footer {{ background-color: #f8fafc; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>HairSoft</h1>
+                </div>
+                <div class="content">
+                    <div class="welcome">Hola, {usuario.nombre}</div>
+                    <div class="text">
+                        Recibimos una solicitud para restablecer tu contraseña. 
+                        Si fuiste vos, hacé clic en el botón de abajo para crear una nueva.
+                    </div>
+                    
+                    <a href="{link}" class="btn">Restablecer Contraseña</a>
+                    
+                    <div class="text" style="margin-top: 30px; font-size: 14px; color: #64748b;">
+                        Este enlace expirará en 1 hora. <br>
+                        Si no solicitaste esto, podés ignorar este correo.
+                    </div>
+                </div>
+                <div class="footer">
+                    &copy; 2025 HairSoft. Todos los derechos reservados.
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        plain_message = strip_tags(html_message)
+        
+        send_mail(
+            subject="🔐 Recuperación de Contraseña - HairSoft",
+            message=plain_message, 
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            fail_silently=False,
+            html_message=html_message 
+        )
+        
+        return Response({"message": "Correo enviado."})
+
+    except Usuario.DoesNotExist:
+        return Response({"message": "Correo enviado."}) 
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def confirmar_reset_password(request):
+    serializer = ResetPasswordConfirmarSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+
+    token_str = serializer.validated_data['token']
+    nueva_pass = serializer.validated_data['nueva_password']
+
+    try:
+        reset_token = PasswordResetToken.objects.get(token=token_str)
+        
+        if not reset_token.es_valido:
+            return Response({"error": "El enlace ha expirado o ya fue usado."}, status=400)
+            
+        usuario = reset_token.usuario
+        usuario.set_password(nueva_pass) # Hashea la contraseña
+        usuario.save()
+        
+        # Quemar token
+        reset_token.usado = True
+        reset_token.save()
+        
+        return Response({"message": "¡Contraseña actualizada! Ya podés iniciar sesión."})
+
+    except PasswordResetToken.DoesNotExist:
+        return Response({"error": "Token inválido."}, status=400)

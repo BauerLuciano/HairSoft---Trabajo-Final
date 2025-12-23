@@ -64,10 +64,10 @@
           </div>
 
           <!-- Forgot Password -->
-          <div class="forgot-password">
-            <a href="#" @click.prevent="handleForgotPassword" class="forgot-link">
+          <div class="login-footer">
+            <router-link to="/recuperar-password" class="forgot-link">
               ¿Olvidaste tu contraseña?
-            </a>
+            </router-link>
           </div>
           
           <!-- Login Button -->
@@ -294,6 +294,19 @@ const handleForgotPassword = () => {
   padding: 20px;
   position: relative;
   overflow: hidden;
+}
+
+.forgot-link {
+  display: block;
+  text-align: center;
+  margin-top: 15px;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+.forgot-link:hover {
+  color: #0ea5e9;
+  text-decoration: underline;
 }
 
 /* Background Effects */
