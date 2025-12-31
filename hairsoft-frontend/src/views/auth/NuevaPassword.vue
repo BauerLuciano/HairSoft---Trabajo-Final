@@ -20,7 +20,7 @@
             <input 
               v-model="password" 
               :type="mostrarPass ? 'text' : 'password'" 
-              placeholder="Mínimo 6 caracteres" 
+              placeholder="Mínimo 6 caracteres, 1 mayúscula, 1 número" 
               required
               @focus="focusedField = 'pass'"
               @blur="focusedField = ''"
@@ -75,10 +75,21 @@ const focusedField = ref('')
 const token = route.params.token 
 
 // Validaciones
-const esValido = computed(() => password.value.length >= 6 && password.value === confirmPassword.value)
+const esValido = computed(() => {
+  // Regex: Al menos 6 caracteres, una mayúscula y un número
+  const regexFuerte = /^(?=.*[A-Z])(?=.*\d).{6,}$/;
+  return regexFuerte.test(password.value) && password.value === confirmPassword.value;
+})
+
 const errorMsg = computed(() => {
   if (confirmPassword.value && password.value !== confirmPassword.value) return "Las contraseñas no coinciden"
-  if (password.value && password.value.length < 6) return "La contraseña es muy corta"
+  
+  if (password.value) {
+      if (password.value.length < 6) return "Mínimo 6 caracteres"
+      if (!/(?=.*[A-Z])/.test(password.value)) return "Falta al menos una mayúscula"
+      if (!/(?=.*\d)/.test(password.value)) return "Falta al menos un número"
+  }
+  
   return ""
 })
 
@@ -123,6 +134,7 @@ const guardarPassword = async () => {
     transform: translate(-50%, -50%);
     z-index: 0;
     background: radial-gradient(circle, rgba(14, 165, 233, 0.15) 0%, transparent 70%); /* Azul */
+    animation: pulseGlow 8s infinite alternate;
 }
 
 @keyframes pulseGlow {
@@ -178,6 +190,7 @@ const guardarPassword = async () => {
   width: 100%;
   background: rgba(15, 23, 42, 0.6);
   border: 2px solid #334155;
+  border-radius: 12px; /* Agregado borde redondeado aquí también */
   transition: all 0.3s ease;
   display: flex;
   align-items: center;

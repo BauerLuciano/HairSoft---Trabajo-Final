@@ -1,7 +1,5 @@
 <template>
-  <!-- FONDO DEGRADADO -->
   <div class="page-background">
-    <!-- TARJETA BLANCA QUE ENVUELVE TODO -->
     <div class="main-card-container">
       <div class="turno-container">
         <div class="header-section">
@@ -198,7 +196,7 @@
               @click="esHorarioDisponible(hora) ? seleccionarHora(hora) : null"
             >
               <span class="hora-texto">{{ hora }}</span>
-              <span v-if="!esHorarioDisponible(hora)" class="etiqueta-ocupado">OCUPADO</span>
+              <span v-if="!esHorarioDisponible(hora)" class="etiqueta-ocupado">NO DISP.</span>
             </div>
           </div>
         </div>
@@ -268,7 +266,6 @@
           </div>
         </transition>
 
-        <!-- 🟢 MODAL PARA REGISTRAR CLIENTE -->
         <transition name="fade">
           <div v-if="mostrarModalRegistro" class="modal-overlay">
             <div class="modal-container">
@@ -283,82 +280,32 @@
                 <div class="form-grid">
                   <div class="input-group">
                     <label class="label-modern">Nombre *</label>
-                    <input 
-                      type="text" 
-                      v-model="formNuevoCliente.nombre" 
-                      class="input-modern" 
-                      placeholder="Ej: Juan"
-                      :class="{ 'input-error': erroresCliente.nombre }"
-                    />
-                    <div v-if="erroresCliente.nombre" class="msg-error small">
-                      {{ erroresCliente.nombre }}
-                    </div>
+                    <input type="text" v-model="formNuevoCliente.nombre" class="input-modern" placeholder="Ej: Juan" :class="{ 'input-error': erroresCliente.nombre }" />
+                    <div v-if="erroresCliente.nombre" class="msg-error small">{{ erroresCliente.nombre }}</div>
                   </div>
-                  
                   <div class="input-group">
                     <label class="label-modern">Apellido *</label>
-                    <input 
-                      type="text" 
-                      v-model="formNuevoCliente.apellido" 
-                      class="input-modern" 
-                      placeholder="Ej: Pérez"
-                      :class="{ 'input-error': erroresCliente.apellido }"
-                    />
-                    <div v-if="erroresCliente.apellido" class="msg-error small">
-                      {{ erroresCliente.apellido }}
-                    </div>
+                    <input type="text" v-model="formNuevoCliente.apellido" class="input-modern" placeholder="Ej: Pérez" :class="{ 'input-error': erroresCliente.apellido }" />
+                    <div v-if="erroresCliente.apellido" class="msg-error small">{{ erroresCliente.apellido }}</div>
                   </div>
-                  
                   <div class="input-group">
                     <label class="label-modern">DNI *</label>
-                    <input 
-                      type="text" 
-                      v-model="formNuevoCliente.dni" 
-                      class="input-modern" 
-                      placeholder="Ej: 12345678"
-                      :class="{ 'input-error': erroresCliente.dni }"
-                    />
-                    <div v-if="erroresCliente.dni" class="msg-error small">
-                      {{ erroresCliente.dni }}
-                    </div>
+                    <input type="text" v-model="formNuevoCliente.dni" class="input-modern" placeholder="Ej: 12345678" :class="{ 'input-error': erroresCliente.dni }" />
+                    <div v-if="erroresCliente.dni" class="msg-error small">{{ erroresCliente.dni }}</div>
                   </div>
-                  
                   <div class="input-group">
                     <label class="label-modern">Teléfono</label>
-                    <input 
-                      type="text" 
-                      v-model="formNuevoCliente.telefono" 
-                      class="input-modern" 
-                      placeholder="Ej: +541123456789"
-                    />
+                    <input type="text" v-model="formNuevoCliente.telefono" class="input-modern" placeholder="Ej: +541123456789" />
                   </div>
-                  
                   <div class="input-group">
                     <label class="label-modern">Email *</label>
-                    <input 
-                      type="email" 
-                      v-model="formNuevoCliente.correo" 
-                      class="input-modern" 
-                      placeholder="Ej: cliente@email.com"
-                      :class="{ 'input-error': erroresCliente.correo }"
-                    />
-                    <div v-if="erroresCliente.correo" class="msg-error small">
-                      {{ erroresCliente.correo }}
-                    </div>
+                    <input type="email" v-model="formNuevoCliente.correo" class="input-modern" placeholder="Ej: cliente@email.com" :class="{ 'input-error': erroresCliente.correo }" />
+                    <div v-if="erroresCliente.correo" class="msg-error small">{{ erroresCliente.correo }}</div>
                   </div>
-                  
                   <div class="input-group">
                     <label class="label-modern">Contraseña *</label>
-                    <input 
-                      type="password" 
-                      v-model="formNuevoCliente.contrasena" 
-                      class="input-modern" 
-                      placeholder="Mínimo 6 caracteres"
-                      :class="{ 'input-error': erroresCliente.contrasena }"
-                    />
-                    <div v-if="erroresCliente.contrasena" class="msg-error small">
-                      {{ erroresCliente.contrasena }}
-                    </div>
+                    <input type="password" v-model="formNuevoCliente.contrasena" class="input-modern" placeholder="Mínimo 6 caracteres" :class="{ 'input-error': erroresCliente.contrasena }" />
+                    <div v-if="erroresCliente.contrasena" class="msg-error small">{{ erroresCliente.contrasena }}</div>
                   </div>
                 </div>
                 
@@ -368,14 +315,8 @@
               </div>
               
               <div class="modal-footer">
-                <button @click="cerrarModalRegistro" class="btn-secondary">
-                  Cancelar
-                </button>
-                <button 
-                  @click="crearClienteDesdeTurno" 
-                  class="btn-primary"
-                  :disabled="creandoCliente"
-                >
+                <button @click="cerrarModalRegistro" class="btn-secondary">Cancelar</button>
+                <button @click="crearClienteDesdeTurno" class="btn-primary" :disabled="creandoCliente">
                   <span v-if="!creandoCliente">Registrar Cliente</span>
                   <span v-else>Registrando...</span>
                 </button>
@@ -399,7 +340,7 @@ import {
 } from 'lucide-vue-next'
 
 const router = useRouter()
-const API_URL = "http://localhost:8000/api" // ✅ CORREGIDO: Sin /usuarios/
+const API_URL = "http://localhost:8000/api"
 
 const form = ref({
   canal: 'PRESENCIAL',
@@ -420,7 +361,7 @@ const peluqueros = ref([])
 const busquedaCliente = ref("")
 const clientesSugeridos = ref([])
 const categoriasSeleccionadas = ref([])
-const slotsOcupadosReales = ref([])
+const slotsOcupadosReales = ref([]) // Strings HH:MM
 const currentDate = ref(new Date())
 const errorCliente = ref("")
 const mensaje = ref("")
@@ -434,10 +375,11 @@ const STORAGE_KEY = 'turno_presencial_context'
 // Computed
 const serviciosFiltrados = computed(() => {
   if (categoriasSeleccionadas.value.length === 0) return []
-  const nombresCats = categorias.value
-    .filter(c => categoriasSeleccionadas.value.includes(c.id))
-    .map(c => c.nombre)
-  return servicios.value.filter(s => nombresCats.includes(s.categoria))
+  return servicios.value.filter(s => {
+    if (!s.categoria) return false
+    const catId = typeof s.categoria === 'object' ? s.categoria.id : s.categoria
+    return categoriasSeleccionadas.value.includes(catId)
+  })
 })
 
 const currentYear = computed(() => currentDate.value.getFullYear())
@@ -446,54 +388,110 @@ const nombreMesActual = computed(() => {
   const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
   return meses[currentMonth.value]
 })
-const daysInMonth = computed(() => {
-  return new Date(currentYear.value, currentMonth.value + 1, 0).getDate()
-})
-const startingDayOfWeek = computed(() => {
-  return new Date(currentYear.value, currentMonth.value, 1).getDay()
-})
+const daysInMonth = computed(() => new Date(currentYear.value, currentMonth.value + 1, 0).getDate())
+const startingDayOfWeek = computed(() => new Date(currentYear.value, currentMonth.value, 1).getDay())
 
-// 🟢 HORARIOS COMPUTADOS
+// 🟢 CORRECCIÓN: HORARIOS GENERADOS (YA NO SE OCULTAN LOS PASADOS)
 const horariosGenerados = computed(() => {
   const horariosBase = []
   const bloques = [
     { inicio: 8, fin: 12 }, 
     { inicio: 15, fin: 20 }
   ]
-  const ahora = new Date()
-  const horaActual = ahora.getHours()
-  const minutoActual = ahora.getMinutes()
-  const hoy = new Date()
-  const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
-  
-  const fechaForm = form.value.fecha
-  const esHoy = fechaForm === hoyFormateado
+  // La lógica de "es hoy" la sacamos de acá para que genere TODOS los horarios.
+  // La validación de si pasó o no la hora se hace en esHorarioDisponible
 
   bloques.forEach(b => {
     for (let h = b.inicio; h < b.fin; h++) {
       for (let m = 0; m < 60; m += intervaloMinutos) {
         const horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-        if (esHoy) {
-          if (h < horaActual) continue
-          if (h === horaActual && m <= minutoActual) continue
-        }
         horariosBase.push(horaStr)
       }
     }
-    const cierreH = b.fin
-    const cierreStr = `${String(cierreH).padStart(2, '0')}:00`
-    let agregarCierre = true
-    if (esHoy) {
-       if (cierreH < horaActual) agregarCierre = false
-       if (cierreH === horaActual && 0 <= minutoActual) agregarCierre = false
-    }
-    if (agregarCierre) horariosBase.push(cierreStr)
+    // Cierre de bloque (ej. 12:00)
+    horariosBase.push(`${String(b.fin).padStart(2, '0')}:00`)
   })
 
   return horariosBase
 })
 
-// 🟢 GUARDAR CONTEXTO
+// 🟢 CARGAR HORARIOS OCUPADOS (CORRECCIÓN REPLICACIÓN)
+const cargarHorariosOcupados = async (fecha) => {
+  if (!form.value.peluquero || form.value.peluquero === form.value.cliente) return
+  
+  form.value.hora = ""
+  cargandoHorarios.value = true
+  slotsOcupadosReales.value = [] 
+  
+  try {
+    // Usamos 'peluquero' para coincidir con el backend que usa filtros por param 'peluquero' o 'peluquero_id'
+    const url = `${API_URL}/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
+    
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`Error: ${res.status}`)
+    
+    const turnos = await res.json()
+    
+    const ocupadosSet = new Set()
+    
+    turnos.forEach(turno => {
+        // 🛡️ FILTRO DE SEGURIDAD CLIENT-SIDE
+        // Si la API devuelve turnos de otros días por error, los ignoramos acá
+        if (turno.fecha !== fecha) return
+
+        const [h, m] = turno.hora.split(':').map(Number)
+        const inicioMin = h * 60 + m
+        
+        let duracion = turno.duracion_total || 0
+        if (!duracion && turno.servicios) {
+            duracion = turno.servicios.reduce((acc, s) => acc + (s.duracion || 20), 0)
+        }
+        if (!duracion) duracion = 20
+        
+        const finMin = inicioMin + duracion
+        
+        // Marcamos los slots que caen dentro de este turno
+        for (let i = inicioMin; i < finMin; i += 20) {
+            const hh = Math.floor(i / 60).toString().padStart(2, '0')
+            const mm = (i % 60).toString().padStart(2, '0')
+            ocupadosSet.add(`${hh}:${mm}`)
+        }
+    })
+    
+    slotsOcupadosReales.value = Array.from(ocupadosSet)
+
+  } catch (e) {
+    console.error("❌ Error cargando turnos:", e)
+  } finally {
+    cargandoHorarios.value = false
+  }
+}
+
+// 🟢 CORRECCIÓN: DISPONIBILIDAD (OCUPADO + PASADO)
+const esHorarioDisponible = (hora) => {
+  // 1. Validar si está ocupado por otro turno
+  if (!form.value.fecha || !form.value.peluquero) return true
+  const horaSimple = hora.substring(0, 5)
+  if (slotsOcupadosReales.value.includes(horaSimple)) return false
+
+  // 2. Validar si ya pasó la hora (Si es HOY)
+  const hoy = new Date()
+  const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+  
+  if (form.value.fecha === hoyFormateado) {
+     const [h, m] = hora.split(':').map(Number)
+     const ahoraH = hoy.getHours()
+     const ahoraM = hoy.getMinutes()
+     
+     // Si la hora es menor a la actual, ya pasó. (Ej: son las 11:00, las 10:40 ya fue)
+     if (h < ahoraH) return false
+     if (h === ahoraH && m < ahoraM) return false
+  }
+
+  return true
+}
+
+// RESTO DE FUNCIONES (Contexto, Cargas, etc. IGUAL QUE ANTES)
 const guardarContexto = () => {
   const contexto = {
     categoriasSeleccionadas: categoriasSeleccionadas.value,
@@ -509,74 +507,49 @@ const guardarContexto = () => {
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(contexto))
 }
 
-// 🟢 CARGAR CONTEXTO
 const cargarContexto = () => {
   const contextoStr = sessionStorage.getItem(STORAGE_KEY)
   if (contextoStr) {
     try {
       const contexto = JSON.parse(contextoStr)
-      
       if (contexto.tipo_pago) form.value.tipo_pago = contexto.tipo_pago
       if (contexto.medio_pago) form.value.medio_pago = contexto.medio_pago
       if (contexto.comprobante_id) form.value.comprobante_id = contexto.comprobante_id
-      
       if (contexto.peluquero && form.value.cliente !== contexto.peluquero) {
         form.value.peluquero = contexto.peluquero
       }
-      
       if (contexto.fecha) form.value.fecha = contexto.fecha
       if (contexto.hora) form.value.hora = contexto.hora
-      
       if (contexto.serviciosSeleccionados && contexto.serviciosSeleccionados.length > 0) {
         form.value.servicios_ids = contexto.serviciosSeleccionados
       }
       if (contexto.categoriasSeleccionadas && contexto.categoriasSeleccionadas.length > 0) {
         categoriasSeleccionadas.value = contexto.categoriasSeleccionadas
       }
-      
       if (form.value.fecha && form.value.peluquero && form.value.peluquero !== form.value.cliente) {
         cargarHorariosOcupados(form.value.fecha)
       }
-    } catch (e) {
-      console.error('Error cargando contexto:', e)
-    }
+    } catch (e) { console.error(e) }
   }
 }
 
-// 🟢 LIMPIAR CONTEXTO
-const limpiarContexto = () => {
-  sessionStorage.removeItem(STORAGE_KEY)
-}
+const limpiarContexto = () => sessionStorage.removeItem(STORAGE_KEY)
 
 const cargarDatosIniciales = async () => {
   try {
-    console.log("📡 Cargando datos desde:", API_URL)
-    
-    // ✅ CORREGIDO: Rutas sin /usuarios/
     const [resCat, resServ, resPel] = await Promise.all([
       fetch(`${API_URL}/categorias/servicios/`),
       fetch(`${API_URL}/servicios/`),
       fetch(`${API_URL}/peluqueros/`)
     ])
     
-    // Verificar respuestas
-    if (!resCat.ok) throw new Error(`Error categorías: ${resCat.status}`)
-    if (!resServ.ok) throw new Error(`Error servicios: ${resServ.status}`)
-    if (!resPel.ok) throw new Error(`Error peluqueros: ${resPel.status}`)
+    if (!resCat.ok || !resServ.ok || !resPel.ok) throw new Error("Error cargando datos")
     
     categorias.value = await resCat.json()
     servicios.value = await resServ.json()
     peluqueros.value = await resPel.json()
-    
-    console.log("📦 Datos cargados exitosamente:", {
-      categorias: categorias.value.length,
-      servicios: servicios.value.length,
-      peluqueros: peluqueros.value.length
-    })
-    
   } catch (error) {
-    console.error("❌ Error API", error)
-    mensaje.value = "Error cargando datos del servidor. Verifica la conexión."
+    mensaje.value = "Error cargando datos del servidor."
     mensajeTipo.value = "error"
   }
 }
@@ -588,43 +561,26 @@ const actualizarBusquedaCliente = async (e) => {
     return
   }
   try {
-    // ✅ CORREGIDO: Ruta sin /usuarios/
     const res = await fetch(`${API_URL}/clientes/?q=${busquedaCliente.value}`)
-    if (!res.ok) throw new Error(`Error: ${res.status}`)
     const data = await res.json()
     clientesSugeridos.value = data.results || data || []
     errorCliente.value = clientesSugeridos.value.length === 0 ? "No se encontraron clientes" : ""
-  } catch (e) {
-    console.error("Error buscando clientes:", e)
-    errorCliente.value = "Error de conexión"
-  }
+  } catch (e) { errorCliente.value = "Error" }
 }
 
 const seleccionarCliente = (c) => {
-  if (!c || !c.id) {
-    console.error("Cliente inválido:", c)
-    return
-  }
-  
+  if (!c || !c.id) return
   form.value.cliente = parseInt(c.id)
   const nombre = c.nombre || c.first_name || ''
   const apellido = c.apellido || c.last_name || ''
   form.value.clienteNombre = `${nombre} ${apellido}`.trim()
-  
-  console.log("👤 Cliente seleccionado:", form.value.clienteNombre, "ID:", form.value.cliente)
-  
   clientesSugeridos.value = []
   busquedaCliente.value = ""
-  errorCliente.value = ""
-  
   if (form.value.peluquero === c.id) {
     form.value.peluquero = ""
     resetFechas()
   }
-  
-  if (form.value.fecha && form.value.peluquero && form.value.peluquero !== form.value.cliente) {
-    cargarHorariosOcupados(form.value.fecha)
-  }
+  if (form.value.fecha && form.value.peluquero) cargarHorariosOcupados(form.value.fecha)
 }
 
 const limpiarCliente = () => {
@@ -642,9 +598,7 @@ const irARegistrarCliente = () => {
   router.push('/usuarios/crear?returnTo=turnos')
 }
 
-const getNombreCompletoCliente = (c) => {
-  return `${c.nombre || c.first_name || ''} ${c.apellido || c.last_name || ''}`.trim()
-}
+const getNombreCompletoCliente = (c) => `${c.nombre || ''} ${c.apellido || ''}`.trim()
 
 const toggleCategoria = (id) => {
   const index = categoriasSeleccionadas.value.indexOf(id)
@@ -662,9 +616,7 @@ const toggleServicio = (servicio) => {
   resetFechas()
 }
 
-const alCambiarPeluquero = () => {
-  resetFechas()
-}
+const alCambiarPeluquero = () => resetFechas()
 
 const resetFechas = () => {
   form.value.fecha = ""
@@ -689,9 +641,7 @@ const esDiaSeleccionable = (day) => {
   today.setHours(0,0,0,0)
   const diffTime = date - today
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  const isInRange = diffDays >= 0 && diffDays <= 7
-  const isSunday = date.getDay() === 0
-  return isInRange && !isSunday
+  return (diffDays >= 0 && diffDays <= 7) && date.getDay() !== 0
 }
 
 const esDiaSeleccionado = (day) => {
@@ -708,118 +658,8 @@ const seleccionarDiaCalendario = (day) => {
   cargarHorariosOcupados(form.value.fecha)
 }
 
-// 🟢 LÓGICA DE OCUPADOS
-const cargarHorariosOcupados = async (fecha) => {
-  if (!form.value.peluquero || form.value.peluquero === form.value.cliente) return
-  
-  form.value.hora = ""
-  cargandoHorarios.value = true
-  slotsOcupadosReales.value = [] 
-  
-  try {
-    // ✅ CORREGIDO: Ruta sin /usuarios/
-    const url = `${API_URL}/turnos/?fecha=${fecha}&peluquero_id=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
-    console.log("📡 Buscando turnos ocupados:", url)
-    
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`Error: ${res.status}`)
-    
-    const turnos = await res.json()
-    console.log("📊 Turnos ocupados encontrados:", turnos.length)
-    
-    const ocupadosSet = new Set()
-    
-    turnos.forEach(turno => {
-        const [h, m] = turno.hora.split(':').map(Number)
-        const inicioMin = h * 60 + m
-        
-        let duracion = turno.duracion_total || 0
-        if (!duracion && turno.servicios) {
-            duracion = turno.servicios.reduce((acc, s) => acc + (s.duracion || 20), 0)
-        }
-        if (!duracion) duracion = 20
-        
-        const finMin = inicioMin + duracion
-        
-        for (let i = inicioMin; i < finMin; i += 20) {
-            const hh = Math.floor(i / 60).toString().padStart(2, '0')
-            const mm = (i % 60).toString().padStart(2, '0')
-            ocupadosSet.add(`${hh}:${mm}`)
-        }
-    })
-    
-    slotsOcupadosReales.value = Array.from(ocupadosSet)
-    console.log("⏰ Slots ocupados:", slotsOcupadosReales.value)
-
-  } catch (e) {
-    console.error("❌ Error cargando turnos:", e)
-  } finally {
-    cargandoHorarios.value = false
-  }
-}
-
-const esHorarioDisponible = (hora) => {
-  if (!form.value.fecha || !form.value.peluquero || form.value.peluquero === form.value.cliente) return true
-  const horaSimple = hora.substring(0, 5)
-  return !slotsOcupadosReales.value.includes(horaSimple)
-}
-
-// Variables para el modal de registro (mantenidas para compatibilidad)
-const mostrarModalRegistro = ref(false)
-const creandoCliente = ref(false)
-const errorCrearCliente = ref("")
-const formNuevoCliente = ref({
-  nombre: "",
-  apellido: "",
-  dni: "",
-  telefono: "",
-  correo: "",
-  contrasena: ""
-})
-const erroresCliente = ref({
-  nombre: "",
-  apellido: "",
-  dni: "",
-  correo: "",
-  contrasena: ""
-})
-
-// 🔴 NOTA: La función crearClienteDesdeTurno() ya no es necesaria si no existe la ruta
-// Se mantiene para evitar errores en el template, pero muestra un mensaje informativo
-const crearClienteDesdeTurno = async () => {
-  creandoCliente.value = true
-  errorCrearCliente.value = "Esta función requiere una ruta específica en el backend. Usa el botón 'Registrar Nuevo Cliente'."
-  
-  // Retraso para mostrar el mensaje
-  setTimeout(() => {
-    creandoCliente.value = false
-  }, 2000)
-}
-
-const cerrarModalRegistro = () => {
-  mostrarModalRegistro.value = false
-  errorCrearCliente.value = ""
-  erroresCliente.value = {
-    nombre: "",
-    apellido: "",
-    dni: "",
-    correo: "",
-    contrasena: ""
-  }
-  formNuevoCliente.value = {
-    nombre: "",
-    apellido: "",
-    dni: "",
-    telefono: "",
-    correo: "",
-    contrasena: ""
-  }
-}
-
 const seleccionarHora = (hora) => {
-  if (esHorarioDisponible(hora)) {
-    form.value.hora = hora
-  }
+  if (esHorarioDisponible(hora)) form.value.hora = hora
 }
 
 const calcularTotal = () => {
@@ -829,9 +669,7 @@ const calcularTotal = () => {
   }, 0).toFixed(2)
 }
 
-const calcularSena = () => {
-  return (calcularTotal() / 2).toFixed(2)
-}
+const calcularSena = () => (calcularTotal() / 2).toFixed(2)
 
 const crearTurno = async () => {
   procesando.value = true
@@ -857,22 +695,14 @@ const crearTurno = async () => {
     mp_payment_id: form.value.medio_pago !== 'EFECTIVO' ? form.value.comprobante_id : null
   }
 
-  console.log("🚀 Enviando Turno Presencial:", payload)
-
   try {
     const token = localStorage.getItem('token')
-    // ✅ CORREGIDO: Ruta sin /usuarios/
     const res = await fetch(`${API_URL}/turnos/crear/`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": token ? `Token ${token}` : ''
-      },
+      headers: { "Content-Type": "application/json", "Authorization": token ? `Token ${token}` : '' },
       body: JSON.stringify(payload)
     })
-    
     const data = await res.json()
-    
     if (res.ok && data.status === 'ok') {
       mensaje.value = "¡Turno Reservado con Éxito!"
       mensajeTipo.value = "success"
@@ -883,7 +713,7 @@ const crearTurno = async () => {
       mensajeTipo.value = "error"
     }
   } catch (e) {
-    mensaje.value = "Error de conexión con el servidor"
+    mensaje.value = "Error de conexión"
     mensajeTipo.value = "error"
   } finally {
     procesando.value = false
@@ -895,40 +725,34 @@ const volverAlListado = () => {
   router.push('/turnos')
 }
 
+// Variables modal (compatibilidad)
+const mostrarModalRegistro = ref(false)
+const creandoCliente = ref(false)
+const errorCrearCliente = ref("")
+const formNuevoCliente = ref({ nombre: "", apellido: "", dni: "", telefono: "", correo: "", contrasena: "" })
+const erroresCliente = ref({ nombre: "", apellido: "", dni: "", correo: "", contrasena: "" })
+const crearClienteDesdeTurno = async () => {} 
+const cerrarModalRegistro = () => { mostrarModalRegistro.value = false }
+
 onMounted(() => {
-  console.log("📍 RegistrarTurnoPresencial - Montado")
   const urlParams = new URLSearchParams(window.location.search)
   const nuevoClienteId = urlParams.get('nuevo_cliente_id')
   const nuevoClienteNombre = urlParams.get('nuevo_cliente_nombre')
   
-  console.log("📌 URL Params:", {
-    nuevoClienteId,
-    nuevoClienteNombre,
-    search: window.location.search
-  })
-  
   if (nuevoClienteId && nuevoClienteNombre) {
-    console.log("🎯 NUEVO CLIENTE DETECTADO:", { nuevoClienteId, nuevoClienteNombre })
-    
     seleccionarCliente({
       id: parseInt(nuevoClienteId),
       nombre: decodeURIComponent(nuevoClienteNombre.split('+')[0]),
       apellido: decodeURIComponent(nuevoClienteNombre.split('+')[1] || '')
     })
-    
     cargarContexto()
-    
-    const nuevaUrl = window.location.pathname
-    console.log("🧹 Limpiando URL, nueva:", nuevaUrl)
-    window.history.replaceState({}, '', nuevaUrl)
+    window.history.replaceState({}, '', window.location.pathname)
   }
-  
   cargarDatosIniciales()
 })
 
 onBeforeUnmount(() => {
-  const currentPath = window.location.pathname
-  if (!currentPath.includes('/usuarios/crear')) {
+  if (!window.location.pathname.includes('/usuarios/crear')) {
     limpiarContexto()
   }
 })

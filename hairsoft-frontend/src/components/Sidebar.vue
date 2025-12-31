@@ -136,6 +136,7 @@ const menuSections = {
   ],
   inventario: [
     { name: 'Productos', path: '/productos', icon: 'ri-shopping-bag-line' },
+    { name: 'Catálogo Visual', path: '/catalogo', icon: 'ri-layout-grid-line' }, 
     { name: 'Pedidos', path: '/pedidos', icon: 'ri-shopping-cart-2-line' },
     { name: 'Proveedores', path: '/proveedores', icon: 'ri-truck-line' },
     { name: 'Categorías', path: '/categorias', icon: 'ri-list-settings-line' },
@@ -145,7 +146,7 @@ const menuSections = {
   admin: [
     { name: 'Usuarios', path: '/usuarios', icon: 'ri-team-line' },
     { name: 'Roles', path: '/roles', icon: 'ri-shield-user-line' },
-    // 🔥 AQUÍ AGREGAMOS LA AUDITORÍA
+    { name: 'Liquidación Sueldos', path: '/admin/liquidacion', icon: 'ri-money-dollar-circle-line' }, // 💰 Agregado
     { name: 'Auditoría', path: '/auditoria', icon: 'ri-file-history-line' },
   ]
 };

@@ -37,6 +37,7 @@ const AceptarOferta = () => import('@/views/turnos/AceptarOferta.vue')
 // Servicios
 const ListadoServicios = () => import('@/views/servicios/ListadoServicios.vue')
 const RegistrarServicio = () => import('@/views/servicios/RegistrarServicio.vue')
+const ModificarServicio = () => import('@/views/servicios/ModificarServicio.vue')
 
 // Categorías
 const ListadoCategorias = () => import('@/views/categorias/ListadoCategorias.vue')
@@ -54,6 +55,7 @@ const ModificarProducto = () => import('@/views/productos/ModificarProducto.vue'
 const ListadoMarcas = () => import('@/views/productos/ListadoMarcas.vue')
 const RegistrarMarca = () => import('@/views/productos/RegistrarMarca.vue')
 const EditarMarca = () => import('@/views/productos/ModificarMarca.vue')
+const CatalogoVisual = () => import('@/views/productos/CatalogoProductos.vue')
 
 // Proveedores
 const ListadoProveedores = () => import('@/views/proveedores/ListadoProveedores.vue')
@@ -77,8 +79,11 @@ const ModificarPedido = () => import('@/views/pedidos/ModificarPedido.vue')
 const RecibirPedido = () => import('@/views/pedidos/RecibirPedido.vue')
 const DetallePedido = () => import('@/views/pedidos/DetallePedido.vue')
 
-//Auditoría
+// Auditoría
 const ListadoAuditoria = () => import('@/views/auditoria/ListadoAuditoria.vue')
+
+// 💰 Liquidación de Sueldos (NUEVO)
+const LiquidacionSueldos = () => import('@/views/admin/LiquidacionSueldos.vue')
 
 // =============================================================================
 // DEFINICIÓN DE RUTAS CON SEGURIDAD
@@ -91,7 +96,7 @@ const routes = [
   // Login
   { path: '/login', name: 'Login', component: Login, meta: { hideNavbar: true } },
 
-  // RECUPERACIÓN DE CONTRASEÑA (NUEVO)
+  // RECUPERACIÓN DE CONTRASEÑA
   { 
     path: '/recuperar-password', 
     name: 'RecuperarPassword', 
@@ -197,6 +202,7 @@ const routes = [
   // Servicios
   { path: '/servicios', name: 'ListadoServicios', component: ListadoServicios, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/servicios/crear', name: 'RegistrarServicio', component: RegistrarServicio, meta: { requiresAuth: true, role: 'ADMIN' } },
+  { path: '/servicios/modificar/:id', name: 'ModificarServicio', component: ModificarServicio, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
 
   // Categorías
   { path: '/categorias', name: 'ListadoCategorias', component: ListadoCategorias, meta: { requiresAuth: true, role: 'ADMIN' } },
@@ -210,6 +216,7 @@ const routes = [
 
   // Productos y Marcas
   { path: '/productos', name: 'ListadoProductos', component: ListadoProductos, meta: { requiresAuth: true, role: 'ADMIN' } },
+  { path: '/catalogo', name: 'CatalogoVisual', component: CatalogoVisual, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/productos/crear', name: 'RegistrarProducto', component: RegistrarProducto, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/productos/modificar/:id', name: 'ModificarProducto', component: ModificarProducto, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/productos/marcas', name: 'ListadoMarcas', component: ListadoMarcas, meta: { requiresAuth: true, role: 'ADMIN' } },
@@ -238,6 +245,9 @@ const routes = [
 
   // Auditoría
   { path: '/auditoria', name: 'ListadoAuditoria', component: ListadoAuditoria, meta: { requiresAuth: true, role: 'ADMIN' }},
+
+  // 💰 Liquidación Sueldos (Nueva Ruta)
+  { path: '/admin/liquidacion', name: 'LiquidacionSueldos', component: LiquidacionSueldos, meta: { requiresAuth: true, role: 'ADMIN' } },
 ]
 
 const router = createRouter({

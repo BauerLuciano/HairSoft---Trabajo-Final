@@ -112,6 +112,14 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     estado = models.CharField(max_length=15, default='ACTIVO')
     fecha_creacion = models.DateTimeField(auto_now_add=True)
 
+    sueldo_fijo = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0.00,
+        verbose_name="Sueldo Fijo Mensual",
+        help_text="Usar solo para empleados con fijo (ej. Recepción)"
+    )
+
     # ✅ MÉTODOS COMPATIBILIDAD
     def get_username(self):
         return self.correo
@@ -130,13 +138,21 @@ class Servicio(models.Model):
     precio = models.DecimalField(max_digits=8, decimal_places=2)
     duracion = models.PositiveIntegerField(help_text="Duración en minutos", default=20)
     categoria = models.ForeignKey(CategoriaServicio, on_delete=models.CASCADE, null=True, blank=True)
+    descripcion = models.TextField(blank=True, null=True) 
+    activo = models.BooleanField(default=True) 
+
+    porcentaje_comision = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        default=0.00, 
+        help_text="Porcentaje que gana el peluquero por este servicio (0 a 100)"
+    )
 
     def __str__(self):
         return self.nombre
 
     class Meta:
         db_table = "servicios"
-
 
 # ===============================
 # PROVEEDORES
@@ -452,7 +468,6 @@ class Turno(models.Model):
     
     ESTADO_CHOICES = [
         ('RESERVADO', 'Reservado'),
-        ('CONFIRMADO', 'Confirmado'),
         ('COMPLETADO', 'Completado'),
         ('CANCELADO', 'Cancelado'),
     ]
@@ -493,13 +508,14 @@ class Turno(models.Model):
     token_reoferta = models.CharField(max_length=100, blank=True, null=True)
     cliente_asignado_reoferta = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="turnos_asignados_reoferta")
 
+    # 💰 MONTO DE COMISIÓN "CONGELADO"
+    monto_comision = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+
     def __str__(self):
         return f"{self.fecha} {self.hora} - {self.cliente.nombre} ({self.estado})"
 
     def puede_ser_modificado(self):
         ahora = timezone.now()
-        # Nota: Asumo que en un entorno de producción, la base de datos y Django usarán UTC
-        # Para hacer el combine, usamos la versión naive y luego la hacemos aware si es necesario
         fecha_turno_naive = datetime.combine(self.fecha, self.hora)
         fecha_turno = timezone.make_aware(fecha_turno_naive)
         tres_horas_antes = fecha_turno - timedelta(hours=3)
@@ -513,7 +529,6 @@ class Turno(models.Model):
         fecha_turno_naive = datetime.combine(self.fecha, self.hora)
         fecha_turno = timezone.make_aware(fecha_turno_naive)
 
-        # No se pueden cancelar turnos pasados
         if ahora >= fecha_turno:
             return False, False, "No se puede cancelar un turno que ya pasó"
         
@@ -535,93 +550,94 @@ class Turno(models.Model):
     def necesita_pago_mp(self):
         return self.medio_pago == 'MERCADO_PAGO'
 
-    # NUEVOS MÉTODOS PARA REOFERTA MASIVA
+    # --- MÉTODOS DE REOFERTA ---
     def puede_reofertar(self):
-        """Verifica si el turno puede ser reofertado"""
-        if self.estado != 'CANCELADO':
-            return False
-            
+        if self.estado != 'CANCELADO': return False
         fecha_turno_naive = datetime.combine(self.fecha, self.hora)
         fecha_turno = timezone.make_aware(fecha_turno_naive)
         tiempo_restante = fecha_turno - timezone.now()
-        
-        # Debe quedar un tiempo razonable para reofertar
         return tiempo_restante > timedelta(minutes=5) and not self.oferta_activa
     
     def obtener_interesados(self):
-            """
-            ✅ CORREGIDO: Obtiene clientes interesados para este slot específico.
-            Filtra por fecha, hora, peluquero y estado 'pendiente'.
-            """
-            print(f"🔍🔍🔍 BUSCANDO INTERESADOS PARA TURNO {self.id}:")
-
-            # 1. Filtro base: Mismo slot (Fecha, Hora, Peluquero) y estado pendiente
-            interesados = InteresTurnoLiberado.objects.filter(
-                fecha_deseada=self.fecha,
-                hora_deseada=self.hora,
-                peluquero=self.peluquero,
-                estado_oferta='pendiente' # Solo notificar a quienes no han sido contactados aún
-            ).order_by('fecha_registro') # FIFO (First In, First Out)
-            
-            # 🚨 DEBUG Y FLEXIBILIDAD (Corregido para evitar NameError)
-            # NOTA: Desactivamos el filtro por servicio para la prueba, ya que solo complica la depuración.
-            
-            servicios_ids = list(self.servicios.all().values_list('id', flat=True))
-
-            print(f"   - Parámetros de búsqueda CORREGIDOS:")
-            print(f"     fecha_deseada: {self.fecha}")
-            print(f"     hora_deseada: {self.hora}") 
-            print(f"     peluquero: {self.peluquero.id}")
-            # 💡 Muestra los IDs de los servicios del turno, pero no filtra por ellos
-            print(f"     Servicios en turno: {servicios_ids}") 
-            print(f"   - Resultados encontrados (sin filtro de servicio): {interesados.count()}")
-
-            return interesados
+        print(f"🔍🔍🔍 BUSCANDO INTERESADOS PARA TURNO {self.id}:")
+        # Usamos filter directo sobre el modelo InteresTurnoLiberado (que debe estar definido o importado)
+        # Como InteresTurnoLiberado está DEFINIDO ABAJO, aquí daría error si lo llamamos directamente al cargar el archivo.
+        # Pero como este método se ejecuta en runtime, Python ya habrá leído todo el archivo.
+        # Para seguridad total contra ReferenceError:
+        from django.apps import apps
+        InteresTurnoLiberado = apps.get_model('usuarios', 'InteresTurnoLiberado')
+        
+        interesados = InteresTurnoLiberado.objects.filter(
+            fecha_deseada=self.fecha,
+            hora_deseada=self.hora,
+            peluquero=self.peluquero,
+            estado_oferta='pendiente'
+        ).order_by('fecha_registro')
+        return interesados
         
     def iniciar_reoferta(self):
-        """Inicia el proceso de reoferta para este turno"""
         from .tasks import procesar_reoferta_masiva
-        
         if self.puede_reofertar():
             self.oferta_activa = True
-            # Asignar expiración de la reoferta 5 minutos antes del turno, por defecto
             fecha_turno_naive = datetime.combine(self.fecha, self.hora)
             fecha_turno = timezone.make_aware(fecha_turno_naive)
             self.fecha_expiracion_oferta = fecha_turno - timedelta(minutes=5)
             self.token_reoferta = secrets.token_urlsafe(32)
             self.save()
-            
-            # Disparar tarea async
             procesar_reoferta_masiva.delay(self.id)
             return True
         return False
 
+    # --- MÉTODOS DE CÁLCULO DE COMISIÓN ---
+    def calcular_comision_peluquero(self):
+        """Calcula la suma de comisiones de todos los servicios del turno."""
+        total_comision = 0
+        for s in self.servicios.all():
+            # Usamos getattr por seguridad si la migración no impactó aún
+            porcentaje = getattr(s, 'porcentaje_comision', 0)
+            if porcentaje > 0:
+                ganancia = float(s.precio) * (float(porcentaje) / 100)
+                total_comision += ganancia
+        return round(total_comision, 2)
+
     def save(self, *args, **kwargs):
         crear_venta = False
+        calcular_pago = False
+
         if self.pk:
-            old = Turno.objects.get(pk=self.pk)
-            # Solo si el estado pasó a COMPLETADO
-            if old.estado != 'COMPLETADO' and self.estado == 'COMPLETADO':
-                crear_venta = True
+            try:
+                old = Turno.objects.get(pk=self.pk)
+                if old.estado != 'COMPLETADO' and self.estado == 'COMPLETADO':
+                    crear_venta = True
+                    calcular_pago = True
+            except Turno.DoesNotExist:
+                pass
 
         super().save(*args, **kwargs)
+
+        # Calculamos pago DESPUÉS de guardar (M2M services necesitan ID)
+        if calcular_pago:
+            self.monto_comision = self.calcular_comision_peluquero()
+            # Update directo para evitar recursión
+            Turno.objects.filter(pk=self.pk).update(monto_comision=self.monto_comision)
 
         if crear_venta:
             self.crear_venta_turno()
 
     @transaction.atomic
     def crear_venta_turno(self):
-        # NOTA: Importa los modelos de Venta aquí si están en otro archivo/app
-        # Si Venta y DetalleVenta están en esta misma app (usuarios), ignora el 'from ventas.models...'
-        # Asumo que Venta y DetalleVenta están en esta misma app 'usuarios' dado el listado.
-        
+        # 🛡️ SOLUCIÓN REAL: Usamos apps.get_model para evitar errores de "Clase no definida todavía"
+        from django.apps import apps
+        MetodoPago = apps.get_model('usuarios', 'MetodoPago')
+        Venta = apps.get_model('usuarios', 'Venta')
+        DetalleVenta = apps.get_model('usuarios', 'DetalleVenta')
+
         total_servicios = sum(servicio.precio for servicio in self.servicios.all())
-        # Buscamos el método de pago por defecto, si no existe, usamos el tipo de pago del turno
         medio_pago_obj = MetodoPago.objects.filter(nombre__iexact=self.medio_pago).first() 
 
         venta = Venta.objects.create(
             cliente=self.cliente,
-            usuario=self.peluquero, # Asumimos que el peluquero registra el completado o un recepcionista (se podría cambiar a usuario logueado)
+            usuario=self.peluquero,
             total=total_servicios,
             tipo='TURNO',
             medio_pago=medio_pago_obj if medio_pago_obj else None
@@ -635,7 +651,6 @@ class Turno(models.Model):
                 precio_unitario=servicio.precio,
                 subtotal=servicio.precio
             )
-        # Recalcular total por si acaso
         venta.total = venta.detalles.aggregate(total=models.Sum('subtotal'))['total'] or 0
         venta.save()
 
@@ -1249,3 +1264,26 @@ class PasswordResetToken(models.Model):
         # El token dura 1 hora (60 minutos)
         expira = self.creado_en + timedelta(hours=1)
         return timezone.now() < expira and not self.usado
+
+#LIQUIDACION DE SUELDOS
+class Liquidacion(models.Model):
+    empleado = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='liquidaciones')
+    fecha_pago = models.DateTimeField(auto_now_add=True)
+    fecha_inicio_periodo = models.DateField()
+    fecha_fin_periodo = models.DateField()
+    
+    monto_comisiones = models.DecimalField(max_digits=10, decimal_places=2)
+    monto_sueldo_fijo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_pagado = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    observaciones = models.TextField(blank=True, null=True)
+
+    # Relación opcional con los turnos pagados para trazabilidad exacta
+    turnos_pagados = models.ManyToManyField(Turno, blank=True)
+
+    class Meta:
+        db_table = "liquidaciones"
+        ordering = ['-fecha_pago']
+
+    def __str__(self):
+        return f"Pago a {self.empleado} - ${self.total_pagado} ({self.fecha_pago.date()})"

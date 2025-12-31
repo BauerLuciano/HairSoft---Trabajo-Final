@@ -87,22 +87,52 @@ Ingrese su oferta aquí: {link}
 def procesar_reoferta_masiva(turno_id):
     try:
         turno = Turno.objects.get(id=turno_id)
-        if not turno.oferta_activa or turno.estado != 'CANCELADO': return False
+        
+        # Validaciones de estado
+        if not turno.oferta_activa or turno.estado != 'CANCELADO': 
+            return False
         
         interesados = turno.obtener_interesados()
+        
+        # Si no hay nadie esperando, liberamos el turno normal
         if not interesados.exists():
-            turno.estado = 'DISPONIBLE'; turno.oferta_activa = False; turno.save()
+            # Nota: Si usas estados simplificados, podrías necesitar ajustar 'DISPONIBLE'
+            # a simplemente dejarlo cancelado o borrarlo según tu lógica.
+            turno.estado = 'CANCELADO' 
+            turno.oferta_activa = False
+            turno.save()
             return True
         
+        # Enviar mensajes a los interesados
         for interes in interesados:
-            interes.turno_liberado = turno; interes.save()
+            # Vinculamos el interés con este turno específico
+            interes.turno_liberado = turno
+            interes.save()
+            
             link = f"http://localhost:5173/aceptar-oferta/{turno.id}/{interes.token_oferta}"
-            msg = f"*¡TURNO DISPONIBLE!* 🎁\n{turno.fecha} {turno.hora}\nReservá acá: {link}"
-            if interes.cliente.telefono: enviar_whatsapp_oferta.delay(interes.cliente.telefono, msg)
+
+            # Usamos triple comilla para formatear limpio
+            msg = f"""¡TURNO DISPONIBLE! 🎁
+            Hola {interes.cliente.nombre}, se liberó un lugar:
+
+            📅 {turno.fecha}
+            ⏰ {turno.hora}
+
+            👇 Tocá el link para reservar con un 15% de descuento!:
+            {link}
+
+            Los Últimos Serán Los Primeros"""
+            
+            # Envío
+            if interes.cliente.telefono: 
+                enviar_whatsapp_oferta.delay(interes.cliente.telefono, msg)
+            
             interes.marcar_enviada()
+            
         return True
+
     except Exception as e:
-        print(f"❌ Error reoferta: {e}")
+        print(f"❌ Error reoferta masiva: {e}")
         return False
 
 @shared_task

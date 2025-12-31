@@ -3,7 +3,7 @@
     <div class="header-section">
       <h2>
         <Shield class="header-icon" />
-        Nuevo Rol de Usuario
+        {{ rolId ? 'Editar Rol' : 'Nuevo Rol de Usuario' }}
       </h2>
       <button @click="cancelar" class="btn-back">
         <ArrowLeft :size="18" />
@@ -67,14 +67,14 @@
           </div>
           <div class="producto-info">
             <span class="producto-nombre">{{ permiso.nombre }}</span>
-            <small style="color: #6c757d; display: block;">{{ permiso.descripcion }}</small>
+            <small style="color: #6c757d; display: block;">{{ permiso.grupo || 'General' }}</small>
           </div>
         </div>
       </div>
 
       <div v-else class="no-resultados">
-        <Loader2 class="btn-spinner" :size="24" />
-        <p>Cargando permisos...</p>
+        <Loader2 v-if="cargando" class="btn-spinner" :size="24" />
+        <p v-else>No se encontraron permisos.</p>
       </div>
     </div>
 
@@ -86,7 +86,7 @@
     >
       <span v-if="!cargando" class="btn-content">
         <CheckCircle2 :size="20" />
-        Crear Rol
+        {{ rolId ? 'Guardar Cambios' : 'Crear Rol' }}
       </span>
       <span v-else class="btn-content">
         <Loader2 :size="20" class="btn-spinner" />
@@ -98,8 +98,8 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import axios from 'axios'
+import { useRouter, useRoute } from 'vue-router'
+import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2'
 import { 
   Shield, ArrowLeft, UserCog, Lock, Check, 
@@ -107,32 +107,70 @@ import {
 } from 'lucide-vue-next'
 
 const router = useRouter()
-const API_BASE = 'http://127.0.0.1:8000'
+const route = useRoute()
+const rolId = route.params.id
 
 const rol = reactive({
   nombre: '',
   descripcion: '',
-  permisos: []
+  permisos: [] // Array de IDs numéricos
 })
 
 const errores = reactive({ nombre: '' })
 const permisosDisponibles = ref([])
 const cargando = ref(false)
 
-onMounted(async () => {
+// Cargar Datos (Lógica blindada)
+const cargarDatos = async () => {
+  cargando.value = true
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/permisos/`)
-    permisosDisponibles.value = res.data
+    // 1. Cargar la lista completa de permisos
+    const resPermisos = await axios.get('/usuarios/api/permisos/')
+    permisosDisponibles.value = resPermisos.data
+
+    // 2. Si es edición, cargar el rol
+    if (rolId) {
+      console.log("Cargando rol a editar ID:", rolId)
+      const resRol = await axios.get(`/usuarios/api/roles/${rolId}/`)
+      const data = resRol.data
+
+      rol.nombre = data.nombre
+      rol.descripcion = data.descripcion || ''
+
+      // LÓGICA BLINDADA: Normalizar permisos a array de números
+      let permisosRaw = []
+
+      if (data.permisos_ids && Array.isArray(data.permisos_ids)) {
+        permisosRaw = data.permisos_ids
+      } else if (data.permisos && Array.isArray(data.permisos)) {
+        permisosRaw = data.permisos
+      }
+
+      // Convertir cada elemento a número, extrayendo ID si es objeto
+      rol.permisos = permisosRaw.map(p => {
+        if (typeof p === 'object' && p !== null) return Number(p.id)
+        return Number(p)
+      })
+
+      console.log("✅ Permisos procesados (IDs numéricos):", rol.permisos)
+    }
   } catch (err) {
     console.error(err)
-    Swal.fire('Error', 'No se pudieron cargar los permisos', 'error')
+    Swal.fire('Error', 'No se pudieron cargar los datos', 'error')
+  } finally {
+    cargando.value = false
   }
-})
+}
 
 const togglePermiso = (id) => {
-  const index = rol.permisos.indexOf(id)
-  if (index === -1) rol.permisos.push(id)
-  else rol.permisos.splice(index, 1)
+  const idNum = Number(id) // Asegurar que trabajamos con número
+  const index = rol.permisos.indexOf(idNum)
+  
+  if (index === -1) {
+    rol.permisos.push(idNum)
+  } else {
+    rol.permisos.splice(index, 1)
+  }
 }
 
 const validarNombre = () => {
@@ -144,13 +182,25 @@ const guardarRol = async () => {
   if (errores.nombre) return
 
   cargando.value = true
+  
+  // Enviamos 'permisos_ids' consistente con la modificación del backend
+  const payload = {
+    nombre: rol.nombre,
+    descripcion: rol.descripcion,
+    permisos_ids: rol.permisos 
+  }
+
   try {
-    await axios.post(`${API_BASE}/usuarios/api/roles/crear/`, rol)
+    if (rolId) {
+      await axios.put(`/usuarios/api/roles/${rolId}/`, payload)
+    } else {
+      await axios.post(`/usuarios/api/roles/crear/`, payload)
+    }
     
     await Swal.fire({
       icon: 'success',
-      title: 'Rol Creado',
-      text: 'El rol se registró correctamente',
+      title: '¡Éxito!',
+      text: 'Rol guardado correctamente',
       timer: 1500,
       showConfirmButton: false
     })
@@ -166,11 +216,14 @@ const guardarRol = async () => {
 }
 
 const cancelar = () => router.push('/roles')
+
+onMounted(() => {
+  cargarDatos()
+})
 </script>
 
 <style scoped>
-/* COPIAR ESTILOS DE TU RegistrarPedido.vue AQUÍ */
-/* He resumido los más importantes para que funcione visualmente igual */
+/* ESTILOS (Tus estilos originales intactos) */
 .pedido-container { max-width: 800px; margin: 0 auto; padding: 25px; background: #fff; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.12); font-family: 'Segoe UI', sans-serif; }
 .header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 2px solid #f1f3f4; padding-bottom: 20px; }
 .header-section h2 { margin: 0; color: #1a1a1a; font-size: 1.8em; font-weight: 700; display: flex; align-items: center; gap: 12px; }
@@ -190,7 +243,7 @@ const cancelar = () => router.push('/roles')
 .campo-invalido { border-color: #dc3545 !important; background: rgba(220,53,69,0.05) !important; }
 .mensaje-error { color: #dc3545; font-size: 0.85rem; margin-top: 6px; }
 
-/* Grid de Permisos (Estilo Productos) */
+/* Grid de Permisos */
 .permisos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
 .producto-item { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border: 2px solid #e9ecef; border-radius: 12px; cursor: pointer; transition: 0.3s; background: #fff; }
 .producto-item:hover { border-color: #007bff; transform: translateY(-2px); }

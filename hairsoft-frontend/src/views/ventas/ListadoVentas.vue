@@ -84,7 +84,7 @@
               <th>Método Pago</th>
               <th>Tipo</th>
               <th>Estado</th>
-              <th style="width: 60px; text-align: center;">PDF</th>
+              <th style="width: 60px; text-align: center;">Comprobante</th>
               <th>Acciones</th>
             </tr>
           </thead>

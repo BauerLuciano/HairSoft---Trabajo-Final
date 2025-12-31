@@ -1,75 +1,378 @@
 from rest_framework import viewsets, filters, generics, permissions
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.permissions import IsAdminUser, AllowAny
-from .models import Auditoria, Servicio, Turno, Usuario, Rol, Producto
-from .serializers import AuditoriaSerializer, ServicioSerializer, TurnoSerializer, UsuarioSerializer, ProductoCatalogoSerializer
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from django.db.models import Sum
+from django.http import HttpResponse
+from .models import Auditoria, Servicio, Turno, Usuario, Producto, Liquidacion
+from .serializers import AuditoriaSerializer, ServicioSerializer, TurnoSerializer, UsuarioSerializer, ProductoCatalogoSerializer, LiquidacionSerializer
+import io
+import datetime
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import Image as ImageRL 
+from reportlab.lib.units import inch, mm
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
 # ============================================
-# ✅ 1. API DE AUDITORÍA (LO NUEVO)
+# 1. API DE AUDITORÍA
 # ============================================
 class AuditoriaViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    ViewSet para listar y consultar detalles de auditoría.
-    """
-    # Optimizamos la consulta trayendo datos del usuario y su rol de una vez
     queryset = Auditoria.objects.select_related('usuario', 'usuario__rol').all().order_by('-fecha')
     serializer_class = AuditoriaSerializer
     permission_classes = [AllowAny] 
-    
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['accion', 'modelo_afectado']
-    # Buscamos por modelo, nombre de usuario o email
     search_fields = ['modelo_afectado', 'usuario__nombre', 'usuario__apellido', 'usuario__correo', 'objeto_id']
 
 # ============================================
-# ✅ 2. API VIEJA CORREGIDA (SOLUCIÓN AL ERROR)
+# 2. APIs DE GESTIÓN DE SERVICIOS
 # ============================================
 
-# Servicios
 class ServicioListAPIView(generics.ListAPIView):
-    queryset = Servicio.objects.all()
+    queryset = Servicio.objects.all().order_by('nombre')
     serializer_class = ServicioSerializer
     permission_classes = [AllowAny]
 
-# Turnos
+class ServicioCreateAPIView(generics.CreateAPIView):
+    queryset = Servicio.objects.all()
+    serializer_class = ServicioSerializer
+    permission_classes = [AllowAny]
+    
+    def perform_create(self, serializer):
+        porcentaje = self.request.data.get('porcentaje_comision', 0)
+        serializer.save(porcentaje_comision=porcentaje)
+
+class ServicioUpdateAPIView(generics.RetrieveUpdateAPIView):
+    queryset = Servicio.objects.all()
+    serializer_class = ServicioSerializer
+    permission_classes = [AllowAny]
+    lookup_field = 'id'
+
+class ServicioToggleEstadoView(APIView):
+    permission_classes = [AllowAny]
+    def post(self, request, id):
+        try:
+            servicio = Servicio.objects.get(id=id)
+            servicio.activo = not servicio.activo
+            servicio.save()
+            return Response({'status': 'ok', 'activo': servicio.activo})
+        except Servicio.DoesNotExist:
+            return Response({'error': 'Servicio no encontrado'}, status=404)
+
+# ============================================
+# 3. OTRAS APIs
+# ============================================
+
 class TurnoListAPIView(generics.ListCreateAPIView):
     queryset = Turno.objects.all()
     serializer_class = TurnoSerializer
     permission_classes = [AllowAny]
 
-# Peluqueros - ✅ CORREGIDO
 class PeluqueroListAPIView(generics.ListAPIView):
     serializer_class = UsuarioSerializer
     permission_classes = [AllowAny]
-
     def get_queryset(self):
-        # USAMOS rol__nombre PARA BUSCAR DENTRO DE LA TABLA RELACIONADA
-        # Usamos 'icontains' para que encuentre "Peluquero", "peluquero" o "PELUQUERO"
         return Usuario.objects.filter(rol__nombre__icontains='Peluquero')
 
-# Todos los usuarios con filtros - ✅ CORREGIDO
 class UsuarioListAPIView(generics.ListAPIView):
     serializer_class = UsuarioSerializer
     permission_classes = [AllowAny]
-
     def get_queryset(self):
         queryset = Usuario.objects.all()
         q = self.request.GET.get('q')
-        rol = self.request.GET.get('rol') # Ej: ?rol=Administrador
-
-        if rol:
-            # Corrección aquí también: filtrar por nombre del rol
-            queryset = queryset.filter(rol__nombre__icontains=rol)
-        
-        if q:
-            queryset = queryset.filter(nombre__icontains=q) | queryset.filter(apellido__icontains=q)
-        
+        rol = self.request.GET.get('rol')
+        if rol: queryset = queryset.filter(rol__nombre__icontains=rol)
+        if q: queryset = queryset.filter(nombre__icontains=q) | queryset.filter(apellido__icontains=q)
         return queryset
 
 class ProductoCatalogoView(generics.ListAPIView):
-    # Solo productos activos y con stock
     queryset = Producto.objects.filter(estado='ACTIVO', stock_actual__gt=0)
     serializer_class = ProductoCatalogoSerializer
-    permission_classes = [permissions.AllowAny] # ¡Importante! Acceso público    
+    permission_classes = [permissions.AllowAny]
     filter_backends = [filters.SearchFilter]
     search_fields = ['nombre', 'descripcion', 'marca__nombre']
+
+# ============================================
+# 💰 4. MÓDULO DE LIQUIDACIÓN
+# ============================================
+
+class ReporteLiquidacionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        inicio = request.query_params.get('fecha_inicio')
+        fin = request.query_params.get('fecha_fin')
+        peluquero_id = request.query_params.get('peluquero_id') # ✅ FILTRO NUEVO
+
+        if not inicio or not fin:
+            return Response({"error": "Faltan fechas"}, status=400)
+
+        # Base de empleados
+        empleados = Usuario.objects.filter(is_active=True).exclude(rol__nombre='Cliente')
+        
+        # ✅ APLICAMOS EL FILTRO SI VIENE UN ID
+        if peluquero_id and peluquero_id != 'null':
+            empleados = empleados.filter(id=peluquero_id)
+
+        reporte = []
+
+        for emp in empleados:
+            # 1. Buscamos TODOS los turnos del periodo
+            turnos = Turno.objects.filter(
+                peluquero=emp,
+                estado='COMPLETADO',
+                fecha__range=[inicio, fin]
+            ).select_related('cliente').prefetch_related('servicios')
+
+            detalles_turnos = []
+            total_comision = 0
+
+            # 2. Identificamos cuáles YA están pagados
+            turnos_pagados_ids = Liquidacion.turnos_pagados.through.objects.filter(
+                turno_id__in=turnos.values_list('id', flat=True)
+            ).values_list('turno_id', flat=True)
+
+            for t in turnos:
+                # Si el turno ya está pagado, LO SALTAMOS
+                if t.id in turnos_pagados_ids:
+                    continue
+
+                servicios_display = []
+                for s in t.servicios.all():
+                    pct = getattr(s, 'porcentaje_comision', 0)
+                    servicios_display.append(f"{s.nombre} ({int(pct)}%)")
+                
+                str_servicios = " + ".join(servicios_display)
+                monto_comision = float(t.monto_comision)
+                
+                # Sumamos al total pendiente
+                total_comision += monto_comision
+
+                detalles_turnos.append({
+                    "id": t.id,
+                    "fecha": t.fecha,
+                    "hora": t.hora,
+                    "cliente": f"{t.cliente.nombre} {t.cliente.apellido}",
+                    "servicios": str_servicios, 
+                    "total_cobrado": float(t.monto_total or 0),
+                    "comision": monto_comision
+                })
+
+            sueldo_base = float(emp.sueldo_fijo or 0)
+            
+            # Calculamos total real a pagar
+            total_a_pagar = total_comision + (sueldo_base if total_comision > 0 else 0)
+
+            # Solo agregamos al reporte si hay PLATA para pagar
+            if total_a_pagar > 0:
+                reporte.append({
+                    "id": emp.id,
+                    "nombre": f"{emp.nombre} {emp.apellido}",
+                    "rol": emp.rol.nombre if emp.rol else "N/A",
+                    "cantidad_turnos": len(detalles_turnos),
+                    "comision_ganada": round(total_comision, 2),
+                    "sueldo_fijo": sueldo_base,
+                    "total_a_pagar": round(total_a_pagar, 2),
+                    "detalles": detalles_turnos
+                })
+
+        return Response(reporte)
+
+
+class RegistrarPagoLiquidacionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        data = request.data
+        empleado_id = data.get('empleado_id')
+        inicio = data.get('fecha_inicio')
+        fin = data.get('fecha_fin')
+        
+        try:
+            empleado = Usuario.objects.get(id=empleado_id)
+        except Usuario.DoesNotExist:
+            return Response({"error": "Empleado no encontrado"}, status=404)
+
+        # 1. Buscamos SOLO turnos pendientes
+        turnos = Turno.objects.filter(
+            peluquero_id=empleado_id, 
+            estado='COMPLETADO', 
+            fecha__range=[inicio, fin]
+        ).exclude(liquidacion__isnull=False)
+        
+        total_comision = sum(float(t.monto_comision) for t in turnos)
+        sueldo_fijo = float(empleado.sueldo_fijo or 0)
+        total = total_comision + sueldo_fijo
+
+        if total == 0:
+             return Response({"error": "No hay monto pendiente para liquidar."}, status=400)
+
+        # 2. Creamos la liquidación
+        liquidacion = Liquidacion.objects.create(
+            empleado=empleado,
+            fecha_inicio_periodo=inicio,
+            fecha_fin_periodo=fin,
+            monto_comisiones=total_comision,
+            monto_sueldo_fijo=sueldo_fijo,
+            total_pagado=total,
+            observaciones=data.get('observaciones', '')
+        )
+        
+        # 3. Marcar turnos como pagados
+        liquidacion.turnos_pagados.set(turnos)
+
+        return Response({"status": "ok", "id": liquidacion.id, "mensaje": "Pago registrado correctamente"})
+
+
+class ReporteLiquidacionPDFView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        inicio = request.query_params.get('fecha_inicio')
+        fin = request.query_params.get('fecha_fin')
+        peluquero_id = request.query_params.get('peluquero_id')
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        # ==================== ENCABEZADO ====================
+        logo_path = "logo_barberia.jpg"
+        try:
+            logo = ImageRL(logo_path, width=25*mm, height=25*mm)
+        except:
+            logo = Paragraph("HS", styles['Heading1'])
+
+        title_style = ParagraphStyle('HeaderTitle', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=16, fontName='Helvetica-Bold', spaceAfter=4)
+        subtitle_style = ParagraphStyle('HeaderSub', parent=styles['Normal'], alignment=TA_CENTER, fontSize=11, textColor=colors.HexColor('#555555'))
+        
+        header_data = [[
+            logo, 
+            [
+                Paragraph("LOS ÚLTIMOS SERÁN LOS PRIMEROS", title_style),
+                Paragraph("Sistema de Gestión: <b>HairSoft</b>", subtitle_style),
+                Spacer(1, 6),
+                Paragraph(f"LIQUIDACIÓN DE SUELDOS<br/>Período: {inicio} al {fin}", subtitle_style)
+            ]
+        ]]
+        
+        t_header = Table(header_data, colWidths=[30*mm, 130*mm])
+        t_header.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        elements.append(t_header)
+        elements.append(Spacer(1, 15))
+        elements.append(Paragraph("<hr width='100%' color='#0ea5e9' size='2'/>", styles['Normal']))
+        elements.append(Spacer(1, 20))
+
+        # ==================== CUERPO ====================
+        empleados = Usuario.objects.filter(is_active=True).exclude(rol__nombre='Cliente')
+        if peluquero_id and peluquero_id != 'null':
+            empleados = empleados.filter(id=peluquero_id)
+
+        grand_total = 0
+        width_resumen = [80*mm, 80*mm] # Ajustado a 2 columnas
+        width_detalle = [20*mm, 40*mm, 75*mm, 25*mm]
+
+        for emp in empleados:
+            turnos = Turno.objects.filter(peluquero=emp, estado='COMPLETADO', fecha__range=[inicio, fin])
+            if not turnos.exists():
+                continue
+
+            total_comision = sum(float(t.monto_comision) for t in turnos)
+            grand_total += total_comision
+
+            # Nombre
+            elements.append(Paragraph(f"<b>PROFESIONAL: {emp.nombre} {emp.apellido}</b>", styles['Heading3']))
+            elements.append(Spacer(1, 3))
+
+            # Tabla Resumen (SIN SUELDO FIJO)
+            resumen_data = [
+                ['COMISIONES', 'TOTAL A PAGAR'],
+                [f"${total_comision:,.2f}", f"${total_comision:,.2f}"]
+            ]
+            t_res = Table(resumen_data, colWidths=width_resumen)
+            t_res.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#0f172a')), 
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                ('BACKGROUND', (0,1), (-1,1), colors.HexColor('#f1f5f9')), 
+                ('TEXTCOLOR', (0,1), (-1,1), colors.black),
+                ('TEXTCOLOR', (1,1), (1,1), colors.HexColor('#16a34a')), # Total en Verde
+                ('FONTNAME', (0,1), (-1,1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0,1), (-1,1), 10),
+                ('BOX', (0,0), (-1,-1), 0.5, colors.grey),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                ('TOPPADDING', (0,0), (-1,-1), 8),
+            ]))
+            elements.append(t_res)
+            elements.append(Spacer(1, 10))
+
+            # Tabla Detalles
+            if turnos.exists():
+                service_style = ParagraphStyle('ServiceList', parent=styles['Normal'], fontSize=8, leading=10)
+                data = [[
+                    Paragraph('<b>Fecha</b>', styles['Normal']), 
+                    Paragraph('<b>Cliente</b>', styles['Normal']), 
+                    Paragraph('<b>Servicios Realizados</b>', styles['Normal']), 
+                    Paragraph('<b>Comisión</b>', styles['Normal'])
+                ]]
+                
+                for t in turnos:
+                    s_items = []
+                    for s in t.servicios.all():
+                        pct = getattr(s, 'porcentaje_comision', 0)
+                        s_items.append(f"&bull; {s.nombre} <b>({int(pct)}%)</b>")
+                    
+                    servicios_vertical = "<br/>".join(s_items)
+
+                    data.append([
+                        t.fecha.strftime("%d/%m"),
+                        Paragraph(f"{t.cliente.nombre}<br/>{t.cliente.apellido}", styles['Normal']),
+                        Paragraph(servicios_vertical, service_style),
+                        f"${t.monto_comision}"
+                    ])
+                
+                t_det = Table(data, colWidths=width_detalle)
+                t_det.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#334155')), 
+                    ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                    ('ALIGN', (0,0), (-1,0), 'CENTER'),
+                    ('ALIGN', (3,1), (-1,-1), 'RIGHT'),
+                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                    ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                    ('FONTSIZE', (0,0), (-1,-1), 9),
+                    ('LEFTPADDING', (0,0), (-1,-1), 6),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 6),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                    ('TOPPADDING', (0,0), (-1,-1), 8),
+                ]))
+                elements.append(t_det)
+            
+            elements.append(Spacer(1, 25))
+
+        elements.append(Spacer(1, 10))
+        total_style = ParagraphStyle('TotalFinal', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=14, textColor=colors.HexColor('#0f172a'), alignment=TA_RIGHT, rightIndent=12)
+        elements.append(Paragraph(f"TOTAL GENERAL CAJA: ${grand_total:,.2f}", total_style))
+
+        doc.build(elements)
+        buffer.seek(0)
+        return HttpResponse(buffer, content_type='application/pdf')
+    
+class HistorialLiquidacionesView(generics.ListAPIView):
+    serializer_class = LiquidacionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        empleado_id = self.request.query_params.get('empleado_id')
+        queryset = Liquidacion.objects.all().select_related('empleado').order_by('-fecha_pago')
+        if empleado_id:
+            queryset = queryset.filter(empleado_id=empleado_id)
+        return queryset

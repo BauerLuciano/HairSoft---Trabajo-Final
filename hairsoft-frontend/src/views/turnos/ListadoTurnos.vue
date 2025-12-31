@@ -16,42 +16,32 @@
         <div class="filters-grid">
           <div class="filter-group">
             <label>Buscar Cliente</label>
-            <input 
-              v-model="filtros.busqueda" 
-              placeholder="Nombre o apellido..." 
-              class="filter-input"
-            />
+            <input v-model="filtros.busqueda" placeholder="Nombre o apellido..." class="filter-input"/>
           </div>
-
           <div class="filter-group">
-            <label>Fecha desde</label>
+            <label>Desde</label>
             <input type="date" v-model="filtros.fechaDesde" class="filter-input"/>
           </div>
           <div class="filter-group">
-            <label>Fecha hasta</label>
+            <label>Hasta</label>
             <input type="date" v-model="filtros.fechaHasta" class="filter-input"/>
           </div>
-
           <div class="filter-group">
             <label>Peluquero</label>
             <select v-model="filtros.peluquero" class="filter-input">
               <option value="">Todos</option>
-              <option v-for="p in peluqueros" :key="p.id" :value="p.id">
-                {{ p.nombre }} {{ p.apellido }}
-              </option>
+              <option v-for="p in peluqueros" :key="p.id" :value="p.id">{{ p.nombre }} {{ p.apellido }}</option>
             </select>
           </div>
-
           <div class="filter-group">
             <label>Estado</label>
             <select v-model="filtros.estado" class="filter-input">
               <option value="">Todos</option>
-              <option v-for="estado in estadosDisponibles" :key="estado" :value="estado">
-                {{ formatearEstado(estado) }}
-              </option>
+              <option value="RESERVADO">Reservado</option>
+              <option value="COMPLETADO">Completado</option>
+              <option value="CANCELADO">Cancelado</option>
             </select>
           </div>
-
           <div class="filter-group">
             <label>Canal</label>
             <select v-model="filtros.canal" class="filter-input">
@@ -60,12 +50,10 @@
               <option value="PRESENCIAL">Presencial</option>
             </select>
           </div>
-
           <div class="filter-group">
             <label>&nbsp;</label>
             <button @click="limpiarFiltros" class="clear-filters-btn">
-              <Trash2 :size="16" />
-              Limpiar
+              <Trash2 :size="16" /> Limpiar
             </button>
           </div>
         </div>
@@ -82,7 +70,7 @@
               <th>Servicios</th>
               <th>Duración</th>
               <th>Estado</th>
-              <th>Precio Total</th>
+              <th>Precio / Pago</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -97,9 +85,7 @@
                     <span class="canal-badge" :class="(turno.canal || '').toLowerCase()">
                       {{ turno.canal === 'WEB' ? '🌐 Web' : '🏪 Presencial' }}
                     </span>
-                    <span v-if="turno.oferta_activa" class="badge-reoferta">
-                      🔥 Reoferta Activa
-                    </span>
+                    <span v-if="turno.oferta_activa" class="badge-reoferta">🔥 Reoferta</span>
                   </div>
                 </div>
               </td>
@@ -114,11 +100,9 @@
                   </div>
                 </div>
               </td>
-              
               <td>
                 <div style="display: flex; align-items: center; gap: 5px; color: #64748b; font-weight: 600;">
-                  <Clock :size="16" />
-                  {{ turno.duracion_total || 0 }} min
+                  <Clock :size="16" /> {{ turno.duracion_total || 0 }} min
                 </div>
               </td>
 
@@ -127,48 +111,59 @@
                   {{ getEstadoTexto(turno.estado, turno.tipo_pago) }}
                 </span>
               </td>
+              
               <td>
                 <div class="precio-total-container">
-                  <span class="precio-total">
-                    ${{ formatPrecio(turno.monto_total) }}
-                  </span>
-                  <div v-if="turno.tipo_pago === 'SENA_50'" class="detalle-pago-mini">
-                    <small>Seña: ${{ formatPrecio(turno.monto_seña || calcularPrecioTotal(turno) * 0.5) }}</small>
-                    <br>
-                    <small>Falta: ${{ formatPrecio(calcularPrecioTotal(turno) - (turno.monto_seña || calcularPrecioTotal(turno) * 0.5)) }}</small>
+                  <span class="precio-total">${{ formatPrecio(turno.monto_total) }}</span>
+                  <div class="detalle-financiero">
+                    
+                    <div v-if="turno.estado === 'RESERVADO' && turno.tipo_pago === 'SENA_50'" class="saldo-pendiente">
+                      <small>✅ Seña: ${{ formatPrecio(turno.monto_seña) }}</small>
+                      <small class="falta">⚠️ Falta abonar: ${{ formatPrecio(calcularPrecioTotal(turno) - (turno.monto_seña || 0)) }}</small>
+                    </div>
+
+                    <div v-else-if="(turno.estado === 'RESERVADO' && turno.tipo_pago === 'TOTAL') || turno.estado === 'COMPLETADO'" class="saldo-ok">
+                      <small>✅ Pagado Total</small>
+                    </div>
+
+                    <div v-else-if="turno.estado === 'CANCELADO' && turno.monto_seña > 0">
+                      <div v-if="turno.reembolsado" class="saldo-favor">
+                         <small>💰 A favor del cliente: ${{ formatPrecio(turno.monto_seña) }}</small>
+                      </div>
+                      <div v-else class="saldo-pendiente">
+                         <small style="color: #ef4444; font-weight: bold;">🔒 Retenido (Penalidad)</small>
+                      </div>
+                    </div>
+
                   </div>
                 </div>
               </td>
+
               <td>
                 <div class="action-buttons">
-                  <!-- BOTÓN VER DETALLE - SIEMPRE VISIBLE -->
                   <button @click="verDetalleTurno(turno)" class="action-button view" title="Ver Detalle">
                     <Eye :size="14"/>
                   </button>
                   
-                  <!-- BOTÓN EDITAR - CORREGIDO: Visible cuando no esté COMPLETADO ni CANCELADO -->
-                  <button v-if="turno.estado !== 'COMPLETADO' && turno.estado !== 'CANCELADO'" 
-                          @click="modificarTurno(turno.id)" 
-                          class="action-button edit" 
-                          title="Editar">
+                  <button v-if="turno.estado === 'RESERVADO'" @click="modificarTurno(turno.id)" class="action-button edit" title="Editar">
                     <Edit3 :size="14"/>
                   </button>
                   
                   <button v-if="turno.estado === 'RESERVADO' && turno.tipo_pago === 'SENA_50'" 
                           @click="confirmarPagoTotal(turno)" 
                           class="action-button pagar" 
-                          title="Confirmar Pago Total">
+                          title="Cobrar Restante">
                     <CreditCard :size="14"/>
                   </button>
                   
-                  <button v-if="turno.estado === 'CONFIRMADO'" 
+                  <button v-if="turno.estado === 'RESERVADO'" 
                           @click="completarTurno(turno)" 
                           class="action-button complete" 
-                          title="Marcar como Completado">
+                          title="Finalizar Atención">
                     <Check :size="14"/>
                   </button>
                   
-                  <button v-if="turno.estado === 'RESERVADO' || turno.estado === 'CONFIRMADO'" 
+                  <button v-if="turno.estado === 'RESERVADO'" 
                           @click="cancelarTurno(turno)" 
                           class="action-button delete" 
                           title="Cancelar Turno">
@@ -197,13 +192,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, inject } from 'vue' // Agregamos inject si usas axios global o import directo
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from '../../utils/axiosConfig'
-import { 
-  Plus, Trash2, Edit3, Check, SearchX, ChevronLeft, 
-  ChevronRight, Eye, CreditCard, Clock
-} from 'lucide-vue-next'
+import { Plus, Trash2, Edit3, Check, SearchX, ChevronLeft, ChevronRight, Eye, CreditCard, Clock } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 
 const router = useRouter()
@@ -211,313 +203,146 @@ const turnos = ref([])
 const peluqueros = ref([])
 const pagina = ref(1)
 const itemsPorPagina = 8
+const estadosDisponibles = ref(['RESERVADO', 'COMPLETADO', 'CANCELADO'])
+const filtros = ref({ busqueda: '', peluquero: '', estado: '', canal: '', fechaDesde: '', fechaHasta: '' })
 
-const estadosDisponibles = ref(['RESERVADO', 'CONFIRMADO', 'COMPLETADO', 'CANCELADO'])
-
-const filtros = ref({
-  busqueda: '',
-  peluquero: '',
-  estado: '',
-  canal: '',
-  fechaDesde: '',
-  fechaHasta: ''
-})
-
-// --- FUNCIONES DE FORMATO (IGUALES QUE ANTES) ---
-const formatFecha = s => {
-    if(!s) return '-';
-    try { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`; } catch(e) { return s; }
-}
+// Helpers
+const formatFecha = s => { if(!s) return '-'; try { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`; } catch(e) { return s; } }
 const formatHora = s => (s && s.length >= 5) ? s.slice(0,5) : '-'
-const formatPrecio = (precio) => (!precio ? '0.00' : parseFloat(precio).toFixed(2))
-
+const formatPrecio = (p) => (!p ? '0.00' : parseFloat(p).toFixed(2))
 const getServiciosLista = s => {
   if (!s) return []
-  if (Array.isArray(s)) {
-    return s.map(x => {
-      if (typeof x === 'string') return x
-      if (typeof x === 'object' && x.nombre) return x.nombre
-      return String(x)
-    })
-  }
+  if (Array.isArray(s)) return s.map(x => (typeof x === 'object' && x.nombre) ? x.nombre : String(x))
   return []
 }
-
-const formatearEstado = e => ({
-  'RESERVADO':'Reservado', 'CONFIRMADO':'Confirmado',
-  'COMPLETADO':'Completado', 'CANCELADO':'Cancelado'
-}[e] || e)
+const formatearEstado = e => ({ 'RESERVADO':'Reservado', 'COMPLETADO':'Completado', 'CANCELADO':'Cancelado' }[e] || e)
 
 const getEstadoTexto = (estado, tipoPago) => {
-  if (estado === 'RESERVADO') return tipoPago === 'SENA_50' ? 'Reservado (Con Seña)' : 'Reservado (Pagado Total)'
-  if (estado === 'CONFIRMADO') return 'Confirmado'
+  if (estado === 'RESERVADO') return tipoPago === 'TOTAL' ? 'Reservado (Pagado)' : 'Reservado (Seña)'
   if (estado === 'COMPLETADO') return 'Completado'
   if (estado === 'CANCELADO') return 'Cancelado'
   return estado
 }
 
 const getEstadoClass = (estado, tipoPago) => {
-  if (estado === 'RESERVADO') return tipoPago === 'SENA_50' ? 'estado-warning' : 'estado-success'
-  if (estado === 'CONFIRMADO') return 'estado-success'
+  if (estado === 'RESERVADO') return tipoPago === 'TOTAL' ? 'estado-success' : 'estado-warning'
   if (estado === 'COMPLETADO') return 'estado-completado'
   if (estado === 'CANCELADO') return 'estado-cancelado'
   return 'estado-secondary'
 }
 
-const calcularPrecioTotal = (turno) => {
-  if (turno.monto_total && turno.monto_total > 0) return turno.monto_total
-  if (turno.servicios && Array.isArray(turno.servicios)) {
-    return turno.servicios.reduce((total, servicio) => total + (servicio.precio || 0), 0)
-  }
+const calcularPrecioTotal = (t) => {
+  if (t.monto_total > 0) return t.monto_total
+  if (t.servicios && Array.isArray(t.servicios)) return t.servicios.reduce((a, b) => a + (b.precio || 0), 0)
   return 0
 }
 
-// --- DETALLE TURNO (LÓGICA IGUAL) ---
+// ✅ FICHA DETALLE
 const verDetalleTurno = async (turno) => {
-  try {
     const precioTotal = calcularPrecioTotal(turno)
-    const serviciosList = getServiciosLista(turno.servicios)
-    
-    let serviciosDetallados = []
-    if (turno.servicios && Array.isArray(turno.servicios)) {
-      serviciosDetallados = turno.servicios.map(s => {
-        if (typeof s === 'object') return { nombre: s.nombre || 'Servicio', precio: s.precio || 0 }
-        return { nombre: s, precio: 0 }
-      })
-    }
-    
-    const clienteNombre = turno.cliente_nombre || ''
-    const clienteApellido = turno.cliente_apellido || ''
-    const peluqueroNombre = turno.peluquero_nombre || ''
-    const montoSeña = turno.monto_seña || (turno.tipo_pago === 'SENA_50' ? precioTotal * 0.5 : 0)
-    const saldoPendiente = precioTotal - montoSeña
+    const montoSeña = turno.monto_seña || 0
+    const saldo = precioTotal - montoSeña
+    const cliente = `${turno.cliente_nombre} ${turno.cliente_apellido}`
     
     let html = `
-      <div class="detalle-turno" style="text-align: left; max-width: 600px;">
-        <div class="detalle-header">
-          <h3 style="margin-top: 0; color: #0ea5e9; border-bottom: 2px solid #0ea5e9; padding-bottom: 10px;">
-            Detalle del Turno #${turno.id}
-          </h3>
+      <div style="text-align: left; color: #333; font-family: sans-serif;">
+        <div style="border-bottom: 2px solid #3b82f6; padding-bottom: 10px; margin-bottom: 15px;">
+           <h3 style="margin: 0; color: #3b82f6;">Ficha de Turno #${turno.id}</h3>
+           <small style="color: #666;">${formatFecha(turno.fecha)} - ${formatHora(turno.hora)}</small>
         </div>
         
-        <div class="detalle-info-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
-          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;">Cliente:</strong><br>
-            <span style="color: #1e293b;">${clienteNombre} ${clienteApellido}</span>
-          </div>
-          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;">Peluquero:</strong><br>
-            <span style="color: #1e293b;">${peluqueroNombre}</span>
-          </div>
-          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;">Fecha:</strong><br>
-            <span style="color: #1e293b;">${formatFecha(turno.fecha)}</span>
-          </div>
-          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;">Hora:</strong><br>
-            <span style="color: #1e293b;">${formatHora(turno.hora)}</span>
-          </div>
-          <div class="info-item" style="padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-            <strong style="color: #475569;">Estado:</strong><br>
-            <span style="color: #1e293b; font-weight: 600;">${getEstadoTexto(turno.estado, turno.tipo_pago)}</span>
-          </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+           <div><strong>Cliente:</strong><br>${cliente}</div>
+           <div><strong>Peluquero:</strong><br>${turno.peluquero_nombre}</div>
+           <div><strong>Estado:</strong><br>${getEstadoTexto(turno.estado, turno.tipo_pago)}</div>
+           <div><strong>Canal:</strong><br>${turno.canal}</div>
         </div>
-        
-        <div style="margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-          <h4 style="margin-top: 0; color: #475569; margin-bottom: 10px;">Servicios</h4>
-          <ul style="margin: 0; padding-left: 20px;">
+
+        <div style="background: #f3f4f6; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
+           <strong>Servicios:</strong>
+           <ul style="margin: 5px 0; padding-left: 20px;">
+             ${getServiciosLista(turno.servicios).map(s => `<li>${s}</li>`).join('')}
+           </ul>
+        </div>
+
+        <div style="text-align: right; font-size: 1.1em;">
+           <p style="margin: 5px 0;">Total: <strong>$${formatPrecio(precioTotal)}</strong></p>
+           ${turno.tipo_pago === 'SENA_50' ? `<p style="margin: 5px 0; color: #f59e0b;">Falta abonar: <strong>$${formatPrecio(saldo)}</strong></p>` : '<p style="color: #10b981; margin: 5px 0;">✅ Pagado Total</p>'}
+        </div>
     `
-    if (serviciosDetallados.length > 0) {
-      serviciosDetallados.forEach(s => html += `<li><strong>${s.nombre}</strong> - $${s.precio.toFixed(2)}</li>`)
-    } else if (serviciosList.length > 0) {
-      serviciosList.forEach(s => html += `<li><strong>${s}</strong></li>`)
-    } else {
-      html += `<li>No hay servicios registrados</li>`
+    // Mensaje de penalidad en el detalle
+    if (turno.estado === 'CANCELADO' && montoSeña > 0) {
+        html += `<hr>`
+        html += turno.reembolsado 
+            ? `<p style="text-align: center; color: #3b82f6; font-weight: bold;">💰 A favor del cliente: $${formatPrecio(montoSeña)}</p>`
+            : `<p style="text-align: center; color: #ef4444; font-weight: bold;">🔒 Retenido (Penalidad 3 horas)</p>`
     }
-    
-    html += `
-          </ul>
-        </div>
-        
-        <div style="padding: 15px; background: #0f766e; color: white; border-radius: 8px; margin-bottom: 20px;">
-          <h4 style="margin-top: 0; margin-bottom: 10px; color: white;">Resumen Financiero</h4>
-          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
-            <div><strong>Precio Total:</strong><br><span style="font-size: 18px; font-weight: bold;">$${precioTotal.toFixed(2)}</span></div>
-    `
-    if (turno.tipo_pago === 'SENA_50') {
-      html += `
-            <div><strong>Seña Pagada:</strong><br><span style="font-size: 18px; font-weight: bold;">$${montoSeña.toFixed(2)}</span></div>
-            <div><strong>Saldo Pendiente:</strong><br><span style="font-size: 18px; font-weight: bold;">$${saldoPendiente.toFixed(2)}</span></div>
-      `
-    }
-    html += `</div></div></div>`
-    
-    await Swal.fire({
-      title: `Turno #${turno.id}`, html: html, width: 650,
-      showCloseButton: true, confirmButtonText: 'Cerrar', confirmButtonColor: '#0ea5e9'
-    })
-  } catch (error) {
-    console.error('Error al mostrar detalle:', error)
-  }
+
+    html += `</div>`
+    await Swal.fire({ html: html, showCloseButton: true, confirmButtonText: 'Cerrar' })
 }
 
-// --- CARGA DE DATOS CORREGIDA (USANDO AXIOS) ---
-const cargarPeluqueros = async () => {
-    try {
-        // ✅ Usamos axios en vez de fetch para aprovechar la config global
-        const res = await axios.get('/usuarios/api/peluqueros/');
-        peluqueros.value = Array.isArray(res.data) ? res.data : (res.data.results || []);
-    } catch(e) {
-        console.error('Error cargando peluqueros:', e)
-    }
-}
+const cargarPeluqueros = async () => { try { const res = await axios.get('/usuarios/api/peluqueros/'); peluqueros.value = res.data; } catch(e){} }
 
 const cargarTurnos = async () => {
     try {
-        const p = new URLSearchParams()
-        if(filtros.value.peluquero) p.append('peluquero', filtros.value.peluquero)
-        if(filtros.value.estado) p.append('estado', filtros.value.estado)
-        if(filtros.value.canal) p.append('canal', filtros.value.canal)
-        if(filtros.value.fechaDesde) p.append('fecha_desde', filtros.value.fechaDesde)
-        if(filtros.value.fechaHasta) p.append('fecha_hasta', filtros.value.fechaHasta)
-
-        // ✅ Usamos axios y la ruta correcta /usuarios/api/
+        const p = new URLSearchParams(filtros.value)
         const res = await axios.get(`/usuarios/api/turnos/?${p.toString()}`);
-        
-        // ✅ Manejo seguro de datos (Array vs Paginación)
         const data = Array.isArray(res.data) ? res.data : (res.data.results || []);
+        turnos.value = data.sort((a, b) => new Date(`${b.fecha}T${b.hora}`) - new Date(`${a.fecha}T${a.hora}`))
         
-        const turnosOrdenados = data.sort((a, b) => {
-          const fechaA = new Date(`${a.fecha}T${a.hora}`)
-          const fechaB = new Date(`${b.fecha}T${b.hora}`)
-          return fechaB - fechaA
-        })
-        
-        turnos.value = turnosOrdenados.map(t => ({
+        turnos.value = turnos.value.map(t => ({
             ...t,
-            servicios: Array.isArray(t.servicios) ? t.servicios : [],
-            canal: t.canal || 'PRESENCIAL',
+            reembolsado: !!t.reembolsado,
             monto_seña: parseFloat(t.monto_seña || 0),
-            monto_total: parseFloat(t.monto_total || 0),
+            monto_total: parseFloat(t.monto_total || 0)
         }))
-    } catch(e) {
-        console.error(e)
-        // Swal.fire('Error', 'No se pudieron cargar los turnos', 'error')
-    }
+    } catch(e) { console.error(e) }
 }
 
-// --- ACCIONES (TAMBIÉN CORREGIDAS CON AXIOS) ---
+// Acciones
 const confirmarPagoTotal = async (turno) => {
-  try {
-    const precioTotal = calcularPrecioTotal(turno)
-    const señaPagada = turno.monto_seña || 0
-    const saldoPendiente = precioTotal - señaPagada
-    
-    const confirm = await Swal.fire({
-      title: 'Confirmar Pago Total',
-      text: `Saldo a pagar: $${saldoPendiente.toFixed(2)}`,
-      icon: 'question', showCancelButton: true, confirmButtonText: 'Confirmar', confirmButtonColor: '#10b981'
-    })
-
-    if (confirm.isConfirmed) {
-      Swal.showLoading()
-      // ✅ Axios
-      const response = await axios.post(`/usuarios/api/turnos/${turno.id}/cambiar-estado/CONFIRMADO/`, {
-          tipo_pago: 'TOTAL',
-          monto_total: precioTotal
-      });
-
-      if (response.data.status === 'ok') {
-        await cargarTurnos()
-        Swal.fire('¡Pago confirmado!', '', 'success')
-      }
-    }
-  } catch (error) {
-    console.error('Error:', error)
-    Swal.fire('Error', 'No se pudo procesar el pago', 'error')
+  const precio = calcularPrecioTotal(turno)
+  const falta = precio - (turno.monto_seña || 0)
+  const { isConfirmed } = await Swal.fire({ title: 'Cobrar Restante', text: `Monto a abonar: $${falta}`, icon: 'info', showCancelButton: true, confirmButtonText: 'Cobrar y Guardar' })
+  if (isConfirmed) {
+      await axios.post(`/usuarios/api/turnos/${turno.id}/actualizar-pago/`, { tipo_pago: 'TOTAL', monto_total: precio });
+      cargarTurnos()
   }
 }
 
 const completarTurno = async (turno) => {
-  try {
-    const confirm = await Swal.fire({
-      title: '¿Completar turno?',
-      icon: 'question', showCancelButton: true, confirmButtonText: '✅ Completar', confirmButtonColor: '#10b981'
-    })
-
-    if (confirm.isConfirmed) {
-      Swal.showLoading()
-      // ✅ Axios
-      const response = await axios.post(`/usuarios/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`);
-      if (response.data.status === 'ok') {
-        await cargarTurnos()
-        Swal.fire('¡Completado!', '', 'success')
-      }
-    }
-  } catch (error) {
-    console.error('Error:', error)
-    Swal.fire('Error', 'Error de conexión', 'error')
+  const { isConfirmed } = await Swal.fire({ title: 'Finalizar', text: 'Pasar a Completado', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, completar' })
+  if (isConfirmed) {
+      await axios.post(`/usuarios/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`);
+      cargarTurnos()
   }
 }
 
 const cancelarTurno = async (turno) => {
-  try {
-    const confirm = await Swal.fire({
-      title: '¿Cancelar turno?',
-      icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, cancelar', confirmButtonColor: '#ef4444'
-    })
-
-    if (confirm.isConfirmed) {
-      Swal.showLoading()
-      // ✅ Axios
-      const response = await axios.post(`/usuarios/api/turnos/${turno.id}/cambiar-estado/CANCELADO/`);
-      if (response.data.status === 'ok') {
-        await cargarTurnos()
-        Swal.fire('¡Cancelado!', '', 'success')
-      }
-    }
-  } catch(e) { 
-    console.error("Error:", e);
-    Swal.fire('Error', 'Error de conexión', 'error'); 
+  const { isConfirmed } = await Swal.fire({ title: 'Cancelar Turno', text: '¿Estás seguro?', icon: 'error', showCancelButton: true, confirmButtonText: 'Sí, cancelar' })
+  if (isConfirmed) {
+      await axios.post(`/usuarios/api/turnos/${turno.id}/cambiar-estado/CANCELADO/`);
+      cargarTurnos()
   }
 }
 
 const irARegistrar = () => router.push('/turnos/crear-presencial')
 const modificarTurno = (id) => router.push(`/turnos/modificar/${id}`)
-
-const limpiarFiltros = () => {
-    filtros.value = { busqueda:'', peluquero:'', estado:'', canal:'', fechaDesde:'', fechaHasta:'' }
-    pagina.value = 1
-    cargarTurnos()
-}
-
-const turnosFiltrados = computed(() => {
-    let res = turnos.value
-    if (filtros.value.busqueda) {
-        const b = filtros.value.busqueda.toLowerCase()
-        res = res.filter(t => {
-          const nombreCompleto = `${t.cliente_nombre || ''} ${t.cliente_apellido || ''}`.toLowerCase()
-          return nombreCompleto.includes(b)
-        })
-    }
-    return res
-})
+const limpiarFiltros = () => { filtros.value = { busqueda:'', peluquero:'', estado:'', canal:'', fechaDesde:'', fechaHasta:'' }; cargarTurnos() }
 
 const turnosFiltradosPaginados = computed(() => {
+    let res = turnos.value
+    if (filtros.value.busqueda) res = res.filter(t => (t.cliente_nombre+t.cliente_apellido).toLowerCase().includes(filtros.value.busqueda.toLowerCase()))
     const inicio = (pagina.value - 1) * itemsPorPagina
-    return turnosFiltrados.value.slice(inicio, inicio + itemsPorPagina)
+    return res.slice(inicio, inicio + itemsPorPagina)
 })
-
-const totalPaginas = computed(() => Math.ceil(turnosFiltrados.value.length / itemsPorPagina))
+const totalPaginas = computed(() => Math.ceil(turnos.value.length / itemsPorPagina))
 const paginaAnterior = () => { if(pagina.value>1) pagina.value-- }
 const paginaSiguiente = () => { if(pagina.value<totalPaginas.value) pagina.value++ }
 
 onMounted(() => { cargarPeluqueros(); cargarTurnos(); })
-
-watch(() => [
-    filtros.value.peluquero, filtros.value.estado, filtros.value.canal, 
-    filtros.value.fechaDesde, filtros.value.fechaHasta
-], () => { pagina.value = 1; cargarTurnos(); })
+watch(filtros.value, () => cargarTurnos())
 </script>
 
 <style scoped>
@@ -597,6 +422,21 @@ watch(() => [
   color: var(--text-tertiary);
   border: 2px solid var(--text-tertiary);
   box-shadow: 0 0 8px rgba(156, 163, 175, 0.2);
+}
+
+.estado-completado {
+  background: var(--bg-tertiary);
+  color: #0ea5e9; /* Azul completado */
+  border: 2px solid #0ea5e9;
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.3);
+}
+
+.estado-cancelado {
+  background: var(--bg-tertiary);
+  color: var(--error-color);
+  border: 2px solid var(--error-color);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+  opacity: 0.8;
 }
 
 .precio-total {
@@ -1183,5 +1023,42 @@ watch(() => [
     justify-content: space-between;
     align-items: center;
   }
+}
+
+/* ✅ ESTILOS FINANCIEROS INTELIGENTES (ADD-ON) */
+.detalle-financiero {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.saldo-pendiente small {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-secondary); /* Usa tus variables */
+}
+
+.saldo-pendiente .falta {
+  color: #f59e0b; /* Naranja */
+  font-weight: 700;
+}
+
+.saldo-ok small {
+  color: #10b981; /* Verde */
+  font-weight: 700;
+  font-size: 0.75rem;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.saldo-favor small {
+  color: #3b82f6; /* Azul */
+  font-weight: 700;
+  font-size: 0.75rem;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 </style>

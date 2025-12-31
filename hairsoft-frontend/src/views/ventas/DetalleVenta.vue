@@ -100,7 +100,7 @@
               <label>Total Venta</label>
               <div class="info-value total-monto">
                 <DollarSign :size="20" />
-                ${{ formatPrecio(venta.total) }}
+                {{ formatPrecio(venta.total) }}
               </div>
             </div>
           </div>

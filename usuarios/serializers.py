@@ -35,14 +35,34 @@ class UsuarioSerializer(serializers.ModelSerializer):
 # SERVICIO Y CATEGORIAS
 # ----------------------------------------------------------------------
 class ServicioSerializer(serializers.ModelSerializer):
-    categoria = serializers.SerializerMethodField()
+    # Para MOSTRAR el nombre (Lectura)
+    categoria_nombre = serializers.CharField(source='categoria.nombre', read_only=True)
+    
+    # Para GUARDAR el ID (Escritura) - Esto arregla el error al editar categorías
+    categoria = serializers.PrimaryKeyRelatedField(
+        queryset=CategoriaServicio.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    
+    # ✅ CORREGIDO: Se quitó read_only=True. Ahora permite guardar el dato.
+    porcentaje_comision = serializers.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        default=0.00,
+        required=False
+    )
+    
+    # Para que el switch de activo/inactivo funcione bien
+    activo = serializers.BooleanField(required=False, default=True)
 
     class Meta:
         model = Servicio
-        fields = ['id', 'nombre', 'precio', 'duracion', 'categoria']
-
-    def get_categoria(self, obj):
-        return {'id': obj.categoria.id, 'nombre': obj.categoria.nombre} if obj.categoria else None
+        fields = [
+            'id', 'nombre', 'precio', 'duracion', 
+            'categoria', 'categoria_nombre', 
+            'porcentaje_comision', 'activo', 'descripcion'
+        ]
 
 class CategoriaServicioSerializer(serializers.ModelSerializer):
     class Meta:
@@ -118,19 +138,27 @@ class ProductoCatalogoSerializer(serializers.ModelSerializer):
         fields = ['id', 'nombre', 'marca_nombre', 'descripcion', 'precio', 'imagen', 'stock_actual']
 
 
-
 # ----------------------------------------------------------------------
-# PERMISOS Y ROLES
+# SERIALIZER DE PERMISOS
 # ----------------------------------------------------------------------
 class PermisoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Permiso
         fields = '__all__'
 
+# ----------------------------------------------------------------------
+# SERIALIZER DE ROLES
+# ----------------------------------------------------------------------
 class RolSerializer(serializers.ModelSerializer):
+    # 1. Para LEER (GET): Muestra el objeto completo del permiso
     permisos = PermisoSerializer(many=True, read_only=True)
+    
+    # 2. Para ESCRIBIR (POST/PUT): Recibe solo los IDs
     permisos_ids = serializers.PrimaryKeyRelatedField(
-        queryset=Permiso.objects.all(), many=True, write_only=True, required=False
+        queryset=Permiso.objects.all(), 
+        many=True, 
+        write_only=True, 
+        required=False
     )
 
     class Meta:
@@ -138,18 +166,29 @@ class RolSerializer(serializers.ModelSerializer):
         fields = ['id', 'nombre', 'descripcion', 'activo', 'permisos', 'permisos_ids']
 
     def create(self, validated_data):
+        # Sacamos los IDs de la data validada
         permisos = validated_data.pop('permisos_ids', [])
+        
+        # Creamos el Rol
         rol = Rol.objects.create(**validated_data)
+        
+        # Asignamos los permisos (Many-to-Many)
         rol.permisos.set(permisos)
         return rol
 
     def update(self, instance, validated_data):
+        # Sacamos los IDs (si no vienen, es None)
         permisos = validated_data.pop('permisos_ids', None)
+        
+        # Actualizamos los campos normales (nombre, descripcion, activo)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
+        
+        # Solo actualizamos los permisos si se enviaron en la petición
         if permisos is not None:
             instance.permisos.set(permisos)
+            
         return instance
 
 # ----------------------------------------------------------------------
@@ -851,3 +890,11 @@ class ResetPasswordConfirmarSerializer(serializers.Serializer):
         if data['nueva_password'] != data['confirmar_password']:
             raise serializers.ValidationError("Las contraseñas no coinciden.")
         return data
+
+class LiquidacionSerializer(serializers.ModelSerializer):
+    empleado_nombre = serializers.CharField(source='empleado.nombre', read_only=True)
+    empleado_apellido = serializers.CharField(source='empleado.apellido', read_only=True)
+
+    class Meta:
+        model = Liquidacion
+        fields = '__all__'

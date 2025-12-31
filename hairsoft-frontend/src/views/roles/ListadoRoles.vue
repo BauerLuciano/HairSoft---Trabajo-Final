@@ -16,6 +16,7 @@
 
       <div class="filters-container">
         <div class="filters-grid">
+          
           <div class="filter-group">
             <label>Buscar Rol</label>
             <div class="input-with-icon">
@@ -28,11 +29,21 @@
               <Search class="input-icon" :size="16" />
             </div>
           </div>
+
+          <div class="filter-group">
+            <label>Estado</label>
+            <select v-model="filtros.estado" class="filter-input">
+              <option value="todos">Todos</option>
+              <option value="activos">Activos</option>
+              <option value="inactivos">Inactivos</option>
+            </select>
+          </div>
+
           <div class="filter-group">
             <label>&nbsp;</label>
             <button @click="limpiarFiltros" class="clear-filters-btn">
               <Trash2 :size="16" />
-              Limpiar Filtros
+              Limpiar
             </button>
           </div>
         </div>
@@ -50,20 +61,27 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="rol in rolesPaginados" :key="rol.id">
+            <tr v-for="rol in rolesPaginados" :key="rol.id" :class="{ 'row-inactive': !rol.activo }">
               <td><strong>{{ rol.nombre || '–' }}</strong></td>
               <td class="descripcion-cell">{{ rol.descripcion || 'Sin descripción' }}</td>
               <td>
                 <div class="permisos-lista">
-                  <div v-for="(permiso, index) in getPrimerosPermisos(rol)" :key="index" 
-                       class="permiso-item">
-                    <span class="permiso-nombre">{{ permiso.nombre }}</span>
+                  <div v-if="esCliente(rol.nombre)" class="badge-cliente">
+                    <User :size="12" style="margin-right: 4px"/> Cliente Web
                   </div>
-                  <div v-if="getPermisosCount(rol) > 3" class="mas-permisos">
-                    +{{ getPermisosCount(rol) - 3 }} más...
-                  </div>
-                  <div v-else-if="getPermisosCount(rol) === 0" class="sin-permisos">
-                    Sin permisos
+                  
+                  <template v-else-if="getPermisosCount(rol) > 0">
+                    <div v-for="(permiso, index) in getPrimerosPermisos(rol)" :key="index" 
+                         class="permiso-item">
+                      <span class="permiso-nombre">{{ permiso.nombre }}</span>
+                    </div>
+                    <div v-if="getPermisosCount(rol) > 3" class="mas-permisos">
+                      +{{ getPermisosCount(rol) - 3 }} más...
+                    </div>
+                  </template>
+                  
+                  <div v-else class="sin-permisos">
+                    Sin permisos asignados
                   </div>
                 </div>
               </td>
@@ -77,9 +95,13 @@
                   <button @click="editarRol(rol)" class="action-button edit" title="Editar rol">
                     <Edit3 :size="14" />
                   </button>
-                  <button @click="cambiarEstadoRol(rol)" class="action-button" 
-                          :class="rol.activo ? 'delete' : 'success'" 
-                          :title="rol.activo ? 'Desactivar rol' : 'Activar rol'">
+                  
+                  <button 
+                    @click="cambiarEstadoRol(rol)" 
+                    class="action-button" 
+                    :class="rol.activo ? 'delete' : 'success'" 
+                    :title="rol.activo ? 'Desactivar rol' : 'Activar rol'"
+                  >
                     <Power :size="14" v-if="rol.activo" />
                     <CheckCircle :size="14" v-else />
                   </button>
@@ -127,11 +149,11 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import axios from 'axios'
+import axios from '@/utils/axiosConfig' // Usamos tu config para mantener sesión
 import Swal from 'sweetalert2'
 import { 
   Shield, Plus, Edit3, Power, CheckCircle, PowerOff,
-  ChevronLeft, ChevronRight, Trash2, Search
+  ChevronLeft, ChevronRight, Trash2, Search, User
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -139,7 +161,7 @@ const route = useRoute()
 const API_BASE = 'http://127.0.0.1:8000'
 
 const roles = ref([])
-const filtros = ref({ busqueda: '' })
+const filtros = ref({ busqueda: '', estado: 'todos' })
 const pagina = ref(1)
 const itemsPorPagina = 8
 
@@ -149,6 +171,8 @@ const cargarRoles = async () => {
     const params = new URLSearchParams()
     if (filtros.value.busqueda) params.append('q', filtros.value.busqueda)
     params.append('_', new Date().getTime())
+    
+    // URL Correcta
     const res = await axios.get(`${API_BASE}/usuarios/api/roles/`, { params })
     roles.value = res.data
   } catch (err) {
@@ -172,11 +196,28 @@ const getPrimerosPermisos = (rol) => {
   return rol.permisos.slice(0, 3)
 }
 
+const esCliente = (nombre) => {
+  return nombre && nombre.toLowerCase().includes('cliente')
+}
+
 // Filtrado
 const rolesFiltrados = computed(() => {
-  if (!filtros.value.busqueda) return roles.value
-  const term = filtros.value.busqueda.toLowerCase()
-  return roles.value.filter(r => r.nombre?.toLowerCase().includes(term))
+  let resultado = roles.value
+
+  // 1. Filtro por Búsqueda
+  if (filtros.value.busqueda) {
+    const term = filtros.value.busqueda.toLowerCase()
+    resultado = resultado.filter(r => r.nombre?.toLowerCase().includes(term))
+  }
+
+  // 2. Filtro por Estado
+  if (filtros.value.estado === 'activos') {
+    resultado = resultado.filter(r => r.activo)
+  } else if (filtros.value.estado === 'inactivos') {
+    resultado = resultado.filter(r => !r.activo)
+  }
+
+  return resultado
 })
 
 // Contadores
@@ -196,7 +237,7 @@ const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.va
 const irARegistrar = () => router.push({ path: '/roles/crear', query: { reload: new Date().getTime() } })
 const editarRol = (rol) => router.push(`/roles/modificar/${rol.id}`)
 
-// 🔥 LÓGICA CORREGIDA: Apunta a la nueva ruta /api/roles/{id}/
+// 🔥 LÓGICA DE ACTIVAR/DESACTIVAR CORREGIDA
 const cambiarEstadoRol = async (rol) => {
   const nuevoEstado = !rol.activo
   const accion = nuevoEstado ? 'activar' : 'desactivar'
@@ -206,7 +247,7 @@ const cambiarEstadoRol = async (rol) => {
     text: `¿Está seguro de ${accion} el rol "${rol.nombre}"?`,
     icon: 'question',
     showCancelButton: true,
-    confirmButtonColor: '#0ea5e9',
+    confirmButtonColor: nuevoEstado ? '#10b981' : '#ef4444', 
     cancelButtonColor: '#6b7280',
     confirmButtonText: `Sí, ${accion}`,
     cancelButtonText: 'Cancelar'
@@ -215,12 +256,13 @@ const cambiarEstadoRol = async (rol) => {
   if (!result.isConfirmed) return
   
   try {
-    // 👇 URL CORREGIDA (Sin /editar/ ni /eliminar/)
-    await axios.patch(`${API_BASE}/api/roles/${rol.id}/`, {
+    // ✅ URL ARREGLADA: Faltaba '/usuarios' al principio
+    await axios.patch(`${API_BASE}/usuarios/api/roles/${rol.id}/`, {
       activo: nuevoEstado
     })
     
-    await cargarRoles()
+    // Actualizamos localmente para feedback instantáneo
+    rol.activo = nuevoEstado
     
     Swal.fire({
       icon: 'success',
@@ -235,24 +277,24 @@ const cambiarEstadoRol = async (rol) => {
     Swal.fire({
       icon: 'error',
       title: 'Error',
-      text: `No se pudo ${accion} el rol. Verifica la consola.`,
+      text: `No se pudo ${accion} el rol.`,
       confirmButtonColor: '#0ea5e9'
     })
+    // Recargamos por si acaso hubo desincronización
+    await cargarRoles()
   }
 }
 
 // Limpiar filtros
 const limpiarFiltros = () => { 
-  filtros.value = { busqueda: '' }
+  filtros.value = { busqueda: '', estado: 'todos' }
   pagina.value = 1 
 }
 
-// Mostrar estado correctamente
 const getStatusDisplayName = (estado) => (estado ? 'Activo' : 'Inactivo')
 const getEstadoClass = (estado) => estado ? 'estado-success' : 'estado-danger'
 
-// Watchers
-watch(filtros, () => { pagina.value = 1; cargarRoles() }, { deep: true })
+watch(filtros, () => { pagina.value = 1 }, { deep: true })
 watch(() => route.query.reload, () => { cargarRoles() })
 
 onMounted(() => { cargarRoles() })
@@ -260,8 +302,7 @@ onMounted(() => { cargarRoles() })
 
 <style scoped>
 /* ========================================
-   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE - ROLES
-   (EXACTAMENTE IGUAL AL TUYO)
+   🔥 TUS ESTILOS ORIGINALES (INTACTOS)
    ======================================== */
 
 .list-card {
@@ -285,6 +326,25 @@ onMounted(() => { cargarRoles() })
   height: 4px;
   background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9);
   border-radius: 24px 24px 0 0;
+}
+
+/* Efecto visual para filas inactivas */
+.row-inactive {
+  opacity: 0.6;
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.badge-cliente {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+  border: 1px solid #3b82f6;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .badge-estado {

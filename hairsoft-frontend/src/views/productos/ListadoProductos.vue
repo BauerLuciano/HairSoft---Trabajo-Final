@@ -1,6 +1,7 @@
 <template>
   <div class="list-container">
     <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarEditar || mostrarRegistrarMarca }">
+      
       <div class="list-header">
         <div class="header-content">
           <h1>Gestión de productos</h1>
