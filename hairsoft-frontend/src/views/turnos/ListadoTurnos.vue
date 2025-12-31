@@ -128,10 +128,21 @@
 
                     <div v-else-if="turno.estado === 'CANCELADO' && turno.monto_seña > 0">
                       <div v-if="turno.reembolsado" class="saldo-favor">
-                         <small>💰 A favor del cliente: ${{ formatPrecio(turno.monto_seña) }}</small>
+                        <small>💰 A favor del cliente: ${{ formatPrecio(turno.monto_seña) }}</small>
                       </div>
+
                       <div v-else class="saldo-pendiente">
-                         <small style="color: #ef4444; font-weight: bold;">🔒 Retenido (Penalidad)</small>
+                        <div v-if="turno.canal === 'PRESENCIAL'">
+                            <small style="color: #f59e0b; font-weight: bold; cursor: help;" title="El cliente debe retirar el dinero">
+                                ⚠️ Devolución Pendiente
+                            </small>
+                        </div>
+                        
+                        <div v-else>
+                            <small style="color: #ef4444; font-weight: bold;">
+                                🔒 Retenido (Penalidad)
+                            </small>
+                        </div>
                       </div>
                     </div>
 

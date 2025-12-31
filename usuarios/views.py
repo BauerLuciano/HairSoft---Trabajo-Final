@@ -731,6 +731,221 @@ def sanear_turnos_vencidos():
     except Exception as e:
         print(f"⚠️ Error en saneamiento automático: {e}")
 
+# usuarios/views.py
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def crear_turno(request):
+    print(f"\n🚀 --- INICIO CREAR TURNO ---")
+    try:
+        data = request.data
+        print(f"📦 DATA RECIBIDA: {data}")
+
+        # ---------------------------------------------------------
+        # 1. IDENTIFICACIÓN DEL CLIENTE Y CANAL
+        # ---------------------------------------------------------
+        cliente = None
+        canal = data.get('canal', 'WEB') # Default a WEB si no viene nada
+        
+        # Lógica para Presencial (Admin registra) o Web (Usuario logueado)
+        if canal == 'PRESENCIAL':
+            cliente_id = data.get('cliente_id') or data.get('cliente')
+            if not cliente_id:
+                return Response({'status': 'error', 'message': "Falta seleccionar cliente."}, status=400)
+            try:
+                cliente = Usuario.objects.get(pk=cliente_id)
+            except Usuario.DoesNotExist:
+                return Response({'status': 'error', 'message': "Cliente no encontrado"}, status=400)
+        
+        elif request.user.is_authenticated:
+            cliente = request.user
+        
+        # Intento de fallback si viene cliente_id en modo WEB (raro pero posible)
+        if not cliente and data.get('cliente_id'):
+             cliente = Usuario.objects.filter(pk=data.get('cliente_id')).first()
+
+        if not cliente:
+            return Response({'status': 'error', 'message': "Debes iniciar sesión o indicar el cliente."}, status=401)
+
+        print(f"✅ Cliente: {cliente.nombre} {cliente.apellido} ({canal})")
+
+        # ---------------------------------------------------------
+        # 2. DATOS BÁSICOS Y VALIDACIONES
+        # ---------------------------------------------------------
+        peluquero_id = data.get('peluquero_id')
+        servicios_ids = data.get('servicios_ids', [])
+        fecha_str = data.get('fecha')
+        hora_str = data.get('hora')
+
+        if not all([peluquero_id, fecha_str, hora_str, servicios_ids]):
+            return Response({'status': 'error', 'message': "Faltan datos obligatorios (peluquero, fecha, hora, servicios)"}, status=400)
+
+        # Normalizar hora (HH:MM)
+        if len(hora_str) > 5: hora_str = hora_str[:5]
+
+        try:
+            fecha_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+            hora_obj = datetime.strptime(hora_str, "%H:%M").time()
+        except ValueError as e:
+            return Response({'status': 'error', 'message': f"Formato de fecha/hora inválido: {e}"}, status=400)
+
+        peluquero = Usuario.objects.get(pk=peluquero_id)
+        servicios = Servicio.objects.filter(pk__in=servicios_ids)
+        
+        if not servicios.exists():
+             return Response({'status': 'error', 'message': "Servicios no válidos"}, status=400)
+
+        # ---------------------------------------------------------
+        # 3. VALIDACIÓN DE DISPONIBILIDAD (Lógica Robusta)
+        # ---------------------------------------------------------
+        # A. Calcular duración y rango del NUEVO turno
+        duracion_total = sum(s.duracion for s in servicios) or 30
+        inicio_nuevo = datetime.combine(fecha_obj, hora_obj)
+        fin_nuevo = inicio_nuevo + timedelta(minutes=duracion_total)
+
+        # B. Buscar conflictos
+        turnos_existentes = Turno.objects.filter(
+            fecha=fecha_obj,
+            peluquero=peluquero,
+            estado__in=['RESERVADO', 'COMPLETADO'] 
+        ).exclude(estado='CANCELADO') # Por seguridad explícita
+
+        for t in turnos_existentes:
+            duracion_t = getattr(t, 'duracion_total', 0)
+
+            if not duracion_t and t.servicios.exists():
+                 duracion_t = sum(s.duracion for s in t.servicios.all())
+            
+            # Si aun así es 0, usamos default 30 min
+            if not duracion_t: 
+                duracion_t = 30
+            
+            t_inicio = datetime.combine(fecha_obj, t.hora)
+            t_fin = t_inicio + timedelta(minutes=duracion_t)
+
+            # Colisión: (InicioNuevo < FinViejo) Y (FinNuevo > InicioViejo)
+            if inicio_nuevo < t_fin and fin_nuevo > t_inicio:
+                return Response({
+                    'status': 'error', 
+                    'message': f'Horario ocupado. Se cruza con turno de {t.hora} a {t_fin.time()}.'
+                }, status=400)
+
+        # ---------------------------------------------------------
+        # 4. LIMPIEZA DE "ZOMBIES" (Ofertas expiradas)
+        # ---------------------------------------------------------
+        Turno.objects.filter(
+            fecha=fecha_obj, hora=hora_obj, peluquero=peluquero, oferta_activa=True
+        ).update(estado='CANCELADO', oferta_activa=False)
+
+        # ---------------------------------------------------------
+        # 5. CÁLCULO DE MONTOS (Cupones y Señas)
+        # ---------------------------------------------------------
+        monto_total_original = sum(float(s.precio) for s in servicios)
+        monto_final = monto_total_original
+        
+        # Aplicar Cupón si existe
+        cup_codigo = data.get('cup_codigo')
+        promo_usada = None
+        if cup_codigo:
+            try:
+                from .models import PromocionReactivacion
+                promo = PromocionReactivacion.objects.filter(codigo=cup_codigo).first()
+                if promo and promo.esta_vigente:
+                    descuento = monto_total_original * (float(promo.descuento_porcentaje) / 100)
+                    monto_final -= descuento
+                    promo_usada = promo
+            except Exception:
+                pass # Si falla el cupón, cobramos normal
+
+        # Definir Pago
+        tipo_pago = data.get('tipo_pago', 'SENA_50')
+        medio_pago = data.get('medio_pago', 'EFECTIVO')
+        
+        # Regla de Negocio:
+        # - Si es TOTAL: Seña = Total
+        # - Si es SENA_50: Seña = 50% del Total
+        monto_seña = monto_final * 0.5 if tipo_pago == 'SENA_50' else monto_final
+
+        print(f"💰 Finanzas -> Total: ${monto_final} | Seña a pagar: ${monto_seña} ({tipo_pago})")
+
+        # ---------------------------------------------------------
+        # 6. CREACIÓN DEL TURNO (ESTADO CORREGIDO)
+        # ---------------------------------------------------------
+        turno = Turno.objects.create(
+            cliente=cliente,
+            peluquero=peluquero,
+            fecha=fecha_obj,
+            hora=hora_obj,
+            canal=canal,
+            tipo_pago=tipo_pago,
+            medio_pago=medio_pago,
+            monto_seña=monto_seña,
+            monto_total=monto_final,
+            duracion_total=duracion_total,
+            estado='RESERVADO', # <--- ¡SIEMPRE RESERVADO AL NACER!
+            mp_payment_id=data.get('mp_payment_id') # ID si viene de presencial con tarjeta externa o similar
+        )
+        turno.servicios.set(servicios)
+
+        # Marcar cupón como usado
+        if promo_usada:
+            promo_usada.estado = 'USADA'
+            promo_usada.turno_canje = turno
+            promo_usada.save()
+
+        # ---------------------------------------------------------
+        # 7. INTEGRACIÓN MERCADO PAGO (Solo WEB)
+        # ---------------------------------------------------------
+        mp_data = None
+        procesar_pago = False
+
+        # Si es WEB y elige MercadoPago, generamos el link AHORA
+        if canal == 'WEB' and medio_pago == 'MERCADO_PAGO':
+            print("💳 Iniciando Checkout MercadoPago...")
+            try:
+                from .mercadopago_service import MercadoPagoService
+                mp_service = MercadoPagoService()
+                
+                pref_data = {
+                    'turno_id': turno.id,
+                    'monto_pago': float(monto_seña),
+                    'cliente_nombre': f"{cliente.nombre} {cliente.apellido}",
+                    'cliente_correo': cliente.correo or "cliente@hairsoft.com",
+                    'peluquero_nombre': peluquero.nombre,
+                    'es_pago_total': (tipo_pago == 'TOTAL')
+                }
+                
+                res_mp = mp_service.crear_preferencia_seña(pref_data)
+                
+                if res_mp.get('success'):
+                    procesar_pago = True
+                    # Usamos sandbox o init_point según configuración
+                    link = res_mp.get('sandbox_init_point') or res_mp.get('init_point')
+                    mp_data = {
+                        'init_point': link,
+                        'preference_id': res_mp.get('preference_id')
+                    }
+                    print(f"✅ Link MP generado: {link}")
+                else:
+                    print(f"❌ Error al crear preferencia MP: {res_mp.get('error')}")
+
+            except Exception as e:
+                print(f"💥 Error crítico MP: {e}")
+
+        return Response({
+            'status': 'ok',
+            'turno_id': turno.id,
+            'message': 'Turno reservado con éxito.',
+            'procesar_pago': procesar_pago,
+            'mp_data': mp_data
+        }, status=201)
+
+    except Exception as e:
+        print(f"💥 ERROR FATAL EN CREAR_TURNO: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return Response({'status': 'error', 'message': f"Error interno: {str(e)}"}, status=500)
+    
 @csrf_exempt
 def listado_turnos(request):
     if request.method != 'GET':
@@ -863,180 +1078,7 @@ def listado_turnos(request):
         print(f"Error crítico en listado_turnos: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
 
-@api_view(['POST'])
-@permission_classes([AllowAny]) 
-def crear_turno(request):
-    try:
-        print(f"🚀 CREAR TURNO: Iniciando proceso...")
-        data = request.data
-        
-        # ==========================================
-        # 1. IDENTIFICAR CLIENTE (TU LÓGICA ORIGINAL)
-        # ==========================================
-        cliente = None
-        canal = data.get('canal', 'WEB')
 
-        if canal == 'PRESENCIAL':
-            cliente_id = data.get('cliente_id')
-            if cliente_id:
-                try:
-                    cliente = Usuario.objects.get(pk=cliente_id)
-                except Usuario.DoesNotExist:
-                    return Response({'status': 'error', 'message': "Cliente no encontrado"}, status=400)
-            else:
-                return Response({'status': 'error', 'message': "Falta seleccionar un cliente."}, status=400)
-        elif request.user.is_authenticated:
-            cliente = request.user
-        
-        if not cliente:
-            return Response({'status': 'error', 'message': "Debes iniciar sesión o seleccionar cliente."}, status=401)
-
-        # ==========================================
-        # 2. OBTENER DATOS BÁSICOS
-        # ==========================================
-        peluquero_id = data.get('peluquero_id')
-        servicios_ids = data.get('servicios_ids', [])
-        fecha_str = data.get('fecha')
-        hora_str = data.get('hora')
-        
-        if not all([peluquero_id, fecha_str, hora_str, servicios_ids]):
-             return Response({'status': 'error', 'message': "Faltan datos obligatorios"}, status=400)
-
-        # Convertimos fecha y hora
-        fecha_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-        # Aseguramos formato HH:MM
-        hora_obj = datetime.strptime(hora_str[:5], "%H:%M").time()
-
-        # ==========================================
-        # 3. VALIDACIÓN DE DISPONIBILIDAD (MI CORRECCIÓN)
-        # ==========================================
-        peluquero = Usuario.objects.get(pk=peluquero_id)
-        servicios = Servicio.objects.filter(pk__in=servicios_ids)
-        
-        # A. Cuánto va a durar el turno nuevo?
-        duracion_nuevo = sum(s.duracion for s in servicios)
-        if duracion_nuevo == 0: duracion_nuevo = 30 # Default por seguridad
-        
-        # B. Rango del nuevo turno
-        inicio_nuevo = datetime.combine(fecha_obj, hora_obj)
-        fin_nuevo = inicio_nuevo + timedelta(minutes=duracion_nuevo)
-
-        # C. Buscar conflictos con turnos existentes
-        turnos_del_dia = Turno.objects.filter(
-            fecha=fecha_obj,
-            peluquero=peluquero,
-            estado__in=['RESERVADO', 'CONFIRMADO']
-        ).prefetch_related('servicios')
-
-        for t in turnos_del_dia:
-            # Calculamos cuánto dura el turno viejo
-            duracion_t = sum(s.duracion for s in t.servicios.all())
-            if duracion_t == 0: duracion_t = 15 # Default
-            
-            t_inicio = datetime.combine(fecha_obj, t.hora)
-            t_fin = t_inicio + timedelta(minutes=duracion_t)
-
-            # MATEMÁTICA DE COLISIÓN:
-            # Si el nuevo empieza antes de que termine el viejo Y termina después de que empiece el viejo
-            if inicio_nuevo < t_fin and fin_nuevo > t_inicio:
-                return Response({
-                    'status': 'error', 
-                    'message': f'Horario no disponible. Se superpone con un turno de {t.hora} a {t_fin.time()}.'
-                }, status=400)
-
-        # ==========================================
-        # 4. LIMPIEZA DE ZOMBIES (TU LÓGICA)
-        # ==========================================
-        # Si había una oferta expirada en ese horario, la limpiamos para poder reservar
-        Turno.objects.filter(
-            fecha=fecha_obj,
-            hora=hora_obj,
-            peluquero_id=peluquero_id,
-            oferta_activa=True
-        ).update(oferta_activa=False, estado='CANCELADO')
-
-        # ==========================================
-        # 5. CÁLCULO DE MONTOS Y CUPONES (TU LÓGICA)
-        # ==========================================
-        monto_total_original = sum(float(s.precio) for s in servicios)
-        monto_final = monto_total_original
-        
-        cup_codigo = data.get('cup_codigo')
-        promo_usada = None
-
-        if cup_codigo:
-            try:
-                from .models import PromocionReactivacion
-                promo = PromocionReactivacion.objects.get(codigo=cup_codigo)
-                if promo.esta_vigente:
-                    descuento = monto_total_original * (float(promo.descuento_porcentaje) / 100)
-                    monto_final = monto_total_original - descuento
-                    promo_usada = promo
-            except:
-                pass 
-
-        tipo_pago = data.get('tipo_pago', 'PENDIENTE')
-        # Si es seña 50%, calculamos la mitad del FINAL (con descuento aplicado)
-        monto_seña = monto_final * 0.5 if tipo_pago == 'SENA_50' else monto_final
-
-        # ==========================================
-        # 6. GUARDAR TURNO
-        # ==========================================
-        turno = Turno.objects.create(
-            cliente=cliente,
-            peluquero=peluquero,
-            fecha=fecha_obj,
-            hora=hora_obj,
-            canal=canal,
-            tipo_pago=tipo_pago,
-            medio_pago=data.get('medio_pago', 'EFECTIVO'),
-            monto_seña=monto_seña,
-            monto_total=monto_final,
-            estado='RESERVADO'
-        )
-        turno.servicios.set(servicios)
-
-        if promo_usada:
-            promo_usada.estado = 'USADA'
-            promo_usada.turno_canje = turno
-            promo_usada.save()
-
-        # ==========================================
-        # 7. MERCADO PAGO (TU LÓGICA)
-        # ==========================================
-        mp_data = None
-        procesar_pago = False
-        
-        if data.get('medio_pago') == 'MERCADO_PAGO':
-            try:
-                from .mercadopago_service import MercadoPagoService
-                mp_service = MercadoPagoService()
-                preference_data = {
-                    'turno_id': turno.id,
-                    'monto_pago': float(monto_seña),
-                    'cliente_nombre': f"{cliente.nombre} {cliente.apellido}",
-                    'cliente_correo': cliente.correo,
-                    'peluquero_nombre': peluquero.nombre,
-                    'es_pago_total': (tipo_pago == 'TOTAL')
-                }
-                res_mp = mp_service.crear_preferencia_seña(preference_data)
-                if res_mp['success']:
-                    procesar_pago = True
-                    mp_data = {'init_point': res_mp.get('init_point'), 'preference_id': res_mp['preference_id']}
-            except Exception as e:
-                print(f"❌ Error MP: {e}")
-
-        return Response({
-            'status': 'ok',
-            'turno_id': turno.id,
-            'message': 'Turno reservado correctamente',
-            'procesar_pago': procesar_pago,
-            'mp_data': mp_data
-        })
-
-    except Exception as e:
-        print(f"💥 EXCEPCIÓN AL CREAR TURNO: {str(e)}")
-        return Response({'status': 'error', 'message': str(e)}, status=500)
     
 @csrf_exempt
 def verificar_disponibilidad(request):
@@ -2148,224 +2190,49 @@ def pago_pendiente(request):
         'turno_id': external_reference
     })
 
-# EN: usuarios/views.py
-
-# 1. FUNCIÓN AUXILIAR ACTUALIZADA (Lógica Universal)
 def procesar_reembolso_si_corresponde(turno):
     """
-    Verifica si corresponde reembolso (regla de 3 horas) y avisa para hacerlo MANUALMENTE.
-    NO conecta con Mercado Pago para evitar errores.
-    Devuelve: (bool_corresponde, mensaje_tecnico)
+    Evalúa si corresponde reembolso (regla de 3 horas) y ejecuta la devolución en MP.
+    Retorna: (bool: se_hizo_reembolso, str: mensaje)
     """
-    # 1. Verificar regla de 3 horas
-    ahora = timezone.now()
-    # Aseguramos que fecha_turno tenga zona horaria
-    fecha_turno = timezone.make_aware(datetime.combine(turno.fecha, turno.hora))
-    tiempo_restante = fecha_turno - ahora
-    
-    # Si falta menos de 3 horas, NO hay reembolso (política del negocio)
-    if tiempo_restante < timedelta(hours=3):
-        print(f"❌ CANCELACIÓN TARDÍA: Faltan {str(tiempo_restante).split('.')[0]}. No se devuelve la seña.")
-        return False, "Menos de 3 horas para el turno: No corresponde devolución de seña."
-
-    # 2. Verificar si hubo plata de por medio
-    monto_a_devolver = turno.monto_seña
-    
-    # Si hay un pago registrado (ID de MP o monto > 0) y no se ha marcado como reembolsado
-    if (turno.mp_payment_id or monto_a_devolver > 0) and not turno.reembolsado:
-        
-        # ⚠️ ALERTA GIGANTE EN TERMINAL (BACKEND)
-        mensaje_alerta = (
-            f"\n🚨 =================================================== 🚨\n"
-            f"⚠️  ATENCIÓN: DEVOLUCIÓN MANUAL REQUERIDA\n"
-            f"👤  Cliente: {turno.cliente.nombre} {turno.cliente.apellido} (DNI: {turno.cliente.dni})\n"
-            f"💰  Monto a devolver: ${monto_a_devolver}\n"
-            f"🆔  ID Pago MP: {turno.mp_payment_id or 'Pago Presencial/Otro'}\n"
-            f"📅  Turno Cancelado: {turno.fecha} {turno.hora}\n"
-            f"🚨 =================================================== 🚨\n"
-        )
-        print(mensaje_alerta)
-        
-        # Devolvemos True indicando que SI corresponde reembolso
-        return True, f"⚠️ IMPORTANTE: Corresponde devolución de ${monto_a_devolver}. Realizar reembolso MANUALMENTE."
-
-    return False, "No se registraron pagos previos para reembolsar."
-@api_view(['POST'])
-@permission_classes([AllowAny]) 
-def crear_turno(request):
     try:
-        print(f"\n🚀 --- INICIO CREAR TURNO (DEBUG) ---")
-        data = request.data
-        print(f"📦 DATA RECIBIDA: {data}")
-        
-        # 1. IDENTIFICAR USUARIO
-        cliente = None
-        canal = data.get('canal', 'WEB')
-        print(f"📍 CANAL DETECTADO: '{canal}'")
+        # 1. Armar fecha/hora completa del turno (consciente de zona horaria)
+        # Asumiendo que turno.fecha es date y turno.hora es time
+        fecha_hora_turno_naive = datetime.combine(turno.fecha, turno.hora)
+        fecha_hora_turno = timezone.make_aware(fecha_hora_turno_naive)
+        ahora = timezone.now()
 
-        if canal == 'PRESENCIAL':
-            cliente_id = data.get('cliente_id') or data.get('cliente')
-            if cliente_id:
-                try:
-                    cliente = Usuario.objects.get(pk=cliente_id)
-                except Usuario.DoesNotExist:
-                    return Response({'status': 'error', 'message': "Cliente no encontrado"}, status=400)
-            else:
-                return Response({'status': 'error', 'message': "Falta seleccionar cliente."}, status=400)
-        
-        elif request.user.is_authenticated:
-            cliente = request.user
-            # ✅ CORRECCIÓN: Usamos .correo en lugar de .email
-            print(f"✅ Cliente Web Autenticado: {cliente.correo}")
-        
-        if not cliente:
-            # Intento de rescate si viene ID
-            cid = data.get('cliente_id')
-            if cid:
-                cliente = Usuario.objects.filter(pk=cid).first()
-            
-            if not cliente:
-                print("❌ Error: No hay cliente identificado")
-                return Response({'status': 'error', 'message': "Debes iniciar sesión."}, status=401)
+        # 2. Calcular diferencia
+        tiempo_restante = fecha_hora_turno - ahora
+        horas_restantes = tiempo_restante.total_seconds() / 3600
 
-        # 2. DATOS BÁSICOS
-        peluquero_id = data.get('peluquero_id')
-        if not peluquero_id:
-             return Response({'status': 'error', 'message': "Falta peluquero"}, status=400)
+        # 3. Validar Regla de 3 Horas
+        if horas_restantes < 3:
+            return False, "⏳ Menos de 3hs para el turno. Se aplica penalidad (Sin reembolso)."
 
-        servicios_ids = data.get('servicios_ids', [])
-        fecha_str = data.get('fecha')
-        hora_str = data.get('hora')
-        
-        # Normalizar hora
-        if hora_str and len(hora_str) > 5: hora_str = hora_str[:5]
+        # 4. Validar si hay dinero que devolver
+        if not turno.mp_payment_id or turno.monto_seña <= 0:
+            if turno.canal == 'PRESENCIAL':
+                return False, "🏪 Turno presencial. Devolución manual requerida en caja."
+            return False, "⚠️ No hay pago registrado en MP para reembolsar."
 
-        try:
-            fecha_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-            hora_obj = datetime.strptime(hora_str, "%H:%M").time()
-        except Exception as e:
-             return Response({'status': 'error', 'message': f"Fecha/Hora inválida: {e}"}, status=400)
+        # 5. Ejecutar Reembolso en MercadoPago
+        mp_service = MercadoPagoService()
+        # Usamos tu función existente que devuelve un dict con 'success'
+        resultado_mp_dict = mp_service.devolver_pago(turno.mp_payment_id) 
+        resultado_mp = resultado_mp_dict.get('success', False) # Extraemos el booleano
 
-        # 3. VALIDAR DISPONIBILIDAD
-        if Turno.objects.filter(fecha=fecha_obj, hora=hora_obj, peluquero_id=peluquero_id, estado__in=['RESERVADO', 'CONFIRMADO']).exists():
-            return Response({'status': 'error', 'message': 'Horario ya ocupado.'}, status=400)
-
-        # 4. LIMPIAR ZOMBIES
-        Turno.objects.filter(fecha=fecha_obj, hora=hora_obj, peluquero_id=peluquero_id, oferta_activa=True).update(estado='CANCELADO', oferta_activa=False)
-
-        # 5. CREAR TURNO
-        peluquero = Usuario.objects.get(pk=peluquero_id)
-        servicios = Servicio.objects.filter(pk__in=servicios_ids)
-        
-        monto_total = sum(float(s.precio) for s in servicios)
-        
-        # Cupón
-        cup_codigo = data.get('cup_codigo')
-        promo_usada = None
-        if cup_codigo:
-            try:
-                from .models import PromocionReactivacion
-                promo = PromocionReactivacion.objects.filter(codigo=cup_codigo).first()
-                if promo and promo.esta_vigente:
-                    desc = monto_total * (float(promo.descuento_porcentaje)/100)
-                    monto_total -= desc
-                    promo_usada = promo
-            except: pass
-
-        tipo_pago = data.get('tipo_pago', 'SENA_50')
-        monto_seña = monto_total * 0.5 if tipo_pago == 'SENA_50' else monto_total
-        
-        print(f"💰 Montos Calculados - Total: {monto_total}, Seña: {monto_seña}")
-
-        turno = Turno.objects.create(
-            cliente=cliente,
-            peluquero=peluquero,
-            fecha=fecha_obj,
-            hora=hora_obj,
-            canal=canal,
-            tipo_pago=tipo_pago,
-            medio_pago=data.get('medio_pago', 'EFECTIVO'),
-            monto_seña=monto_seña,
-            monto_total=monto_total,
-            estado='RESERVADO',
-            mp_payment_id=data.get('mp_payment_id')
-        )
-        turno.servicios.set(servicios)
-        
-        if canal == 'PRESENCIAL' or turno.mp_payment_id:
-            turno.estado = 'CONFIRMADO'
+        if resultado_mp: # Asumiendo que devuelve True/False o un objeto truthy
+            turno.reembolsado = True
             turno.save()
-
-        if promo_usada:
-            promo_usada.estado = 'USADA'
-            promo_usada.turno_canje = turno
-            promo_usada.save()
-
-        # ==========================================
-        # 6. LÓGICA MERCADO PAGO (DEBUG EXTRA)
-        # ==========================================
-        print("\n🔍 --- INTENTANDO MERCADO PAGO ---")
-        mp_data = None
-        procesar_pago = False
-        
-        medio_pago_recibido = data.get('medio_pago')
-        print(f"👉 Medio Pago: '{medio_pago_recibido}' | Canal: '{canal}'")
-        
-        # CHEQUEO DE CONDICIÓN
-        if medio_pago_recibido == 'MERCADO_PAGO' and canal == 'WEB':
-            print("✅ CONDICIÓN CUMPLIDA: Entrando a generar preferencia...")
-            try:
-                from .mercadopago_service import MercadoPagoService
-                print("🛠️ Instanciando MercadoPagoService...")
-                mp_service = MercadoPagoService()
-                
-                pref_data = {
-                    'turno_id': turno.id,
-                    'monto_pago': float(monto_seña),
-                    'cliente_nombre': f"{cliente.nombre} {cliente.apellido}",
-                    # ✅ Usamos cliente.correo (con fallback)
-                    'cliente_correo': cliente.correo or "cliente@test.com",
-                    'peluquero_nombre': f"{peluquero.nombre}",
-                    'es_pago_total': (tipo_pago == 'TOTAL')
-                }
-                print(f"📦 Payload para MP: {pref_data}")
-                
-                res_mp = mp_service.crear_preferencia_seña(pref_data)
-                print(f"📩 RESPUESTA MP SERVICE: {res_mp}")
-                
-                if res_mp.get('success'):
-                    procesar_pago = True
-                    # Priorizamos sandbox_init_point para pruebas
-                    link = res_mp.get('sandbox_init_point') or res_mp.get('init_point')
-                    mp_data = {
-                        'init_point': link,
-                        'preference_id': res_mp.get('preference_id')
-                    }
-                    print(f"🎉 ÉXITO MP: Link generado -> {link}")
-                else:
-                    print(f"❌ FALLO MP: {res_mp.get('error')}")
-            
-            except Exception as e:
-                print(f"💥 EXCEPCIÓN EN BLOQUE MP: {str(e)}")
-                import traceback
-                traceback.print_exc()
+            return True, f"💰 Reembolso de ${turno.monto_seña} procesado exitosamente por MercadoPago."
         else:
-            print("⛔ CONDICIÓN NO CUMPLIDA: No es MERCADO_PAGO o no es WEB.")
-
-        print(f"📤 RESPUESTA FINAL: procesar_pago={procesar_pago}, mp_data={mp_data}")
-
-        return Response({
-            'status': 'ok',
-            'turno_id': turno.id,
-            'message': 'Turno registrado.',
-            'procesar_pago': procesar_pago,
-            'mp_data': mp_data
-        })
+            return False, "❌ Error al conectar con MercadoPago para el reembolso."
 
     except Exception as e:
-        print(f"💥 ERROR CRÍTICO GENERAL: {str(e)}")
-        return Response({'status': 'error', 'message': str(e)}, status=500)
-    
+        print(f"Error calculando reembolso: {e}")
+        return False, f"Error interno procesando reembolso: {str(e)}"
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def me_api_view(request):
@@ -4423,57 +4290,72 @@ def cancelar_turno_con_reoferta(request, turno_id):
     try:
         # 1. OBTENER EL TURNO
         turno = Turno.objects.get(id=turno_id)
+        
+        # Validar que no esté ya cancelado para evitar doble reembolso
+        if turno.estado == 'CANCELADO':
+             return JsonResponse({'error': 'El turno ya está cancelado'}, status=400)
+
         print(f"📅 Turno: {turno.fecha} {turno.hora} - Estado: {turno.estado}")
 
-        # 2. PROCESAR REEMBOLSO AUTOMÁTICO (NUEVO) 💰
+        # 2. PROCESAR REEMBOLSO AUTOMÁTICO 💰
         print("💳 Verificando reembolso automático...")
         reembolso_ok, mensaje_reembolso = procesar_reembolso_si_corresponde(turno)
         print(f"💰 Resultado Reembolso: {mensaje_reembolso}")
 
         # 3. CAMBIAR ESTADO A CANCELADO
-        turno.estado = 'CANCELADO'
-        turno.oferta_activa = True
+        # Guardamos el estado anterior por si hay que revertir (opcional, pero buena práctica)
+        # estado_anterior = turno.estado 
         
-        # Configurar expiración de la oferta (1 hora desde ahora)
-        turno.fecha_expiracion_oferta = timezone.now() + timedelta(hours=1)
+        turno.estado = 'CANCELADO'
+        turno.oferta_activa = False # Se activa solo si hay interesados abajo
         turno.save()
         
         print("✅ Turno marcado como CANCELADO")
 
         # 4. BUSCAR INTERESADOS
+        # (Asumo que obtener_interesados busca en tu modelo de ListaDeEspera o similar)
         print("🔎 Buscando interesados en lista de espera...")
-        interesados = turno.obtener_interesados()
+        interesados = turno.obtener_interesados() 
         cantidad_interesados = interesados.count()
         print(f"👥 Interesados encontrados: {cantidad_interesados}")
 
-        # 5. INICIAR REOFERTA O LIBERAR
+        # 5. DECISIÓN: REOFERTA O DISPONIBLE
         if cantidad_interesados > 0:
-            print(f"🚀 Iniciando reoferta masiva...")
+            print(f"🚀 Iniciando reoferta masiva para {cantidad_interesados} personas...")
             
+            # Activar modo reoferta
+            turno.oferta_activa = True
+            turno.fecha_expiracion_oferta = timezone.now() + timedelta(hours=1)
+            turno.save()
+
             # Importamos aquí para evitar ciclos
             from .tasks import procesar_reoferta_masiva
             
-            # Disparar tarea Celery en segundo plano
-            procesar_reoferta_masiva.delay(turno_id) 
+            # Disparar tarea Celery
+            procesar_reoferta_masiva.delay(turno_id)
             
             return JsonResponse({
                 'status': 'ok',
-                'message': f'Turno cancelado. {mensaje_reembolso} Se notificará a {cantidad_interesados} interesados.',
+                'message': f'Turno cancelado. {mensaje_reembolso} Se inició la reoferta para {cantidad_interesados} clientes.',
                 'reoferta_iniciada': True,
-                'interesados': cantidad_interesados,  # ✅ CORREGIDO
+                'interesados': cantidad_interesados,
                 'reembolso_info': mensaje_reembolso
             })
         else:
-            print("ℹ️ No hay interesados. El turno queda DISPONIBLE.")
-            turno.estado = 'DISPONIBLE'
+            print("ℹ️ No hay interesados. El turno pasa a DISPONIBLE directo.")
+            turno.estado = 'DISPONIBLE' # Ojo: Chequear si tu sistema permite volver a 'DISPONIBLE' o si borrás el turno.
+            turno.cliente = None        # Desvinculamos al cliente original
+            turno.monto_seña = 0        # Limpiamos seña
+            turno.monto_total = 0       # Limpiamos total
+            turno.mp_payment_id = None  # Limpiamos ID de pago
             turno.oferta_activa = False
             turno.save()
             
             return JsonResponse({
                 'status': 'ok', 
-                'message': f'Turno cancelado. {mensaje_reembolso} No hay interesados en lista de espera.',
+                'message': f'Turno cancelado y liberado. {mensaje_reembolso} Queda disponible en la agenda.',
                 'reoferta_iniciada': False,
-                'interesados': cantidad_interesados,  # ✅ CORREGIDO - usa la variable
+                'interesados': 0,
                 'reembolso_info': mensaje_reembolso
             })
 

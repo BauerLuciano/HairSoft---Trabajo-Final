@@ -680,6 +680,11 @@ const crearTurno = async () => {
     return acc + (s ? parseInt(s.duracion) : 0)
   }, 0)
 
+  // 🟢 Lógica corregida de montos
+  const totalCalculado = parseFloat(calcularTotal())
+  // Validamos si seleccionó seña (compatible si el value es "SENA" o "SENA_50")
+  const esPagoSena = form.value.tipo_pago.includes('SENA')
+
   const payload = {
     peluquero_id: form.value.peluquero,
     cliente_id: form.value.cliente,
@@ -687,34 +692,45 @@ const crearTurno = async () => {
     fecha: form.value.fecha,
     hora: form.value.hora,
     canal: 'PRESENCIAL',
-    tipo_pago: form.value.tipo_pago,
+    
+    // Forzamos el valor exacto que espera el backend
+    tipo_pago: esPagoSena ? 'SENA_50' : 'TOTAL',
     medio_pago: form.value.medio_pago,
-    monto_total: parseFloat(calcularTotal()),
-    monto_seña: form.value.tipo_pago === 'SENA_50' ? parseFloat(calcularSena()) : 0,
+    
+    // 👇👇 ACÁ ESTABA EL ERROR (saqué el punto extra) 👇👇
+    monto_total: totalCalculado, 
+    
+    // ⚠️ Corrección clave: 
+    // Si es TOTAL, el monto abonado (seña) es el 100% del valor.
+    // Si es SEÑA, es la mitad.
+    monto_seña: esPagoSena ? parseFloat(calcularSena()) : totalCalculado,
+    
     duracion_total: duracion,
     mp_payment_id: form.value.medio_pago !== 'EFECTIVO' ? form.value.comprobante_id : null
   }
 
   try {
     const token = localStorage.getItem('token')
+    // Ajustá la URL si tu backend usa '/turnos/' o '/turnos/crear_presencial/'
     const res = await fetch(`${API_URL}/turnos/crear/`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": token ? `Token ${token}` : '' },
       body: JSON.stringify(payload)
     })
     const data = await res.json()
-    if (res.ok && data.status === 'ok') {
+    if (res.ok && (data.status === 'ok' || res.status === 201)) {
       mensaje.value = "¡Turno Reservado con Éxito!"
       mensajeTipo.value = "success"
       limpiarContexto()
       setTimeout(() => router.push('/turnos'), 2000)
     } else {
-      mensaje.value = data.message || "Error al crear turno"
+      mensaje.value = data.message || JSON.stringify(data) || "Error al crear turno"
       mensajeTipo.value = "error"
     }
   } catch (e) {
     mensaje.value = "Error de conexión"
     mensajeTipo.value = "error"
+    console.error(e)
   } finally {
     procesando.value = false
   }

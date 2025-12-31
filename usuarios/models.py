@@ -492,6 +492,7 @@ class Turno(models.Model):
     medio_pago = models.CharField(max_length=15, choices=MEDIO_PAGO_CHOICES, default='PENDIENTE')
     monto_seña = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     monto_total = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    duracion_total = models.IntegerField(default=0, help_text="Duración total en minutos")
     reembolsado = models.BooleanField(default=False)
     mp_payment_id = models.CharField(max_length=50, blank=True, null=True)
     
