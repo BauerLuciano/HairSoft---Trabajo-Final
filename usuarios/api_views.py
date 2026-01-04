@@ -96,6 +96,7 @@ class ProductoCatalogoView(generics.ListAPIView):
     filter_backends = [filters.SearchFilter]
     search_fields = ['nombre', 'descripcion', 'marca__nombre']
 
+
 # ============================================
 # 💰 4. MÓDULO DE LIQUIDACIÓN
 # ============================================
@@ -106,38 +107,34 @@ class ReporteLiquidacionView(APIView):
     def get(self, request):
         inicio = request.query_params.get('fecha_inicio')
         fin = request.query_params.get('fecha_fin')
-        peluquero_id = request.query_params.get('peluquero_id') # ✅ FILTRO NUEVO
+        peluquero_id = request.query_params.get('peluquero_id')
 
         if not inicio or not fin:
             return Response({"error": "Faltan fechas"}, status=400)
 
-        # Base de empleados
-        empleados = Usuario.objects.filter(is_active=True).exclude(rol__nombre='Cliente')
+        empleados = Usuario.objects.filter(is_active=True, rol__nombre='Peluquero')
         
-        # ✅ APLICAMOS EL FILTRO SI VIENE UN ID
         if peluquero_id and peluquero_id != 'null':
             empleados = empleados.filter(id=peluquero_id)
 
         reporte = []
 
         for emp in empleados:
-            # 1. Buscamos TODOS los turnos del periodo
+            # CORRECCIÓN: 'COMPLETADO' (Mayúsculas)
             turnos = Turno.objects.filter(
                 peluquero=emp,
-                estado='COMPLETADO',
+                estado='COMPLETADO', 
                 fecha__range=[inicio, fin]
             ).select_related('cliente').prefetch_related('servicios')
 
             detalles_turnos = []
             total_comision = 0
 
-            # 2. Identificamos cuáles YA están pagados
             turnos_pagados_ids = Liquidacion.turnos_pagados.through.objects.filter(
                 turno_id__in=turnos.values_list('id', flat=True)
             ).values_list('turno_id', flat=True)
 
             for t in turnos:
-                # Si el turno ya está pagado, LO SALTAMOS
                 if t.id in turnos_pagados_ids:
                     continue
 
@@ -148,8 +145,6 @@ class ReporteLiquidacionView(APIView):
                 
                 str_servicios = " + ".join(servicios_display)
                 monto_comision = float(t.monto_comision)
-                
-                # Sumamos al total pendiente
                 total_comision += monto_comision
 
                 detalles_turnos.append({
@@ -163,22 +158,18 @@ class ReporteLiquidacionView(APIView):
                 })
 
             sueldo_base = float(emp.sueldo_fijo or 0)
-            
-            # Calculamos total real a pagar
-            total_a_pagar = total_comision + (sueldo_base if total_comision > 0 else 0)
+            total_a_pagar = total_comision + sueldo_base
 
-            # Solo agregamos al reporte si hay PLATA para pagar
-            if total_a_pagar > 0:
-                reporte.append({
-                    "id": emp.id,
-                    "nombre": f"{emp.nombre} {emp.apellido}",
-                    "rol": emp.rol.nombre if emp.rol else "N/A",
-                    "cantidad_turnos": len(detalles_turnos),
-                    "comision_ganada": round(total_comision, 2),
-                    "sueldo_fijo": sueldo_base,
-                    "total_a_pagar": round(total_a_pagar, 2),
-                    "detalles": detalles_turnos
-                })
+            reporte.append({
+                "id": emp.id,
+                "nombre": f"{emp.nombre} {emp.apellido}",
+                "rol": emp.rol.nombre if emp.rol else "N/A",
+                "cantidad_turnos": len(detalles_turnos),
+                "comision_ganada": round(total_comision, 2),
+                "sueldo_fijo": sueldo_base,
+                "total_a_pagar": round(total_a_pagar, 2),
+                "detalles": detalles_turnos
+            })
 
         return Response(reporte)
 
@@ -197,7 +188,8 @@ class RegistrarPagoLiquidacionView(APIView):
         except Usuario.DoesNotExist:
             return Response({"error": "Empleado no encontrado"}, status=404)
 
-        # 1. Buscamos SOLO turnos pendientes
+        # CORRECCIÓN: 'COMPLETADO' (Mayúsculas)
+        # Esto soluciona el Error 400
         turnos = Turno.objects.filter(
             peluquero_id=empleado_id, 
             estado='COMPLETADO', 
@@ -211,7 +203,6 @@ class RegistrarPagoLiquidacionView(APIView):
         if total == 0:
              return Response({"error": "No hay monto pendiente para liquidar."}, status=400)
 
-        # 2. Creamos la liquidación
         liquidacion = Liquidacion.objects.create(
             empleado=empleado,
             fecha_inicio_periodo=inicio,
@@ -222,7 +213,6 @@ class RegistrarPagoLiquidacionView(APIView):
             observaciones=data.get('observaciones', '')
         )
         
-        # 3. Marcar turnos como pagados
         liquidacion.turnos_pagados.set(turnos)
 
         return Response({"status": "ok", "id": liquidacion.id, "mensaje": "Pago registrado correctamente"})
@@ -241,7 +231,7 @@ class ReporteLiquidacionPDFView(APIView):
         elements = []
         styles = getSampleStyleSheet()
 
-        # ==================== ENCABEZADO ====================
+        # ENCABEZADO
         logo_path = "logo_barberia.jpg"
         try:
             logo = ImageRL(logo_path, width=25*mm, height=25*mm)
@@ -271,20 +261,29 @@ class ReporteLiquidacionPDFView(APIView):
         elements.append(Paragraph("<hr width='100%' color='#0ea5e9' size='2'/>", styles['Normal']))
         elements.append(Spacer(1, 20))
 
-        # ==================== CUERPO ====================
-        empleados = Usuario.objects.filter(is_active=True).exclude(rol__nombre='Cliente')
+        # CUERPO
+        empleados = Usuario.objects.filter(is_active=True, rol__nombre='Peluquero')
         if peluquero_id and peluquero_id != 'null':
             empleados = empleados.filter(id=peluquero_id)
 
         grand_total = 0
-        width_resumen = [80*mm, 80*mm] # Ajustado a 2 columnas
+        width_resumen = [80*mm, 80*mm]
         width_detalle = [20*mm, 40*mm, 75*mm, 25*mm]
 
+        hay_datos = False
+
         for emp in empleados:
-            turnos = Turno.objects.filter(peluquero=emp, estado='COMPLETADO', fecha__range=[inicio, fin])
+            # CORRECCIÓN: 'COMPLETADO' (Mayúsculas)
+            turnos = Turno.objects.filter(
+                peluquero=emp, 
+                estado='COMPLETADO', 
+                fecha__range=[inicio, fin]
+            ).exclude(liquidacion__isnull=False)
+            
             if not turnos.exists():
                 continue
 
+            hay_datos = True
             total_comision = sum(float(t.monto_comision) for t in turnos)
             grand_total += total_comision
 
@@ -292,7 +291,7 @@ class ReporteLiquidacionPDFView(APIView):
             elements.append(Paragraph(f"<b>PROFESIONAL: {emp.nombre} {emp.apellido}</b>", styles['Heading3']))
             elements.append(Spacer(1, 3))
 
-            # Tabla Resumen (SIN SUELDO FIJO)
+            # Tabla Resumen
             resumen_data = [
                 ['COMISIONES', 'TOTAL A PAGAR'],
                 [f"${total_comision:,.2f}", f"${total_comision:,.2f}"]
@@ -316,51 +315,53 @@ class ReporteLiquidacionPDFView(APIView):
             elements.append(Spacer(1, 10))
 
             # Tabla Detalles
-            if turnos.exists():
-                service_style = ParagraphStyle('ServiceList', parent=styles['Normal'], fontSize=8, leading=10)
-                data = [[
-                    Paragraph('<b>Fecha</b>', styles['Normal']), 
-                    Paragraph('<b>Cliente</b>', styles['Normal']), 
-                    Paragraph('<b>Servicios Realizados</b>', styles['Normal']), 
-                    Paragraph('<b>Comisión</b>', styles['Normal'])
-                ]]
+            service_style = ParagraphStyle('ServiceList', parent=styles['Normal'], fontSize=8, leading=10)
+            data = [[
+                Paragraph('<b>Fecha</b>', styles['Normal']), 
+                Paragraph('<b>Cliente</b>', styles['Normal']), 
+                Paragraph('<b>Servicios Realizados</b>', styles['Normal']), 
+                Paragraph('<b>Comisión</b>', styles['Normal'])
+            ]]
+            
+            for t in turnos:
+                s_items = []
+                for s in t.servicios.all():
+                    pct = getattr(s, 'porcentaje_comision', 0)
+                    s_items.append(f"&bull; {s.nombre} <b>({int(pct)}%)</b>")
                 
-                for t in turnos:
-                    s_items = []
-                    for s in t.servicios.all():
-                        pct = getattr(s, 'porcentaje_comision', 0)
-                        s_items.append(f"&bull; {s.nombre} <b>({int(pct)}%)</b>")
-                    
-                    servicios_vertical = "<br/>".join(s_items)
+                servicios_vertical = "<br/>".join(s_items)
 
-                    data.append([
-                        t.fecha.strftime("%d/%m"),
-                        Paragraph(f"{t.cliente.nombre}<br/>{t.cliente.apellido}", styles['Normal']),
-                        Paragraph(servicios_vertical, service_style),
-                        f"${t.monto_comision}"
-                    ])
-                
-                t_det = Table(data, colWidths=width_detalle)
-                t_det.setStyle(TableStyle([
-                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#334155')), 
-                    ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-                    ('ALIGN', (0,0), (-1,0), 'CENTER'),
-                    ('ALIGN', (3,1), (-1,-1), 'RIGHT'),
-                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                    ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-                    ('FONTSIZE', (0,0), (-1,-1), 9),
-                    ('LEFTPADDING', (0,0), (-1,-1), 6),
-                    ('RIGHTPADDING', (0,0), (-1,-1), 6),
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-                    ('TOPPADDING', (0,0), (-1,-1), 8),
-                ]))
-                elements.append(t_det)
+                data.append([
+                    t.fecha.strftime("%d/%m"),
+                    Paragraph(f"{t.cliente.nombre}<br/>{t.cliente.apellido}", styles['Normal']),
+                    Paragraph(servicios_vertical, service_style),
+                    f"${t.monto_comision}"
+                ])
+            
+            t_det = Table(data, colWidths=width_detalle)
+            t_det.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#334155')), 
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('ALIGN', (0,0), (-1,0), 'CENTER'),
+                ('ALIGN', (3,1), (-1,-1), 'RIGHT'),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                ('FONTSIZE', (0,0), (-1,-1), 9),
+                ('LEFTPADDING', (0,0), (-1,-1), 6),
+                ('RIGHTPADDING', (0,0), (-1,-1), 6),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                ('TOPPADDING', (0,0), (-1,-1), 8),
+            ]))
+            elements.append(t_det)
             
             elements.append(Spacer(1, 25))
 
-        elements.append(Spacer(1, 10))
-        total_style = ParagraphStyle('TotalFinal', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=14, textColor=colors.HexColor('#0f172a'), alignment=TA_RIGHT, rightIndent=12)
-        elements.append(Paragraph(f"TOTAL GENERAL CAJA: ${grand_total:,.2f}", total_style))
+        if not hay_datos:
+            elements.append(Paragraph("No hay liquidaciones pendientes para el período seleccionado.", styles['Normal']))
+        else:
+            elements.append(Spacer(1, 10))
+            total_style = ParagraphStyle('TotalFinal', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=14, textColor=colors.HexColor('#0f172a'), alignment=TA_RIGHT, rightIndent=12)
+            elements.append(Paragraph(f"TOTAL GENERAL CAJA: ${grand_total:,.2f}", total_style))
 
         doc.build(elements)
         buffer.seek(0)

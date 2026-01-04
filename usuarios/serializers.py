@@ -896,6 +896,7 @@ class ResetPasswordConfirmarSerializer(serializers.Serializer):
 class LiquidacionSerializer(serializers.ModelSerializer):
     empleado_nombre = serializers.CharField(source='empleado.nombre', read_only=True)
     empleado_apellido = serializers.CharField(source='empleado.apellido', read_only=True)
+    fecha_pago = serializers.DateTimeField(format="%Y-%m-%d", read_only=True)
 
     class Meta:
         model = Liquidacion

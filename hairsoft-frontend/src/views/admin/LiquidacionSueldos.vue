@@ -2,299 +2,289 @@
   <div class="list-container">
     <div class="list-card">
       
+      <!-- HEADER -->
       <div class="list-header">
         <div class="header-content">
-          <div>
-            <h1>GESTIÓN DE SUELDOS</h1>
-            <p>Liquidación de comisiones y registro de pagos</p>
-          </div>
+          <h1>Gestión de Sueldos</h1>
+          <p>Liquidación de comisiones y registro de pagos</p>
+        </div>
+        
+        <div class="header-buttons" style="display: flex; gap: 12px;">
+          <button 
+            @click="cambiarTab('calcular')" 
+            class="register-button"
+            :class="{ 'btn-activo': tabActiva === 'calcular' }"
+            style="min-width: 160px;"
+          >
+            <Calculator :size="18" />
+            Calcular Pendientes
+          </button>
+          <button 
+            @click="cambiarTab('historial')" 
+            class="register-button"
+            :class="{ 'btn-activo': tabActiva === 'historial' }"
+            style="background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-secondary);"
+          >
+            <History :size="18" />
+            Historial
+          </button>
         </div>
       </div>
 
-      <div class="tabs-container">
-        <button 
-          class="tab-btn" 
-          :class="{ active: tabActiva === 'calcular' }" 
-          @click="cambiarTab('calcular')"
-        >
-          <i class="ri-calculator-line"></i> 
-          <span>Calcular Pendientes</span>
-        </button>
-        <button 
-          class="tab-btn" 
-          :class="{ active: tabActiva === 'historial' }" 
-          @click="cambiarTab('historial')"
-        >
-          <i class="ri-history-line"></i> 
-          <span>Historial de Pagos</span>
-        </button>
-      </div>
-
+      <!-- VISTA CALCULAR -->
       <div v-if="tabActiva === 'calcular'" class="animate-fade">
         
+        <!-- FILTROS AUTOMÁTICOS -->
         <div class="filters-container">
           <div class="filters-grid">
             <div class="filter-group">
-              <label><i class="ri-calendar-line"></i> Desde</label>
-              <input type="date" v-model="fechaInicio" class="filter-input" />
+              <label>Desde</label>
+              <input type="date" v-model="fechaInicio" class="filter-input" @change="obtenerReporte" />
             </div>
             <div class="filter-group">
-              <label><i class="ri-calendar-check-line"></i> Hasta</label>
-              <input type="date" v-model="fechaFin" class="filter-input" />
+              <label>Hasta</label>
+              <input type="date" v-model="fechaFin" class="filter-input" @change="obtenerReporte" />
             </div>
             
-            <div class="filter-group">
-              <label><i class="ri-user-search-line"></i> Filtrar Profesional</label>
-              <div class="select-wrapper">
-                <select v-model="filtroPeluquero" class="filter-input custom-select">
-                  <option :value="null">Todos los Profesionales</option>
-                  <option v-for="p in peluqueros" :key="p.id" :value="p.id">
-                    {{ p.nombre }} {{ p.apellido }}
-                  </option>
-                </select>
-                <i class="ri-arrow-down-s-line select-arrow"></i>
-              </div>
-            </div>
-
-            <div class="filter-group filter-button-group">
-              <button @click="obtenerReporte" class="search-button" :disabled="cargando">
-                <span v-if="cargando" class="spinner"></span>
-                <span v-else><i class="ri-search-line"></i> Calcular</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="reporte.length > 0" class="stats-grid">
-          <div class="stat-card total-pagar">
-            <div class="stat-icon"><i class="ri-hand-coin-line"></i></div>
-            <div class="stat-info">
-              <span>Total Comisiones a Pagar</span>
-              <h3>$ {{ formatPrecio(totalGeneralPagar) }}</h3>
+            <div class="filter-group" style="grid-column: span 2;">
+              <label>Profesional</label>
+              <select v-model="filtroPeluquero" class="filter-input" @change="obtenerReporte">
+                <option :value="null">Todos los Profesionales</option>
+                <option v-for="p in peluqueros" :key="p.id" :value="p.id">
+                  {{ p.nombre }} {{ p.apellido }}
+                </option>
+              </select>
             </div>
           </div>
           
-          <div class="stat-card total-ventas">
-            <div class="stat-icon"><i class="ri-store-2-line"></i></div>
+          <div v-if="cargando" style="margin-top: 15px; color: var(--accent-color); font-size: 0.9rem; display: flex; align-items: center; gap: 8px; font-weight: 600;">
+             <span class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span> Calculando comisiones...
+          </div>
+        </div>
+
+        <!-- STATS CARDS -->
+        <div v-if="reporte.length > 0" class="usuarios-count" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; background: transparent; border: none; padding: 0;">
+          <div class="stat-card total-pagar">
+            <div class="stat-icon"><DollarSign :size="24" /></div>
             <div class="stat-info">
-              <span>Total Generado (Caja)</span>
+              <span>A Pagar</span>
+              <h3>$ {{ formatPrecio(totalGeneralPagar) }}</h3>
+            </div>
+          </div>
+          <div class="stat-card total-ventas">
+            <div class="stat-icon"><Store :size="24" /></div>
+            <div class="stat-info">
+              <span>Caja Total</span>
               <h3>$ {{ formatPrecio(totalVentasGeneradas) }}</h3>
             </div>
           </div>
-
           <div class="stat-card total-turnos">
-            <div class="stat-icon"><i class="ri-scissors-cut-line"></i></div>
+            <div class="stat-icon"><Scissors :size="24" /></div>
             <div class="stat-info">
-              <span>Turnos a Liquidar</span>
+              <span>Turnos</span>
               <h3>{{ totalTurnos }}</h3>
             </div>
           </div>
         </div>
 
+        <!-- TABLA REPORTE -->
         <div class="table-container" v-if="reporte.length > 0">
-          <div class="table-wrapper">
-            <table class="users-table">
-              <thead>
-                <tr>
-                  <th style="width: 50px"></th>
-                  <th>Empleado</th>
-                  <th class="text-center"><i class="ri-time-line"></i> Turnos</th>
-                  <th class="text-end text-muted"><i class="ri-store-line"></i> Generado</th>
-                  <th class="text-end"><i class="ri-money-dollar-circle-line"></i> Total a Pagar</th>
-                  <th class="text-center">Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                <template v-for="item in reportePaginado" :key="item.id">
-                  <tr class="row-parent" :class="{ expanded: expandedRows.includes(item.id) }">
-                    <td class="expand-cell" @click="toggleExpand(item.id)">
-                      <div class="expand-button">
-                        <i :class="expandedRows.includes(item.id) ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'"></i>
+          <table class="users-table">
+            <thead>
+              <tr>
+                <th style="width: 50px"></th>
+                <th>Empleado</th>
+                <th class="text-center">Turnos</th>
+                <th class="text-end">Generado</th>
+                <th class="text-end">Total a Pagar</th>
+                <th class="text-center" style="width: 100px;">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="item in reportePaginado" :key="item.id">
+                <tr :class="expandedRows.includes(item.id) ? 'hover-row expanded' : 'hover-row'">
+                  <td @click="toggleExpand(item.id)" style="cursor: pointer; text-align: center;">
+                    <component :is="expandedRows.includes(item.id) ? ChevronUp : ChevronDown" :size="18" style="opacity: 0.7;" />
+                  </td>
+                  <td>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <div class="employee-avatar">{{ item.nombre.charAt(0) }}</div>
+                      <div>
+                        <strong>{{ item.nombre }}</strong><br/>
+                        <span style="font-size: 0.75rem; opacity: 0.7;">{{ item.rol }}</span>
                       </div>
-                    </td>
-                    <td>
-                      <div class="employee-info">
-                        <div class="employee-avatar">{{ item.nombre.charAt(0) }}</div>
-                        <div>
-                          <strong class="employee-name">{{ item.nombre }}</strong>
-                          <small class="employee-role">{{ item.rol }}</small>
-                        </div>
-                      </div>
-                    </td>
-                    <td class="text-center">
-                      <span class="badge-turnos">{{ item.cantidad_turnos }}</span>
-                    </td>
-                    <td class="text-end">
-                      <span class="monto-generado">$ {{ formatPrecio(calcularGenerado(item)) }}</span>
-                    </td>
-                    <td class="text-end">
-                      <span class="monto-total">$ {{ formatPrecio(item.total_a_pagar) }}</span>
-                    </td>
-                    <td class="text-center">
-                      <button 
-                        @click="registrarPago(item)" 
-                        class="btn-pagar"
-                        title="Confirmar Pago"
-                      >
-                        <i class="ri-check-double-line"></i>
-                        <span>Pagar</span>
+                    </div>
+                  </td>
+                  <td class="text-center">
+                    <span class="badge-estado estado-info">{{ item.cantidad_turnos }}</span>
+                  </td>
+                  <td class="text-end" style="opacity: 0.8;">$ {{ formatPrecio(calcularGenerado(item)) }}</td>
+                  <td class="text-end">
+                    <span class="monto-total">$ {{ formatPrecio(item.total_a_pagar) }}</span>
+                  </td>
+                  <td class="text-center">
+                    <div class="action-buttons" style="justify-content: center;">
+                      <button @click="registrarPago(item)" class="action-button success" title="Registrar Pago">
+                        <CheckCircle :size="16" />
                       </button>
-                    </td>
-                  </tr>
-                  
-                  <tr v-if="expandedRows.includes(item.id)" class="row-detail">
-                    <td colspan="6">
-                      <div class="detail-wrapper">
-                        <h4 class="detail-title"><i class="ri-file-list-3-line"></i> Detalle de Turnos Pendientes</h4>
-                        <div class="detail-scroll">
-                          <table class="detail-table">
-                            <thead>
-                              <tr>
-                                <th><i class="ri-calendar-2-line"></i> Fecha</th>
-                                <th><i class="ri-user-line"></i> Cliente</th>
-                                <th><i class="ri-scissors-cut-line"></i> Servicios</th>
-                                <th class="text-end">Cobrado</th>
-                                <th class="text-end"><i class="ri-money-dollar-circle-line"></i> Comisión</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr v-for="(t, idx) in item.detalles" :key="idx" class="detail-row">
-                                <td>
-                                  <div class="detail-date">
-                                    <span class="date-day">{{ t.fecha }}</span>
-                                    <span class="date-time">{{ t.hora }}</span>
-                                  </div>
-                                </td>
-                                <td><strong>{{ t.cliente }}</strong></td>
-                                <td>
-                                  <div class="services-vertical">
-                                    <div v-for="(serv, i) in t.servicios.split(' + ')" :key="i" class="service-item">
-                                      <i class="ri-checkbox-blank-circle-fill" style="font-size: 6px; vertical-align: middle; margin-right: 4px; color: #0ea5e9;"></i>
-                                      {{ serv }}
-                                    </div>
-                                  </div>
-                                </td>
-                                <td class="text-end text-muted">$ {{ formatPrecio(t.total_cobrado) }}</td>
-                                <td class="text-end">
-                                  <span class="detail-amount">$ {{ formatPrecio(t.comision) }}</span>
-                                </td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
+                    </div>
+                  </td>
+                </tr>
+                
+                <!-- DETALLE EXPANDIDO -->
+                <tr v-if="expandedRows.includes(item.id)" class="row-detail">
+                  <td colspan="6" style="padding: 0;">
+                    <div class="detail-wrapper">
+                      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px; color: var(--text-primary);">
+                        <FileText :size="16" /> 
+                        <span style="font-weight: 700; text-transform: uppercase; font-size: 0.8rem;">Detalle de Turnos</span>
                       </div>
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-          </div>
-          
-          <div class="pagination-container" v-if="totalPaginasReporte > 1">
-            <button @click="paginaReporte--" :disabled="paginaReporte === 1" class="pagination-btn">
-              <i class="ri-arrow-left-s-line"></i> Anterior
-            </button>
-            <span class="pagination-info">Página {{ paginaReporte }} de {{ totalPaginasReporte }}</span>
-            <button @click="paginaReporte++" :disabled="paginaReporte === totalPaginasReporte" class="pagination-btn">
-              Siguiente <i class="ri-arrow-right-s-line"></i>
-            </button>
-          </div>
-          
-          <div class="download-section">
-            <button @click="descargarPDF" class="btn-download" :disabled="descargandoPDF">
-              <span v-if="descargandoPDF" class="spinner-small"></span>
-              <span v-else><i class="ri-file-pdf-line"></i> Descargar Reporte PDF</span>
-            </button>
-          </div>
-
+                      <div class="table-container" style="box-shadow: none; border: 1px solid var(--border-color);">
+                        <table class="users-table" style="font-size: 0.85rem;">
+                          <thead>
+                            <tr>
+                              <th style="background: var(--bg-tertiary); color: var(--text-secondary);">Fecha</th>
+                              <th style="background: var(--bg-tertiary); color: var(--text-secondary);">Cliente</th>
+                              <th style="background: var(--bg-tertiary); color: var(--text-secondary);">Servicios</th>
+                              <th class="text-end" style="background: var(--bg-tertiary); color: var(--text-secondary);">Cobrado</th>
+                              <th class="text-end" style="background: var(--bg-tertiary); color: var(--text-secondary);">Comisión</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="(t, idx) in item.detalles" :key="idx">
+                              <td>
+                                <div style="display: flex; flex-direction: column;">
+                                  <span style="font-weight: 600;">{{ t.fecha }}</span>
+                                  <span style="font-size: 0.75rem; opacity: 0.7;">{{ t.hora }}</span>
+                                </div>
+                              </td>
+                              <td><strong>{{ t.cliente }}</strong></td>
+                              <td>
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                  <div v-for="(serv, i) in t.servicios.split(' + ')" :key="i" style="display: flex; align-items: center;">
+                                    <div style="width: 4px; height: 4px; background: #0ea5e9; border-radius: 50%; margin-right: 6px;"></div>
+                                    <span v-if="serv.includes('(')">
+                                      {{ serv.split('(')[0] }} 
+                                      <span style="color: #10b981; font-weight: 800; font-size: 0.8rem;">
+                                        ({{ serv.split('(')[1] }}
+                                      </span>
+                                    </span>
+                                    <span v-else>{{ serv }}</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td class="text-end" style="opacity: 0.8;">$ {{ formatPrecio(t.total_cobrado) }}</td>
+                              <td class="text-end">
+                                <span style="color: #10b981; font-weight: 700;">$ {{ formatPrecio(t.comision) }}</span>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
         </div>
         
-        <div v-else-if="!cargando" class="empty-state">
-           <i class="ri-search-line empty-icon"></i>
-           <h3>Listo para calcular</h3>
-           <p>Seleccioná un rango de fechas para ver las comisiones.</p>
+        <div class="pagination" v-if="totalPaginasReporte > 1">
+          <button @click="paginaReporte--" :disabled="paginaReporte === 1"><ChevronLeft :size="16" /> Anterior</button>
+          <span>Página {{ paginaReporte }} de {{ totalPaginasReporte }}</span>
+          <button @click="paginaReporte++" :disabled="paginaReporte === totalPaginasReporte">Siguiente <ChevronRight :size="16" /></button>
+        </div>
+
+        <div v-if="reporte.length > 0" style="margin-top: 20px; display: flex; justify-content: flex-end;">
+           <button @click="descargarPDF" class="clear-filters-btn" :disabled="descargandoPDF">
+             <span v-if="descargandoPDF" class="spinner-small"></span>
+             <span v-else style="display: flex; align-items: center; gap: 6px;">
+                <FileText :size="16" /> Descargar Reporte PDF
+             </span>
+           </button>
+        </div>
+        
+        <div v-else-if="!cargando" class="no-results">
+           <Search class="no-results-icon" :size="48" />
+           <p>Listo para calcular</p>
+           <small>Seleccioná un rango de fechas para ver las comisiones.</small>
         </div>
       </div>
 
+      <!-- VISTA HISTORIAL -->
       <div v-if="tabActiva === 'historial'" class="animate-fade">
-        
         <div class="filters-container">
             <div class="filters-grid" style="grid-template-columns: 1fr;">
                 <div class="filter-group">
-                  <label><i class="ri-user-search-line"></i> Filtrar Historial por Profesional</label>
-                  <div class="select-wrapper">
-                    <select v-model="filtroPeluqueroHistorial" class="filter-input custom-select" @change="cargarHistorial">
-                        <option :value="null">Ver Todos</option>
-                        <option v-for="p in peluqueros" :key="p.id" :value="p.id">
-                        {{ p.nombre }} {{ p.apellido }}
-                        </option>
-                    </select>
-                    <i class="ri-arrow-down-s-line select-arrow"></i>
-                  </div>
+                  <label>Filtrar Historial por Profesional</label>
+                  <select v-model="filtroPeluqueroHistorial" class="filter-input" @change="cargarHistorial">
+                      <option :value="null">Ver Todos</option>
+                      <option v-for="p in peluqueros" :key="p.id" :value="p.id">
+                      {{ p.nombre }} {{ p.apellido }}
+                      </option>
+                  </select>
                 </div>
             </div>
         </div>
 
         <div class="table-container">
-          <div class="table-wrapper">
-            <table class="users-table historial-table">
-              <thead>
-                <tr>
-                  <th><i class="ri-calendar-check-line"></i> Fecha Pago</th>
-                  <th><i class="ri-user-line"></i> Empleado</th>
-                  <th><i class="ri-calendar-2-line"></i> Período</th>
-                  <th class="text-end"><i class="ri-money-dollar-circle-line"></i> Pagado</th>
-                  <th class="text-center">PDF</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="pago in historialPaginado" :key="pago.id" class="historial-row">
-                  <td>
-                    <div class="historial-date">
-                      <i class="ri-calendar-check-fill"></i>
-                      {{ formatDate(pago.fecha_pago) }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="employee-info-simple">
-                      <strong>{{ pago.empleado_nombre }} {{ pago.empleado_apellido }}</strong>
-                    </div>
-                  </td>
-                  <td>
-                    <span class="period-badge">
-                      {{ formatDate(pago.fecha_inicio_periodo) }} → {{ formatDate(pago.fecha_fin_periodo) }}
-                    </span>
-                  </td>
-                  <td class="text-end">
-                    <span class="historial-amount">$ {{ formatPrecio(pago.total_pagado) }}</span>
-                  </td>
-                  <td class="text-center">
-                    <button class="btn-print" title="Reimprimir PDF" @click="imprimirComprobante(pago)">
-                      <i class="ri-printer-line"></i>
+          <table class="users-table">
+            <thead>
+              <tr>
+                <th>Fecha Pago</th>
+                <th>Empleado</th>
+                <th>Período Liquidado</th>
+                <th class="text-end">Total Pagado</th>
+                <th class="text-center">Comprobante</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="pago in historialPaginado" :key="pago.id">
+                <td>
+                  <div style="display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                    <CalendarCheck :size="16" style="color: #10b981;" /> {{ formatDate(pago.fecha_pago) }}
+                  </div>
+                </td>
+                <td><strong>{{ pago.empleado_nombre }} {{ pago.empleado_apellido }}</strong></td>
+                <td>
+                  <span class="badge-estado estado-secondary">
+                    {{ formatDate(pago.fecha_inicio_periodo) }} al {{ formatDate(pago.fecha_fin_periodo) }}
+                  </span>
+                </td>
+                <td class="text-end">
+                  <span class="monto-total" style="font-size: 0.95rem;">$ {{ formatPrecio(pago.total_pagado) }}</span>
+                </td>
+                <td class="text-center">
+                  <!-- BOTÓN CORREGIDO CON TÍTULO DETALLADO -->
+                  <div class="action-buttons" style="justify-content: center;">
+                    <button 
+                      class="action-button edit" 
+                      :title="`Pago de $${formatPrecio(pago.total_pagado)} a ${pago.empleado_nombre} ${pago.empleado_apellido}`" 
+                      @click="imprimirComprobante(pago)"
+                      style="width: auto; padding: 8px 12px; gap: 6px;"
+                    >
+                      <Printer :size="16" />
+                      <span class="btn-text">Ver Comprobante</span>
                     </button>
-                  </td>
-                </tr>
-                <tr v-if="historial.length === 0">
-                  <td colspan="5">
-                    <div class="empty-state-inline">
-                      <i class="ri-inbox-line"></i>
-                      <span>No hay pagos registrados aún</span>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="historial.length === 0">
+                 <td colspan="5" class="no-results" style="padding: 40px;">
+                    <p>No hay pagos registrados aún</p>
+                 </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        <div class="pagination-container" v-if="totalPaginasHistorial > 1">
-          <button @click="paginaHistorial--" :disabled="paginaHistorial === 1" class="pagination-btn">
-            <i class="ri-arrow-left-s-line"></i> Anterior
+        <div class="pagination" v-if="totalPaginasHistorial > 1">
+          <button @click="paginaHistorial--" :disabled="paginaHistorial === 1">
+            <ChevronLeft :size="16" /> Anterior
           </button>
-          <span class="pagination-info">Página {{ paginaHistorial }} de {{ totalPaginasHistorial }}</span>
-          <button @click="paginaHistorial++" :disabled="paginaHistorial === totalPaginasHistorial" class="pagination-btn">
-            Siguiente <i class="ri-arrow-right-s-line"></i>
-          </button>
+          <span>Página {{ paginaHistorial }} de {{ totalPaginasHistorial }}</span>
+          <button @click="paginaHistorial++" :disabled="paginaHistorial === totalPaginasHistorial">
+            Siguiente <ChevronRight :size="16" /></button>
         </div>
       </div>
 
@@ -306,6 +296,11 @@
 import { ref, computed, onMounted } from 'vue';
 import axios from '@/utils/axiosConfig';
 import Swal from 'sweetalert2';
+import { 
+  Calculator, History, Search, DollarSign, Store, Scissors, 
+  ChevronDown, ChevronUp, CheckCircle, FileText, CalendarCheck, 
+  Printer, ChevronLeft, ChevronRight 
+} from 'lucide-vue-next';
 
 const API_URL = "http://localhost:8000/api";
 
@@ -326,7 +321,30 @@ const paginaReporte = ref(1);
 const paginaHistorial = ref(1);
 
 const formatPrecio = (v) => parseFloat(v || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 });
-const formatDate = (f) => f ? new Date(f).toLocaleDateString('es-AR') : '-';
+
+// --- CORRECCIÓN DE FECHA MEJORADA ---
+// Formatea fechas ISO o strings simples para evitar 'Invalid Date'
+const formatDate = (f) => {
+  if (!f) return '-';
+  try {
+    const datePart = typeof f === 'string' && f.includes('T') ? f.split('T')[0] : f;
+    
+    // Parseo manual YYYY-MM-DD para evitar problemas de zona horaria
+    if (typeof datePart === 'string' && datePart.includes('-')) {
+        const parts = datePart.split('-');
+        // Aseguramos que tenemos año, mes y día
+        if (parts.length === 3) {
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+    }
+    
+    // Fallback: intento estándar
+    const d = new Date(f);
+    return isNaN(d) ? '-' : d.toLocaleDateString('es-AR');
+  } catch (e) {
+    return f;
+  }
+};
 
 const totalGeneralPagar = computed(() => reporte.value.reduce((acc, item) => acc + item.total_a_pagar, 0));
 const totalTurnos = computed(() => reporte.value.reduce((acc, item) => acc + item.cantidad_turnos, 0));
@@ -363,6 +381,7 @@ const cambiarTab = async (tab) => {
   paginaHistorial.value = 1;
   expandedRows.value = [];
   if (tab === 'historial') await cargarHistorial();
+  else if (tab === 'calcular' && fechaInicio.value && fechaFin.value) obtenerReporte();
 };
 
 const cargarPeluqueros = async () => {
@@ -373,7 +392,9 @@ const cargarPeluqueros = async () => {
 };
 
 const obtenerReporte = async () => {
-  if (!fechaInicio.value || !fechaFin.value) return Swal.fire('Atención', 'Seleccioná las fechas primero', 'warning');
+  // Búsqueda automática: si faltan fechas no hacemos nada, si están, buscamos.
+  if (!fechaInicio.value || !fechaFin.value) return;
+  
   cargando.value = true;
   expandedRows.value = [];
   paginaReporte.value = 1;
@@ -381,17 +402,18 @@ const obtenerReporte = async () => {
     const res = await axios.get(`${API_URL}/reporte-liquidacion/`, { 
         params: { 
             fecha_inicio: fechaInicio.value, 
-            fecha_fin: fechaFin.value,
+            fecha_fin: fechaFin.value, 
             peluquero_id: filtroPeluquero.value 
         } 
     });
     reporte.value = res.data;
-    if (reporte.value.length === 0) Swal.fire('Sin Datos', 'No hay nada pendiente para liquidar', 'info');
   } catch (e) { Swal.fire('Error', 'Error al calcular', 'error'); } 
   finally { cargando.value = false; }
 };
 
 const registrarPago = async (empleado) => {
+  if (empleado.total_a_pagar <= 0) return Swal.fire('Atención', 'El monto a pagar es 0', 'warning');
+
   const result = await Swal.fire({
     title: `Pagar $${formatPrecio(empleado.total_a_pagar)}`,
     text: `Confirmar pago a ${empleado.nombre}.`,
@@ -408,14 +430,15 @@ const registrarPago = async (empleado) => {
         empleado_id: empleado.id,
         fecha_inicio: fechaInicio.value,
         fecha_fin: fechaFin.value,
-        monto_comisiones: empleado.comision_ganada,
-        monto_sueldo_fijo: 0,
-        total_pagado: empleado.total_a_pagar
       };
       await axios.post(`${API_URL}/liquidaciones/registrar/`, payload);
       Swal.fire({ title: '¡Pago Registrado!', icon: 'success', timer: 1500, showConfirmButton: false });
+      
       reporte.value = reporte.value.filter(e => e.id !== empleado.id);
-    } catch (e) { Swal.fire('Error', 'No se pudo registrar', 'error'); }
+    } catch (e) { 
+      console.error(e);
+      Swal.fire('Error', 'No se pudo registrar. Verifique que no esté ya pagado.', 'error'); 
+    }
   }
 };
 
@@ -431,7 +454,7 @@ const cargarHistorial = async () => {
 const descargarPDF = async () => {
     await manejarDescargaPDF({ 
         fecha_inicio: fechaInicio.value, 
-        fecha_fin: fechaFin.value,
+        fecha_fin: fechaFin.value, 
         peluquero_id: filtroPeluquero.value 
     }, `Reporte_${fechaInicio.value}.pdf`);
 };
@@ -439,7 +462,7 @@ const descargarPDF = async () => {
 const imprimirComprobante = async (pago) => {
     await manejarDescargaPDF({ 
         fecha_inicio: pago.fecha_inicio_periodo, 
-        fecha_fin: pago.fecha_fin_periodo,
+        fecha_fin: pago.fecha_fin_periodo, 
         peluquero_id: pago.empleado 
     }, `Comprobante_${pago.fecha_pago}.pdf`);
 };
@@ -447,15 +470,24 @@ const imprimirComprobante = async (pago) => {
 const manejarDescargaPDF = async (params, nombreArchivo) => {
     descargandoPDF.value = true;
     try {
-        const res = await axios.get(`${API_URL}/reporte-liquidacion/pdf/`, { params, responseType: 'blob' });
-        const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+        const res = await axios.get(`${API_URL}/reporte-liquidacion/pdf/`, { 
+            params, 
+            responseType: 'blob' 
+        });
+        
+        const blob = new Blob([res.data], { type: 'application/pdf' });
+        const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
         link.download = nombreArchivo;
         document.body.appendChild(link);
         link.click();
+        
         setTimeout(() => { document.body.removeChild(link); window.URL.revokeObjectURL(url); }, 100);
-    } catch (e) { Swal.fire('Error', 'Error al generar PDF', 'error'); }
+    } catch (e) { 
+        console.error(e);
+        Swal.fire('Error', 'Error al generar el PDF', 'error'); 
+    }
     finally { descargandoPDF.value = false; }
 }
 
@@ -467,118 +499,319 @@ onMounted(async () => {
   const saturday = new Date(today.setDate(monday.getDate() + 5));
   fechaInicio.value = monday.toISOString().split('T')[0];
   fechaFin.value = saturday.toISOString().split('T')[0];
+  // Carga inicial
+  obtenerReporte();
 });
 </script>
 
 <style scoped>
-/* ==================== VARIABLES Y BASE ==================== */
-.list-container { padding: 24px; max-width: 1400px; margin: 0 auto; min-height: 100vh; }
-.list-card { background: var(--bg-secondary); border-radius: 24px; padding: 40px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); border: 1px solid var(--border-color); position: relative; overflow: hidden; }
-.list-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #0ea5e9); background-size: 200% 100%; }
-@keyframes gradientShift { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+/* ========================================
+   🔥 ESTILO UNIFICADO (Idéntico a Productos)
+   ======================================== */
 
-.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
-.stat-card { background: var(--bg-primary); padding: 20px; border-radius: 16px; border: 1px solid var(--border-color); display: flex; align-items: center; gap: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-.stat-icon { width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: white; }
-.stat-info span { font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 5px; }
-.stat-info h3 { margin: 0; font-size: 1.4rem; color: var(--text-primary); font-weight: 800; }
+:root {
+  --bg-primary: #1e293b;
+  --bg-secondary: #0f172a;
+  --bg-tertiary: #1e293b; 
+  --hover-bg: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --accent-color: #0ea5e9;
+  --accent-light: rgba(14, 165, 233, 0.2);
+  --success-color: #10b981;
+  --error-color: #ef4444;
+  --border-color: #334155;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+}
+
+.list-container {
+  padding: 32px;
+  max-width: 1600px;
+  margin: 0 auto;
+  min-height: 100vh;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Tarjeta principal */
+.list-card {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-radius: 24px;
+  padding: 40px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
+}
+
+.list-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1);
+  border-radius: 24px 24px 0 0;
+}
+
+/* HEADER */
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 35px;
+  flex-wrap: wrap;
+  gap: 20px;
+  border-bottom: 2px solid var(--border-color);
+  padding-bottom: 25px;
+}
+
+.header-content h1 {
+  margin: 0;
+  font-size: 2.2rem;
+  background: linear-gradient(135deg, var(--text-primary), #0ea5e9);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.header-content p {
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-top: 8px;
+  letter-spacing: 0.5px;
+}
+
+/* Botones Principales */
+.register-button {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.register-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(14, 165, 233, 0.4);
+}
+
+.register-button:disabled { opacity: 0.7; cursor: not-allowed; }
+.btn-activo { background: #0284c7; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
+
+/* FILTROS */
+.filters-container {
+  margin-bottom: 30px;
+  background: var(--hover-bg);
+  padding: 24px;
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 18px;
+  align-items: end;
+}
+
+.filter-group { display: flex; flex-direction: column; }
+
+.filter-group label {
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+}
+
+.filter-input {
+  padding: 12px 14px;
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 0.95rem;
+  height: 48px;
+  box-sizing: border-box;
+}
+
+.filter-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 4px var(--accent-light);
+  background: var(--bg-secondary);
+}
+
+/* CARDS DE ESTADISTICAS */
+.stat-card {
+  background: var(--bg-primary);
+  padding: 24px;
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  box-shadow: var(--shadow-sm);
+}
+
+.stat-icon {
+  width: 50px; height: 50px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  color: white;
+}
+
 .total-pagar .stat-icon { background: linear-gradient(135deg, #10b981, #059669); }
 .total-ventas .stat-icon { background: linear-gradient(135deg, #f59e0b, #d97706); }
 .total-turnos .stat-icon { background: linear-gradient(135deg, #0ea5e9, #0284c7); }
 
-.list-header { border-bottom: 2px solid var(--border-color); padding-bottom: 24px; margin-bottom: 32px; }
-.header-content { display: flex; align-items: center; gap: 20px; }
-.list-header h1 { font-size: 2rem; color: var(--text-primary); font-weight: 800; margin: 0; background: linear-gradient(135deg, var(--text-primary), #0ea5e9); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-.list-header p { color: var(--text-secondary); margin: 5px 0 0 0; font-weight: 500; }
+.stat-info span { font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; }
+.stat-info h3 { margin: 0; font-size: 1.5rem; color: var(--text-primary); font-weight: 800; }
 
-.tabs-container { display: flex; gap: 12px; margin-bottom: 32px; background: var(--hover-bg); padding: 8px; border-radius: 16px; border: 1px solid var(--border-color); }
-.tab-btn { flex: 1; background: transparent; border: none; padding: 14px; font-size: 1rem; font-weight: 700; color: var(--text-secondary); cursor: pointer; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 10px; transition: 0.3s; }
-.tab-btn.active { background: var(--bg-primary); color: #0ea5e9; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-.tab-btn:hover:not(.active) { color: var(--text-primary); }
-
-.filters-container { background: var(--bg-primary); padding: 24px; border-radius: 16px; margin-bottom: 30px; border: 1px solid var(--border-color); }
-.filters-grid { display: grid; grid-template-columns: 1fr 1fr 1.5fr 1fr; gap: 20px; align-items: end; }
-.filter-group label { display: block; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; font-size: 0.9rem; }
-.filter-input { width: 100%; padding: 12px; border-radius: 10px; border: 2px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); outline: none; transition: 0.2s; }
-.filter-input:focus { border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2); background: var(--bg-primary); }
-
-/* SELECT STYLES */
-.select-wrapper { position: relative; }
-.custom-select { appearance: none; cursor: pointer; }
-.select-arrow { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); pointer-events: none; font-size: 1.2rem; }
-
-.search-button { background: #0ea5e9; color: white; padding: 12px; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; width: 100%; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
-.search-button:hover:not(:disabled) { background: #0284c7; transform: translateY(-2px); }
-
-.table-container { border-radius: 16px; overflow: hidden; border: 1px solid var(--border-color); box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }
-.table-wrapper { overflow-x: auto; }
-.users-table { width: 100%; border-collapse: collapse; background: var(--bg-primary); }
-.users-table th { background: #1e293b; color: white; padding: 16px; text-align: left; font-weight: 700; font-size: 0.85rem; text-transform: uppercase; }
-.users-table td { padding: 16px; border-bottom: 1px solid var(--border-color); color: var(--text-secondary); vertical-align: middle; }
-.row-parent { transition: 0.2s; }
-.row-parent:hover { background: var(--hover-bg); }
-.row-parent.expanded { background: var(--hover-bg); border-left: 4px solid #0ea5e9; }
-
-.expand-button { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: rgba(14,165,233,0.1); color: #0ea5e9; border-radius: 8px; cursor: pointer; transition: 0.2s; }
-.expand-button:hover { background: #0ea5e9; color: white; }
-.employee-info { display: flex; align-items: center; gap: 12px; }
-.employee-avatar { width: 40px; height: 40px; background: linear-gradient(135deg, #6366f1, #4f46e5); color: white; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; }
-.employee-name { display: block; color: var(--text-primary); font-size: 1rem; }
-.employee-role { font-size: 0.8rem; color: var(--text-muted); }
-.badge-turnos { background: var(--bg-secondary); padding: 5px 10px; border-radius: 6px; font-weight: 700; border: 1px solid var(--border-color); }
-.monto-comision { color: #10b981; font-weight: 700; }
-.monto-generado { color: var(--text-muted); }
-.monto-total { color: #0ea5e9; font-weight: 800; font-size: 1.1rem; }
-.btn-pagar { background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: 0.2s; }
-.btn-pagar:hover { background: #059669; transform: translateY(-2px); }
-
-.row-detail td { padding: 0; background: var(--bg-secondary); }
-.detail-wrapper { padding: 20px; }
-.detail-title { margin: 0 0 15px 0; color: var(--text-primary); font-size: 1rem; display: flex; align-items: center; gap: 8px; }
-.detail-table { width: 100%; border-collapse: collapse; background: var(--bg-primary); border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); }
-.detail-table th { background: var(--hover-bg); color: var(--text-secondary); padding: 10px 15px; font-size: 0.8rem; }
-.detail-table td { padding: 10px 15px; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; }
-.detail-amount { color: #10b981; font-weight: 700; }
-.services-tag { font-size: 0.85rem; color: var(--text-primary); }
-.services-vertical { display: flex; flex-direction: column; gap: 4px; }
-.service-item { font-size: 0.85rem; color: var(--text-primary); line-height: 1.3; }
-
-.pagination-container { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 20px; padding: 10px; }
-.pagination-btn { background: var(--bg-primary); border: 1px solid var(--border-color); padding: 8px 16px; border-radius: 8px; cursor: pointer; color: var(--text-primary); display: flex; align-items: center; gap: 5px; transition: 0.2s; }
-.pagination-btn:hover:not(:disabled) { border-color: #0ea5e9; color: #0ea5e9; }
-.pagination-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.download-section { margin-top: 20px; display: flex; justify-content: flex-end; }
-.btn-download { background: var(--bg-primary); border: 2px solid #0ea5e9; color: #0ea5e9; padding: 12px 24px; border-radius: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.2s; }
-.btn-download:hover { background: #0ea5e9; color: white; }
-
-.historial-date { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-.period-badge { background: var(--hover-bg); padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; border: 1px solid var(--border-color); }
-.btn-print { background: var(--bg-secondary); border: 1px solid var(--border-color); width: 36px; height: 36px; border-radius: 8px; cursor: pointer; color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; transition: 0.2s; }
-.btn-print:hover { border-color: #0ea5e9; color: #0ea5e9; }
-
-.text-center { text-align: center; }
-.text-end { text-align: right; }
-.text-muted { color: var(--text-muted); }
-.empty-state { text-align: center; padding: 60px; color: var(--text-muted); }
-.empty-icon { font-size: 4rem; opacity: 0.3; margin-bottom: 15px; display: block; }
-.animate-fade { animation: fade 0.3s ease; }
-@keyframes fade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-.spinner { width: 18px; height: 18px; border: 3px solid rgba(255, 255, 255, 0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
-.spinner-small { width: 14px; height: 14px; border: 2px solid rgba(255, 255, 255, 0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-@media (max-width: 1024px) {
-  .filters-grid { grid-template-columns: 1fr 1fr; }
+/* TABLA */
+.table-container {
+  overflow-x: auto;
+  margin-bottom: 25px;
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
 }
 
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-primary);
+}
+
+.users-table th {
+  background: var(--accent-color);
+  color: white;
+  padding: 16px 12px;
+  text-align: left;
+  font-weight: 900;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.users-table td {
+  padding: 14px 12px;
+  vertical-align: middle;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.9rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.hover-row:hover { background: var(--hover-bg); transition: 0.2s; }
+.expanded { background: rgba(14, 165, 233, 0.05); border-left: 4px solid var(--accent-color); }
+
+/* UTILIDADES TABLA */
+.text-center { text-align: center; }
+.text-end { text-align: right; }
+
+.employee-avatar {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: white;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800;
+}
+
+.badge-estado {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+}
+.estado-info { background: rgba(14, 165, 233, 0.1); color: #0ea5e9; border: 1px solid #0ea5e9; }
+.estado-secondary { background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-color); }
+
+.monto-total { color: #0ea5e9; font-weight: 800; font-size: 1.1rem; }
+
+/* ACCIONES */
+.action-button {
+  padding: 8px; border: none; border-radius: 10px;
+  cursor: pointer; width: 36px; height: 36px;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all 0.3s;
+}
+.action-button.success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid #10b981; }
+.action-button.success:hover { background: #10b981; color: white; transform: translateY(-2px); }
+.action-button.edit { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }
+.action-button.edit:hover { background: var(--hover-bg); border-color: var(--accent-color); }
+
+/* DETALLE EXPANDIDO */
+.row-detail td { padding: 0; background: #0b1120; }
+.detail-wrapper { padding: 24px; border-left: 4px solid var(--accent-color); }
+.spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* PAGINACIÓN */
+.pagination { display: flex; justify-content: center; gap: 15px; align-items: center; margin-top: 25px; }
+.pagination button {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 10px 20px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+}
+.pagination button:hover:not(:disabled) { background: var(--hover-bg); border-color: var(--accent-color); color: var(--accent-color); }
+.pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.clear-filters-btn {
+  background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color);
+  padding: 12px 20px; border-radius: 10px; cursor: pointer; font-weight: 700;
+  transition: all 0.3s;
+}
+.clear-filters-btn:hover:not(:disabled) { border-color: var(--accent-color); color: var(--accent-color); background: var(--hover-bg); }
+
+.no-results { text-align: center; padding: 60px; color: var(--text-secondary); }
+.no-results-icon { opacity: 0.3; margin-bottom: 15px; color: var(--text-tertiary); }
+
+.btn-text {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* Ocultar texto en móviles si quieres ahorrar espacio */
 @media (max-width: 768px) {
-  .list-card { padding: 24px; }
-  .header-content { flex-direction: column; text-align: center; }
-  .list-header h1 { font-size: 1.8rem; }
-  .filters-grid { grid-template-columns: 1fr; }
-  .tabs-container { flex-direction: column; }
-  .employee-avatar { width: 40px; height: 40px; font-size: 1.1rem; }
-  .pagination-container { flex-direction: column; gap: 12px; }
-  .pagination-btn { width: 100%; justify-content: center; }
+  .btn-text { display: none; }
+}
+
+/* RESPONSIVE */
+@media (max-width: 1024px) { .filters-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 768px) {
+  .list-card { padding: 20px; }
+  .filters-grid, .stats-grid { grid-template-columns: 1fr; }
+  .list-header { flex-direction: column; align-items: flex-start; }
+  .header-buttons { width: 100%; flex-direction: column; }
+  .register-button { justify-content: center; }
 }
 </style>
