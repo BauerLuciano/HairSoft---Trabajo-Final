@@ -480,7 +480,9 @@ class Turno(models.Model):
     
     MEDIO_PAGO_CHOICES = [
         ('EFECTIVO', 'Efectivo'),
-        ('MERCADO_PAGO', 'Mercado Pago'),
+        ('MERCADO_PAGO', 'Mercado Pago (Web) '),
+        ('TRANSFERENCIA', 'Transferencia'),
+        ('TARJETA', 'Tarjeta de Crédito/Débito'),
         ('PENDIENTE', 'Pendiente'),
     ]
 
@@ -489,7 +491,7 @@ class Turno(models.Model):
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='RESERVADO')
     canal = models.CharField(max_length=15, choices=CANAL_CHOICES, default='PRESENCIAL')
     tipo_pago = models.CharField(max_length=15, choices=TIPO_PAGO_CHOICES, default='PENDIENTE')
-    medio_pago = models.CharField(max_length=15, choices=MEDIO_PAGO_CHOICES, default='PENDIENTE')
+    medio_pago = models.CharField(max_length=20, choices=MEDIO_PAGO_CHOICES, default='PENDIENTE')
     monto_seña = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     monto_total = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     duracion_total = models.IntegerField(default=0, help_text="Duración total en minutos")
@@ -561,10 +563,6 @@ class Turno(models.Model):
     
     def obtener_interesados(self):
         print(f"🔍🔍🔍 BUSCANDO INTERESADOS PARA TURNO {self.id}:")
-        # Usamos filter directo sobre el modelo InteresTurnoLiberado (que debe estar definido o importado)
-        # Como InteresTurnoLiberado está DEFINIDO ABAJO, aquí daría error si lo llamamos directamente al cargar el archivo.
-        # Pero como este método se ejecuta en runtime, Python ya habrá leído todo el archivo.
-        # Para seguridad total contra ReferenceError:
         from django.apps import apps
         InteresTurnoLiberado = apps.get_model('usuarios', 'InteresTurnoLiberado')
         
@@ -627,22 +625,42 @@ class Turno(models.Model):
 
     @transaction.atomic
     def crear_venta_turno(self):
-        # 🛡️ SOLUCIÓN REAL: Usamos apps.get_model para evitar errores de "Clase no definida todavía"
+        # Evitamos importaciones circulares
         from django.apps import apps
         MetodoPago = apps.get_model('usuarios', 'MetodoPago')
         Venta = apps.get_model('usuarios', 'Venta')
         DetalleVenta = apps.get_model('usuarios', 'DetalleVenta')
 
         total_servicios = sum(servicio.precio for servicio in self.servicios.all())
-        medio_pago_obj = MetodoPago.objects.filter(nombre__iexact=self.medio_pago).first() 
+        tipo_map = {
+            'EFECTIVO': 'EFECTIVO',
+            'TARJETA': 'TARJETA',
+            'TRANSFERENCIA': 'TRANSFERENCIA',
+            'MERCADO_PAGO': 'TRANSFERENCIA', # Mapeamos MP a Transferencia
+            'PENDIENTE': 'EFECTIVO' # Default
+        }
+        
+        tipo_real = tipo_map.get(self.medio_pago, 'EFECTIVO')
+        nombre_real = self.medio_pago.replace('_', ' ').title() # Ej: Mercado Pago
+
+        # Buscamos el objeto. Si no existe, LO CREA. Así nunca queda nulo.
+        medio_pago_obj, created = MetodoPago.objects.get_or_create(
+            nombre__iexact=self.medio_pago,
+            defaults={
+                'nombre': nombre_real,
+                'tipo': tipo_real,
+                'activo': True
+            }
+        )
 
         venta = Venta.objects.create(
             cliente=self.cliente,
             usuario=self.peluquero,
             total=total_servicios,
             tipo='TURNO',
-            medio_pago=medio_pago_obj if medio_pago_obj else None
+            medio_pago=medio_pago_obj # ¡Ahora sí tiene objeto!
         )
+        
         for servicio in self.servicios.all():
             DetalleVenta.objects.create(
                 venta=venta,
@@ -652,6 +670,7 @@ class Turno(models.Model):
                 precio_unitario=servicio.precio,
                 subtotal=servicio.precio
             )
+            
         venta.total = venta.detalles.aggregate(total=models.Sum('subtotal'))['total'] or 0
         venta.save()
 

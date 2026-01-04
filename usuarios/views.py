@@ -20,7 +20,7 @@ from django.utils import timezone
 from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, PromocionReactivacion, Auditoria, PasswordResetToken
 from .mercadopago_service import MercadoPagoService
 import json, re, requests, unicodedata
-from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer, ListaPrecioProveedorSerializer, HistorialPreciosSerializer, PrecioSugeridoSerializer, ActualizarListaPreciosSerializer, CotizacionExternaSerializer, SolicitudPresupuestoSerializer, MarcaSerializer, AuditoriaSerializer, SolicitarResetPasswordSerializer, ResetPasswordConfirmarSerializer, ServicioSerializer, RolSerializer, PermisoSerializer
+from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer, ListaPrecioProveedorSerializer, HistorialPreciosSerializer, PrecioSugeridoSerializer, ActualizarListaPreciosSerializer, CotizacionExternaSerializer, SolicitudPresupuestoSerializer, MarcaSerializer, AuditoriaSerializer, SolicitarResetPasswordSerializer, ResetPasswordConfirmarSerializer, ServicioSerializer, RolSerializer, PermisoSerializer, TurnoSerializer
 from django.contrib.auth.hashers import check_password
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -731,8 +731,6 @@ def sanear_turnos_vencidos():
     except Exception as e:
         print(f"⚠️ Error en saneamiento automático: {e}")
 
-# usuarios/views.py
-
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def crear_turno(request):
@@ -1288,64 +1286,60 @@ def obtener_turno_por_id(request, turno_id):
         return JsonResponse({'error': f'Error interno: {str(e)}'}, status=500)
 
 @csrf_exempt
+@api_view(['POST']) # Agregado para que DRF maneje el request si entra por /api/
+@permission_classes([AllowAny])
 def cambiar_estado_turno(request, turno_id, nuevo_estado):
     """
-    Vista para cambiar el estado de un turno desde el frontend
+    Vista para cambiar el estado de un turno desde el frontend.
+    Permite transiciones desde RESERVADO o CONFIRMADO hacia COMPLETADO o CANCELADO.
     """
     try:
         # Obtener el turno
         turno = get_object_or_404(Turno, id=turno_id)
         
-        # Estados válidos (definidos en tu modelo)
-        # Asegurate que tu modelo tenga estos choices o aceptalos hardcoded aquí
-        estados_validos = ['RESERVADO', 'COMPLETADO', 'CANCELADO']
+        print(f"🔄 Cambio estado Turno #{turno.id}: {turno.estado} -> {nuevo_estado}")
+
+        # Estados válidos
+        estados_validos = ['RESERVADO', 'CONFIRMADO', 'COMPLETADO', 'CANCELADO']
         
         if nuevo_estado not in estados_validos:
-            return JsonResponse({
-                'status': 'error',
-                'message': 'Estado no válido'
-            }, status=400)
+            return JsonResponse({'status': 'error', 'message': f'Estado destino "{nuevo_estado}" no válido'}, status=400)
         
         estado_anterior = turno.estado
+        if estado_anterior == 'COMPLETADO':
+            return JsonResponse({'status': 'error', 'message': 'El turno ya está COMPLETADO. No se puede modificar.'}, status=400)
         
-        # Validaciones de negocio
-        if estado_anterior == 'COMPLETADO' and nuevo_estado != 'COMPLETADO':
-            return JsonResponse({'status': 'error', 'message': 'No se puede modificar un turno ya completado'}, status=400)
+        if estado_anterior == 'CANCELADO':
+            return JsonResponse({'status': 'error', 'message': 'El turno ya está CANCELADO. No se puede revivir.'}, status=400)
         
-        if estado_anterior == 'CANCELADO' and nuevo_estado != 'CANCELADO':
-            return JsonResponse({'status': 'error', 'message': 'No se puede modificar un turno cancelado'}, status=400)
-        
-        # ✅ CORRECCIÓN: Permitir completar si está RESERVADO (ya sea con seña o total)
-        # Antes solo dejaba si era CONFIRMADO, lo cual ya no usamos.
         if nuevo_estado == 'COMPLETADO':
-            # Si completa y era seña, asumimos que paga el resto en el local
+            # Solo permitimos completar si estaba activo
+            if estado_anterior not in ['RESERVADO', 'CONFIRMADO']:
+                 return JsonResponse({'status': 'error', 'message': 'Solo turnos reservados o confirmados pueden completarse.'}, status=400)
+
+            # Si era SEÑA, al completar se asume que paga el resto -> Pasa a TOTAL
             if turno.tipo_pago == 'SENA_50':
                 turno.tipo_pago = 'TOTAL'
-                # Opcional: Podrías marcar el medio de pago del saldo como EFECTIVO por defecto
-                # turno.medio_pago_saldo = 'EFECTIVO' 
 
-            # Calcular montos finales si faltan
             if turno.monto_total == 0:
-                turno.monto_total = sum(s.precio for s in turno.servicios.all())
+                turno.monto_total = sum(s.precio for s in turno.servicios.all()) or 0
             
-            # Ajustar seña visual si era pago total directo
             if turno.monto_seña == 0 and turno.tipo_pago == 'TOTAL':
                 turno.monto_seña = turno.monto_total
 
-        # Aplicar cambio
         turno.estado = nuevo_estado
         turno.save()
         
         return JsonResponse({
             'status': 'ok',
-            'message': f'Estado cambiado de {estado_anterior} a {nuevo_estado}',
+            'message': f'Estado actualizado correctamente a {nuevo_estado}',
             'turno_id': turno.id
         })
         
-    except Turno.DoesNotExist:
-        return JsonResponse({'status': 'error', 'message': 'Turno no encontrado'}, status=404)
     except Exception as e:
-        print(f"Error cambio estado: {e}")
+        print(f"💥 Error crítico cambiando estado: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     
 @csrf_exempt
@@ -1354,18 +1348,14 @@ def completar_turno(request, turno_id):
         return JsonResponse({'error': 'Método no permitido'}, status=405)
 
     try:
-        turno = Turno.objects.get(pk=turno_id)
-        
-        # Solo se puede completar turnos confirmados
+        turno = Turno.objects.get(pk=turno_id)        
         if turno.estado != 'CONFIRMADO':
             return JsonResponse({
                 'status': 'error',
                 'message': 'Solo se pueden completar turnos en estado CONFIRMADO'
             }, status=400)
-
         turno.estado = 'COMPLETADO'
         turno.save()
-
         return JsonResponse({
             'status': 'ok',
             'message': 'Turno marcado como completado'
@@ -4938,24 +4928,23 @@ def mis_turnos(request):
         return Response({'error': str(e)}, status=500)
 
 @api_view(['GET'])
-@permission_classes([AllowAny]) # O IsAuthenticated/IsAdminUser según tu seguridad
+@permission_classes([AllowAny])
 def listar_turnos_general(request):
     """
     Vista para el panel de administración/recepción.
     Filtra por peluquero, fecha, estado, etc.
     """
     try:
-        # 1. Empezamos con TODOS los turnos
-        turnos = Turno.objects.all().select_related('cliente', 'peluquero').order_by('-fecha', '-hora')
+        # 1. QuerySet Base
+        turnos = Turno.objects.all().select_related('cliente', 'peluquero', 'cliente__rol', 'peluquero__rol').prefetch_related('servicios').order_by('-fecha', '-hora')
 
-        # 2. FILTROS (Acá está la magia para que no se mezclen)
+        # 2. FILTROS
         peluquero_id = request.GET.get('peluquero') or request.GET.get('peluquero_id')
         fecha_desde = request.GET.get('fecha_desde')
         fecha_hasta = request.GET.get('fecha_hasta')
         estado = request.GET.get('estado')
         canal = request.GET.get('canal')
         
-        # EL FILTRO QUE FALTABA:
         if peluquero_id and peluquero_id != 'undefined':
             turnos = turnos.filter(peluquero_id=peluquero_id)
 
@@ -4971,36 +4960,16 @@ def listar_turnos_general(request):
         if canal and canal != 'Todos':
             turnos = turnos.filter(canal=canal)
 
-        # 3. Serialización Manual (Para asegurar datos exactos)
-        data = []
-        for t in turnos:
-            # Calcular servicios
-            servicios = list(t.servicios.all())
-            servicios_nombres = [s.nombre for s in servicios]
-            duracion = sum(s.duracion for s in servicios)
-
-            data.append({
-                'id': t.id,
-                'fecha': t.fecha.strftime("%Y-%m-%d"),
-                'hora': t.hora.strftime("%H:%M"),
-                'cliente_nombre': t.cliente.nombre,
-                'cliente_apellido': t.cliente.apellido,
-                'peluquero_nombre': t.peluquero.nombre,
-                'servicios': servicios_nombres,
-                'estado': t.estado,
-                'tipo_pago': t.tipo_pago,
-                'canal': t.canal,
-                'monto_total': float(t.monto_total),
-                'monto_seña': float(t.monto_seña),
-                'reembolsado': t.reembolsado, # Importante para saber si devolvimos plata
-                'oferta_activa': t.oferta_activa,
-                'duracion_total': duracion
-            })
-
-        return Response(data)
+        # 3. USA EL SERIALIZER (La forma correcta)
+        # Esto incluye automáticamente 'medio_pago', 'mp_payment_id', etc.
+        serializer = TurnoSerializer(turnos, many=True)
+        
+        return Response(serializer.data)
 
     except Exception as e:
         print(f"❌ Error listar_turnos_general: {e}")
+        import traceback
+        traceback.print_exc()
         return Response({'error': str(e)}, status=500)
     
 @api_view(['GET'])

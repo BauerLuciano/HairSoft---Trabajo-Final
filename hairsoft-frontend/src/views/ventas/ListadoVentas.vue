@@ -36,6 +36,7 @@
               <option value="EFECTIVO">Efectivo</option>
               <option value="TARJETA">Tarjeta</option>
               <option value="TRANSFERENCIA">Transferencia</option>
+              <option value="MERCADO_PAGO">Mercado Pago</option>
             </select>
           </div>
 
@@ -106,10 +107,14 @@
               <td class="total-cell">${{ formatPrecio(venta.total) }}</td>
               
               <td>
-                <span class="badge-pago" :class="getClaseTipoPago(venta.medio_pago_tipo)">
-                  {{ venta.medio_pago_nombre || '–' }}
-                </span>
+                <div class="badge-pago-wrapper">
+                    <span class="badge-pago" :class="getMedioPagoInfo(venta).clase">
+                        <component :is="getMedioPagoInfo(venta).icono" :size="12" />
+                        {{ venta.medio_pago_nombre || '–' }}
+                    </span>
+                </div>
               </td>
+
               <td>
                 <span class="badge-tipo" :class="getClaseTipoVenta(venta.tipo)">
                   {{ venta.tipo || '–' }}
@@ -233,9 +238,11 @@ import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2'
 import RegistrarVenta from './RegistrarVenta.vue'
 import ModificarVenta from './ModificarVenta.vue'
+// 🔥 ÍCONOS AGREGADOS (CreditCard, Banknote, Smartphone, etc.)
 import { 
   Plus, Trash2, Edit3, Eye, FileText, Loader, Package, PackageX,
-  ChevronLeft, ChevronRight, RefreshCw, AlertTriangle, CheckCircle
+  ChevronLeft, ChevronRight, RefreshCw, AlertTriangle, CheckCircle,
+  CreditCard, Banknote, Smartphone, ArrowRightLeft, HelpCircle
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -336,13 +343,36 @@ const formatFechaDia = (f) => f ? new Date(f).toLocaleDateString('es-AR', {day: 
 const formatFechaHora = (f) => f ? new Date(f).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : ''
 const formatPrecio = (p) => p ? parseFloat(p).toLocaleString('es-AR', { minimumFractionDigits: 2 }) : '0.00'
 
-const getClaseTipoPago = (t) => { if (t === 'EFECTIVO') return 'pago-efectivo'; if (t === 'TARJETA') return 'pago-tarjeta'; return 'pago-otro' }
+// 🔥 Lógica Inteligente para detectar el tipo de pago y asignar estilo + icono
+const getMedioPagoInfo = (venta) => {
+    // Obtenemos el TIPO (ej: 'EFECTIVO', 'TARJETA') o el NOMBRE si el tipo no está claro
+    const tipo = (venta.medio_pago_tipo || '').toUpperCase();
+    const nombre = (venta.medio_pago_nombre || '').toUpperCase();
+    
+    // Prioridad 1: Detectar por TIPO (más seguro)
+    if (tipo === 'EFECTIVO' || nombre.includes('EFECTIVO')) {
+        return { clase: 'pago-efectivo', icono: Banknote };
+    }
+    if (tipo === 'TARJETA' || nombre.includes('TARJETA') || nombre.includes('DEBITO') || nombre.includes('CREDITO')) {
+        return { clase: 'pago-tarjeta', icono: CreditCard };
+    }
+    if (tipo === 'TRANSFERENCIA' || nombre.includes('TRANSF')) {
+        return { clase: 'pago-transferencia', icono: ArrowRightLeft };
+    }
+    if (tipo === 'MERCADO_PAGO' || nombre.includes('MERCADO')) {
+        return { clase: 'pago-mp', icono: Smartphone };
+    }
+
+    // Default
+    return { clase: 'pago-otro', icono: HelpCircle };
+};
+
 const getClaseTipoVenta = (t) => t === 'TURNO' ? 'tipo-turno' : 'tipo-prod'
 const getClaseEstadoVenta = (anulada) => anulada ? 'estado-anulada' : 'estado-activa'
 </script>
 
 <style scoped>
-/* ESTILOS PREMIUM */
+/* ESTILOS PREMIUM (Mismos que tenías + los nuevos de pago) */
 .list-card { background: var(--bg-secondary); color: var(--text-primary); border-radius: 24px; padding: 40px; width: 100%; max-width: 1600px; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; border: 1px solid var(--border-color); }
 .list-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1); border-radius: 24px 24px 0 0; }
 
@@ -376,31 +406,34 @@ const getClaseEstadoVenta = (anulada) => anulada ? 'estado-anulada' : 'estado-ac
 .fecha-dia { font-weight: 700; color: var(--text-primary); }
 .fecha-hora { font-size: 0.75rem; color: var(--text-tertiary); }
 
-/* ✨ CORRECCIÓN DE COLOR PARA USUARIO E ID */
-.usuario-cell { color: #e2e8f0; font-weight: 500; } /* Blanco suave / Gris claro */
-.id-cell { font-family: monospace; color: #94a3b8; font-size: 0.85rem; font-weight: 600; } /* Gris medio legible */
-
+.usuario-cell { color: #e2e8f0; font-weight: 500; }
+.id-cell { font-family: monospace; color: #94a3b8; font-size: 0.85rem; font-weight: 600; }
 .total-cell { font-size: 1rem; font-weight: 800; color: #10b981; }
-.text-muted { color: var(--text-tertiary); font-size: 0.85rem; }
 
-/* BADGES */
-.badge-pago, .badge-tipo, .badge-estado { padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid transparent; }
-.pago-efectivo { background: rgba(16, 185, 129, 0.1); color: #10b981; border-color: #10b981; }
-.pago-tarjeta { background: rgba(14, 165, 233, 0.1); color: #0ea5e9; border-color: #0ea5e9; }
-.pago-otro { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border-color: #8b5cf6; }
-.tipo-turno { background: rgba(236, 72, 153, 0.1); color: #ec4899; border-color: #ec4899; }
-.tipo-prod { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-color: #f59e0b; }
+/* 🔥 BADGES DE PAGO CON ICONO */
+.badge-pago { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid transparent; }
+
+/* Colores específicos para cada medio */
+.pago-efectivo { background: rgba(16, 185, 129, 0.1); color: #10b981; border-color: rgba(16, 185, 129, 0.3); }
+.pago-tarjeta { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border-color: rgba(139, 92, 246, 0.3); } /* Violeta */
+.pago-transferencia { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-color: rgba(245, 158, 11, 0.3); } /* Naranja */
+.pago-mp { background: rgba(14, 165, 233, 0.1); color: #0ea5e9; border-color: rgba(14, 165, 233, 0.3); } /* Azul MP */
+.pago-otro { background: rgba(156, 163, 175, 0.1); color: #9ca3af; border-color: rgba(156, 163, 175, 0.3); }
+
+/* OTROS BADGES */
+.badge-tipo, .badge-estado { padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+.tipo-turno { background: rgba(236, 72, 153, 0.1); color: #ec4899; border: 1px solid rgba(236, 72, 153, 0.3); }
+.tipo-prod { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
 .estado-activa { color: #10b981; background: rgba(16, 185, 129, 0.05); }
 .estado-anulada { color: #ef4444; background: rgba(239, 68, 68, 0.05); text-decoration: line-through; }
 .venta-anulada-row { opacity: 0.6; background: rgba(239, 68, 68, 0.02); }
 
-/* BOTÓN PDF ICONO */
+/* RESTO DE ESTILOS (Botones PDF, Acciones, Footer) */
 .btn-pdf-icon { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; margin: 0 auto; }
 .btn-pdf-icon:hover:not(:disabled) { background: #0ea5e9; color: white; border-color: #0ea5e9; transform: translateY(-2px); }
 .btn-pdf-icon:disabled { opacity: 0.3; cursor: not-allowed; }
 .spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ACCIONES */
 .action-buttons { display: flex; gap: 6px; }
 .action-button { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid transparent; transition: 0.2s; background: var(--bg-tertiary); color: var(--text-secondary); }
 .action-button:hover:not(:disabled) { transform: translateY(-2px); }
@@ -409,7 +442,6 @@ const getClaseEstadoVenta = (anulada) => anulada ? 'estado-anulada' : 'estado-ac
 .action-button.detalle:hover { color: #10b981; border-color: #10b981; background: rgba(16, 185, 129, 0.1); }
 .action-button:disabled { opacity: 0.3; cursor: not-allowed; }
 
-/* FOOTER */
 .list-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding: 15px; background: var(--hover-bg); border-radius: 12px; flex-wrap: wrap; gap: 15px; }
 .footer-left { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .count-text { color: var(--text-secondary); font-size: 0.9rem; margin: 0; }
@@ -425,18 +457,15 @@ const getClaseEstadoVenta = (anulada) => anulada ? 'estado-anulada' : 'estado-ac
 .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .page-info { font-weight: 700; color: var(--text-primary); font-size: 0.9rem; }
 
-/* ESTADOS CARGA */
 .loading-state { text-align: center; padding: 80px; color: var(--text-tertiary); font-weight: 600; }
 .loading-spinner { width: 40px; height: 40px; border: 3px solid var(--border-color); border-top-color: var(--accent-color); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; }
 .no-results { text-align: center; padding: 60px; color: var(--text-tertiary); }
 .btn-reintentar { margin-top: 15px; padding: 10px 20px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; color: var(--text-primary); display: flex; align-items: center; gap: 8px; justify-content: center; margin: 20px auto 0; font-weight: 700; transition: 0.3s; }
 .btn-reintentar:hover { background: var(--hover-bg); transform: translateY(-2px); }
 
-/* MODAL */
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); z-index: 1000; display: flex; justify-content: center; align-items: center; }
 .modal-content { background: var(--bg-secondary); padding: 0; border-radius: 16px; border: 1px solid var(--border-color); max-height: 90vh; overflow-y: auto; }
 
-/* RESPONSIVE */
 @media (max-width: 768px) {
   .list-footer { flex-direction: column; align-items: flex-start; }
   .footer-left { flex-direction: column; align-items: flex-start; gap: 10px; }

@@ -69,18 +69,20 @@ class CategoriaServicioSerializer(serializers.ModelSerializer):
         model = CategoriaServicio
         fields = ['id', 'nombre', 'descripcion']
 
-# ----------------------------------------------------------------------
-# TURNO
-# ----------------------------------------------------------------------
-# usuarios/serializers.py
 
 class TurnoSerializer(serializers.ModelSerializer):
-
     cliente = UsuarioSerializer(read_only=True)
     peluquero = UsuarioSerializer(read_only=True)
     servicios = ServicioSerializer(many=True, read_only=True)
+
+    # 2. CAMPOS PLANOS (Helpers para el Listado Vue)
+    cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True)
+    cliente_apellido = serializers.CharField(source='cliente.apellido', read_only=True)
+    peluquero_nombre = serializers.CharField(source='peluquero.nombre', read_only=True)
+
+    # 3. CAMPOS DE ESCRITURA (Write-Only)
     cliente_id = serializers.PrimaryKeyRelatedField(
-        queryset=Usuario.objects.all(), source='cliente', write_only=True
+        queryset=Usuario.objects.all(), source='cliente', write_only=True, required=False, allow_null=True
     )
     peluquero_id = serializers.PrimaryKeyRelatedField(
         queryset=Usuario.objects.all(), source='peluquero', write_only=True
@@ -89,6 +91,7 @@ class TurnoSerializer(serializers.ModelSerializer):
         queryset=Servicio.objects.all(), source='servicios', many=True, write_only=True
     )
 
+    # Campo calculado legacy
     precio_total = serializers.SerializerMethodField()
 
     class Meta:
@@ -98,27 +101,26 @@ class TurnoSerializer(serializers.ModelSerializer):
             'fecha', 
             'hora', 
             'estado', 
-            'canal',           # Importante para saber si es WEB o PRESENCIAL
-            'tipo_pago',       # Importante
-            'medio_pago',      # Importante
+            'canal', 
+            'tipo_pago', 
+            'medio_pago',              
             'monto_total', 
             'monto_seña',
-            'precio_total',    # Campo calculado (legacy)
-            
-            # Campos de Objetos (Solo lectura)
-            'cliente', 
-            'peluquero', 
-            'servicios', 
-            
-            # Campos de IDs (Solo escritura)
-            'cliente_id', 
-            'peluquero_id', 
-            'servicios_ids'
+            'duracion_total',
+            'precio_total',
+            'oferta_activa',
+            'reembolsado',
+            'mp_payment_id',
+            'cliente', 'cliente_nombre', 'cliente_apellido',
+            'peluquero', 'peluquero_nombre',
+            'servicios',
+            'cliente_id', 'peluquero_id', 'servicios_ids'
         ]
 
     def get_precio_total(self, obj):
-        # Tu lógica actual para precio_total, si la tienes
-        return obj.monto_total or 0
+        if obj.monto_total and obj.monto_total > 0:
+            return obj.monto_total
+        return sum(s.precio for s in obj.servicios.all())
 # ----------------------------------------------------------------------
 # CATEGORIAS DE PRODUCTOS
 # ----------------------------------------------------------------------

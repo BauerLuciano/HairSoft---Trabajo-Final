@@ -38,6 +38,7 @@
             <select v-model="filtros.estado" class="filter-input">
               <option value="">Todos</option>
               <option value="RESERVADO">Reservado</option>
+              <option value="CONFIRMADO">Confirmado</option>
               <option value="COMPLETADO">Completado</option>
               <option value="CANCELADO">Cancelado</option>
             </select>
@@ -115,14 +116,26 @@
               <td>
                 <div class="precio-total-container">
                   <span class="precio-total">${{ formatPrecio(turno.monto_total) }}</span>
+                  
+                  <div class="medio-pago-wrapper">
+                     <div v-if="turno.medio_pago && turno.medio_pago !== 'PENDIENTE'" 
+                          class="medio-pago-badge" 
+                          :class="getClaseMedioPago(turno.medio_pago)">
+                        <component :is="getIconoMedioPago(turno.medio_pago)" :size="12" />
+                        <span>{{ getMedioPagoLabel(turno.medio_pago) }}</span>
+                     </div>
+                     <div v-else-if="!turno.medio_pago" style="font-size: 10px; color: red;">
+                        (Sin dato pago)
+                     </div>
+                  </div>
+
                   <div class="detalle-financiero">
-                    
-                    <div v-if="turno.estado === 'RESERVADO' && turno.tipo_pago === 'SENA_50'" class="saldo-pendiente">
+                    <div v-if="esEstadoActivo(turno.estado) && turno.tipo_pago === 'SENA_50'" class="saldo-pendiente">
                       <small>✅ Seña: ${{ formatPrecio(turno.monto_seña) }}</small>
-                      <small class="falta">⚠️ Falta abonar: ${{ formatPrecio(calcularPrecioTotal(turno) - (turno.monto_seña || 0)) }}</small>
+                      <small class="falta">⚠️ Resta: ${{ formatPrecio(calcularPrecioTotal(turno) - (turno.monto_seña || 0)) }}</small>
                     </div>
 
-                    <div v-else-if="(turno.estado === 'RESERVADO' && turno.tipo_pago === 'TOTAL') || turno.estado === 'COMPLETADO'" class="saldo-ok">
+                    <div v-else-if="(esEstadoActivo(turno.estado) && turno.tipo_pago === 'TOTAL') || turno.estado === 'COMPLETADO'" class="saldo-ok">
                       <small>✅ Pagado Total</small>
                     </div>
 
@@ -130,22 +143,11 @@
                       <div v-if="turno.reembolsado" class="saldo-favor">
                         <small>💰 A favor del cliente: ${{ formatPrecio(turno.monto_seña) }}</small>
                       </div>
-
                       <div v-else class="saldo-pendiente">
-                        <div v-if="turno.canal === 'PRESENCIAL'">
-                            <small style="color: #f59e0b; font-weight: bold; cursor: help;" title="El cliente debe retirar el dinero">
-                                ⚠️ Devolución Pendiente
-                            </small>
-                        </div>
-                        
-                        <div v-else>
-                            <small style="color: #ef4444; font-weight: bold;">
-                                🔒 Retenido (Penalidad)
-                            </small>
-                        </div>
+                        <small v-if="turno.canal === 'PRESENCIAL'" style="color: #f59e0b; font-weight: bold;">⚠️ Devolución Pendiente</small>
+                        <small v-else style="color: #ef4444; font-weight: bold;">🔒 Retenido (Penalidad)</small>
                       </div>
                     </div>
-
                   </div>
                 </div>
               </td>
@@ -156,25 +158,25 @@
                     <Eye :size="14"/>
                   </button>
                   
-                  <button v-if="turno.estado === 'RESERVADO'" @click="modificarTurno(turno.id)" class="action-button edit" title="Editar">
+                  <button v-if="esEstadoActivo(turno.estado)" @click="modificarTurno(turno.id)" class="action-button edit" title="Editar">
                     <Edit3 :size="14"/>
                   </button>
                   
-                  <button v-if="turno.estado === 'RESERVADO' && turno.tipo_pago === 'SENA_50'" 
+                  <button v-if="esEstadoActivo(turno.estado) && turno.tipo_pago === 'SENA_50'" 
                           @click="confirmarPagoTotal(turno)" 
                           class="action-button pagar" 
                           title="Cobrar Restante">
                     <CreditCard :size="14"/>
                   </button>
                   
-                  <button v-if="turno.estado === 'RESERVADO'" 
+                  <button v-if="esEstadoActivo(turno.estado)" 
                           @click="completarTurno(turno)" 
                           class="action-button complete" 
                           title="Finalizar Atención">
                     <Check :size="14"/>
                   </button>
                   
-                  <button v-if="turno.estado === 'RESERVADO'" 
+                  <button v-if="esEstadoActivo(turno.estado)" 
                           @click="cancelarTurno(turno)" 
                           class="action-button delete" 
                           title="Cancelar Turno">
@@ -206,7 +208,11 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from '../../utils/axiosConfig'
-import { Plus, Trash2, Edit3, Check, SearchX, ChevronLeft, ChevronRight, Eye, CreditCard, Clock } from 'lucide-vue-next'
+// 🔥 AGREGAMOS 'ArrowRightLeft' para Transferencia y 'CreditCard' para Tarjeta
+import { 
+  Plus, Trash2, Edit3, Check, SearchX, ChevronLeft, ChevronRight, 
+  Eye, CreditCard, Clock, Banknote, Smartphone, HelpCircle, ArrowRightLeft 
+} from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 
 const router = useRouter()
@@ -214,29 +220,75 @@ const turnos = ref([])
 const peluqueros = ref([])
 const pagina = ref(1)
 const itemsPorPagina = 8
-const estadosDisponibles = ref(['RESERVADO', 'COMPLETADO', 'CANCELADO'])
 const filtros = ref({ busqueda: '', peluquero: '', estado: '', canal: '', fechaDesde: '', fechaHasta: '' })
 
-// Helpers
+// 🔥 HELPER CLAVE: Permite acciones en RESERVADO y CONFIRMADO
+const esEstadoActivo = (estado) => ['RESERVADO', 'CONFIRMADO'].includes(estado);
+
+// Helpers Formato
 const formatFecha = s => { if(!s) return '-'; try { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`; } catch(e) { return s; } }
 const formatHora = s => (s && s.length >= 5) ? s.slice(0,5) : '-'
 const formatPrecio = (p) => (!p ? '0.00' : parseFloat(p).toFixed(2))
+
 const getServiciosLista = s => {
   if (!s) return []
   if (Array.isArray(s)) return s.map(x => (typeof x === 'object' && x.nombre) ? x.nombre : String(x))
   return []
 }
-const formatearEstado = e => ({ 'RESERVADO':'Reservado', 'COMPLETADO':'Completado', 'CANCELADO':'Cancelado' }[e] || e)
 
+// 🔥🔥 HELPERS DE PAGO MEJORADOS (Detectan Tarjeta y Transferencia) 🔥🔥
+const getMedioPagoLabel = (mp) => {
+  if (!mp) return 'Pendiente'
+  const m = mp.toUpperCase()
+  
+  if (m.includes('EFECTIVO')) return 'Efectivo'
+  
+  // Lógica Web: MP = Digital
+  if (m.includes('MERCADO') || m.includes('MP')) return 'Mercado Pago (Web)'
+  
+  if (m.includes('TARJETA') || m.includes('CREDITO') || m.includes('DEBITO')) return 'Tarjeta'
+  if (m.includes('TRANSF')) return 'Transferencia'
+  
+  return mp // Retorna el texto original si no coincide con nada
+}
+
+const getClaseMedioPago = (mp) => {
+    if (!mp) return 'otro'
+    const m = mp.toUpperCase()
+    
+    if (m.includes('MERCADO')) return 'mp'
+    if (m.includes('EFECTIVO')) return 'efectivo'
+    if (m.includes('TARJETA') || m.includes('CREDITO') || m.includes('DEBITO')) return 'tarjeta'
+    if (m.includes('TRANSF')) return 'transferencia'
+    
+    return 'otro'
+}
+
+const getIconoMedioPago = (mp) => {
+    if (!mp) return HelpCircle
+    const m = mp.toUpperCase()
+    
+    if (m.includes('MERCADO')) return Smartphone
+    if (m.includes('EFECTIVO')) return Banknote
+    // Tarjetas usan el icono CreditCard
+    if (m.includes('TARJETA') || m.includes('CREDITO') || m.includes('DEBITO')) return CreditCard
+    // Transferencia usa las flechitas
+    if (m.includes('TRANSF')) return ArrowRightLeft
+    
+    return HelpCircle
+}
+
+// ... Resto de funciones igual que antes ...
 const getEstadoTexto = (estado, tipoPago) => {
   if (estado === 'RESERVADO') return tipoPago === 'TOTAL' ? 'Reservado (Pagado)' : 'Reservado (Seña)'
+  if (estado === 'CONFIRMADO') return 'Confirmado'
   if (estado === 'COMPLETADO') return 'Completado'
   if (estado === 'CANCELADO') return 'Cancelado'
   return estado
 }
 
 const getEstadoClass = (estado, tipoPago) => {
-  if (estado === 'RESERVADO') return tipoPago === 'TOTAL' ? 'estado-success' : 'estado-warning'
+  if (estado === 'RESERVADO' || estado === 'CONFIRMADO') return tipoPago === 'TOTAL' ? 'estado-success' : 'estado-warning'
   if (estado === 'COMPLETADO') return 'estado-completado'
   if (estado === 'CANCELADO') return 'estado-cancelado'
   return 'estado-secondary'
@@ -248,7 +300,6 @@ const calcularPrecioTotal = (t) => {
   return 0
 }
 
-// ✅ FICHA DETALLE
 const verDetalleTurno = async (turno) => {
     const precioTotal = calcularPrecioTotal(turno)
     const montoSeña = turno.monto_seña || 0
@@ -267,6 +318,7 @@ const verDetalleTurno = async (turno) => {
            <div><strong>Peluquero:</strong><br>${turno.peluquero_nombre}</div>
            <div><strong>Estado:</strong><br>${getEstadoTexto(turno.estado, turno.tipo_pago)}</div>
            <div><strong>Canal:</strong><br>${turno.canal}</div>
+           <div><strong>Medio Pago:</strong><br>${getMedioPagoLabel(turno.medio_pago)}</div>
         </div>
 
         <div style="background: #f3f4f6; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
@@ -281,7 +333,6 @@ const verDetalleTurno = async (turno) => {
            ${turno.tipo_pago === 'SENA_50' ? `<p style="margin: 5px 0; color: #f59e0b;">Falta abonar: <strong>$${formatPrecio(saldo)}</strong></p>` : '<p style="color: #10b981; margin: 5px 0;">✅ Pagado Total</p>'}
         </div>
     `
-    // Mensaje de penalidad en el detalle
     if (turno.estado === 'CANCELADO' && montoSeña > 0) {
         html += `<hr>`
         html += turno.reembolsado 
@@ -290,7 +341,12 @@ const verDetalleTurno = async (turno) => {
     }
 
     html += `</div>`
-    await Swal.fire({ html: html, showCloseButton: true, confirmButtonText: 'Cerrar' })
+    await Swal.fire({ 
+        html: html, 
+        showCloseButton: true, 
+        confirmButtonText: 'Cerrar',
+        confirmButtonColor: '#3b82f6'
+    })
 }
 
 const cargarPeluqueros = async () => { try { const res = await axios.get('/usuarios/api/peluqueros/'); peluqueros.value = res.data; } catch(e){} }
@@ -300,6 +356,9 @@ const cargarTurnos = async () => {
         const p = new URLSearchParams(filtros.value)
         const res = await axios.get(`/usuarios/api/turnos/?${p.toString()}`);
         const data = Array.isArray(res.data) ? res.data : (res.data.results || []);
+        
+        console.log("📡 TURNOS RECIBIDOS DEL BACKEND:", data); // MIRÁ LA CONSOLA CON ESTO
+
         turnos.value = data.sort((a, b) => new Date(`${b.fecha}T${b.hora}`) - new Date(`${a.fecha}T${a.hora}`))
         
         turnos.value = turnos.value.map(t => ({
@@ -311,30 +370,56 @@ const cargarTurnos = async () => {
     } catch(e) { console.error(e) }
 }
 
-// Acciones
 const confirmarPagoTotal = async (turno) => {
   const precio = calcularPrecioTotal(turno)
   const falta = precio - (turno.monto_seña || 0)
-  const { isConfirmed } = await Swal.fire({ title: 'Cobrar Restante', text: `Monto a abonar: $${falta}`, icon: 'info', showCancelButton: true, confirmButtonText: 'Cobrar y Guardar' })
+  const { isConfirmed } = await Swal.fire({ 
+      title: 'Cobrar Restante', 
+      text: `Monto a abonar: $${falta}`, 
+      icon: 'info', 
+      showCancelButton: true, 
+      confirmButtonText: 'Cobrar y Guardar',
+      confirmButtonColor: '#10b981', // Verde
+      cancelButtonColor: '#6b7280'
+  })
   if (isConfirmed) {
       await axios.post(`/usuarios/api/turnos/${turno.id}/actualizar-pago/`, { tipo_pago: 'TOTAL', monto_total: precio });
       cargarTurnos()
+      Swal.fire({ title: '¡Cobrado!', icon: 'success', timer: 1500, showConfirmButton: false })
   }
 }
 
 const completarTurno = async (turno) => {
-  const { isConfirmed } = await Swal.fire({ title: 'Finalizar', text: 'Pasar a Completado', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, completar' })
+  const { isConfirmed } = await Swal.fire({ 
+      title: 'Finalizar Turno', 
+      text: 'Se marcará como Completado', 
+      icon: 'warning', 
+      showCancelButton: true, 
+      confirmButtonText: 'Sí, completar',
+      confirmButtonColor: '#3b82f6', // Azul HairSoft
+      cancelButtonColor: '#d33'
+  })
   if (isConfirmed) {
       await axios.post(`/usuarios/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`);
       cargarTurnos()
+      Swal.fire({ title: '¡Completado!', icon: 'success', timer: 1500, showConfirmButton: false })
   }
 }
 
 const cancelarTurno = async (turno) => {
-  const { isConfirmed } = await Swal.fire({ title: 'Cancelar Turno', text: '¿Estás seguro?', icon: 'error', showCancelButton: true, confirmButtonText: 'Sí, cancelar' })
+  const { isConfirmed } = await Swal.fire({ 
+      title: 'Cancelar Turno', 
+      text: '¿Estás seguro que deseas cancelar?', 
+      icon: 'error', 
+      showCancelButton: true, 
+      confirmButtonText: 'Sí, cancelar',
+      confirmButtonColor: '#ef4444', // Rojo
+      cancelButtonColor: '#6b7280'
+  })
   if (isConfirmed) {
       await axios.post(`/usuarios/api/turnos/${turno.id}/cambiar-estado/CANCELADO/`);
       cargarTurnos()
+      Swal.fire({ title: 'Cancelado', icon: 'success', timer: 1500, showConfirmButton: false })
   }
 }
 
@@ -461,16 +546,6 @@ watch(filtros.value, () => cargarTurnos())
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-.detalle-pago-mini {
-  font-size: 0.75rem;
-  color: var(--text-tertiary);
-  font-weight: 600;
-  background: rgba(245, 158, 11, 0.1);
-  padding: 3px 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(245, 158, 11, 0.2);
 }
 
 /* HEADER - CON VARIABLES */
@@ -749,7 +824,7 @@ watch(filtros.value, () => cargarTurnos())
   margin-top: 4px;
 }
 
-/* ✅ BOTONES DE ACCIÓN - IGUAL QUE PRODUCTOS */
+/* ✅ BOTONES DE ACCIÓN */
 .action-buttons { 
   display: flex; 
   gap: 8px; 
@@ -771,89 +846,42 @@ watch(filtros.value, () => cargarTurnos())
   height: 40px;
 }
 
-/* VER DETALLE (azul) */
 .action-button.view {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
 }
+.action-button.view:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
 
-.action-button.view:hover {
-  background: var(--hover-bg);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-sm);
-}
-
-/* EDITAR (gris) */
 .action-button.edit {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
 }
+.action-button.edit:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
 
-.action-button.edit:hover {
-  background: var(--hover-bg);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-sm);
-}
-
-/* SEÑAR (ámbar) */
-.action-button.sena {
-  background: var(--bg-tertiary);
-  border: 1px solid #f59e0b;
-  color: #f59e0b;
-}
-
-.action-button.sena:hover {
-  background: var(--hover-bg);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
-  border-color: #f59e0b;
-}
-
-/* PAGAR TOTAL (verde) */
 .action-button.pagar {
   background: var(--bg-tertiary);
   border: 1px solid #10b981;
   color: #10b981;
 }
+.action-button.pagar:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4); border-color: #10b981; }
 
-.action-button.pagar:hover {
-  background: var(--hover-bg);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
-  border-color: #10b981;
-}
-
-/* COMPLETAR (verde fuerte) */
 .action-button.complete {
   background: var(--bg-tertiary);
   border: 1px solid #10b981;
   color: #10b981;
 }
+.action-button.complete:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4); border-color: #10b981; }
 
-.action-button.complete:hover {
-  background: var(--hover-bg);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
-  border-color: #10b981;
-}
-
-/* CANCELAR (rojo) */
 .action-button.delete {
   background: var(--bg-tertiary);
   border: 1px solid var(--error-color);
   color: var(--error-color);
 }
+.action-button.delete:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4); border-color: var(--error-color); }
 
-.action-button.delete:hover {
-  background: var(--hover-bg);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
-  border-color: var(--error-color);
-}
-
-/* ESTADOS DE CARGA - CON VARIABLES */
+/* ESTADOS DE CARGA */
 .no-results {
   text-align: center;
   padding: 80px;
@@ -870,11 +898,6 @@ watch(filtros.value, () => cargarTurnos())
   margin: 0 0 8px 0;
   font-size: 1.1em;
   color: var(--text-primary);
-}
-
-.no-results small {
-  font-size: 0.9em;
-  color: var(--text-tertiary);
 }
 
 .btn-reintentar {
@@ -895,14 +918,9 @@ watch(filtros.value, () => cargarTurnos())
   gap: 8px;
   margin: 20px auto 0;
 }
+.btn-reintentar:hover { background: linear-gradient(135deg, #0284c7, #0369a1); transform: translateY(-2px); box-shadow: 0 8px 25px rgba(14, 165, 233, 0.5); }
 
-.btn-reintentar:hover {
-  background: linear-gradient(135deg, #0284c7, #0369a1);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(14, 165, 233, 0.5);
-}
-
-/* PAGINACIÓN - CON VARIABLES */
+/* PAGINACIÓN */
 .pagination {
   display: flex;
   justify-content: center;
@@ -927,149 +945,57 @@ watch(filtros.value, () => cargarTurnos())
   align-items: center;
   gap: 8px;
 }
-
-.pagination button:hover:not(:disabled) {
-  background: var(--hover-bg);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-sm);
-}
-
-.pagination button:disabled {
-  background: var(--bg-tertiary);
-  color: var(--text-tertiary);
-  cursor: not-allowed;
-  transform: none;
-  border: 1px solid var(--border-color);
-  opacity: 0.5;
-}
-
-.pagination span {
-  color: var(--text-primary);
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  font-size: 0.95rem;
-}
+.pagination button:hover:not(:disabled) { background: var(--hover-bg); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+.pagination button:disabled { background: var(--bg-tertiary); color: var(--text-tertiary); cursor: not-allowed; transform: none; border: 1px solid var(--border-color); opacity: 0.5; }
+.pagination span { color: var(--text-primary); font-weight: 700; letter-spacing: 0.8px; font-size: 0.95rem; }
 
 /* RESPONSIVE */
 @media (max-width: 768px) {
-  .list-card {
-    padding: 25px;
-    border-radius: 20px;
-  }
-  
-  .list-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .header-content h1 {
-    font-size: 1.6rem;
-  }
-  
-  .filters-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .users-table {
-    font-size: 0.85rem;
-  }
-  
-  .users-table th {
-    font-size: 0.7rem;
-    padding: 14px 10px;
-  }
-  
-  .action-buttons {
-    flex-direction: column;
-    gap: 6px;
-  }
-  
-  .precio-total-container {
-    min-width: auto;
-    padding: 8px;
-  }
-  
-  .precio-total {
-    font-size: 0.95rem;
-  }
-  
-  .pagination {
-    flex-direction: column;
-    gap: 12px;
-  }
+  .list-card { padding: 25px; border-radius: 20px; }
+  .list-header { flex-direction: column; align-items: flex-start; }
+  .header-content h1 { font-size: 1.6rem; }
+  .filters-grid { grid-template-columns: 1fr; }
+  .users-table { font-size: 0.85rem; }
+  .users-table th { font-size: 0.7rem; padding: 14px 10px; }
+  .action-buttons { flex-direction: column; gap: 6px; }
+  .precio-total-container { min-width: auto; padding: 8px; }
+  .precio-total { font-size: 0.95rem; }
+  .pagination { flex-direction: column; gap: 12px; }
 }
 
 @media (max-width: 480px) {
-  .list-card {
-    padding: 18px;
-    border-radius: 16px;
-  }
-  
-  .header-content h1 {
-    font-size: 1.4rem;
-  }
-  
-  .users-table {
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap;
-  }
-  
-  .filter-input, .filter-select {
-    font-size: 0.9rem;
-  }
-  
-  .badge-estado {
-    font-size: 0.65rem;
-    padding: 5px 10px;
-  }
-  
-  .action-button {
-    width: 36px;
-    height: 36px;
-  }
-  
-  .precio-total-container {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-  }
+  .list-card { padding: 18px; border-radius: 16px; }
+  .header-content h1 { font-size: 1.4rem; }
+  .users-table { display: block; overflow-x: auto; white-space: nowrap; }
+  .filter-input, .filter-select { font-size: 0.9rem; }
+  .badge-estado { font-size: 0.65rem; padding: 5px 10px; }
+  .action-button { width: 36px; height: 36px; }
+  .precio-total-container { flex-direction: row; justify-content: space-between; align-items: center; }
 }
 
 /* ✅ ESTILOS FINANCIEROS INTELIGENTES (ADD-ON) */
-.detalle-financiero {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 4px;
+.detalle-financiero { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.saldo-pendiente small { display: block; font-size: 0.75rem; color: var(--text-secondary); }
+.saldo-pendiente .falta { color: #f59e0b; font-weight: 700; }
+.saldo-ok small { color: #10b981; font-weight: 700; font-size: 0.75rem; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px; }
+.saldo-favor small { color: #3b82f6; font-weight: 700; font-size: 0.75rem; background: rgba(59, 130, 246, 0.1); padding: 2px 6px; border-radius: 4px; }
+
+/* 🔥 ESTILOS PARA MEDIO DE PAGO */
+.medio-pago-wrapper { margin-top: 2px; margin-bottom: 4px; }
+.medio-pago-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 0.68rem; font-weight: 800; padding: 3px 8px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.medio-pago-badge.mp { background: rgba(14, 165, 233, 0.12); color: #0ea5e9; border: 1px solid rgba(14, 165, 233, 0.25); }
+.medio-pago-badge.efectivo { background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.25); }
+/* Estilos nuevos para completar la colección */
+.medio-pago-badge.tarjeta {
+  background: rgba(139, 92, 246, 0.12); /* Violeta */
+  color: #8b5cf6;
+  border: 1px solid rgba(139, 92, 246, 0.25);
 }
 
-.saldo-pendiente small {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--text-secondary); /* Usa tus variables */
+.medio-pago-badge.transferencia {
+  background: rgba(245, 158, 11, 0.12); /* Naranja */
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.25);
 }
-
-.saldo-pendiente .falta {
-  color: #f59e0b; /* Naranja */
-  font-weight: 700;
-}
-
-.saldo-ok small {
-  color: #10b981; /* Verde */
-  font-weight: 700;
-  font-size: 0.75rem;
-  background: rgba(16, 185, 129, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.saldo-favor small {
-  color: #3b82f6; /* Azul */
-  font-weight: 700;
-  font-size: 0.75rem;
-  background: rgba(59, 130, 246, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
-}
+.medio-pago-badge.otro { background: rgba(156, 163, 175, 0.12); color: #6b7280; border: 1px solid rgba(156, 163, 175, 0.25); }
 </style>
