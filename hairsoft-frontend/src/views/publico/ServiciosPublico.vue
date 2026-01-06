@@ -3,7 +3,7 @@
     <!-- Header del catálogo -->
     <div class="catalogo-header">
       <div class="header-content">
-        <h1>Nuestros Servicios ✂️</h1>
+        <h1>Nuestros Servicios </h1>
         <p class="subtitulo">Descubre todos nuestros servicios profesionales para el cuidado masculino</p>
       </div>
       <div class="header-estadisticas">
@@ -200,13 +200,11 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import axios from 'axios'
+import api from '@/services/api' // ✅ Usamos el servicio centralizado
 import { 
   Scissors, Package, Clock, Search, X, 
   ChevronLeft, ChevronRight, Trash2, Star
 } from 'lucide-vue-next'
-
-const API_BASE = 'http://127.0.0.1:8000/usuarios/api'
 
 const servicios = ref([])
 const cargando = ref(true)
@@ -221,16 +219,26 @@ const pagina = ref(1)
 const itemsPorPagina = 8
 
 const cargarServicios = async () => {
+  cargando.value = true // Aseguramos que empiece cargando
   try {
-    const response = await axios.get(`${API_BASE}/servicios/`)
-    servicios.value = response.data
-      .filter(s => s.estado === 'ACTIVO' || !s.estado) // Solo servicios activos o sin estado definido
+    // ✅ Usamos la instancia api que ya tiene la URL base configurada
+    const response = await api.get('/servicios/') 
     
-    console.log('Servicios cargados:', servicios.value)
+    // ✅ DETECCIÓN INTELIGENTE DE PAGINACIÓN
+    // Si Django devuelve { results: [...] }, usamos results. Si devuelve [...], usamos data.
+    const datosRecibidos = Array.isArray(response.data) 
+      ? response.data 
+      : (response.data.results || [])
+
+    // Filtramos solo activos
+    servicios.value = datosRecibidos.filter(s => s.estado === 'ACTIVO' || !s.estado)
+    
+    console.log('✅ Servicios cargados:', servicios.value.length)
   } catch (error) {
-    console.error('Error cargando servicios:', error)
+    console.error('❌ Error cargando servicios:', error)
+    // Opcional: Podrías mostrar un toast de error aquí
   } finally {
-    cargando.value = false
+    cargando.value = false // ✅ Esto asegura que el spinner se vaya SIEMPRE
   }
 }
 
@@ -239,31 +247,36 @@ const formatPrice = (value) => {
   return isNaN(num) ? '0.00' : num.toFixed(2)
 }
 
-
 onMounted(() => {
   cargarServicios()
 })
 
-// Computed: categorías únicas de los servicios
+// --- COMPUTED PROPERTIES ---
+
 const categoriasUnicas = computed(() => {
-  const categorias = servicios.value
-    .map(s => s.categoria)
+  if (!servicios.value) return []
+  return servicios.value
+    .map(s => s.categoria_nombre || s.categoria) // Soporte para nombre o ID
     .filter((cat, index, self) => 
-      cat && cat.trim() && self.indexOf(cat) === index
+      cat && String(cat).trim() && self.indexOf(cat) === index
     )
     .sort()
-  return categorias
 })
 
-// Computed: servicios filtrados
 const serviciosFiltrados = computed(() => {
+  if (!servicios.value) return []
+  
   let filtrados = servicios.value.filter(s => {
     const busca = filtros.value.busqueda.toLowerCase()
-    const matchBusqueda = !busca || 
-      (s.nombre?.toLowerCase().includes(busca) || 
-       s.descripcion?.toLowerCase().includes(busca))
+    // Validación segura de nulos
+    const nombre = s.nombre ? s.nombre.toLowerCase() : ''
+    const desc = s.descripcion ? s.descripcion.toLowerCase() : ''
     
-    const matchCategoria = !filtros.value.categoria || s.categoria === filtros.value.categoria
+    const matchBusqueda = !busca || (nombre.includes(busca) || desc.includes(busca))
+    
+    // Comparación segura de categoría (puede ser ID o nombre)
+    const catActual = s.categoria_nombre || s.categoria
+    const matchCategoria = !filtros.value.categoria || catActual === filtros.value.categoria
     
     return matchBusqueda && matchCategoria
   })
@@ -271,25 +284,24 @@ const serviciosFiltrados = computed(() => {
   // Ordenar
   switch(filtros.value.orden) {
     case 'precio_asc':
-      filtrados.sort((a, b) => (a.precio || 0) - (b.precio || 0))
+      filtrados.sort((a, b) => (Number(a.precio) || 0) - (Number(b.precio) || 0))
       break
     case 'precio_desc':
-      filtrados.sort((a, b) => (b.precio || 0) - (a.precio || 0))
+      filtrados.sort((a, b) => (Number(b.precio) || 0) - (Number(a.precio) || 0))
       break
     case 'duracion_asc':
-      filtrados.sort((a, b) => (a.duracion || 0) - (b.duracion || 0))
+      filtrados.sort((a, b) => (Number(a.duracion) || 0) - (Number(b.duracion) || 0))
       break
     case 'duracion_desc':
-      filtrados.sort((a, b) => (b.duracion || 0) - (a.duracion || 0))
+      filtrados.sort((a, b) => (Number(b.duracion) || 0) - (Number(a.duracion) || 0))
       break
     default:
-      filtrados.sort((a, b) => a.nombre?.localeCompare(b.nombre || ''))
+      filtrados.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
   }
 
   return filtrados
 })
 
-// Computed: paginación
 const totalPaginas = computed(() => 
   Math.max(1, Math.ceil(serviciosFiltrados.value.length / itemsPorPagina))
 )
@@ -317,7 +329,6 @@ const paginasVisibles = computed(() => {
       pages.push(1, '...', current - 1, current, current + 1, '...', total)
     }
   }
-  
   return pages
 })
 
@@ -325,28 +336,18 @@ const hayFiltrosActivos = computed(() => {
   return filtros.value.busqueda || filtros.value.categoria
 })
 
-// Métodos
-const paginaAnterior = () => { 
-  if (pagina.value > 1) pagina.value-- 
-}
+// --- MÉTODOS ---
 
-const paginaSiguiente = () => { 
-  if (pagina.value < totalPaginas.value) pagina.value++ 
-}
-
-const cambiarPagina = (num) => {
-  if (num !== '...') pagina.value = num
-}
+const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
+const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
+const cambiarPagina = (num) => { if (num !== '...') pagina.value = num }
 
 const limpiarFiltros = () => { 
   filtros.value = { busqueda: '', categoria: '', orden: 'nombre' }
   pagina.value = 1 
 }
 
-// Watchers
-watch(filtros, () => { 
-  pagina.value = 1 
-}, { deep: true })
+watch(filtros, () => { pagina.value = 1 }, { deep: true })
 </script>
 
 <style scoped>

@@ -131,22 +131,23 @@ const openSection = ref('comercial');
 const menuSections = {
   comercial: [
     { name: 'Ventas', path: '/ventas', icon: 'ri-bar-chart-2-line' },
+    { name: 'Pedidos Web', path: '/pedidos-web-admin', icon: 'ri-global-line' }, // <--- AGREGADO
     { name: 'Turnos', path: '/turnos', icon: 'ri-calendar-event-line' },
     { name: 'Servicios', path: '/servicios', icon: 'ri-scissors-line' },
   ],
   inventario: [
-    { name: 'Productos', path: '/productos', icon: 'ri-shopping-bag-line' },
+    { name: 'Productos', path: '/productos-admin', icon: 'ri-shopping-bag-line' }, // Corregido a productos-admin según tu router
     { name: 'Catálogo Visual', path: '/catalogo', icon: 'ri-layout-grid-line' }, 
-    { name: 'Pedidos', path: '/pedidos', icon: 'ri-shopping-cart-2-line' },
+    { name: 'Pedidos Prov.', path: '/pedidos', icon: 'ri-shopping-cart-2-line' }, // Renombrado para diferenciar
     { name: 'Proveedores', path: '/proveedores', icon: 'ri-truck-line' },
     { name: 'Categorías', path: '/categorias', icon: 'ri-list-settings-line' },
-    { name: 'Marcas', path: '/productos/marcas', icon: 'ri-price-tag-2-line' },
-    { name: 'Licitaciones', path: '/proveedores/evaluacion', icon: 'ri-file-list-3-line' },
+    { name: 'Marcas', path: '/marcas', icon: 'ri-price-tag-2-line' }, // Corregido a /marcas según router
+    { name: 'Licitaciones', path: '/proveedores/evaluacion-presupuestos', icon: 'ri-file-list-3-line' }, // Corregido nombre ruta
   ],
   admin: [
     { name: 'Usuarios', path: '/usuarios', icon: 'ri-team-line' },
     { name: 'Roles', path: '/roles', icon: 'ri-shield-user-line' },
-    { name: 'Liquidación Sueldos', path: '/admin/liquidacion', icon: 'ri-money-dollar-circle-line' }, // 💰 Agregado
+    { name: 'Liquidación Sueldos', path: '/admin/liquidacion', icon: 'ri-money-dollar-circle-line' }, 
     { name: 'Auditoría', path: '/auditoria', icon: 'ri-file-history-line' },
   ]
 };

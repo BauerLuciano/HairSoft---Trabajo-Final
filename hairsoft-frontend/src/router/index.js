@@ -14,6 +14,8 @@ const ServiciosPublico = () => import('@/views/publico/ServiciosPublico.vue')
 const ProductosPublico = () => import('@/views/publico/ProductosPublico.vue')
 const HomePublico = () => import('@/views/publico/HomePublico.vue')
 const RegistroCliente = () => import('@/views/publico/RegistroCliente.vue')
+// ✅ AGREGADO: La vista de Checkout
+const Checkout = () => import('@/views/publico/Checkout.vue') 
 
 const DashboardCliente = () => import('@/views/cliente/DashboardCliente.vue')
 const HistorialTurnos = () => import('@/views/cliente/HistorialTurnos.vue')
@@ -79,6 +81,11 @@ const ModificarPedido = () => import('@/views/pedidos/ModificarPedido.vue')
 const RecibirPedido = () => import('@/views/pedidos/RecibirPedido.vue')
 const DetallePedido = () => import('@/views/pedidos/DetallePedido.vue')
 
+//Compra Cliente
+const CompraExitosa = () => import('@/views/publico/CompraExitosa.vue')
+const MisPedidos = () => import('@/views/cliente/MisPedidos.vue')
+const GestionPedidosWeb = () => import('@/views/pedidos/GestionPedidosWeb.vue')
+
 // Auditoría
 const ListadoAuditoria = () => import('@/views/auditoria/ListadoAuditoria.vue')
 
@@ -131,6 +138,13 @@ const routes = [
     component: ProductosPublico, 
     meta: { layout: 'client' } 
   },
+  // ✅ AGREGADO: Ruta para el Checkout (Requiere Auth de cliente)
+  { 
+    path: '/checkout', 
+    name: 'Checkout', 
+    component: Checkout, 
+    meta: { layout: 'client', requiresAuth: true } 
+  },
   {
     path: '/externo/pedido/:token',
     name: 'GestionPedidoExterno',
@@ -179,6 +193,13 @@ const routes = [
     name: 'PerfilCliente', 
     component: PerfilCliente, 
     meta: { layout: 'client', requiresAuth: true, role: 'CLIENTE' } 
+  },
+
+  { 
+  path: '/client/mis-pedidos', 
+  name: 'MisPedidos', 
+  component: MisPedidos, 
+  meta: { layout: 'client', requiresAuth: true, role: 'CLIENTE' } 
   },
 
   // ---------------------------------------------------------------------------
@@ -243,6 +264,10 @@ const routes = [
   { path: '/pedidos/recibir/:id', name: 'RecibirPedido', component: RecibirPedido, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/pedidos/detalle/:id', name: 'DetallePedido', component: DetallePedido, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
 
+  // Compra Cliente - Pedidos
+  { path: '/compra-exitosa', name: 'CompraExitosa', component: CompraExitosa, meta: { requiresAuth: true} },
+  { path: '/pedidos-web-admin', name: 'GestionPedidosWeb', component: GestionPedidosWeb, meta: { requiresAuth: true, role: 'ADMIN', layout: 'admin' } },
+  
   // Auditoría
   { path: '/auditoria', name: 'ListadoAuditoria', component: ListadoAuditoria, meta: { requiresAuth: true, role: 'ADMIN' }},
 
@@ -282,4 +307,4 @@ router.beforeEach((to, from, next) => {
   next();
 });
 
-export default router
+export default router;

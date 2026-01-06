@@ -24,6 +24,8 @@
         <router-view />
       </div>
     </template>
+
+    <CartSidebar />
   </div>
 </template>
 
@@ -33,6 +35,7 @@ import { useRoute } from 'vue-router';
 import Sidebar from './components/Sidebar.vue';
 import Header from './components/Header.vue';
 import ClientNavbar from './components/ClientNavbar.vue';
+import CartSidebar from '@/components/CartSidebar.vue'; // <--- IMPORTACIÓN NUEVA
 
 const route = useRoute();
 

@@ -1,64 +1,69 @@
 <template>
   <nav class="client-nav">
     <div class="nav-content">
-      <!-- Logo con efecto similar al sidebar -->
-      <div class="logo-section">
-        <div class="logo-wrapper">
-          <router-link :to="homeLink" class="logo-link">
-            <div class="logo-container">
-              <span class="logo-icon">✂️</span>
-            </div>
-            <div class="brand-info">
-              <span class="brand-name">HairSoft</span>
-              <span class="brand-subtitle" v-if="usuarioLogueado">CLIENTE</span>
-            </div>
-          </router-link>
+      
+      <!-- LOGO -->
+      <div class="logo-wrapper">
+        <div class="logo-container">
+          <span class="logo-icon">✂️</span>
+        </div>
+        <div class="brand-info">
+          <span class="brand-name">HairSoft</span>
+          <span class="brand-subtitle" v-if="usuarioLogueado">CLIENTE</span>
         </div>
       </div>
       
-      <!-- Navegación principal - con efectos del sidebar -->
+      <!-- NAV LINKS -->
       <div class="nav-links-section">
         <div class="links-container">
-          <router-link :to="homeLink" class="nav-link">
-            <div class="link-content">
-              <div class="link-icon">🏠</div>
-              <span class="link-text">Inicio</span>
-            </div>
+          <button 
+            @click="DashboardCliente" 
+            :class="['nav-link', { active: !rutaActual || rutaActual === 'resumen' }]"
+          >
+            <svg class="link-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="link-text">Inicio</span>
             <div class="link-indicator"></div>
-          </router-link>
+          </button>
           
           <router-link to="/web/servicios" class="nav-link">
-            <div class="link-content">
-              <div class="link-icon">✂️</div>
-              <span class="link-text">Servicios</span>
-            </div>
+            <svg class="link-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="link-text">Servicios</span>
             <div class="link-indicator"></div>
           </router-link>
           
-          <router-link to="/web/productos" class="nav-link">
-            <div class="link-content">
-              <div class="link-icon">🛒</div>
-              <span class="link-text">Productos</span>
-            </div>
+          <router-link :to="{ name: 'ProductosPublico' }" class="nav-link">
+            <svg class="link-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="link-text">Productos</span>
             <div class="link-indicator"></div>
           </router-link>
           
-          <router-link v-if="usuarioLogueado" to="/cliente/historial" class="nav-link">
-            <div class="link-content">
-              <div class="link-icon">📅</div>
-              <span class="link-text">Mis Turnos</span>
-            </div>
+          <button 
+            v-if="usuarioLogueado" 
+            @click="irAPedidos" 
+            :class="['nav-link', { active: rutaActual === 'pedidos' }]"
+          >
+            <svg class="link-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="link-text">Mis Pedidos</span>
             <div class="link-indicator"></div>
-          </router-link>
+          </button>
         </div>
       </div>
       
-      <!-- Acciones de usuario - MEJORADO con efectos del header -->
+      <!-- USER SECTION -->
       <div class="user-actions-section">
         <div v-if="usuarioLogueado" class="user-profile-wrapper" ref="profileRef">
+          
           <div class="user-profile" @click="toggleDropdown" :class="{ 'active': dropdownOpen }">
             <div class="user-info">
-              <span class="user-name">Hola, {{ usuarioNombre }}</span>
+              <span class="user-name">{{ usuarioNombre }}</span>
               <span class="user-role">Cliente</span>
             </div>
             <div class="user-avatar">
@@ -68,130 +73,153 @@
               <span class="online-indicator"></span>
             </div>
             <span class="dropdown-arrow">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                 <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </span>
           </div>
 
-          <!-- Dropdown MEJORADO con efectos del header -->
           <transition name="dropdown">
             <div v-if="dropdownOpen" class="profile-dropdown">
               <div class="dropdown-header">
                 <div class="dropdown-avatar">
-                  <div class="avatar-circle-large">
-                    {{ avatarInitial }}
-                  </div>
+                  <div class="avatar-circle-large">{{ avatarInitial }}</div>
                 </div>
                 <div class="dropdown-user-info">
-                  <span class="dropdown-greeting">Hola,</span>
+                  <span class="dropdown-greeting">HOLA,</span>
                   <span class="dropdown-username">{{ usuarioNombre }}</span>
                   <span class="dropdown-role">Cliente</span>
                 </div>
               </div>
-                            
+              
               <div class="dropdown-divider"></div>
               
-              <button @click="confirmLogout" class="dropdown-item logout">
-                <svg class="item-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span>Cerrar Sesión</span>
-              </button>
+              <ul class="dropdown-list">
+ 
+                <li @click="irAPerfil" class="dropdown-item">
+                  <svg class="item-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
+                  </svg>
+                  <span>Mi Perfil</span>
+                </li>
+                
+                <div class="dropdown-divider"></div>
+                
+                <li @click="confirmLogout" class="dropdown-item item-logout">
+                  <svg class="item-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>Cerrar Sesión</span>
+                </li>
+              </ul>
             </div>
           </transition>
         </div>
 
         <div v-else class="auth-buttons">
           <router-link to="/login" class="auth-btn login-btn">
-            <div class="btn-icon">🔑</div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <polyline points="10 17 15 12 10 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <line x1="15" y1="12" x2="3" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
             <span>Ingresar</span>
           </router-link>
           <router-link to="/web/registro" class="auth-btn register-btn">
-            <div class="btn-icon">📝</div>
-            <span>Crear Cuenta</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="8.5" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
+              <line x1="20" y1="8" x2="20" y2="14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <line x1="23" y1="11" x2="17" y2="11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <span>Registrarse</span>
           </router-link>
         </div>
       </div>
+
     </div>
   </nav>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import Swal from 'sweetalert2';
+import DashboardCliente from '@/views/cliente/DashboardCliente.vue';
 
 const router = useRouter();
+const route = useRoute();
+
 const usuarioLogueado = ref(false);
 const usuarioNombre = ref('');
 const usuarioApellido = ref('');
 const dropdownOpen = ref(false);
 const profileRef = ref(null);
 
-// Propiedades computadas
-const homeLink = computed(() => {
-  return usuarioLogueado.value ? '/cliente/dashboard' : '/web/home';
-});
+const rutaActual = computed(() => route.query.ver);
+const avatarInitial = computed(() => usuarioNombre.value ? usuarioNombre.value.charAt(0).toUpperCase() : 'C');
 
-const avatarInitial = computed(() => {
-  if (usuarioNombre.value) {
-    const inicialNombre = usuarioNombre.value.charAt(0).toUpperCase();
-    const inicialApellido = usuarioApellido.value ? usuarioApellido.value.charAt(0).toUpperCase() : '';
-    return inicialNombre + inicialApellido;
-  }
-  return 'C';
-});
-
-onMounted(() => {
+const checkAuth = () => {
   const token = localStorage.getItem('token');
   const rol = localStorage.getItem('user_rol');
-  
   if (token && rol === 'CLIENTE') {
     usuarioLogueado.value = true;
     usuarioNombre.value = localStorage.getItem('user_nombre') || 'Cliente';
     usuarioApellido.value = localStorage.getItem('user_apellido') || '';
+  } else {
+    usuarioLogueado.value = false;
   }
-  
-  document.addEventListener('click', handleClickOutside);
-});
+};
 
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside);
-});
+const toggleDropdown = () => dropdownOpen.value = !dropdownOpen.value;
 
-// Cerrar dropdown al hacer click fuera
-const handleClickOutside = (event) => {
-  if (profileRef.value && !profileRef.value.contains(event.target)) {
+const handleClickOutside = (e) => {
+  if (profileRef.value && !profileRef.value.contains(e.target)) {
     dropdownOpen.value = false;
   }
 };
 
-const toggleDropdown = () => {
-  dropdownOpen.value = !dropdownOpen.value;
+// Navegación
+const irAInicio = () => {
+  dropdownOpen.value = false;
+  router.push({ name: 'DashboardCliente', query: { ver: 'resumen' } });
+};
+
+const irAPedidos = () => {
+  dropdownOpen.value = false;
+  router.push({ name: 'DashboardCliente', query: { ver: 'pedidos' } });
+};
+
+const irAPerfil = () => {
+  dropdownOpen.value = false;
+  router.push({ name: 'PerfilCliente' });
+};
+
+const irAHistorial = () => {
+  dropdownOpen.value = false;
+  router.push('/cliente/historial');
 };
 
 const confirmLogout = () => {
   dropdownOpen.value = false;
-  
   Swal.fire({
     title: '¿Cerrar sesión?',
-    text: "¿Estás seguro que deseas salir de tu cuenta?",
+    text: '¿Estás seguro que deseas salir?',
     icon: 'question',
     showCancelButton: true,
-    confirmButtonColor: '#d33',
-    cancelButtonColor: '#3085d6',
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#6b7280',
     confirmButtonText: 'Sí, salir',
     cancelButtonText: 'Cancelar',
-    background: '#0f172a',
-    color: '#fff',
+    background: '#1e293b',
+    color: '#f8fafc',
     customClass: {
-      popup: 'sweet-popup',
-      title: 'sweet-title',
-      confirmButton: 'sweet-confirm',
-      cancelButton: 'sweet-cancel'
+      popup: 'swal-popup-dark',
+      confirmButton: 'swal-confirm-btn',
+      cancelButton: 'swal-cancel-btn'
     }
   }).then((result) => {
     if (result.isConfirmed) {
@@ -202,40 +230,46 @@ const confirmLogout = () => {
 
 const logout = () => {
   localStorage.clear();
-  
-  const Toast = Swal.mixin({
+  Swal.fire({
     toast: true,
     position: 'top-end',
+    icon: 'success',
+    title: 'Sesión cerrada',
     showConfirmButton: false,
     timer: 2000,
     timerProgressBar: true,
-    background: '#0f172a',
-    color: '#fff',
-    iconColor: '#3b82f6'
+    background: '#1e293b',
+    color: '#f8fafc'
   });
-  
-  Toast.fire({
-    icon: 'success',
-    title: 'Sesión cerrada correctamente'
-  }).then(() => {
+  setTimeout(() => {
     window.location.href = '/web/home';
-  });
+  }, 500);
 };
+
+onMounted(() => {
+  checkAuth();
+  document.addEventListener('click', handleClickOutside);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside);
+});
 </script>
 
 <style scoped>
-/* NAVBAR PRINCIPAL - Mismo estilo que sidebar */
+/* ============================================
+   NAVBAR PRINCIPAL
+   ============================================ */
 .client-nav {
-  background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+  background: linear-gradient(135deg, #0f172a 0%, #111827 100%);
+  backdrop-filter: blur(20px);
   border-bottom: 1px solid rgba(59, 130, 246, 0.15);
-  padding: 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  height: 75px;
   position: sticky;
   top: 0;
-  z-index: 100;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-  height: 70px;
-  display: flex;
-  align-items: center;
+  z-index: 1000;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .client-nav::after {
@@ -250,48 +284,57 @@ const logout = () => {
 
 .nav-content {
   max-width: 1400px;
-  width: 100%;
   margin: 0 auto;
+  height: 100%;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 0 24px;
-  gap: 30px;
+  justify-content: space-between;
+  padding: 0 32px;
 }
 
-/* Logo Section - Igual que sidebar */
-.logo-section {
-  flex-shrink: 0;
-}
-
+/* ============================================
+   LOGO
+   ============================================ */
 .logo-wrapper {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+  padding: 8px 12px;
+  border-radius: 12px;
+  position: relative;
 }
 
-.logo-link {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-decoration: none;
+.logo-wrapper::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #3b82f6;
+  transform: scaleY(0);
+  transition: transform 0.3s ease;
+  border-radius: 0 2px 2px 0;
 }
+
 
 .logo-container {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
+  width: 46px;
+  height: 46px;
   background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 1.4rem;
   border: 3px solid #3b82f6;
   box-shadow: 
     0 0 20px rgba(59, 130, 246, 0.4),
-    0 4px 12px rgba(0, 0, 0, 0.3),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-  position: relative;
+    0 4px 12px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
+  position: relative;
 }
 
 .logo-container::before {
@@ -308,71 +351,73 @@ const logout = () => {
   filter: blur(4px);
 }
 
-.logo-container:hover {
-  transform: scale(1.05);
-  box-shadow: 
-    0 0 25px rgba(59, 130, 246, 0.5),
-    0 6px 16px rgba(0, 0, 0, 0.4);
-}
-
-.logo-icon {
-  font-size: 1.5rem;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+.logo-wrapper:hover .logo-container {
+  transform: scale(1.05) rotate(5deg);
 }
 
 .brand-info {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
 .brand-name {
-  font-size: 1.6rem;
+  font-size: 1.35rem;
   font-weight: 800;
   background: linear-gradient(135deg, #fff 0%, #e0e7ff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  letter-spacing: 1.2px;
+  letter-spacing: 1px;
   text-transform: uppercase;
-  line-height: 1.2;
+  text-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
 }
 
 .brand-subtitle {
-  font-size: 0.65rem;
-  font-weight: 700;
   color: #60a5fa;
-  letter-spacing: 2px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 2.5px;
   text-transform: uppercase;
-  opacity: 0.9;
 }
 
-/* Navegación principal - con efectos del sidebar */
+/* ============================================
+   NAVEGACIÓN
+   ============================================ */
 .nav-links-section {
   flex: 1;
   display: flex;
   justify-content: center;
+  padding: 0 20px;
 }
 
 .links-container {
   display: flex;
-  gap: 2px;
+  gap: 6px;
   background: rgba(30, 41, 59, 0.5);
-  border-radius: 12px;
-  padding: 4px;
-  border: 1px solid rgba(59, 130, 246, 0.1);
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .nav-link {
-  position: relative;
   display: flex;
   align-items: center;
-  text-decoration: none;
-  padding: 10px 20px;
+  gap: 8px;
+  padding: 10px 18px;
   border-radius: 10px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #cbd5e1;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  position: relative;
   overflow: hidden;
-  min-width: 120px;
-  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: 0.3px;
 }
 
 .nav-link::before {
@@ -384,97 +429,61 @@ const logout = () => {
   width: 3px;
   background: #3b82f6;
   transform: scaleY(0);
-  transition: transform 0.3s ease;
+  transition: transform 0.2s ease;
   border-radius: 0 2px 2px 0;
 }
 
-.link-content {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  z-index: 2;
-}
-
-.link-icon {
-  font-size: 1.1rem;
-  transition: all 0.3s ease;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
-}
-
-.link-text {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #d1d5db;
-  letter-spacing: 0.3px;
-  transition: all 0.3s ease;
-}
-
-.link-indicator {
-  width: 0;
-  height: 100%;
-  position: absolute;
-  left: 0;
-  top: 0;
-  background: #60a5fa;
-  border-radius: 0 4px 4px 0;
-  transition: width 0.3s ease;
-  z-index: 1;
-}
-
-/* Hover y Active States */
 .nav-link:hover {
+  color: #fff;
   background: rgba(31, 41, 55, 0.8);
-  transform: translateY(-2px);
 }
 
 .nav-link:hover::before {
-  transform: scaleY(1);
+  transform: scaleY(0.6);
 }
 
-.nav-link:hover .link-icon {
-  transform: scale(1.1);
+.nav-link.router-link-active,
+.nav-link.active {
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.4), rgba(59, 130, 246, 0.2));
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
 }
 
-.nav-link:hover .link-text {
-  color: #fff;
-}
-
-.nav-link.router-link-active {
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-  box-shadow: 
-    0 4px 16px rgba(59, 130, 246, 0.4),
-    0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
+.nav-link.active::before,
 .nav-link.router-link-active::before {
   transform: scaleY(1);
-  background: #60a5fa;
 }
 
-.nav-link.router-link-active .link-icon {
-  color: #ffffff;
-  transform: scale(1.1);
+.link-icon {
+  stroke: currentColor;
+  flex-shrink: 0;
 }
 
-.nav-link.router-link-active .link-text {
-  color: #ffffff;
-  font-weight: 600;
+.link-indicator {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 2px;
+  background: #3b82f6;
+  transition: width 0.3s ease;
+  border-radius: 2px;
+}
+
+.nav-link.active .link-indicator,
+.nav-link.router-link-active .link-indicator {
+  width: 50%;
 }
 
 /* ============================================
-   USER PROFILE SECTION - ESTILO HEADER
+   PERFIL DE USUARIO
    ============================================ */
-.user-actions-section {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
 .user-profile-wrapper {
   position: relative;
 }
 
-/* Perfil de usuario - Estilo Header */
 .user-profile {
   display: flex;
   align-items: center;
@@ -513,26 +522,26 @@ const logout = () => {
 }
 
 .user-info {
+  text-align: right;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
   gap: 3px;
 }
 
 .user-name {
-  font-size: 1.05rem;
-  font-weight: 600;
   color: #d1d5db;
+  font-weight: 600;
+  font-size: 1.05rem;
   letter-spacing: 0.3px;
 }
 
 .user-role {
-  font-size: 0.75rem;
   color: #9ca3af;
+  font-size: 0.75rem;
   font-weight: 500;
+  letter-spacing: 0.2px;
 }
 
-/* Avatar - Estilo Header */
 .user-avatar {
   position: relative;
   width: 44px;
@@ -544,13 +553,16 @@ const logout = () => {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #8b5cf6 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 3px solid #3b82f6;
+  color: white;
+  font-weight: 700;
+  font-size: 1.05rem;
+  border: 3px solid rgba(139, 92, 246, 0.5);
   box-shadow: 
-    0 0 20px rgba(59, 130, 246, 0.4),
+    0 0 20px rgba(139, 92, 246, 0.4),
     0 4px 12px rgba(0, 0, 0, 0.3),
     inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   transition: all 0.3s ease;
@@ -565,7 +577,7 @@ const logout = () => {
   right: -2px;
   bottom: -2px;
   border-radius: 50%;
-  background: linear-gradient(45deg, #3b82f6, #60a5fa);
+  background: linear-gradient(45deg, #8b5cf6, #a78bfa);
   z-index: -1;
   opacity: 0.3;
   filter: blur(4px);
@@ -573,13 +585,6 @@ const logout = () => {
 
 .user-profile:hover .avatar-circle {
   transform: scale(1.05);
-}
-
-.avatar-initials {
-  color: white;
-  font-weight: bold;
-  font-size: 1.05rem;
-  z-index: 1;
 }
 
 .online-indicator {
@@ -607,8 +612,12 @@ const logout = () => {
   color: #60a5fa;
 }
 
+.dropdown-arrow svg {
+  stroke: currentColor;
+}
+
 /* ============================================
-   DROPDOWN MENU - ESTILO HEADER MEJORADO
+   DROPDOWN MEJORADO
    ============================================ */
 .profile-dropdown {
   position: absolute;
@@ -623,7 +632,6 @@ const logout = () => {
     0 4px 12px rgba(0, 0, 0, 0.3);
   padding: 12px;
   z-index: 1001;
-  transform-origin: top right;
   overflow: hidden;
 }
 
@@ -632,9 +640,9 @@ const logout = () => {
   align-items: center;
   gap: 14px;
   padding: 16px;
-  position: relative;
   border-bottom: 1px solid rgba(59, 130, 246, 0.1);
   margin-bottom: 8px;
+  position: relative;
 }
 
 .dropdown-header::after {
@@ -655,16 +663,16 @@ const logout = () => {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #8b5cf6 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-weight: bold;
   font-size: 1.4rem;
-  border: 3px solid #3b82f6;
+  border: 3px solid rgba(139, 92, 246, 0.5);
   box-shadow: 
-    0 0 20px rgba(59, 130, 246, 0.4),
+    0 0 20px rgba(139, 92, 246, 0.4),
     0 4px 12px rgba(0, 0, 0, 0.3);
   position: relative;
 }
@@ -677,7 +685,7 @@ const logout = () => {
   right: -2px;
   bottom: -2px;
   border-radius: 50%;
-  background: linear-gradient(45deg, #3b82f6, #60a5fa);
+  background: linear-gradient(45deg, #8b5cf6, #a78bfa);
   z-index: -1;
   opacity: 0.3;
   filter: blur(4px);
@@ -695,7 +703,6 @@ const logout = () => {
   color: #94a3b8;
   font-weight: 600;
   letter-spacing: 2.5px;
-  text-transform: uppercase;
 }
 
 .dropdown-username {
@@ -721,23 +728,24 @@ const logout = () => {
   margin: 8px 0;
 }
 
+.dropdown-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
 .dropdown-item {
-  width: 100%;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 13px 16px;
-  border: none;
-  background: transparent;
   color: #d1d5db;
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
   border-radius: 10px;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  text-align: left;
   position: relative;
-  text-decoration: none;
 }
 
 .dropdown-item::before {
@@ -766,57 +774,29 @@ const logout = () => {
 .item-icon {
   flex-shrink: 0;
   transition: transform 0.2s ease;
-  font-size: 1.1rem;
+  stroke: currentColor;
 }
 
 .dropdown-item:hover .item-icon {
   transform: scale(1.1);
 }
 
-.dropdown-item.logout {
-  color: #ef4444;
+.item-logout {
+  color: #ef4444 !important;
   margin-top: 4px;
 }
 
-.dropdown-item.logout:hover {
-  background: rgba(239, 68, 68, 0.1);
+.item-logout:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
 }
 
-/* Animación de entrada */
-.dropdown-enter-active {
-  animation: dropdown-in 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.dropdown-leave-active {
-  animation: dropdown-out 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@keyframes dropdown-in {
-  0% {
-    opacity: 0;
-    transform: translateY(-15px) scale(0.95);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes dropdown-out {
-  0% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-10px) scale(0.97);
-  }
-}
-
-/* Auth Buttons (No logueado) */
+/* ============================================
+   BOTONES DE AUTENTICACIÓN
+   ============================================ */
 .auth-buttons {
   display: flex;
   gap: 12px;
+  align-items: center;
 }
 
 .auth-btn {
@@ -825,123 +805,167 @@ const logout = () => {
   gap: 8px;
   padding: 10px 18px;
   border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.95rem;
   text-decoration: none;
-  font-weight: 600;
-  font-size: 0.9rem;
   transition: all 0.3s ease;
+  letter-spacing: 0.3px;
+  border: 1px solid transparent;
+}
+
+.auth-btn svg {
+  stroke: currentColor;
+  flex-shrink: 0;
 }
 
 .login-btn {
   color: #d1d5db;
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  background: rgba(30, 41, 59, 0.5);
+  border-color: rgba(255, 255, 255, 0.1);
+  background: transparent;
 }
 
 .login-btn:hover {
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(31, 41, 55, 0.8);
   color: #fff;
-  border-color: rgba(59, 130, 246, 0.5);
-  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .register-btn {
-  background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
-  color: white;
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  color: #fff;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.register-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.register-btn:hover::before {
+  opacity: 1;
 }
 
 .register-btn:hover {
-  background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
 }
 
-.btn-icon {
-  font-size: 1rem;
+/* ============================================
+   ANIMACIONES
+   ============================================ */
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Responsive */
+.dropdown-enter-from {
+  opacity: 0;
+  transform: translateY(-15px) scale(0.95);
+}
+
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.97);
+}
+
+/* ============================================
+   SWEETALERT2 CUSTOM
+   ============================================ */
+:deep(.swal-popup-dark) {
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4) !important;
+}
+
+:deep(.swal-confirm-btn) {
+  background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3) !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
+  padding: 10px 24px !important;
+}
+
+:deep(.swal-confirm-btn:hover) {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4) !important;
+}
+
+:deep(.swal-cancel-btn) {
+  background: rgba(107, 114, 128, 0.2) !important;
+  color: #9ca3af !important;
+  border: 1px solid rgba(107, 114, 128, 0.3) !important;
+  font-weight: 600 !important;
+  border-radius: 10px !important;
+  padding: 10px 24px !important;
+}
+
+:deep(.swal-cancel-btn:hover) {
+  background: rgba(107, 114, 128, 0.3) !important;
+  color: #fff !important;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
 @media (max-width: 1024px) {
-  .nav-content {
-    padding: 0 20px;
-    gap: 20px;
-  }
-  
-  .links-container {
-    gap: 1px;
-  }
-  
-  .nav-link {
-    padding: 10px 15px;
-    min-width: 100px;
-  }
-  
-  .link-text {
-    font-size: 0.9rem;
+  .nav-links-section {
+    display: none;
   }
 }
 
 @media (max-width: 768px) {
-  .client-nav {
-    height: 60px;
-  }
-  
   .nav-content {
-    padding: 0 15px;
-  }
-  
-  .brand-name {
-    font-size: 1.3rem;
-  }
-  
-  .logo-container {
-    width: 40px;
-    height: 40px;
-  }
-  
-  .logo-icon {
-    font-size: 1.2rem;
-  }
-  
-  .links-container {
-    display: none; /* Ocultar links en móvil */
+    padding: 0 20px;
   }
   
   .user-info {
     display: none;
   }
   
-  .user-profile {
-    gap: 10px;
-    padding: 6px 10px;
+  .profile-dropdown {
+    min-width: 260px;
+    right: -8px;
+  }
+
+  .auth-btn span {
+    display: none;
+  }
+
+  .auth-btn {
+    padding: 10px 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .client-nav {
+    height: 68px;
+  }
+  
+  .nav-content {
+    padding: 0 16px;
+  }
+  
+  .brand-name {
+    font-size: 1.2rem;
+  }
+  
+  .logo-container {
+    width: 38px;
+    height: 38px;
+    font-size: 1.1rem;
   }
   
   .user-avatar {
     width: 38px;
     height: 38px;
-  }
-  
-  .auth-btn span {
-    display: none;
-  }
-  
-  .auth-btn {
-    padding: 10px;
-  }
-  
-  .profile-dropdown {
-    min-width: 260px;
-    right: -8px;
-  }
-}
-
-@media (max-width: 480px) {
-  .brand-name {
-    display: none;
-  }
-  
-  .logo-link {
-    gap: 0;
   }
   
   .profile-dropdown {
