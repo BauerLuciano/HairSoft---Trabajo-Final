@@ -7,6 +7,7 @@ from . import views as func_views
 # ✅ 2. Importamos las CLASES NUEVAS desde api_views.py
 from .api_views import (
     AuditoriaViewSet,
+    PedidoWebViewSet,  # <--- ¡NUEVO! Para pedidos de clientes
     ServicioListAPIView,
     ServicioCreateAPIView,
     ServicioUpdateAPIView,
@@ -48,10 +49,11 @@ from .views import (
 )
 
 # ================================
-# Configuración del Router para ViewSets (AUDITORÍA)
+# Configuración del Router para ViewSets (AUDITORÍA Y PEDIDOS WEB)
 # ================================
 router = DefaultRouter()
 router.register(r'auditoria', AuditoriaViewSet, basename='auditoria')
+router.register(r'pedidos-web', PedidoWebViewSet, basename='pedidos-web') # <--- Ruta para la API de compras cliente
 
 # ================================
 # Configuración de ViewSet Manual para Ventas
@@ -124,9 +126,8 @@ urlpatterns = [
     path('api/catalogo/', ProductoCatalogoView.as_view(), name='catalogo-publico'),
 
     # ================================
-    # 📅 TURNOS (AQUÍ ESTÁ EL CAMBIO CLAVE)
+    # 📅 TURNOS
     # ================================
-    # Usamos la vista nueva que sí filtra por peluquero
     path('api/turnos/', func_views.listar_turnos_general, name='listado_turnos'),
     
     path('api/turnos/crear/', func_views.crear_turno, name='crear_turno'),
@@ -134,10 +135,7 @@ urlpatterns = [
     path('api/turnos/<int:turno_id>/modificar/', func_views.modificar_turno, name='modificar_turno'),
     path('api/turnos/<int:turno_id>/procesar-sena/', func_views.procesar_sena_turno, name='procesar_sena_turno'),
     
-    # Esta es para llenar el calendario del formulario (filtra ocupados)
     path('api/turnos/verificar-horarios/', func_views.obtener_horarios_disponibles, name='verificar_horarios'), 
-    
-    # (Mantengo la vieja por si acaso la usas en otro lado, pero la de arriba es mejor)
     path('api/turnos/verificar-disponibilidad/', func_views.verificar_disponibilidad, name='verificar_disponibilidad'),
     
     path('api/turnos/cancelar-propio/<int:turno_id>/', func_views.cancelar_mi_turno, name='cancelar_mi_turno'),
@@ -200,7 +198,7 @@ urlpatterns = [
     path('api/ventas/<int:venta_id>/comprobante-pdf/', generar_comprobante_pdf, name='generar_comprobante_pdf'),
 
     # ================================
-    # Pedidos
+    # Pedidos (Proveedores)
     # ================================
     path('api/pedidos/', PedidoListCreateAPIView.as_view(), name='pedidos-list-create'),
     path('api/pedidos/<int:pk>/', PedidoRetrieveUpdateDestroyAPIView.as_view(), name='pedidos-detail'),
@@ -279,6 +277,6 @@ urlpatterns = [
     path('api/liquidaciones/registrar/', RegistrarPagoLiquidacionView.as_view(), name='registrar_pago'),
     path('api/liquidaciones/historial/', HistorialLiquidacionesView.as_view(), name='historial_pagos'),
 
-    # API ROUTER (Al final)
+    # API ROUTER (Al final) - Incluye Auditoría y Pedidos Web
     path('api/', include(router.urls)),
 ]

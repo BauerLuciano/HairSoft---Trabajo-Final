@@ -87,6 +87,7 @@ def generar_comprobante_venta(venta_data, detalles):
     Avenida Libertador 600<br/>
     Galería Rosa - Local 3<br/>
     Tel: (3755) 12-3456<br/>
+    Los Ultimos Serán Los Primeros<br/>
     Email: contacto@hairsoft.com
     """
     
@@ -252,6 +253,8 @@ def generar_comprobante_venta(venta_data, detalles):
     
     elements.append(Paragraph("Este documento no es válido como factura fiscal.", style_footer))
     elements.append(Paragraph("HairSoft - Sistema de Gestión de Peluquerías", 
+        ParagraphStyle('SmallFooter', parent=style_footer, fontSize=7, spaceBefore=2)))
+    elements.append(Paragraph("Los Ultimos Serán Los Primeros", 
         ParagraphStyle('SmallFooter', parent=style_footer, fontSize=7, spaceBefore=2)))
 
     # Generar PDF

@@ -718,6 +718,72 @@ class PedidoBusquedaSerializer(serializers.ModelSerializer):
 
     def get_puede_completar(self, obj):  # ✅ CAMBIÉ EL NOMBRE Y MÉTODO
         return obj.puede_ser_completado()
+
+
+#Pedido del cliente!!!
+class DetallePedidoWebSerializer(serializers.ModelSerializer):
+    # 'producto' es ForeignKey, por defecto acepta ID, que es lo que manda el front. Perfecto.
+    nombre_producto = serializers.CharField(source='producto.nombre', read_only=True)
+    precio_unitario = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = DetallePedidoWeb
+        fields = ['id', 'producto', 'nombre_producto', 'cantidad', 'precio_unitario', 'subtotal']
+
+class PedidoWebSerializer(serializers.ModelSerializer):
+    # Usamos el serializer anidado. IMPORTANTE: many=True
+    detalles = DetallePedidoWebSerializer(many=True)
+    estado_display = serializers.CharField(source='get_estado_display', read_only=True)
+    
+    class Meta:
+        model = PedidoWeb
+        fields = [
+            'id', 'cliente', 'fecha_creacion', 'estado', 'estado_display', 
+            'tipo_entrega', 'direccion_envio', 'costo_envio', 
+            'total', 'detalles'
+        ]
+        # Estos campos NO se validan porque los pone el sistema
+        read_only_fields = ['cliente', 'fecha_creacion', 'estado', 'total']
+
+    def create(self, validated_data):
+        detalles_data = validated_data.pop('detalles')
+        
+        with transaction.atomic():
+            pedido = PedidoWeb.objects.create(**validated_data)
+            total_acumulado = 0
+
+            for detalle_data in detalles_data:
+                producto = detalle_data['producto']
+                cantidad = detalle_data['cantidad']
+
+                # Bloqueo para evitar race conditions
+                producto_db = Producto.objects.select_for_update().get(pk=producto.pk)
+
+                if producto_db.stock_actual < cantidad:
+                    raise serializers.ValidationError(
+                        f"Stock insuficiente para {producto_db.nombre}. Quedan {producto_db.stock_actual}."
+                    )
+
+                producto_db.stock_actual -= cantidad
+                producto_db.save() # Esto imprime el GUARDANDO...
+
+                # Precio actual del producto
+                precio_actual = producto_db.precio 
+                
+                DetallePedidoWeb.objects.create(
+                    pedido=pedido,
+                    producto=producto_db,
+                    cantidad=cantidad,
+                    precio_unitario=precio_actual
+                )
+                
+                total_acumulado += (precio_actual * cantidad)
+
+            pedido.total = total_acumulado + pedido.costo_envio
+            pedido.save()
+
+            return pedido
+
 # ----------------------------------------------------------------------
 # LISTAS DE PRECIOS DE PROVEEDORES
 # ----------------------------------------------------------------------

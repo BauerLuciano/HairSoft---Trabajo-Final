@@ -1152,6 +1152,82 @@ class ConfiguracionReoferta(models.Model):
             config = cls.objects.create()
         return config
 
+# Pedidos del cliente via web!
+
+class PedidoWeb(models.Model):
+    # Opciones de Estado del Pedido
+    ESTADO_PENDIENTE_PAGO = 'PENDIENTE_PAGO'
+    ESTADO_PAGADO = 'PAGADO'
+    ESTADO_PREPARACION = 'EN_PREPARACION'
+    ESTADO_LISTO_RETIRO = 'LISTO_RETIRO'
+    ESTADO_EN_CAMINO = 'EN_CAMINO'
+    ESTADO_ENTREGADO = 'ENTREGADO'
+    ESTADO_CANCELADO = 'CANCELADO'
+
+    ESTADOS_CHOICES = [
+        (ESTADO_PENDIENTE_PAGO, 'Esperando Pago'),
+        (ESTADO_PAGADO, 'Pagado - A preparar'),
+        (ESTADO_PREPARACION, 'En preparación'),
+        (ESTADO_LISTO_RETIRO, 'Listo para retirar en Local'),
+        (ESTADO_EN_CAMINO, 'En camino (Moto/Correo)'),
+        (ESTADO_ENTREGADO, 'Entregado / Finalizado'),
+        (ESTADO_CANCELADO, 'Cancelado'),
+    ]
+
+    # Opciones de Entrega
+    ENTREGA_RETIRO = 'RETIRO'
+    ENTREGA_MOTO = 'MOTO'
+    ENTREGA_CORREO = 'CORREO'
+
+    ENTREGA_CHOICES = [
+        (ENTREGA_RETIRO, 'Retiro en el Local'),
+        (ENTREGA_MOTO, 'Envío Moto (San Vicente)'),
+        (ENTREGA_CORREO, 'Envío Correo (Nacional)'),
+    ]
+
+    cliente = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='pedidos_web')
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    
+    estado = models.CharField(max_length=20, choices=ESTADOS_CHOICES, default=ESTADO_PENDIENTE_PAGO)
+    tipo_entrega = models.CharField(max_length=20, choices=ENTREGA_CHOICES, default=ENTREGA_RETIRO)
+    
+    # Datos para el envío
+    direccion_envio = models.TextField(null=True, blank=True, help_text="Dirección completa si es envío")
+    costo_envio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    # MercadoPago
+    mp_payment_id = models.CharField(max_length=100, null=True, blank=True, help_text="ID de pago de MercadoPago")
+    total = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Total productos + envío")
+
+    def __str__(self):
+        return f"Pedido Web #{self.id} - {self.cliente.username} - {self.get_estado_display()}"
+
+    def calcular_total(self):
+        # Suma los subtotales de los detalles + costo de envío
+        total_productos = sum(item.subtotal for item in self.detalles.all())
+        self.total = total_productos + self.costo_envio
+        self.save()
+
+
+class DetallePedidoWeb(models.Model):
+    pedido = models.ForeignKey(PedidoWeb, on_delete=models.CASCADE, related_name='detalles')
+    producto = models.ForeignKey(Producto, on_delete=models.PROTECT) 
+    cantidad = models.PositiveIntegerField(default=1)
+    # Guardamos el precio al momento de la compra por si después aumenta el producto
+    precio_unitario = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        verbose_name = "Detalle de Pedido Web"
+        verbose_name_plural = "Detalles de Pedidos Web"
+
+    @property
+    def subtotal(self):
+        return self.cantidad * self.precio_unitario
+
+    def __str__(self):
+        return f"{self.cantidad} x {self.producto.nombre}"
+    
 # ==============================================================================
 # MÓDULO INTELIGENTE: REABASTECIMIENTO AUTOMÁTICO (PROVEEDORES)
 # ==============================================================================
