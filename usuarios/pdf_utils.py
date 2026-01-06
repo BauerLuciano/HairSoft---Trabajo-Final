@@ -1,12 +1,14 @@
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.graphics.shapes import Drawing, Line
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.graphics.shapes import Drawing, Line, Rect
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from reportlab.lib.units import cm
 from io import BytesIO
 from datetime import datetime
+import os
+from django.conf import settings
 
 def generar_comprobante_venta(venta_data, detalles):
     buffer = BytesIO()
@@ -15,92 +17,120 @@ def generar_comprobante_venta(venta_data, detalles):
     doc = SimpleDocTemplate(
         buffer, 
         pagesize=A4,
-        rightMargin=30,
-        leftMargin=30,
-        topMargin=30,
-        bottomMargin=30
+        rightMargin=50,
+        leftMargin=50,
+        topMargin=40,
+        bottomMargin=40
     )
     
     elements = []
     styles = getSampleStyleSheet()
 
-    # --- ESTILOS PERSONALIZADOS ---
-    
-    # 1. Marca Principal (Título Grande)
-    style_brand = ParagraphStyle(
-        'Brand',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=28,      # Letra grande
-        leading=32,       # ⚠️ FIX: Altura de línea para evitar solapamiento
-        textColor=colors.HexColor('#2c3e50'),
-        alignment=TA_LEFT,
-        spaceAfter=10     # Espacio extra abajo
+    # --- COLORES PROFESIONALES ---
+    negro = colors.HexColor('#000000')
+    gris_oscuro = colors.HexColor('#333333')
+    gris_medio = colors.HexColor('#666666')
+    gris_claro = colors.HexColor('#aaaaaa')
+    gris_muy_claro = colors.HexColor('#f5f5f5')
+
+    # --- ESTILOS LIMPIOS ---
+    style_slogan = ParagraphStyle(
+        'Slogan', 
+        parent=styles['Normal'], 
+        fontName='Helvetica-Oblique', 
+        fontSize=9, 
+        textColor=gris_medio, 
+        alignment=TA_LEFT, 
+        spaceAfter=6
     )
     
-    # 2. Dirección (Texto gris pequeño)
     style_address = ParagraphStyle(
-        'Address',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=10,
-        leading=14,       # Buen espaciado entre líneas
-        textColor=colors.HexColor('#7f8c8d'),
+        'Address', 
+        parent=styles['Normal'], 
+        fontName='Helvetica', 
+        fontSize=8.5, 
+        leading=11, 
+        textColor=gris_medio, 
         alignment=TA_LEFT
     )
-
-    # 3. Datos de la Factura (Derecha)
-    style_invoice_title = ParagraphStyle(
-        'InvoiceTitle',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=14,
-        leading=16,
-        alignment=TA_RIGHT,
-        textColor=colors.HexColor('#2c3e50')
+    
+    style_comprobante = ParagraphStyle(
+        'Comprobante', 
+        parent=styles['Normal'], 
+        fontName='Helvetica-Bold', 
+        fontSize=18, 
+        leading=22, 
+        alignment=TA_RIGHT, 
+        textColor=negro,
+        spaceAfter=4
     )
     
-    style_invoice_data = ParagraphStyle(
-        'InvoiceData',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=12,
-        leading=14,
-        alignment=TA_RIGHT,
-        textColor=colors.HexColor('#34495e')
+    style_numero = ParagraphStyle(
+        'Numero', 
+        parent=styles['Normal'], 
+        fontName='Helvetica', 
+        fontSize=11, 
+        alignment=TA_RIGHT, 
+        textColor=gris_oscuro
     )
-
-    # 4. Texto Normal para Tablas
-    style_cell_text = ParagraphStyle(
-        'CellText',
-        parent=styles['Normal'],
-        fontSize=10,
-        leading=12,
-        textColor=colors.HexColor('#2c3e50')
+    
+    style_label = ParagraphStyle(
+        'Label', 
+        parent=styles['Normal'], 
+        fontName='Helvetica-Bold',
+        fontSize=9, 
+        textColor=gris_oscuro
+    )
+    
+    style_value = ParagraphStyle(
+        'Value', 
+        parent=styles['Normal'], 
+        fontName='Helvetica',
+        fontSize=9.5, 
+        textColor=negro
+    )
+    
+    style_item = ParagraphStyle(
+        'Item', 
+        parent=styles['Normal'], 
+        fontSize=9.5, 
+        leading=13, 
+        textColor=negro
     )
 
     # --- 1. ENCABEZADO ---
     
-    # Bloque Izquierdo: Título y Dirección
-    # Usamos <br/> para asegurar saltos de línea limpios
+    logo_path = os.path.join(settings.BASE_DIR, 'logo_barberia.jpg')
+    
+    logo_img = None
+    if os.path.exists(logo_path):
+        try:
+            logo_img = Image(logo_path, width=3.8*cm, height=3.8*cm) 
+            logo_img.hAlign = 'LEFT'
+        except Exception as e:
+            print(f"Error cargando imagen logo: {e}")
+    else:
+        print(f"⚠️ No se encontró el logo en: {logo_path}")
+
     direccion_texto = """
     Avenida Libertador 600<br/>
     Galería Rosa - Local 3<br/>
     Tel: (3755) 12-3456<br/>
-    Los Ultimos Serán Los Primeros<br/>
-    Email: contacto@hairsoft.com
+    contacto@hairsoft.com
     """
     
-    empresa_info = [
-        Paragraph("HAIRSOFT", style_brand),
-        Paragraph(direccion_texto, style_address)
-    ]
-
-    # Bloque Derecho: Datos de la Venta
-    fecha_actual = datetime.now().strftime("%d/%m/%Y %H:%M")
+    info_izq = []
+    if logo_img:
+        info_izq.append(logo_img)
+        info_izq.append(Spacer(1, 8))
     
-    # Manejo seguro de la fecha de venta
+    info_izq.append(Paragraph('"Los Últimos Serán Los Primeros"', style_slogan))
+    info_izq.append(Paragraph(direccion_texto, style_address))
+
+    # Info derecha - comprobante
+    fecha_actual = datetime.now().strftime("%d/%m/%Y %H:%M")
     fecha_venta = venta_data.get('fecha')
+    
     if fecha_venta:
         try:
             if 'T' in str(fecha_venta):
@@ -113,21 +143,18 @@ def generar_comprobante_venta(venta_data, detalles):
     else:
         fecha_texto = fecha_actual
 
-    comprobante_info = [
-        Paragraph("COMPROBANTE DE VENTA", style_invoice_title),
-        Paragraph("(NO FISCAL)", ParagraphStyle('NoFiscal', parent=style_invoice_title, fontSize=10, textColor=colors.red)),
-        Spacer(1, 15),
-        Paragraph(f"N° Venta: {venta_data.get('id', '000')}", style_invoice_data),
-        Paragraph(f"Fecha: {fecha_texto}", style_invoice_data),
+    info_der = [
+        Paragraph("COMPROBANTE DE VENTA", style_comprobante),
+        Paragraph(f"N° {venta_data.get('id', '000'):0>6}", style_numero),
+        Spacer(1, 8),
+        Paragraph(f"Fecha: {fecha_texto}", ParagraphStyle('Fecha', parent=style_numero, fontSize=9)),
+        Spacer(1, 12),
+        Paragraph("DOCUMENTO NO FISCAL", ParagraphStyle('NoFiscal', parent=style_numero, fontSize=7, textColor=gris_claro)),
     ]
 
-    # Tabla Maestra del Encabezado
-    header_table = Table([
-        [empresa_info, comprobante_info]
-    ], colWidths=[11*cm, 7.5*cm])
-    
+    header_table = Table([[info_izq, info_der]], colWidths=[9.5*cm, 8*cm])
     header_table.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'TOP'), # Alinear todo arriba
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
         ('LEFTPADDING', (0,0), (-1,-1), 0),
         ('RIGHTPADDING', (0,0), (-1,-1), 0),
     ]))
@@ -135,52 +162,49 @@ def generar_comprobante_venta(venta_data, detalles):
     elements.append(header_table)
     elements.append(Spacer(1, 1*cm))
     
-    # Línea separadora elegante
-    d = Drawing(500, 1)
-    d.add(Line(0, 0, 535, 0, strokeColor=colors.HexColor('#ecf0f1'), strokeWidth=2))
+    # Línea separadora gruesa
+    d = Drawing(495, 2)
+    d.add(Rect(0, 0, 495, 2, fillColor=negro, strokeColor=None))
     elements.append(d)
-    elements.append(Spacer(1, 1*cm))
+    elements.append(Spacer(1, 0.8*cm))
 
-    # --- 2. INFORMACIÓN DEL CLIENTE (Estilo Tarjeta) ---
+    # --- 2. INFORMACIÓN DE LA VENTA ---
     
     cliente_nombre = venta_data.get('cliente_nombre') or "Consumidor Final"
     usuario_vendedor = venta_data.get('usuario_nombre') or "Sistema"
     medio_pago = venta_data.get('medio_pago_nombre') or 'Efectivo'
 
-    elements.append(Paragraph("INFORMACIÓN DEL CLIENTE", ParagraphStyle('SectionHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, textColor=colors.HexColor('#7f8c8d'), spaceAfter=5)))
-
-    # Tabla de datos del cliente con fondo gris
-    datos_cliente = [
-        [Paragraph("<b>Cliente:</b>", style_cell_text), Paragraph(cliente_nombre, style_cell_text)],
-        [Paragraph("<b>Atendido por:</b>", style_cell_text), Paragraph(usuario_vendedor, style_cell_text)],
-        [Paragraph("<b>Método de Pago:</b>", style_cell_text), Paragraph(medio_pago, style_cell_text)],
+    info_venta = [
+        [Paragraph("CLIENTE", style_label), Paragraph(cliente_nombre, style_value)],
+        [Paragraph("ATENDIDO POR", style_label), Paragraph(usuario_vendedor, style_value)],
+        [Paragraph("FORMA DE PAGO", style_label), Paragraph(medio_pago, style_value)],
     ]
 
-    tabla_cliente = Table(datos_cliente, colWidths=[4*cm, 14.5*cm])
-    tabla_cliente.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8f9fa')), # Fondo sutil
+    tabla_info = Table(info_venta, colWidths=[4*cm, 13.5*cm])
+    tabla_info.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), gris_muy_claro),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('TOPPADDING', (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-        ('LEFTPADDING', (0,0), (-1,-1), 12),
-        # Borde izquierdo decorativo
-        ('LINEBEFORE', (0,0), (0,-1), 4, colors.HexColor('#2c3e50')), 
+        ('TOPPADDING', (0,0), (-1,-1), 9),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 9),
+        ('LEFTPADDING', (0,0), (-1,-1), 10),
+        ('RIGHTPADDING', (0,0), (-1,-1), 10),
     ]))
     
-    elements.append(tabla_cliente)
+    elements.append(tabla_info)
     elements.append(Spacer(1, 1*cm))
 
     # --- 3. DETALLE DE ITEMS ---
     
-    # Encabezados
-    data_items = [[
-        Paragraph('<b>PRODUCTO / SERVICIO</b>', ParagraphStyle('TH', parent=style_cell_text, textColor=colors.white, alignment=TA_LEFT)),
-        Paragraph('<b>CANT.</b>', ParagraphStyle('TH_C', parent=style_cell_text, textColor=colors.white, alignment=TA_CENTER)),
-        Paragraph('<b>PRECIO UNIT.</b>', ParagraphStyle('TH_R', parent=style_cell_text, textColor=colors.white, alignment=TA_RIGHT)),
-        Paragraph('<b>SUBTOTAL</b>', ParagraphStyle('TH_R', parent=style_cell_text, textColor=colors.white, alignment=TA_RIGHT)),
-    ]]
+    style_header = ParagraphStyle('Header', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, textColor=colors.white)
     
-    # Filas
+    headers = [
+        Paragraph('DESCRIPCIÓN', style_header),
+        Paragraph('CANT.', ParagraphStyle('HC', parent=style_header, alignment=TA_CENTER)),
+        Paragraph('P. UNITARIO', ParagraphStyle('HR', parent=style_header, alignment=TA_RIGHT)),
+        Paragraph('TOTAL', ParagraphStyle('HR', parent=style_header, alignment=TA_RIGHT)),
+    ]
+    data_items = [headers]
+    
     for detalle in detalles:
         nombre = "Item"
         if hasattr(detalle, 'producto') and detalle.producto:
@@ -193,70 +217,66 @@ def generar_comprobante_venta(venta_data, detalles):
         precio_fmt = f"${detalle.precio_unitario:,.2f}"
         subtotal_fmt = f"${detalle.subtotal:,.2f}"
 
-        data_items.append([
-            Paragraph(nombre, style_cell_text),
-            Paragraph(str(detalle.cantidad), ParagraphStyle('CellC', parent=style_cell_text, alignment=TA_CENTER)),
-            Paragraph(precio_fmt, ParagraphStyle('CellR', parent=style_cell_text, alignment=TA_RIGHT)),
-            Paragraph(subtotal_fmt, ParagraphStyle('CellR', parent=style_cell_text, alignment=TA_RIGHT)),
-        ])
+        row = [
+            Paragraph(nombre, style_item),
+            Paragraph(str(int(detalle.cantidad)), ParagraphStyle('IC', parent=style_item, alignment=TA_CENTER)),
+            Paragraph(precio_fmt, ParagraphStyle('IR', parent=style_item, alignment=TA_RIGHT)),
+            Paragraph(subtotal_fmt, ParagraphStyle('IR', parent=style_item, alignment=TA_RIGHT, fontName='Helvetica-Bold')),
+        ]
+        data_items.append(row)
 
-    tabla_items = Table(data_items, colWidths=[9*cm, 2.5*cm, 3.5*cm, 3.5*cm])
+    tabla_items = Table(data_items, colWidths=[8.5*cm, 2.5*cm, 3.25*cm, 3.25*cm])
     
-    estilo_tabla = TableStyle([
-        # Encabezado
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')),
-        ('BOTTOMPADDING', (0,0), (-1,0), 10),
+    tabla_items.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), negro),
         ('TOPPADDING', (0,0), (-1,0), 10),
-        
-        # Cuerpo
-        ('BOTTOMPADDING', (0,1), (-1,-1), 8),
-        ('TOPPADDING', (0,1), (-1,-1), 8),
-        ('LINEBELOW', (0,0), (-1,-1), 0.5, colors.HexColor('#ecf0f1')),
+        ('BOTTOMPADDING', (0,0), (-1,0), 10),
+        ('TOPPADDING', (0,1), (-1,-1), 11),
+        ('BOTTOMPADDING', (0,1), (-1,-1), 11),
+        ('LINEBELOW', (0,0), (-1,-1), 0.5, gris_claro),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-    ])
-    
-    tabla_items.setStyle(estilo_tabla)
-    elements.append(tabla_items)
-    elements.append(Spacer(1, 0.5*cm))
-
-    # --- 4. TOTALES ---
-    
-    total_final = float(venta_data.get('total', 0))
-    
-    style_total_label = ParagraphStyle('TotalLabel', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=14, alignment=TA_RIGHT)
-    style_total_value = ParagraphStyle('TotalValue', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=16, alignment=TA_RIGHT, textColor=colors.HexColor('#27ae60'))
-
-    tabla_totales = Table([
-        [Paragraph("TOTAL A PAGAR:", style_total_label), Paragraph(f"${total_final:,.2f}", style_total_value)]
-    ], colWidths=[13.5*cm, 5*cm])
-    
-    tabla_totales.setStyle(TableStyle([
-        ('TOPPADDING', (0,0), (-1,-1), 15),
-        ('LINEABOVE', (0,0), (-1,-1), 1.5, colors.black), # Línea negra gruesa arriba del total
     ]))
     
-    elements.append(tabla_totales)
-    elements.append(Spacer(1, 2.5*cm))
+    elements.append(tabla_items)
+    elements.append(Spacer(1, 0.8*cm))
 
-    # --- 5. FOOTER ---
+    # --- 4. TOTAL ---
+    total_final = float(venta_data.get('total', 0))
     
-    style_footer = ParagraphStyle(
-        'Footer',
-        parent=styles['Normal'],
-        alignment=TA_CENTER,
-        fontSize=9,
-        textColor=colors.gray
-    )
-    
-    elements.append(Paragraph("<b>¡Gracias por confiar en nosotros!</b>", 
-        ParagraphStyle('Thanks', parent=style_footer, fontSize=12, textColor=colors.HexColor('#2c3e50'), spaceAfter=8)))
-    
-    elements.append(Paragraph("Este documento no es válido como factura fiscal.", style_footer))
-    elements.append(Paragraph("HairSoft - Sistema de Gestión de Peluquerías", 
-        ParagraphStyle('SmallFooter', parent=style_footer, fontSize=7, spaceBefore=2)))
-    elements.append(Paragraph("Los Ultimos Serán Los Primeros", 
-        ParagraphStyle('SmallFooter', parent=style_footer, fontSize=7, spaceBefore=2)))
+    style_total = ParagraphStyle('Total', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=16, alignment=TA_RIGHT, textColor=negro)
 
-    # Generar PDF
+    tabla_total = Table([
+        [Paragraph("TOTAL", ParagraphStyle('TL', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=12, alignment=TA_RIGHT)), 
+         Paragraph(f"${total_final:,.2f}", style_total)]
+    ], colWidths=[13.5*cm, 4*cm])
+    
+    tabla_total.setStyle(TableStyle([
+        ('LINEABOVE', (0,0), (-1,-1), 2.5, negro),
+        ('TOPPADDING', (0,0), (-1,-1), 14),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 14),
+        ('BACKGROUND', (1,0), (1,0), gris_muy_claro),
+        ('RIGHTPADDING', (1,0), (1,0), 10),
+    ]))
+    
+    elements.append(tabla_total)
+    elements.append(Spacer(1, 3*cm))
+
+    # --- 5. FOOTER MINIMALISTA ---
+    
+    d_line = Drawing(495, 1)
+    d_line.add(Line(0, 0, 495, 0, strokeColor=gris_claro, strokeWidth=0.5))
+    elements.append(d_line)
+    elements.append(Spacer(1, 0.5*cm))
+    
+    style_footer = ParagraphStyle('Footer', parent=styles['Normal'], alignment=TA_CENTER, fontSize=8, textColor=gris_medio)
+    
+    elements.append(Paragraph("¡Gracias por su visita!", 
+        ParagraphStyle('Thanks', parent=style_footer, fontName='Helvetica-Bold', fontSize=10, textColor=gris_oscuro, spaceAfter=5)))
+    
+    elements.append(Paragraph('"Los Últimos Serán Los Primeros"', 
+        ParagraphStyle('Slogan2', parent=style_footer, fontName='Helvetica-Oblique', fontSize=8, spaceAfter=2)))
+        
+    elements.append(Paragraph("HairSoft - Sistema de Gestión", style_footer))
+
     doc.build(elements)
     return buffer.getvalue()

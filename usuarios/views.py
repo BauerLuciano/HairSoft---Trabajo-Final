@@ -2677,8 +2677,6 @@ def debug_ventas(request):
         'mensaje': f'Hay {total_ventas} ventas en la base de datos'
     })
 
-# En usuarios/views.py
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def generar_comprobante_pdf(request, venta_id):
@@ -2694,9 +2692,8 @@ def generar_comprobante_pdf(request, venta_id):
         
         print(f"✅ VISTA: Venta {venta.id} encontrada, {detalles.count()} detalles")
         
-        # 2. 🚨 SERIALIZAR LA VENTA (Convertir Objeto -> Diccionario)
-        # Esto es necesario porque pdf_utils espera un diccionario con .get()
-        # y además el serializer ya nos trae los nombres (cliente_nombre, medio_pago_nombre)
+        # 2. SERIALIZAR LA VENTA (Convertir Objeto -> Diccionario)
+        # Importamos aquí para evitar ciclos si es necesario, o por orden
         from .serializers import VentaSerializer
         venta_data = VentaSerializer(venta).data
         
@@ -2707,60 +2704,21 @@ def generar_comprobante_pdf(request, venta_id):
         if pdf_content:
             print("✅ VISTA: PDF generado, enviando respuesta")
             response = HttpResponse(pdf_content, content_type='application/pdf')
+            
             # Nombre del archivo para descarga
             filename = f"Comprobante_HairSoft_Venta_{venta.id}.pdf"
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
             return response
         else:
             print("❌ VISTA: pdf_content es None")
-            return HttpResponse("Error al generar el PDF", status=500)
+            return HttpResponse("Error al generar el PDF (contenido vacío)", status=500)
             
     except Exception as e:
         print(f"❌ VISTA: Error: {str(e)}")
         import traceback
         print(f"❌ VISTA: Traceback: {traceback.format_exc()}")
-        return HttpResponse(f"Error: {str(e)}", status=500)
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def generar_comprobante_pdf(request, venta_id):
-    """
-    Vista para generar y descargar el comprobante PDF de una venta
-    """
-    try:
-        print(f"🔍 VISTA: Iniciando generación PDF para venta {venta_id}")
-        
-        # 1. Obtener el objeto de base de datos
-        venta = get_object_or_404(Venta, id=venta_id)
-        detalles = DetalleVenta.objects.filter(venta=venta)
-        
-        print(f"✅ VISTA: Venta {venta.id} encontrada")
-        
-        # 2. 🚨 EL PASO QUE FALTABA: SERIALIZAR (Convertir Objeto a Diccionario)
-        # Importamos el serializador aquí mismo para asegurar que lo encuentre
-        from .serializers import VentaSerializer
-        serializer = VentaSerializer(venta)
-        venta_data = serializer.data  # <--- ESTO CONVIERTE EL OBJETO EN DICCIONARIO
-        
-        # 3. Generar el PDF pasando el DICCIONARIO
-        from .pdf_utils import generar_comprobante_venta
-        
-        # Ahora le pasamos 'venta_data' (el diccionario) en vez de 'venta' (el objeto)
-        pdf_content = generar_comprobante_venta(venta_data, detalles)
-        
-        if pdf_content:
-            print("✅ VISTA: PDF generado, enviando respuesta")
-            response = HttpResponse(pdf_content, content_type='application/pdf')
-            response['Content-Disposition'] = f'attachment; filename="Comprobante_Venta_{venta.id}.pdf"'
-            return response
-        else:
-            return HttpResponse("Error al generar el PDF", status=500)
-            
-    except Exception as e:
-        print(f"❌ VISTA Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return HttpResponse(f"Error: {str(e)}", status=500)
+        return HttpResponse(f"Error generando comprobante: {str(e)}", status=500)
 
 @api_view(['POST'])
 def anular_venta(request, venta_id):
