@@ -14,7 +14,6 @@
       </div>
     </div>
 
-    <!-- Filtros mejorados -->
     <div class="filtros-container">
       <div class="filtro-busqueda">
         <div class="search-wrapper">
