@@ -731,21 +731,33 @@ class DetallePedidoWebSerializer(serializers.ModelSerializer):
         fields = ['id', 'producto', 'nombre_producto', 'cantidad', 'precio_unitario', 'subtotal']
 
 class PedidoWebSerializer(serializers.ModelSerializer):
-    # Usamos el serializer anidado. IMPORTANTE: many=True
     detalles = DetallePedidoWebSerializer(many=True)
     estado_display = serializers.CharField(source='get_estado_display', read_only=True)
     
+    # ✅ CORRECCIÓN: Usamos SerializerMethodField para garantizar que siempre haya un string
+    cliente_nombre = serializers.SerializerMethodField()
+    cliente_email = serializers.CharField(source='cliente.correo', read_only=True)
+
     class Meta:
         model = PedidoWeb
         fields = [
-            'id', 'cliente', 'fecha_creacion', 'estado', 'estado_display', 
+            'id', 'cliente', 'cliente_nombre', 'cliente_email', # Usamos solo cliente_nombre compuesto
+            'fecha_creacion', 'estado', 'estado_display', 
             'tipo_entrega', 'direccion_envio', 'costo_envio', 
             'total', 'detalles'
         ]
-        # Estos campos NO se validan porque los pone el sistema
         read_only_fields = ['cliente', 'fecha_creacion', 'estado', 'total']
 
+    # ✅ Método para obtener el nombre completo
+    def get_cliente_nombre(self, obj):
+        if obj.cliente:
+            nombre = f"{obj.cliente.nombre} {obj.cliente.apellido}".strip()
+            return nombre if nombre else obj.cliente.correo # Si no tiene nombre, devuelve el mail
+        return "Cliente Desconocido"
+
     def create(self, validated_data):
+        # ... (Tu código del create que me pasaste está perfecto, no lo toques) ...
+        # Copia y pega tu método create aquí abajo tal cual lo tenías.
         detalles_data = validated_data.pop('detalles')
         
         with transaction.atomic():
@@ -756,7 +768,6 @@ class PedidoWebSerializer(serializers.ModelSerializer):
                 producto = detalle_data['producto']
                 cantidad = detalle_data['cantidad']
 
-                # Bloqueo para evitar race conditions
                 producto_db = Producto.objects.select_for_update().get(pk=producto.pk)
 
                 if producto_db.stock_actual < cantidad:
@@ -765,9 +776,8 @@ class PedidoWebSerializer(serializers.ModelSerializer):
                     )
 
                 producto_db.stock_actual -= cantidad
-                producto_db.save() # Esto imprime el GUARDANDO...
+                producto_db.save()
 
-                # Precio actual del producto
                 precio_actual = producto_db.precio 
                 
                 DetallePedidoWeb.objects.create(
@@ -783,7 +793,6 @@ class PedidoWebSerializer(serializers.ModelSerializer):
             pedido.save()
 
             return pedido
-
 # ----------------------------------------------------------------------
 # LISTAS DE PRECIOS DE PROVEEDORES
 # ----------------------------------------------------------------------

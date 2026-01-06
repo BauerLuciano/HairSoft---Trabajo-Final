@@ -220,7 +220,6 @@
     </div>
   </div>
 </template>
-
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import api from '@/services/api';
@@ -237,7 +236,6 @@ const filtrosEstados = [
   { key: 'ACTIVOS', label: 'Pendientes' },
   { key: 'ENTREGADO', label: 'Entregados' },
   { key: 'CANCELADO', label: 'Cancelados' },
-
 ];
 
 const cargarPedidos = async () => {
@@ -246,11 +244,10 @@ const cargarPedidos = async () => {
     const response = await api.get('/pedidos-web/');
     let datos = Array.isArray(response.data) ? response.data : (response.data.results || []);
     
-    pedidos.value = datos.map(p => ({
-      ...p,
-      cliente_nombre: p.cliente_nombre || 'Cliente',
-      cliente_email: p.cliente_email || ''
-    }));
+    // ✅ CORRECCIÓN: Confiamos en el backend. 
+    // El serializer nuevo ya manda "Juan Perez" en el campo 'cliente_nombre'.
+    pedidos.value = datos; 
+
   } catch (error) {
     console.error(error);
     Swal.fire({
@@ -284,13 +281,12 @@ const pedidosPaginados = computed(() => {
 
 const cambiarFiltro = (nuevoFiltro) => {
   filtroActual.value = nuevoFiltro;
-  paginaActual.value = 1; // Resetear a la primera página al cambiar filtro
+  paginaActual.value = 1;
 };
 
 const irAPagina = (numeroPagina) => {
   if (numeroPagina >= 1 && numeroPagina <= totalPaginas.value) {
     paginaActual.value = numeroPagina;
-    // Scroll suave hacia arriba de la tabla
     document.querySelector('.table-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 };
@@ -371,6 +367,35 @@ const getEstadoClass = (e) => {
     'CANCELADO': 'estado-cancelado'
   };
   return mapa[e] || 'estado-secondary';
+};
+
+// --- AGREGADO: Ver Detalle (que faltaba en tu script anterior) ---
+const verDetalle = (pedido) => {
+    let itemsHTML = pedido.detalles.map(d => 
+        `<div style="display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+           <span>${d.nombre_producto}</span>
+           <strong>x${d.cantidad}</strong>
+         </div>`
+    ).join('');
+
+    Swal.fire({
+        title: `Pedido #${pedido.id}`,
+        html: `
+            <div style="text-align: left; color: #cbd5e1;">
+                <p><strong>Cliente:</strong> ${pedido.cliente_nombre}</p>
+                <p><strong>Email:</strong> ${pedido.cliente_email}</p>
+                <p><strong>Entrega:</strong> ${pedido.tipo_entrega === 'RETIRO' ? 'Retiro en Local' : 'Envío: ' + pedido.direccion_envio}</p>
+                <hr style="border-color: rgba(255,255,255,0.1); margin: 10px 0;">
+                ${itemsHTML}
+                <div style="margin-top: 15px; text-align: right; font-size: 1.2rem; color: #fff;">
+                    Total: <span style="color: #4ade80;">$${Number(pedido.total).toLocaleString()}</span>
+                </div>
+            </div>
+        `,
+        background: '#1e293b',
+        color: '#fff',
+        confirmButtonColor: '#3b82f6'
+    });
 };
 
 onMounted(cargarPedidos);
