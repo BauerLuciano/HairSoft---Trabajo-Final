@@ -2,62 +2,59 @@
   <nav class="client-nav">
     <div class="nav-content">
       
-      <!-- LOGO -->
-      <div class="logo-wrapper">
-        <div class="logo-container">
-          <span class="logo-icon">✂️</span>
-        </div>
-        <div class="brand-info">
-          <span class="brand-name">HairSoft</span>
-          <span class="brand-subtitle" v-if="usuarioLogueado">CLIENTE</span>
+      <div class="logo-section">
+        <div class="logo-wrapper">
+          <router-link :to="homeLink" class="logo-link">
+            <div class="logo-container">
+              <span class="logo-icon">✂️</span>
+            </div>
+            <div class="brand-info">
+              <span class="brand-name">HairSoft</span>
+              <span class="brand-subtitle" v-if="usuarioLogueado">CLIENTE</span>
+            </div>
+          </router-link>
         </div>
       </div>
       
-      <!-- NAV LINKS -->
       <div class="nav-links-section">
         <div class="links-container">
-          <button 
-            @click="DashboardCliente" 
-            :class="['nav-link', { active: !rutaActual || rutaActual === 'resumen' }]"
-          >
-            <svg class="link-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+          <button @click="irAInicio" :class="['nav-link', { active: !rutaActual || rutaActual === 'resumen' }]">
             <span class="link-text">Inicio</span>
             <div class="link-indicator"></div>
           </button>
           
           <router-link to="/web/servicios" class="nav-link">
-            <svg class="link-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
             <span class="link-text">Servicios</span>
             <div class="link-indicator"></div>
           </router-link>
           
           <router-link :to="{ name: 'ProductosPublico' }" class="nav-link">
-            <svg class="link-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
             <span class="link-text">Productos</span>
             <div class="link-indicator"></div>
           </router-link>
           
+          <!-- ✅ MIS TURNOS (Solo visible si está logueado) -->
+          <router-link 
+            v-if="usuarioLogueado" 
+            :to="{ name: 'HistorialTurnos' }" 
+            class="nav-link"
+          >
+            <span class="link-text">Mis Turnos</span>
+            <div class="link-indicator"></div>
+          </router-link>
+          
+          <!-- MIS PEDIDOS -->
           <button 
             v-if="usuarioLogueado" 
             @click="irAPedidos" 
             :class="['nav-link', { active: rutaActual === 'pedidos' }]"
           >
-            <svg class="link-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
             <span class="link-text">Mis Pedidos</span>
             <div class="link-indicator"></div>
           </button>
         </div>
       </div>
       
-      <!-- USER SECTION -->
       <div class="user-actions-section">
         <div v-if="usuarioLogueado" class="user-profile-wrapper" ref="profileRef">
           
@@ -73,9 +70,7 @@
               <span class="online-indicator"></span>
             </div>
             <span class="dropdown-arrow">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6L8 10L12 6"/></svg>
             </span>
           </div>
 
@@ -88,55 +83,28 @@
                 <div class="dropdown-user-info">
                   <span class="dropdown-greeting">HOLA,</span>
                   <span class="dropdown-username">{{ usuarioNombre }}</span>
-                  <span class="dropdown-role">Cliente</span>
                 </div>
               </div>
               
               <div class="dropdown-divider"></div>
               
               <ul class="dropdown-list">
- 
-                <li @click="irAPerfil" class="dropdown-item">
-                  <svg class="item-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
-                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
-                  </svg>
-                  <span>Mi Perfil</span>
-                </li>
-                
-                <div class="dropdown-divider"></div>
-                
-                <li @click="confirmLogout" class="dropdown-item item-logout">
+                <button @click="confirmLogout" class="dropdown-item logout">
                   <svg class="item-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     <polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                   <span>Cerrar Sesión</span>
-                </li>
+                </button>
               </ul>
             </div>
           </transition>
         </div>
 
         <div v-else class="auth-buttons">
-          <router-link to="/login" class="auth-btn login-btn">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <polyline points="10 17 15 12 10 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <line x1="15" y1="12" x2="3" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span>Ingresar</span>
-          </router-link>
-          <router-link to="/web/registro" class="auth-btn register-btn">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="8.5" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
-              <line x1="20" y1="8" x2="20" y2="14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <line x1="23" y1="11" x2="17" y2="11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-            <span>Registrarse</span>
-          </router-link>
+          <router-link to="/login" class="auth-btn login-btn">Ingresar</router-link>
+          <router-link to="/web/registro" class="auth-btn register-btn">Registrarse</router-link>
         </div>
       </div>
 
@@ -148,7 +116,6 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import Swal from 'sweetalert2';
-import DashboardCliente from '@/views/cliente/DashboardCliente.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -161,6 +128,13 @@ const profileRef = ref(null);
 
 const rutaActual = computed(() => route.query.ver);
 const avatarInitial = computed(() => usuarioNombre.value ? usuarioNombre.value.charAt(0).toUpperCase() : 'C');
+
+// Link inteligente para el logo
+const homeLink = computed(() => {
+  return usuarioLogueado.value 
+    ? { name: 'DashboardCliente', query: { ver: 'resumen' } } 
+    : '/web/home';
+});
 
 const checkAuth = () => {
   const token = localStorage.getItem('token');
@@ -175,17 +149,21 @@ const checkAuth = () => {
 };
 
 const toggleDropdown = () => dropdownOpen.value = !dropdownOpen.value;
-
 const handleClickOutside = (e) => {
-  if (profileRef.value && !profileRef.value.contains(e.target)) {
-    dropdownOpen.value = false;
-  }
+  if (profileRef.value && !profileRef.value.contains(e.target)) dropdownOpen.value = false;
 };
 
-// Navegación
+// --- NAVEGACIÓN ---
+
 const irAInicio = () => {
   dropdownOpen.value = false;
-  router.push({ name: 'DashboardCliente', query: { ver: 'resumen' } });
+  if (usuarioLogueado.value) {
+    // Si es cliente, vamos al Dashboard (Resumen)
+    router.push({ name: 'DashboardCliente', query: { ver: 'resumen' } });
+  } else {
+    // Si es público, al Home
+    router.push('/web/home');
+  }
 };
 
 const irAPedidos = () => {
@@ -193,29 +171,19 @@ const irAPedidos = () => {
   router.push({ name: 'DashboardCliente', query: { ver: 'pedidos' } });
 };
 
-const irAPerfil = () => {
-  dropdownOpen.value = false;
-  router.push({ name: 'PerfilCliente' });
-};
-
-const irAHistorial = () => {
-  dropdownOpen.value = false;
-  router.push('/cliente/historial');
-};
-
 const confirmLogout = () => {
   dropdownOpen.value = false;
   Swal.fire({
     title: '¿Cerrar sesión?',
-    text: '¿Estás seguro que deseas salir?',
+    text: '¿Estás seguro de que deseas salir?',
     icon: 'question',
     showCancelButton: true,
     confirmButtonColor: '#ef4444',
     cancelButtonColor: '#6b7280',
-    confirmButtonText: 'Sí, salir',
+    confirmButtonText: 'Sí, cerrar sesión',
     cancelButtonText: 'Cancelar',
-    background: '#1e293b',
-    color: '#f8fafc',
+    background: '#0f172a',
+    color: '#fff',
     customClass: {
       popup: 'swal-popup-dark',
       confirmButton: 'swal-confirm-btn',
@@ -231,26 +199,22 @@ const confirmLogout = () => {
 const logout = () => {
   localStorage.clear();
   Swal.fire({
-    toast: true,
-    position: 'top-end',
-    icon: 'success',
     title: 'Sesión cerrada',
+    text: 'Has cerrado sesión exitosamente',
+    icon: 'success',
+    timer: 1500,
     showConfirmButton: false,
-    timer: 2000,
-    timerProgressBar: true,
-    background: '#1e293b',
-    color: '#f8fafc'
-  });
-  setTimeout(() => {
+    background: '#0f172a',
+    color: '#fff'
+  }).then(() => {
     window.location.href = '/web/home';
-  }, 500);
+  });
 };
 
 onMounted(() => {
   checkAuth();
   document.addEventListener('click', handleClickOutside);
 });
-
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside);
 });
@@ -319,6 +283,12 @@ onUnmounted(() => {
   border-radius: 0 2px 2px 0;
 }
 
+.logo-link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-decoration: none;
+}
 
 .logo-container {
   width: 46px;
@@ -746,6 +716,10 @@ onUnmounted(() => {
   border-radius: 10px;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
 }
 
 .dropdown-item::before {
@@ -781,13 +755,17 @@ onUnmounted(() => {
   transform: scale(1.1);
 }
 
-.item-logout {
-  color: #ef4444 !important;
+.dropdown-item.logout {
+  color: #ef4444;
   margin-top: 4px;
 }
 
-.item-logout:hover {
-  background: rgba(239, 68, 68, 0.1) !important;
+.dropdown-item.logout::before {
+  background: #ef4444;
+}
+
+.dropdown-item.logout:hover {
+  background: rgba(239, 68, 68, 0.1);
 }
 
 /* ============================================

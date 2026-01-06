@@ -35,16 +35,6 @@
           </div>
 
           <div class="filter-group">
-            <label>Ordenar por</label>
-            <select v-model="filtros.orden" class="filter-input">
-              <option value="fecha_desc">Más reciente primero</option>
-              <option value="fecha_asc">Más antiguo primero</option>
-              <option value="stock">Stock (más bajo primero)</option>
-              <option value="ofertas">Más ofertas primero</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
             <label>&nbsp;</label>
             <button @click="limpiarFiltros" class="clear-filters-btn">
               <Trash2 :size="16" />
