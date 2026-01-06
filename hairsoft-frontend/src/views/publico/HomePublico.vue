@@ -65,9 +65,9 @@
             </p>
             
             <div class="card-features">
-              <span class="feature-tag">✂️ Cortes</span>
-              <span class="feature-tag">🎨 Coloración</span>
-              <span class="feature-tag">💆 Tratamientos</span>
+              <span class="feature-tag">Cortes</span>
+              <span class="feature-tag">Coloración</span>
+              <span class="feature-tag">Tratamientos</span>
             </div>
           </div>
           
@@ -98,9 +98,9 @@
             </p>
             
             <div class="card-features">
-              <span class="feature-tag">🧴 Shampoos</span>
-              <span class="feature-tag">✨ Tratamientos</span>
-              <span class="feature-tag">💅 Styling</span>
+              <span class="feature-tag">Shampoos</span>
+              <span class="feature-tag">Tratamientos</span>
+              <span class="feature-tag">Styling</span>
             </div>
           </div>
           
