@@ -10,7 +10,7 @@
       <!-- Acciones del Header -->
       <div class="header-actions">
 
-        <!-- SWITCH MODERNO DE TEMA (sin cambios) -->
+        <!-- SWITCH MODERNO DE TEMA -->
         <label class="theme-switch-modern" title="Cambiar tema">
           <input 
             type="checkbox"
@@ -191,10 +191,8 @@ const handleLogout = () => {
   }).then(async (result) => {
       if (result.isConfirmed) {
         
-        // 🔥 CORRECCIÓN AQUÍ: Quitamos el '/api' que sobraba
         try {
           console.log("Intentando notificar logout...");
-          // SOLO 'auth/logout/' (sin /api/ al principio porque Axios ya lo pone)
           await api.post('auth/logout/'); 
           console.log("Logout notificado con éxito");
         } catch (error) {
@@ -274,7 +272,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Header Principal - Colores del Sidebar */
+/* ============ MODO OSCURO (ORIGINAL - SIN TOCAR) ============ */
 .app-header {
   position: sticky;
   top: 0;
@@ -347,10 +345,7 @@ onUnmounted(() => {
   gap: 24px;
 }
 
-/* ============================================
-   SWITCH MODERNO DE TEMA (sin cambios)
-   ============================================ */
-
+/* Switch */
 .theme-switch-modern {
   cursor: pointer;
   user-select: none;
@@ -435,10 +430,7 @@ onUnmounted(() => {
   box-shadow: 0 2px 8px rgba(148, 163, 184, 0.3);
 }
 
-/* ============================================
-   PERFIL Y DROPDOWN - Estilo Sidebar
-   ============================================ */
-
+/* Perfil */
 .user-profile-wrapper {
   position: relative;
 }
@@ -574,7 +566,7 @@ onUnmounted(() => {
   color: #60a5fa;
 }
 
-/* Menú Desplegable - Estilo Sidebar */
+/* Dropdown */
 .profile-dropdown {
   position: absolute;
   top: calc(100% + 12px);
@@ -745,7 +737,119 @@ onUnmounted(() => {
   background: rgba(239, 68, 68, 0.1);
 }
 
-/* Animación de entrada */
+/* ============ MODO CLARO (NUEVO Y ESPECTACULAR) ============ */
+:root.light-theme .app-header {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border-bottom: 1px solid rgba(203, 213, 225, 0.4);
+  box-shadow: 0 2px 16px rgba(100, 116, 139, 0.08);
+}
+
+:root.light-theme .app-header::after {
+  background: linear-gradient(90deg, transparent, #cbd5e1, transparent);
+}
+
+:root.light-theme .app-title {
+  background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 2px 8px rgba(100, 116, 139, 0.15);
+}
+
+:root.light-theme .title-underline {
+  background: linear-gradient(90deg, #3b82f6, transparent);
+}
+
+:root.light-theme .switch-background {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+}
+
+:root.light-theme .theme-switch-modern:hover .switch-background {
+  border-color: #3b82f6;
+}
+
+:root.light-theme .theme-switch-modern input:checked + .switch-background .moon-icon {
+  fill: #1e293b;
+}
+
+:root.light-theme .user-profile:hover,
+:root.light-theme .user-profile.active {
+  background: rgba(248, 250, 252, 0.95);
+  box-shadow: 0 2px 8px rgba(100, 116, 139, 0.12);
+}
+
+:root.light-theme .user-name {
+  color: #0f172a;
+}
+
+:root.light-theme .user-role {
+  color: #64748b;
+}
+
+:root.light-theme .online-indicator {
+  border-color: #ffffff;
+}
+
+:root.light-theme .dropdown-arrow {
+  color: #64748b;
+}
+
+:root.light-theme .user-profile.active .dropdown-arrow {
+  color: #3b82f6;
+}
+
+:root.light-theme .profile-dropdown {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid rgba(203, 213, 225, 0.5);
+  box-shadow: 
+    0 20px 40px rgba(100, 116, 139, 0.15),
+    0 4px 12px rgba(100, 116, 139, 0.08);
+}
+
+:root.light-theme .dropdown-header {
+  border-bottom: 1px solid rgba(203, 213, 225, 0.4);
+}
+
+:root.light-theme .dropdown-header::after {
+  background: linear-gradient(90deg, transparent, #cbd5e1, transparent);
+}
+
+:root.light-theme .dropdown-greeting {
+  color: #64748b;
+}
+
+:root.light-theme .dropdown-username {
+  background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+:root.light-theme .dropdown-role {
+  color: #64748b;
+}
+
+:root.light-theme .dropdown-divider {
+  background: rgba(203, 213, 225, 0.4);
+}
+
+:root.light-theme .dropdown-item {
+  color: #1e293b;
+}
+
+:root.light-theme .dropdown-item:hover {
+  background: rgba(248, 250, 252, 0.95);
+  box-shadow: 0 2px 8px rgba(100, 116, 139, 0.1);
+}
+
+:root.light-theme .dropdown-item.logout {
+  color: #dc2626;
+}
+
+:root.light-theme .dropdown-item.logout:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* Animaciones */
 .dropdown-enter-active {
   animation: dropdown-in 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }

@@ -390,7 +390,7 @@ const toggleSection = (section) => {
 .link-text {
   font-size: 1.02rem;
   font-weight: 600;
-  color: #d1d5db;
+  color: #adadad;
   letter-spacing: 0.3px;
   transition: all 0.3s ease;
 }
@@ -534,7 +534,7 @@ const toggleSection = (section) => {
 .acordeon-title {
   font-size: 1.02rem;
   font-weight: 600;
-  color: #d1d5db;
+  color: #a0a4ab;
   letter-spacing: 0.3px;
   transition: color 0.3s ease;
 }

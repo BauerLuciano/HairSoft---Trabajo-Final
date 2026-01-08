@@ -3737,28 +3737,54 @@ def actualizar_listas_masivo(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-#DASHBOARD
+# DASHBOARD
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def dashboard_data(request):
     try:
         # 1. RANGO DE FECHAS
         period = request.GET.get('period', 'semana')
-        hoy = timezone.now()
+        date_from_str = request.GET.get('date_from')
+        date_to_str = request.GET.get('date_to')
         
-        if period == 'hoy':
+        hoy = timezone.localtime(timezone.now()) # Usar hora local del servidor
+        
+        # A) Rango Personalizado (Si vienen fechas explícitas)
+        if date_from_str and date_to_str:
+            try:
+                # Convertimos string YYYY-MM-DD a datetime con zona horaria
+                start_date = datetime.strptime(date_from_str, '%Y-%m-%d')
+                start_date = timezone.make_aware(start_date).replace(hour=0, minute=0, second=0)
+                
+                end_date = datetime.strptime(date_to_str, '%Y-%m-%d')
+                end_date = timezone.make_aware(end_date).replace(hour=23, minute=59, second=59)
+            except ValueError:
+                # Si fallan las fechas, fallback a semana
+                start_date = hoy - timedelta(days=6)
+                start_date = start_date.replace(hour=0, minute=0, second=0)
+                end_date = hoy.replace(hour=23, minute=59, second=59)
+
+        # B) Rango Predefinido: HOY
+        elif period == 'hoy':
             start_date = hoy.replace(hour=0, minute=0, second=0, microsecond=0)
             end_date = hoy.replace(hour=23, minute=59, second=59)
+        
+        # C) Rango Predefinido: MES ACTUAL
         elif period == 'mes':
             start_date = hoy.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             end_date = hoy.replace(hour=23, minute=59, second=59)
-        else: # 'semana'
+        
+        # D) Default: SEMANA (Últimos 7 días)
+        else: 
             start_date = hoy - timedelta(days=6)
             start_date = start_date.replace(hour=0, minute=0, second=0)
             end_date = hoy.replace(hour=23, minute=59, second=59)
 
-        # 2. CONSULTAS BASE
+        # 2. CONSULTAS BASE (Tus filtros originales)
         ventas_periodo = Venta.objects.filter(fecha__range=[start_date, end_date], anulada=False)
+        
+        # OJO: Aquí sumamos los turnos. Si quieres sumar TODOS los turnos (agendados + completados)
+        # quita el filtro estado='COMPLETADO'. Si es solo facturación, déjalo así.
         turnos_periodo = Turno.objects.filter(fecha__range=[start_date, end_date], estado='COMPLETADO')
         
         # 3. KPIs
@@ -3771,22 +3797,31 @@ def dashboard_data(request):
             producto__isnull=False
         ).aggregate(total=Sum('cantidad'))['total'] or 0
 
-        # 4. GRÁFICO
+        # 4. GRÁFICO (Evolución diaria)
         labels_dias = []
         ventas_por_dia = []
+        
+        # Calculamos la diferencia en días para iterar
         delta_days = (end_date.date() - start_date.date()).days
+        if delta_days < 0: delta_days = 0 # Protección por si acaso
         
         for i in range(delta_days + 1):
             dia_actual = start_date + timedelta(days=i)
+            
+            # Filtramos ventas de ese día específico
             total_dia = Venta.objects.filter(
                 fecha__date=dia_actual.date(), 
                 anulada=False
             ).aggregate(total=Sum('total'))['total'] or 0
             
+            # Formato de etiqueta
             nombre_dia = dia_actual.strftime('%a')
             num_dia = dia_actual.day
             traduccion = {'Mon':'Lun', 'Tue':'Mar', 'Wed':'Mié', 'Thu':'Jue', 'Fri':'Vie', 'Sat':'Sáb', 'Sun':'Dom'}
-            label = f"{traduccion.get(nombre_dia, nombre_dia)} {num_dia}"
+            # Traducimos el nombre del día (ej. Mon -> Lun)
+            nombre_traducido = next((v for k,v in traduccion.items() if k in nombre_dia), nombre_dia)
+            
+            label = f"{nombre_traducido} {num_dia}"
             
             labels_dias.append(label)
             ventas_por_dia.append(float(total_dia))
@@ -3819,9 +3854,8 @@ def dashboard_data(request):
             for p in top_productos_query
         ]
 
-        # 7. STOCK BAJO (LÓGICA BLINDADA)
-        # Cuenta TODOS los productos donde (Stock <= Stock Mínimo) O (Stock == 0)
-        # Sin filtrar por estado, igual que tu listado.
+        # 7. STOCK BAJO (LÓGICA BLINDADA - Mantenemos la tuya)
+        # Cuenta productos con stock <= mínimo o stock 0
         stock_bajo_count = Producto.objects.filter(
             Q(stock_actual__lte=F('stock_minimo')) | Q(stock_actual=0)
         ).count()
@@ -3830,7 +3864,7 @@ def dashboard_data(request):
             'ingresosTotales': float(ingresos_totales),
             'serviciosRealizados': servicios_realizados,
             'productosVendidos': productos_vendidos,
-            'stockBajoCount': stock_bajo_count, # Debería ser 15
+            'stockBajoCount': stock_bajo_count,
             'ventasPorDia': ventas_por_dia,
             'labelsDias': labels_dias,
             'serviciosTop': servicios_top,
@@ -3842,7 +3876,6 @@ def dashboard_data(request):
     except Exception as e:
         print(f"❌ Error Dashboard: {e}")
         return Response({'error': str(e)}, status=500)
-    
 # ================================
 # CONFIGURACIÓN REOFERTA AUTOMÁTICA
 # ================================

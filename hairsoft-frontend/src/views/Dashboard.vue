@@ -27,7 +27,6 @@
           </button>
         </div>
 
-
         <button @click="generatePDF" class="pdf-btn" :disabled="loading">
           <i class="fas fa-file-pdf"></i>
           Exportar Reporte
@@ -120,7 +119,7 @@
             </svg>
           </div>
         </div>
-        </div>
+      </div>
 
       <div class="section-card chart-section">
         <div class="section-header">
@@ -156,7 +155,15 @@
               </g>
             </svg>
             <div class="chart-labels">
-              <span v-for="(label, i) in dashboardData.labelsDias" :key="`label-${i}`" class="day-label" :style="{ left: getXPositionPercent(i) + '%' }">{{ label }}</span>
+              <span 
+                v-for="(label, i) in dashboardData.labelsDias" 
+                :key="`label-${i}`" 
+                class="day-label" 
+                :style="{ left: getXPositionPercent(i) + '%' }" 
+                v-if="shouldShowLabel(i)"
+              >
+                {{ label }}
+              </span>
             </div>
             <Transition name="tooltip">
               <div v-if="tooltip.visible" class="chart-tooltip" :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }">
@@ -295,7 +302,7 @@
             </g>
             <path :d="getAreaPath()" fill="url(#pdfGradient)" />
             <path :d="getLinePath()" fill="none" stroke="#dc2626" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-            <g v-for="(label, i) in dashboardData.labelsDias" :key="`pdf-lbl-${i}`">
+            <g v-for="(label, i) in dashboardData.labelsDias" :key="`pdf-lbl-${i}`" v-if="shouldShowLabelPDF(i)">
               <text :x="getXPosition(i)" :y="chartHeight + 25" text-anchor="middle" fill="#475569" font-size="11" font-weight="bold" font-family="Helvetica">
                 {{ label }}
               </text>
@@ -352,7 +359,7 @@ import axios from '@/utils/axiosConfig'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 
-// LOGO: Usamos la ruta estática directa (Asume que está en /public/logo_barberia.jpg)
+// LOGO
 const logoUrl = '/logo_barberia.jpg'
 
 const router = useRouter()
@@ -365,7 +372,17 @@ const dashboardContent = ref(null)
 const customDateRange = ref(false)
 const dateFrom = ref('')
 const dateTo = ref('')
-const today = new Date().toISOString().split('T')[0]
+
+// Función para obtener fecha local formato YYYY-MM-DD
+// Esto evita que "Hoy" se convierta en "Mañana" o "Ayer" por culpa del UTC
+const getLocalToday = () => {
+  const d = new Date()
+  const offset = d.getTimezoneOffset()
+  const dLocal = new Date(d.getTime() - (offset*60*1000))
+  return dLocal.toISOString().split('T')[0]
+}
+
+const today = getLocalToday()
 
 const periods = [
   { value: 'hoy', label: 'Hoy', icon: 'fas fa-clock' },
@@ -396,19 +413,33 @@ const getPeriodDisplay = computed(() => {
 const chartWidth = 900
 const chartHeight = 320
 const padding = 60
-
 const tooltip = ref({ visible: false, x: 0, y: 0, value: 0, date: '', index: 0 })
 
 const fetchDashboardData = async () => {
   loading.value = true
   error.value = null
   try {
-    const params = customDateRange.value && dateFrom.value && dateTo.value
-      ? { date_from: dateFrom.value, date_to: dateTo.value }
-      : { period: selectedPeriod.value }
+    let params = {}
+
+    // 1. Si el usuario activó rango personalizado y puso fechas
+    if (customDateRange.value && dateFrom.value && dateTo.value) {
+      params = { date_from: dateFrom.value, date_to: dateTo.value }
+    } 
+    // 2. Si eligió "HOY", forzamos el envío de fechas locales
+    // Así el backend lo trata como un rango exacto y no se rompe con zonas horarias
+    else if (selectedPeriod.value === 'hoy') {
+      const fechaLocal = getLocalToday()
+      params = { date_from: fechaLocal, date_to: fechaLocal }
+    } 
+    // 3. Para Semana y Mes, dejamos que el backend decida
+    else {
+      params = { period: selectedPeriod.value }
+    }
     
     const res = await axios.get('/usuarios/api/dashboard/', { params })
+    // Mezclamos con los valores actuales para no perder defaults si falta algo
     dashboardData.value = { ...dashboardData.value, ...res.data }
+
   } catch (err) {
     console.error(err)
     error.value = "Error al conectar con el servidor."
@@ -432,14 +463,18 @@ const applyCustomRange = () => {
   if (dateFrom.value && dateTo.value) fetchDashboardData()
 }
 
+// FORMATOS
 const formatDate = (dateStr) => {
   if (!dateStr) return '-'
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+  const [y, m, d] = dateStr.split('-')
+  return `${d}/${m}`
 }
 
 const formatDateLong = (dateStr) => {
   if (!dateStr) return '-'
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
+  const [y, m, d] = dateStr.split('-')
+  const fecha = new Date(y, m - 1, d)
+  return fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
 }
 
 const formatNumber = (num) => new Intl.NumberFormat('es-AR').format(num || 0)
@@ -450,13 +485,11 @@ const formatNumberShort = (num) => {
   return num.toString()
 }
 
-const calculateAverageDaily = () => {
-  if (!dashboardData.value.ventasPorDia.length) return 0
-  const sum = dashboardData.value.ventasPorDia.reduce((a, b) => a + b, 0)
-  return sum / dashboardData.value.ventasPorDia.length
+// LOGICA GRÁFICOS
+const getMaxValue = () => {
+  if (!dashboardData.value.ventasPorDia || dashboardData.value.ventasPorDia.length === 0) return 100
+  return Math.max(...dashboardData.value.ventasPorDia, 100)
 }
-
-const getMaxValue = () => Math.max(...dashboardData.value.ventasPorDia, 1)
 
 const getXPosition = (index) => {
   const count = dashboardData.value.ventasPorDia.length
@@ -472,6 +505,7 @@ const getXPositionPercent = (index) => {
 
 const getYPosition = (value) => {
   const max = getMaxValue()
+  if (max === 0) return chartHeight - padding
   const normalized = value / max
   return chartHeight - padding - (normalized * (chartHeight - padding * 2))
 }
@@ -526,6 +560,34 @@ const getProductPercentage = () => 100 - getServicePercentage()
 
 const getTotalTransactions = () => dashboardData.value.serviciosRealizados + dashboardData.value.productosVendidos
 
+// FUNCIÓN MEJORADA PARA FILTRAR ETIQUETAS EN EL GRÁFICO PRINCIPAL
+const shouldShowLabel = (index) => {
+  const total = dashboardData.value.labelsDias.length
+  
+  // Si son muy pocos días (hasta 7), mostramos todos
+  if (total <= 7) return true
+  
+  // Entre 8 y 15 días, mostramos 1 de cada 2
+  if (total <= 15) return index % 2 === 0 || index === total - 1
+  
+  // Entre 16 y 25 días, mostramos 1 de cada 3
+  if (total <= 25) return index % 3 === 0 || index === total - 1
+  
+  // Más de 25 días (mes completo), mostramos 1 de cada 5
+  return index % 5 === 0 || index === total - 1
+}
+
+// FUNCIÓN SEPARADA PARA ETIQUETAS EN PDF (más espaciadas)
+const shouldShowLabelPDF = (index) => {
+  const total = dashboardData.value.labelsDias.length
+  
+  if (total <= 7) return true
+  if (total <= 15) return index % 3 === 0 || index === total - 1
+  if (total <= 31) return index % 6 === 0 || index === total - 1
+  
+  return index % 8 === 0 || index === total - 1
+}
+
 const showTooltip = (index, value, event) => {
   hoveredPoint.value = index
   const rect = event.target.getBoundingClientRect()
@@ -557,23 +619,20 @@ const getPercentage = (value, array) => {
   return max > 0 ? (value / max) * 100 : 0
 }
 
-// --- GENERACIÓN PDF ---
+// GENERACIÓN PDF
 const generatePDF = async () => {
   try {
     loading.value = true
     const printTemplate = document.getElementById('print-template')
     if (!printTemplate) throw new Error('Template no encontrado')
 
-    // Mostrar para captura
     printTemplate.style.display = 'block'
-    
-    // IMPORTANTE: Damos un poco de tiempo para que la imagen del logo cargue si no está en cache
     await new Promise(resolve => setTimeout(resolve, 800))
     
     const canvas = await html2canvas(printTemplate, {
       scale: 2,
       backgroundColor: '#ffffff',
-      useCORS: true, // Esto ayuda a cargar la imagen si el servidor lo permite
+      useCORS: true,
       logging: false,
       allowTaint: true
     })
@@ -590,7 +649,6 @@ const generatePDF = async () => {
     
   } catch (err) {
     console.error('Error PDF:', err)
-    alert('Error al generar el PDF.')
   } finally {
     loading.value = false
   }
@@ -734,8 +792,56 @@ onMounted(() => fetchDashboardData())
 /* CHART */
 .trading-chart-container { position: relative; width: 100%; height: 380px; padding: 20px 0 60px 0; }
 .chart-grid, .chart-svg { position: absolute; top: 20px; left: 0; width: 100%; height: calc(100% - 80px); }
-.chart-labels { position: absolute; bottom: 0; left: 0; width: 100%; height: 60px; padding: 0 60px; }
-.day-label { position: absolute; transform: translateX(-50%); font-size: 0.85rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; }
+.chart-labels { 
+  position: absolute; 
+  bottom: 0; 
+  left: 0; 
+  width: 100%; 
+  height: 60px; 
+  padding: 0 60px;
+}
+.day-label { 
+  position: absolute; 
+  transform: translateX(-50%); 
+  font-size: 0.8rem; 
+  color: #94a3b8; 
+  font-weight: 700; 
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.chart-tooltip {
+  position: absolute;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 12px;
+  pointer-events: none;
+  z-index: 1000;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+}
+
+.tooltip-header {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.tooltip-value {
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: #ef4444;
+}
+
+.tooltip-enter-active, .tooltip-leave-active {
+  transition: opacity 0.2s;
+}
+
+.tooltip-enter-from, .tooltip-leave-to {
+  opacity: 0;
+}
 
 /* DISTRIBUTION */
 .distribution-body { padding: 2rem; display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; justify-content: center; }
@@ -868,10 +974,10 @@ onMounted(() => fetchDashboardData())
   margin-top: 5px;
 }
 
-/* KPI Summary PDF - REAJUSTADO PARA 3 COLUMNAS */
+/* KPI Summary PDF */
 .pdf-summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr); /* 3 columnas en vez de 4 */
+  grid-template-columns: repeat(3, 1fr);
   gap: 15px;
   margin-bottom: 30px;
 }
@@ -981,5 +1087,260 @@ onMounted(() => fetchDashboardData())
   padding-top: 15px;
   color: #64748b;
   font-size: 11px;
+}
+
+.no-data {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  color: #64748b;
+}
+
+.no-data i {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.chart-line-red {
+  animation: drawLine 1.5s ease-out;
+}
+
+@keyframes drawLine {
+  from { stroke-dasharray: 2000; stroke-dashoffset: 2000; }
+  to { stroke-dasharray: 2000; stroke-dashoffset: 0; }
+}
+
+.chart-point-red {
+  transition: all 0.2s;
+}
+
+.chart-point-red:hover {
+  r: 8;
+  filter: drop-shadow(0 0 8px #ef4444);
+}
+
+.pie-sector {
+  transition: opacity 0.3s;
+}
+
+.pie-sector:hover {
+  opacity: 0.8;
+}
+
+/* ============ MODO CLARO (AGREGAR AL FINAL DEL <style>) ============ */
+
+/* Wrapper principal */
+:root.light-theme .dashboard-wrapper {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  color: #0f172a;
+}
+
+/* Header */
+:root.light-theme .dashboard-header {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(203, 213, 225, 0.5);
+  box-shadow: 0 2px 16px rgba(100, 116, 139, 0.08);
+}
+
+:root.light-theme .dashboard-title {
+  background: linear-gradient(135deg, #0f172a 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+:root.light-theme .dashboard-subtitle {
+  color: #64748b;
+}
+
+:root.light-theme .period-selector {
+  background: rgba(248, 250, 252, 0.95);
+  border: 1px solid #cbd5e1;
+}
+
+:root.light-theme .period-selector button {
+  color: #475569;
+}
+
+:root.light-theme .period-selector button.active {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+}
+
+/* KPI Cards */
+:root.light-theme .kpi-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(100, 116, 139, 0.08);
+}
+
+:root.light-theme .kpi-card:hover {
+  box-shadow: 0 8px 24px rgba(100, 116, 139, 0.15);
+}
+
+:root.light-theme .kpi-icon {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+:root.light-theme .kpi-data .label {
+  color: #64748b;
+}
+
+:root.light-theme .kpi-data .value {
+  color: #0f172a;
+}
+
+:root.light-theme .kpi-data .subtitle {
+  color: #94a3b8;
+}
+
+/* Sections */
+:root.light-theme .section-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(100, 116, 139, 0.08);
+}
+
+:root.light-theme .section-header {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+:root.light-theme .section-header h3 {
+  color: #0f172a;
+}
+
+:root.light-theme .chart-body {
+  background: rgba(248, 250, 252, 0.3);
+}
+
+/* Chart labels y grid */
+:root.light-theme .day-label {
+  color: #475569;
+}
+
+:root.light-theme .chart-tooltip {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 8px 24px rgba(100, 116, 139, 0.15);
+}
+
+:root.light-theme .tooltip-header {
+  color: #64748b;
+}
+
+/* Distribution */
+:root.light-theme .legend-item {
+  background: rgba(248, 250, 252, 0.8);
+}
+
+:root.light-theme .legend-label {
+  color: #0f172a;
+}
+
+:root.light-theme .legend-value {
+  color: #64748b;
+}
+
+/* Top Lists */
+:root.light-theme .list-item {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+:root.light-theme .list-item:hover {
+  background: rgba(248, 250, 252, 0.8);
+}
+
+:root.light-theme .rank {
+  background: #e2e8f0;
+  color: #64748b;
+}
+
+:root.light-theme .item-name {
+  color: #0f172a;
+}
+
+:root.light-theme .progress-bar {
+  background: rgba(203, 213, 225, 0.3);
+}
+
+:root.light-theme .item-count {
+  color: #0f172a;
+}
+
+/* Date picker */
+:root.light-theme .custom-date-content {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+:root.light-theme .date-input-group label {
+  color: #475569;
+}
+
+:root.light-theme .date-input-custom {
+  background: #f8fafc;
+  border: 2px solid #cbd5e1;
+  color: #0f172a;
+}
+
+:root.light-theme .date-input-custom:focus {
+  border-color: #3b82f6;
+  background: #ffffff;
+}
+
+:root.light-theme .date-range-info {
+  background: rgba(248, 250, 252, 0.95);
+  color: #64748b;
+}
+
+:root.light-theme .date-range-info strong {
+  color: #0f172a;
+}
+
+/* Loader */
+:root.light-theme .state-container {
+  color: #64748b;
+}
+
+:root.light-theme .loader {
+  border: 4px solid #e2e8f0;
+  border-top: 4px solid #3b82f6;
+}
+
+:root.light-theme .loading-text {
+  color: #475569;
+}
+
+:root.light-theme .error-content h3 {
+  color: #0f172a;
+}
+
+/* Section title */
+:root.light-theme .section-title {
+  color: #0f172a;
+}
+
+:root.light-theme .chart-legend {
+  color: #64748b;
+}
+
+:root.light-theme .no-data {
+  color: #94a3b8;
+}
+
+/* Chart info */
+:root.light-theme .chart-info {
+  color: #64748b;
 }
 </style>
