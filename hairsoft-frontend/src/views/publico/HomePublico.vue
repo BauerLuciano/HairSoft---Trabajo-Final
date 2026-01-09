@@ -1,7 +1,6 @@
 <template>
   <div class="home-publico">
     
-    <!-- HERO SECTION -->
     <div class="hero-section">
       <div class="hero-background">
         <div class="hero-gradient"></div>
@@ -39,7 +38,25 @@
       </div>
     </div>
 
-    <!-- FEATURES SECTION -->
+    <div class="video-showcase fade-in">
+      <div class="video-container">
+        <video 
+          controls 
+          class="institutional-video"
+        >
+          <source src="/videos/Pelu-HairSoft.mp4" type="video/mp4">
+          Tu navegador no soporta videos HTML5.
+        </video>
+      </div>
+      <div class="video-text">
+        <h2>Conocé nuestro espacio</h2>
+        <p>
+          Ubicados en el corazón de la ciudad, te ofrecemos un ambiente moderno 
+          y relajado.
+        </p>
+      </div>
+    </div>
+
     <div class="features-section">
       <div class="section-header">
         <h2 class="section-title">Descubre Nuestros Servicios</h2>
@@ -48,7 +65,6 @@
       
       <div class="features-grid">
         
-        <!-- Card Servicios -->
         <div class="feature-card clickable" @click="$router.push('/web/servicios')">
           <div class="card-icon-wrapper">
             <div class="card-icon blue">
@@ -81,7 +97,6 @@
           </div>
         </div>
 
-        <!-- Card Productos -->
         <div class="feature-card clickable" @click="$router.push('/web/productos')">
           <div class="card-icon-wrapper">
             <div class="card-icon purple">
@@ -114,7 +129,6 @@
           </div>
         </div>
 
-        <!-- Card Información -->
         <div class="feature-card info">
           <div class="card-icon-wrapper">
             <div class="card-icon green">
@@ -626,5 +640,57 @@ const intentarReservar = () => {
   .card-title {
     font-size: 1.5rem;
   }
+}
+
+/* ============================================
+   ESTILOS NUEVOS PARA EL VIDEO
+   ============================================ */
+.video-showcase {
+  max-width: 1200px;
+  margin: 60px auto;
+  padding: 0 20px;
+  text-align: center;
+}
+
+.video-container {
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.1);
+  background: #000;
+  line-height: 0; /* Elimina espacio fantasma abajo del video */
+}
+
+.institutional-video {
+  width: 100%;
+  height: auto;
+  max-height: 600px; /* Para que no ocupe toda la pantalla en monitores gigantes */
+  object-fit: cover;
+  display: block;
+}
+
+.video-text {
+  margin-top: 30px;
+}
+
+.video-text h2 {
+  font-size: 2rem;
+  background: linear-gradient(135deg, #fff, #94a3b8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 10px;
+}
+
+.video-text p {
+  color: #94a3b8;
+  font-size: 1.1rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Ajuste Mobile para Video */
+@media (max-width: 768px) {
+  .video-showcase { margin: 40px auto; }
+  .video-text h2 { font-size: 1.5rem; }
 }
 </style>

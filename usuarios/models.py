@@ -8,7 +8,7 @@ from django.core.mail import get_connection, EmailMessage
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
 import uuid
-import secrets, time
+import secrets, time, threading
 from django.core.signing import Signer
 
 # ===============================
@@ -268,134 +268,147 @@ class Producto(models.Model):
 
         print(f"🔄 GUARDANDO: {self.nombre} | Stock: {self.stock_actual}")
 
-        # DISPARADOR DE CORREOS HTML PREMIUM
+        # DISPARADOR DE CORREOS HTML PREMIUM (EN SEGUNDO PLANO)
+        # Esto evita el 'Broken Pipe' de Mercado Pago manteniendo tu lógica intacta.
         if self.estado == 'ACTIVO' and self.stock_actual <= self.stock_minimo:
-            print("   ⚠️ ALERTA DE STOCK. Iniciando proceso HTML Premium...")
             
-            from .models import SolicitudPresupuesto, Cotizacion
-            from django.core.mail import send_mail
-            from django.conf import settings
-            from django.utils import timezone
-            import secrets
-            import time
-            
-            fecha_hoy = timezone.now().strftime("%d/%m/%Y")
-            
-            solicitud = SolicitudPresupuesto.objects.create(
-                producto=self,
-                cantidad_requerida=self.lote_reposicion,
-                estado='PENDIENTE'
-            )
-            
-            for proveedor in self.proveedores.all():
-                cotizacion = Cotizacion.objects.create(
-                    solicitud=solicitud,
-                    proveedor=proveedor,
-                    token=secrets.token_urlsafe(32)
-                )
-                
-                if proveedor.email:
-                    link = f"http://localhost:5173/proveedor/cotizar/{cotizacion.token}"
-                    asunto = f"📦 Nueva Solicitud de Compra #{solicitud.id}"
+            def enviar_alertas_background():
+                print("   ⚠️ ALERTA DE STOCK. Iniciando hilo de correos...")
+                try:
+                    # Imports locales para el hilo
+                    from .models import SolicitudPresupuesto, Cotizacion
+                    from django.core.mail import send_mail
+                    from django.conf import settings
+                    from django.utils import timezone
+                    import secrets
+                    import time
                     
-                    # --- HTML PREMIUM ---
-                    mensaje_html = f"""
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <style>
-                            .btn-hover:hover {{ background-color: #218838 !important; }}
-                        </style>
-                    </head>
-                    <body style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 40px 0;">
-                        
-                        <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
-                            
-                            <div style="background: linear-gradient(135deg, #007bff 0%, #6610f2 100%); padding: 40px 30px; text-align: center;">
-                                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 0.5px;">SOLICITUD DE COMPRA</h1>
-                                <p style="color: rgba(255,255,255,0.8); margin: 10px 0 0; font-size: 14px; font-weight: 500;">
-                                    Los Ultimos Serán Los Primeros • {fecha_hoy}
-                                </p>
-                            </div>
+                    # Pequeña pausa inicial para que la transacción DB termine
+                    time.sleep(1)
 
-                            <div style="padding: 40px 30px;">
-                                <p style="font-size: 16px; color: #4a4a4a; line-height: 1.6; margin-bottom: 30px;">
-                                    Hola!☺️ <strong>{proveedor.nombre}</strong>,<br>
-                                    Estamos sin stock de este producto y necesitamos reponerlo con urgencia
-                                </p>
+                    fecha_hoy = timezone.now().strftime("%d/%m/%Y")
+                    
+                    solicitud = SolicitudPresupuesto.objects.create(
+                        producto=self,
+                        cantidad_requerida=self.lote_reposicion,
+                        estado='PENDIENTE'
+                    )
+                    
+                    for proveedor in self.proveedores.all():
+                        cotizacion = Cotizacion.objects.create(
+                            solicitud=solicitud,
+                            proveedor=proveedor,
+                            token=secrets.token_urlsafe(32)
+                        )
+                        
+                        if proveedor.email:
+                            link = f"http://localhost:5173/proveedor/cotizar/{cotizacion.token}"
+                            asunto = f"📦 Nueva Solicitud de Compra #{solicitud.id}"
+                            
+                            # --- TU HTML ORIGINAL (INTACTO) ---
+                            mensaje_html = f"""
+                            <!DOCTYPE html>
+                            <html>
+                            <head>
+                                <style>
+                                    .btn-hover:hover {{ background-color: #218838 !important; }}
+                                </style>
+                            </head>
+                            <body style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 40px 0;">
                                 
-                                <div style="background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 12px; padding: 25px; margin-bottom: 30px; position: relative;">
+                                <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
                                     
-                                    <div style="position: absolute; top: -10px; right: 20px; background-color: #dc3545; color: white; font-size: 10px; font-weight: bold; padding: 4px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">
-                                        Stock Bajo
+                                    <div style="background: linear-gradient(135deg, #007bff 0%, #6610f2 100%); padding: 40px 30px; text-align: center;">
+                                        <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 0.5px;">SOLICITUD DE COMPRA</h1>
+                                        <p style="color: rgba(255,255,255,0.8); margin: 10px 0 0; font-size: 14px; font-weight: 500;">
+                                            Los Ultimos Serán Los Primeros • {fecha_hoy}
+                                        </p>
                                     </div>
 
-                                    <table style="width: 100%; border-collapse: collapse;">
-                                        <tr>
-                                            <td>
-                                                <p style="margin: 0; color: #888; font-size: 12px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">PRODUCTO</p>
-                                                <p style="margin: 5px 0 15px; color: #2d3436; font-size: 18px; font-weight: 700;">{self.nombre}</p>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td>
-                                                <p style="margin: 0; color: #888; font-size: 12px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">CANTIDAD A COTIZAR</p>
-                                                <p style="margin: 5px 0 0; color: #2d3436; font-size: 22px; font-weight: 700; color: #007bff;">{solicitud.cantidad_requerida} u.</p>
-                                            </td>
-                                        </tr>
-                                    </table>
-                                </div>
+                                    <div style="padding: 40px 30px;">
+                                        <p style="font-size: 16px; color: #4a4a4a; line-height: 1.6; margin-bottom: 30px;">
+                                            Hola!☺️ <strong>{proveedor.nombre}</strong>,<br>
+                                            Estamos sin stock de este producto y necesitamos reponerlo con urgencia
+                                        </p>
+                                        
+                                        <div style="background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 12px; padding: 25px; margin-bottom: 30px; position: relative;">
+                                            
+                                            <div style="position: absolute; top: -10px; right: 20px; background-color: #dc3545; color: white; font-size: 10px; font-weight: bold; padding: 4px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">
+                                                Stock Bajo
+                                            </div>
 
-                                <div style="text-align: center; margin-bottom: 30px;">
-                                    <a href="{link}" 
-                                       style="background-color: #28a745; color: #ffffff; padding: 18px 40px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);">
-                                       Enviar Presupuesto 
-                                    </a>
+                                            <table style="width: 100%; border-collapse: collapse;">
+                                                <tr>
+                                                    <td>
+                                                        <p style="margin: 0; color: #888; font-size: 12px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">PRODUCTO</p>
+                                                        <p style="margin: 5px 0 15px; color: #2d3436; font-size: 18px; font-weight: 700;">{self.nombre}</p>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>
+                                                        <p style="margin: 0; color: #888; font-size: 12px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">CANTIDAD A COTIZAR</p>
+                                                        <p style="margin: 5px 0 0; color: #2d3436; font-size: 22px; font-weight: 700; color: #007bff;">{solicitud.cantidad_requerida} u.</p>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </div>
+
+                                        <div style="text-align: center; margin-bottom: 30px;">
+                                            <a href="{link}" 
+                                            style="background-color: #28a745; color: #ffffff; padding: 18px 40px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);">
+                                                Enviar Presupuesto 
+                                            </a>
+                                        </div>
+                                        
+                                        <p style="font-size: 13px; color: #999; text-align: center; margin: 0;">
+                                            ¿Problemas con el botón? <a href="{link}" style="color: #007bff; text-decoration: none;">Clic aquí</a>
+                                        </p>
+                                    </div>
+
+                                    <div style="background-color: #f8f9fa; padding: 25px; text-align: center; border-top: 1px solid #e9ecef;">
+                                        <p style="margin: 0; color: #adb5bd; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
+                                            Los Últimos Serán Los Primeros
+                                        </p>
+                                        <p style="margin: 8px 0 0; color: #ced4da; font-size: 11px;">
+                                            Sistema Automatizado de Gestión
+                                        </p>
+                                    </div>
                                 </div>
                                 
-                                <p style="font-size: 13px; color: #999; text-align: center; margin: 0;">
-                                    ¿Problemas con el botón? <a href="{link}" style="color: #007bff; text-decoration: none;">Clic aquí</a>
-                                </p>
-                            </div>
+                                <div style="text-align: center; padding-top: 20px; color: #999; font-size: 11px;">
+                                    © {timezone.now().year} HairSoft - Todos los derechos reservados.
+                                </div>
 
-                            <div style="background-color: #f8f9fa; padding: 25px; text-align: center; border-top: 1px solid #e9ecef;">
-                                <p style="margin: 0; color: #adb5bd; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
-                                    Los Últimos Serán Los Primeros
-                                </p>
-                                <p style="margin: 8px 0 0; color: #ced4da; font-size: 11px;">
-                                    Sistema Automatizado de Gestión
-                                </p>
-                            </div>
-                        </div>
-                        
-                        <div style="text-align: center; padding-top: 20px; color: #999; font-size: 11px;">
-                            © {timezone.now().year} HairSoft - Todos los derechos reservados.
-                        </div>
+                            </body>
+                            </html>
+                            """
+                            
+                            mensaje_texto = f"Hola {proveedor.nombre}, necesitamos {solicitud.cantidad_requerida} de {self.nombre}. Link: {link}"
 
-                    </body>
-                    </html>
-                    """
+                            print(f"   📤 [HILO] Enviando HTML Premium a: {proveedor.email}...")
+                            
+                            try:
+                                send_mail(
+                                    subject=asunto,
+                                    message=mensaje_texto, 
+                                    from_email=settings.DEFAULT_FROM_EMAIL,
+                                    recipient_list=[proveedor.email],
+                                    fail_silently=False,
+                                    html_message=mensaje_html 
+                                )
+                                print(f"   ✅ [HILO] EMAIL ENVIADO OK")
+                                print("   ⏳ [HILO] Esperando 10s para el próximo (pausa Mailtrap)...")
+                                time.sleep(10) # 🛑 TU PAUSA DE SEGURIDAD (AHORA EN HILO)
+                            except Exception as e:
+                                print(f"   ❌ [HILO] ERROR ENVIANDO: {e}")
                     
-                    mensaje_texto = f"Hola {proveedor.nombre}, necesitamos {solicitud.cantidad_requerida} de {self.nombre}. Link: {link}"
+                    print(f"📦 [HILO] Proceso finalizado.")
+                except Exception as ex_hilo:
+                    print(f"⚠️ Error en hilo de alertas: {ex_hilo}")
 
-                    print(f"   📤 Enviando HTML Premium a: {proveedor.email}...")
-                    
-                    try:
-                        send_mail(
-                            subject=asunto,
-                            message=mensaje_texto, 
-                            from_email=settings.DEFAULT_FROM_EMAIL,
-                            recipient_list=[proveedor.email],
-                            fail_silently=False,
-                            html_message=mensaje_html 
-                        )
-                        print(f"   ✅ EMAIL ENVIADO OK")
-                        print("   ⏳ Esperando 10s para el próximo...")
-                        time.sleep(10) # 🛑 PAUSA DE SEGURIDAD OBLIGATORIA
-                    except Exception as e:
-                        print(f"   ❌ ERROR ENVIANDO: {e}")
-            
-            print(f"📦 Proceso finalizado.")
+            # LANZAMIENTO DEL HILO
+            hilo = threading.Thread(target=enviar_alertas_background)
+            hilo.start()
 
     def __str__(self):
         if self.marca:

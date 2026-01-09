@@ -41,8 +41,21 @@
             <span class="link-text">Productos</span>
             <div class="link-indicator"></div>
           </router-link>
+
+          <router-link 
+            v-if="cartStore.cantidadTotal > 0"
+            to="/checkout" 
+            :class="['nav-link', { active: isActiveLink('checkout') }]"
+            title="Ver mi carrito"
+          >
+            <div style="position: relative; display: flex; align-items: center;">
+              <ShoppingBag :size="20" />
+              <span class="cart-badge">{{ cartStore.cantidadTotal }}</span>
+            </div>
+            <span class="link-text" style="margin-left: 6px;">Carrito</span>
+            <div class="link-indicator"></div>
+          </router-link>
           
-          <!-- ✅ MIS TURNOS (Solo visible si está logueado) -->
           <router-link 
             v-if="usuarioLogueado" 
             :to="{ name: 'HistorialTurnos' }" 
@@ -52,7 +65,6 @@
             <div class="link-indicator"></div>
           </router-link>
           
-          <!-- MIS PEDIDOS -->
           <button 
             v-if="usuarioLogueado" 
             @click="irAPedidos" 
@@ -66,7 +78,6 @@
       
       <div class="user-actions-section">
         
-        <!-- SWITCH MODERNO DE TEMA -->
         <label class="theme-switch-modern" title="Cambiar tema">
           <input 
             type="checkbox"
@@ -74,40 +85,28 @@
             @change="toggleTheme"
           />
           <div class="switch-background">
-            <!-- Icono Sol -->
             <svg
               height="0"
               width="100"
               viewBox="0 0 24 24"
-              data-name="Layer 1"
-              id="Layer_1"
               xmlns="http://www.w3.org/2000/svg"
               class="sun-icon"
             >
-              <path
-                d="M12,17c-2.76,0-5-2.24-5-5s2.24-5,5-5,5,2.24,5,5-2.24,5-5,5ZM13,0h-2V5h2V0Zm0,19h-2v5h2v-5ZM5,11H0v2H5v-2Zm19,0h-5v2h5v-2Zm-2.81-6.78l-1.41-1.41-3.54,3.54,1.41,1.41,3.54-3.54ZM7.76,17.66l-1.41-1.41-3.54,3.54,1.41,1.41,3.54-3.54Zm0-11.31l-3.54-3.54-1.41,1.41,3.54,3.54,1.41-1.41Zm13.44,13.44l-3.54-3.54-1.41,1.41,3.54,3.54,1.41-1.41Z"
-              ></path>
+              <path d="M12,17c-2.76,0-5-2.24-5-5s2.24-5,5-5,5,2.24,5,5-2.24,5-5,5ZM13,0h-2V5h2V0Zm0,19h-2v5h2v-5ZM5,11H0v2H5v-2Zm19,0h-5v2h5v-2Zm-2.81-6.78l-1.41-1.41-3.54,3.54,1.41,1.41,3.54-3.54ZM7.76,17.66l-1.41-1.41-3.54,3.54,1.41,1.41,3.54-3.54Zm0-11.31l-3.54-3.54-1.41,1.41,3.54,3.54,1.41-1.41Zm13.44,13.44l-3.54-3.54-1.41,1.41,3.54,3.54,1.41-1.41Z"></path>
             </svg>
-            
-            <!-- Icono Luna -->
             <svg
               height="512"
               width="512"
               viewBox="0 0 24 24"
-              data-name="Layer 1"
-              id="Layer_1"
               xmlns="http://www.w3.org/2000/svg"
               class="moon-icon"
             >
-              <path
-                d="M12.009,24A12.067,12.067,0,0,1,.075,10.725,12.121,12.121,0,0,1,10.1.152a13,13,0,0,1,5.03.206,2.5,2.5,0,0,1,1.8,1.8,2.47,2.47,0,0,1-.7,2.425c-4.559,4.168-4.165,10.645.807,14.412h0a2.5,2.5,0,0,1-.7,4.319A13.875,13.875,0,0,1,12.009,24Zm.074-22a10.776,10.776,0,0,0-1.675.127,10.1,10.1,0,0,0-8.344,8.8A9.928,9.928,0,0,0,4.581,18.7a10.473,10.473,0,0,0,11.093,2.734.5.5,0,0,0,.138-.856h0C9.883,16.1,9.417,8.087,14.865,3.124a.459.459,0,0,0,.127-.465.491.491,0,0,0-.356-.362A10.68,10.68,0,0,0,12.083,2ZM20.5,12a1,1,0,0,1-.97-.757l-.358-1.43L17.74,9.428a1,1,0,0,1,.035-1.94l1.4-.325.351-1.406a1,1,0,0,1,1.94,0l.355,1.418,1.418.355a1,1,0,0,1,0,1.94l-1.418.355-.355,1.418A1,1,0,0,1,20.5,12ZM16,14a1,1,0,0,0,2,0A1,1,0,0,0,16,14Zm6,4a1,1,0,0,0,2,0A1,1,0,0,0,22,18Z"
-              ></path>
+              <path d="M12.009,24A12.067,12.067,0,0,1,.075,10.725,12.121,12.121,0,0,1,10.1.152a13,13,0,0,1,5.03.206,2.5,2.5,0,0,1,1.8,1.8,2.47,2.47,0,0,1-.7,2.425c-4.559,4.168-4.165,10.645.807,14.412h0a2.5,2.5,0,0,1-.7,4.319A13.875,13.875,0,0,1,12.009,24Zm.074-22a10.776,10.776,0,0,0-1.675.127,10.1,10.1,0,0,0-8.344,8.8A9.928,9.928,0,0,0,4.581,18.7a10.473,10.473,0,0,0,11.093,2.734.5.5,0,0,0,.138-.856h0C9.883,16.1,9.417,8.087,14.865,3.124a.459.459,0,0,0,.127-.465.491.491,0,0,0-.356-.362A10.68,10.68,0,0,0,12.083,2ZM20.5,12a1,1,0,0,1-.97-.757l-.358-1.43L17.74,9.428a1,1,0,0,1,.035-1.94l1.4-.325.351-1.406a1,1,0,0,1,1.94,0l.355,1.418,1.418.355a1,1,0,0,1,0,1.94l-1.418.355-.355,1.418A1,1,0,0,1,20.5,12ZM16,14a1,1,0,0,0,2,0A1,1,0,0,0,16,14Zm6,4a1,1,0,0,0,2,0A1,1,0,0,0,22,18Z"></path>
             </svg>
           </div>
         </label>
 
         <div v-if="usuarioLogueado" class="user-profile-wrapper" ref="profileRef">
-          
           <div class="user-profile" @click="toggleDropdown" :class="{ 'active': dropdownOpen }">
             <div class="user-info">
               <span class="user-name">{{ usuarioNombre }}</span>
@@ -135,9 +134,7 @@
                   <span class="dropdown-username">{{ usuarioNombre }}</span>
                 </div>
               </div>
-              
               <div class="dropdown-divider"></div>
-              
               <ul class="dropdown-list">
                 <button @click="confirmLogout" class="dropdown-item logout">
                   <svg class="item-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -166,9 +163,16 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import Swal from 'sweetalert2';
+import { ShoppingBag } from 'lucide-vue-next';
+
+// IMPORTAMOS TU STORE DE PINIA (cart.js)
+import { useCartStore } from '@/stores/cart';
 
 const router = useRouter();
 const route = useRoute();
+
+// INICIALIZAMOS EL STORE
+const cartStore = useCartStore();
 
 const usuarioLogueado = ref(false);
 const usuarioNombre = ref('');
@@ -177,6 +181,7 @@ const dropdownOpen = ref(false);
 const profileRef = ref(null);
 const isDarkTheme = ref(true);
 
+// Calculamos inicial
 const avatarInitial = computed(() => usuarioNombre.value ? usuarioNombre.value.charAt(0).toUpperCase() : 'C');
 
 // Link inteligente para el logo
@@ -186,44 +191,40 @@ const homeLink = computed(() => {
     : '/web/home';
 });
 
-// 🎯 FUNCIÓN MEJORADA PARA DETECTAR EL LINK ACTIVO
+// Función para detectar link activo
 const isActiveLink = (linkName) => {
   const currentPath = route.path;
   const currentQuery = route.query.ver;
   
   switch(linkName) {
     case 'inicio':
-      // Activo si está en dashboard sin query o con query=resumen, o en /web/home
       if (usuarioLogueado.value) {
         return (currentPath.includes('dashboard') || currentPath.includes('cliente')) && 
                (!currentQuery || currentQuery === 'resumen');
       } else {
         return currentPath === '/web/home' || currentPath === '/';
       }
-      
-    case 'servicios':
-      return currentPath.includes('/web/servicios');
-      
-    case 'productos':
+    case 'servicios': return currentPath.includes('/web/servicios');
+    case 'productos': 
       return currentPath.includes('/web/productos') || 
              currentPath.includes('/productos') ||
              route.name === 'ProductosPublico';
+    
+    // ✅ CASO CHECKOUT
+    case 'checkout': return currentPath.includes('/checkout');
       
-    case 'turnos':
+    case 'turnos': 
       return currentPath.includes('/historial') || 
              currentPath.includes('/turnos') ||
              route.name === 'HistorialTurnos';
-      
     case 'pedidos':
-      // Activo solo cuando está en dashboard con query=pedidos
       return (currentPath.includes('dashboard') || currentPath.includes('cliente')) && 
              currentQuery === 'pedidos';
-      
-    default:
-      return false;
+    default: return false;
   }
 };
 
+// Check Auth
 const checkAuth = () => {
   const token = localStorage.getItem('token');
   const rol = localStorage.getItem('user_rol');
@@ -265,7 +266,6 @@ const loadSavedTheme = () => {
 };
 
 // --- NAVEGACIÓN ---
-
 const irAInicio = () => {
   dropdownOpen.value = false;
   if (usuarioLogueado.value) {
@@ -307,6 +307,7 @@ const confirmLogout = () => {
 
 const logout = () => {
   localStorage.clear();
+  cartStore.limpiarCarrito(); // Limpiamos el carrito al salir usando la acción del store
   Swal.fire({
     title: 'Sesión cerrada',
     text: 'Has cerrado sesión exitosamente',
@@ -324,10 +325,12 @@ onMounted(() => {
   checkAuth();
   loadSavedTheme();
   document.addEventListener('click', handleClickOutside);
+  window.addEventListener('userChanged', checkAuth);
 });
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside);
+  window.removeEventListener('userChanged', checkAuth);
 });
 </script>
 
@@ -595,6 +598,27 @@ onUnmounted(() => {
 
 .nav-link.active .link-indicator {
   width: 50%;
+}
+
+/* CART BADGE */
+.cart-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background-color: #ef4444;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 50px;
+  border: 2px solid #1e293b;
+  min-width: 14px;
+  text-align: center;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+:root.light-theme .cart-badge {
+  border-color: #ffffff;
 }
 
 /* ============================================

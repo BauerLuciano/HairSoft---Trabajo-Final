@@ -4271,32 +4271,25 @@ def cancelar_turno_con_reoferta(request, turno_id):
         return JsonResponse({'error': 'Método no permitido'}, status=405)
     
     try:
-        # 1. OBTENER EL TURNO
         turno = Turno.objects.get(id=turno_id)
         
-        # Validar que no esté ya cancelado para evitar doble reembolso
         if turno.estado == 'CANCELADO':
              return JsonResponse({'error': 'El turno ya está cancelado'}, status=400)
 
         print(f"📅 Turno: {turno.fecha} {turno.hora} - Estado: {turno.estado}")
 
-        # 2. PROCESAR REEMBOLSO AUTOMÁTICO 💰
+        # PROCESAR REEMBOLSO AUTOMÁTICO
         print("💳 Verificando reembolso automático...")
         reembolso_ok, mensaje_reembolso = procesar_reembolso_si_corresponde(turno)
         print(f"💰 Resultado Reembolso: {mensaje_reembolso}")
 
-        # 3. CAMBIAR ESTADO A CANCELADO
-        # Guardamos el estado anterior por si hay que revertir (opcional, pero buena práctica)
-        # estado_anterior = turno.estado 
-        
         turno.estado = 'CANCELADO'
-        turno.oferta_activa = False # Se activa solo si hay interesados abajo
+        turno.oferta_activa = False 
         turno.save()
         
         print("✅ Turno marcado como CANCELADO")
 
         # 4. BUSCAR INTERESADOS
-        # (Asumo que obtener_interesados busca en tu modelo de ListaDeEspera o similar)
         print("🔎 Buscando interesados en lista de espera...")
         interesados = turno.obtener_interesados() 
         cantidad_interesados = interesados.count()
