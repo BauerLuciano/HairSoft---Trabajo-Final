@@ -463,7 +463,8 @@ const imprimirComprobante = async (pago) => {
     await manejarDescargaPDF({ 
         fecha_inicio: pago.fecha_inicio_periodo, 
         fecha_fin: pago.fecha_fin_periodo, 
-        peluquero_id: pago.empleado 
+        peluquero_id: pago.empleado,
+        origen: 'historial'
     }, `Comprobante_${pago.fecha_pago}.pdf`);
 };
 

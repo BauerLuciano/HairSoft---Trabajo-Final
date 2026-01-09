@@ -15,7 +15,14 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response 
 from django.utils.decorators import method_decorator
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
+try:
+    from zoneinfo import ZoneInfo
+    ARG_TZ = ZoneInfo('America/Argentina/Buenos_Aires')
+except ImportError:
+    import pytz
+    ARG_TZ = pytz.timezone('America/Argentina/Buenos_Aires')
+
 from django.utils import timezone
 from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, PromocionReactivacion, Auditoria, PasswordResetToken
 from .mercadopago_service import MercadoPagoService
@@ -3737,111 +3744,105 @@ def actualizar_listas_masivo(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-# DASHBOARD
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def dashboard_data(request):
     try:
-        # 1. RANGO DE FECHAS
+        # 1. SETUP DE FECHAS (FORZANDO ARGENTINA)
         period = request.GET.get('period', 'semana')
         date_from_str = request.GET.get('date_from')
         date_to_str = request.GET.get('date_to')
         
-        hoy = timezone.localtime(timezone.now()) # Usar hora local del servidor
+        # "Ahora" en Argentina
+        ahora_arg = datetime.now(ARG_TZ)
+        hoy_date = ahora_arg.date()
         
-        # A) Rango Personalizado (Si vienen fechas explícitas)
+        start_date = None
+        end_date = None
+
+        # A) Rango Personalizado
         if date_from_str and date_to_str:
             try:
-                # Convertimos string YYYY-MM-DD a datetime con zona horaria
-                start_date = datetime.strptime(date_from_str, '%Y-%m-%d')
-                start_date = timezone.make_aware(start_date).replace(hour=0, minute=0, second=0)
+                # Parseamos el string (que viene "naive" sin zona)
+                d_from = datetime.strptime(date_from_str, '%Y-%m-%d').date()
+                d_to = datetime.strptime(date_to_str, '%Y-%m-%d').date()
                 
-                end_date = datetime.strptime(date_to_str, '%Y-%m-%d')
-                end_date = timezone.make_aware(end_date).replace(hour=23, minute=59, second=59)
+                # Convertimos a datetime con la zona horaria correcta (00:00:00 a 23:59:59 AR)
+                start_date = datetime.combine(d_from, time.min).replace(tzinfo=ARG_TZ)
+                end_date = datetime.combine(d_to, time.max).replace(tzinfo=ARG_TZ)
             except ValueError:
-                # Si fallan las fechas, fallback a semana
-                start_date = hoy - timedelta(days=6)
-                start_date = start_date.replace(hour=0, minute=0, second=0)
-                end_date = hoy.replace(hour=23, minute=59, second=59)
+                pass # Fallback a semana abajo
 
-        # B) Rango Predefinido: HOY
-        elif period == 'hoy':
-            start_date = hoy.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_date = hoy.replace(hour=23, minute=59, second=59)
-        
-        # C) Rango Predefinido: MES ACTUAL
-        elif period == 'mes':
-            start_date = hoy.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            end_date = hoy.replace(hour=23, minute=59, second=59)
-        
-        # D) Default: SEMANA (Últimos 7 días)
-        else: 
-            start_date = hoy - timedelta(days=6)
-            start_date = start_date.replace(hour=0, minute=0, second=0)
-            end_date = hoy.replace(hour=23, minute=59, second=59)
+        # B) Rango Predefinido
+        if not start_date:
+            if period == 'hoy':
+                start_date = datetime.combine(hoy_date, time.min).replace(tzinfo=ARG_TZ)
+                end_date = datetime.combine(hoy_date, time.max).replace(tzinfo=ARG_TZ)
+            
+            elif period == 'mes':
+                start_date = datetime.combine(hoy_date.replace(day=1), time.min).replace(tzinfo=ARG_TZ)
+                end_date = datetime.combine(hoy_date, time.max).replace(tzinfo=ARG_TZ)
+            
+            else: # Default: Semana (últimos 7 días)
+                start_date_d = hoy_date - timedelta(days=6)
+                start_date = datetime.combine(start_date_d, time.min).replace(tzinfo=ARG_TZ)
+                end_date = datetime.combine(hoy_date, time.max).replace(tzinfo=ARG_TZ)
 
-        # 2. CONSULTAS BASE (Tus filtros originales)
-        ventas_periodo = Venta.objects.filter(fecha__range=[start_date, end_date], anulada=False)
+        # 2. CONSULTAS BASE
+        # Django convertirá automáticamente nuestro rango 'aware' (AR) a UTC para la consulta SQL
+        ventas_periodo = Venta.objects.filter(fecha__range=(start_date, end_date), anulada=False)
+        turnos_periodo = Turno.objects.filter(fecha__range=(start_date, end_date), estado='COMPLETADO')
         
-        # OJO: Aquí sumamos los turnos. Si quieres sumar TODOS los turnos (agendados + completados)
-        # quita el filtro estado='COMPLETADO'. Si es solo facturación, déjalo así.
-        turnos_periodo = Turno.objects.filter(fecha__range=[start_date, end_date], estado='COMPLETADO')
-        
-        # 3. KPIs
         ingresos_totales = ventas_periodo.aggregate(total=Sum('total'))['total'] or 0
         servicios_realizados = turnos_periodo.count()
         
-        # Productos vendidos
         productos_vendidos = DetalleVenta.objects.filter(
             venta__in=ventas_periodo,
             producto__isnull=False
         ).aggregate(total=Sum('cantidad'))['total'] or 0
 
-        # 4. GRÁFICO (Evolución diaria)
+        # 3. GRÁFICO (Evolución diaria)
         labels_dias = []
         ventas_por_dia = []
         
-        # Calculamos la diferencia en días para iterar
+        # Calcular delta de días usando las fechas base
         delta_days = (end_date.date() - start_date.date()).days
-        if delta_days < 0: delta_days = 0 # Protección por si acaso
+        if delta_days < 0: delta_days = 0
         
         for i in range(delta_days + 1):
-            dia_actual = start_date + timedelta(days=i)
+            current_loop_date = start_date.date() + timedelta(days=i)
             
-            # Filtramos ventas de ese día específico
+            # Rango exacto para ESTE día del bucle en Argentina
+            loop_start = datetime.combine(current_loop_date, time.min).replace(tzinfo=ARG_TZ)
+            loop_end = datetime.combine(current_loop_date, time.max).replace(tzinfo=ARG_TZ)
+            
+            # Filtro exacto por rango horario
             total_dia = Venta.objects.filter(
-                fecha__date=dia_actual.date(), 
+                fecha__range=(loop_start, loop_end), 
                 anulada=False
             ).aggregate(total=Sum('total'))['total'] or 0
             
-            # Formato de etiqueta
-            nombre_dia = dia_actual.strftime('%a')
-            num_dia = dia_actual.day
+            # Etiquetas
+            nombre_dia = loop_start.strftime('%a')
+            num_dia = loop_start.day
             traduccion = {'Mon':'Lun', 'Tue':'Mar', 'Wed':'Mié', 'Thu':'Jue', 'Fri':'Vie', 'Sat':'Sáb', 'Sun':'Dom'}
-            # Traducimos el nombre del día (ej. Mon -> Lun)
             nombre_traducido = next((v for k,v in traduccion.items() if k in nombre_dia), nombre_dia)
             
-            label = f"{nombre_traducido} {num_dia}"
-            
-            labels_dias.append(label)
+            labels_dias.append(f"{nombre_traducido} {num_dia}")
             ventas_por_dia.append(float(total_dia))
 
-        # 5. TOP SERVICIOS
+        # 4. TOP SERVICIOS
         top_servicios_query = turnos_periodo.values('servicios__nombre').annotate(
             cantidad=Count('id'),
             ingresos=Sum('servicios__precio')
         ).order_by('-cantidad')[:5]
 
-        servicios_top = []
-        for s in top_servicios_query:
-            if s['servicios__nombre']:
-                servicios_top.append({
-                    'nombre': s['servicios__nombre'],
-                    'cantidad': s['cantidad'],
-                    'ingresos': float(s['ingresos'] or 0)
-                })
+        servicios_top = [
+            {'nombre': s['servicios__nombre'] or 'Sin nombre', 'cantidad': s['cantidad'], 'ingresos': float(s['ingresos'] or 0)}
+            for s in top_servicios_query
+        ]
 
-        # 6. TOP PRODUCTOS
+        # 5. TOP PRODUCTOS
         top_productos_query = DetalleVenta.objects.filter(
             venta__in=ventas_periodo,
             producto__isnull=False
@@ -3854,8 +3855,7 @@ def dashboard_data(request):
             for p in top_productos_query
         ]
 
-        # 7. STOCK BAJO (LÓGICA BLINDADA - Mantenemos la tuya)
-        # Cuenta productos con stock <= mínimo o stock 0
+        # 6. STOCK BAJO
         stock_bajo_count = Producto.objects.filter(
             Q(stock_actual__lte=F('stock_minimo')) | Q(stock_actual=0)
         ).count()
@@ -3874,6 +3874,8 @@ def dashboard_data(request):
         return Response(data)
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ Error Dashboard: {e}")
         return Response({'error': str(e)}, status=500)
 # ================================

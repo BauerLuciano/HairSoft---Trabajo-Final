@@ -11,6 +11,8 @@ from .serializers import AuditoriaSerializer, ServicioSerializer, TurnoSerialize
 import io
 import datetime
 from reportlab.lib import colors
+from reportlab.pdfgen import canvas
+
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.platypus import Image as ImageRL 
@@ -228,12 +230,42 @@ class ReporteLiquidacionPDFView(APIView):
         fin = request.query_params.get('fecha_fin')
         peluquero_id = request.query_params.get('peluquero_id')
         
+        # 1. Detectar si viene del historial (parametro 'origen')
+        es_historial = request.query_params.get('origen') == 'historial'
+
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter)
         elements = []
         styles = getSampleStyleSheet()
 
-        # ENCABEZADO
+        # --- FUNCIÓN BLINDADA DEL SELLO "PAGADO" ---
+        def dibujar_sello(canvas, doc):
+            canvas.saveState()
+            canvas.translate(300, 400) 
+            canvas.rotate(25) 
+            
+            # Color Rojo Transparente
+            c_rojo = colors.Color(0.8, 0, 0, alpha=0.3)
+            canvas.setStrokeColor(c_rojo)
+            canvas.setFillColor(c_rojo)
+            canvas.setLineWidth(5)
+            
+            # Recuadro
+            canvas.roundRect(-100, -40, 200, 80, 10, stroke=1, fill=0)
+            
+            # Texto PAGADO
+            canvas.setFont("Helvetica-Bold", 40)
+            canvas.drawCentredString(0, -10, "PAGADO")
+            
+            # Fecha (Usamos datetime.datetime.now() para evitar el error de atributo)
+            canvas.setFont("Helvetica-Bold", 10)
+            fecha_hoy = datetime.datetime.now().strftime("%d/%m/%Y")
+            canvas.drawCentredString(0, -30, f"LIQUIDADO: {fecha_hoy}")
+            
+            canvas.restoreState()
+        # ---------------------------------------------
+
+        # HEADER DEL PDF
         logo_path = "logo_barberia.jpg"
         try:
             logo = ImageRL(logo_path, width=25*mm, height=25*mm)
@@ -243,13 +275,16 @@ class ReporteLiquidacionPDFView(APIView):
         title_style = ParagraphStyle('HeaderTitle', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=16, fontName='Helvetica-Bold', spaceAfter=4)
         subtitle_style = ParagraphStyle('HeaderSub', parent=styles['Normal'], alignment=TA_CENTER, fontSize=11, textColor=colors.HexColor('#555555'))
         
+        # Título cambia si es Historial
+        titulo_texto = "COMPROBANTE DE PAGO" if es_historial else "LIQUIDACIÓN DE SUELDOS (PRELIMINAR)"
+
         header_data = [[
             logo, 
             [
                 Paragraph("LOS ÚLTIMOS SERÁN LOS PRIMEROS", title_style),
                 Paragraph("Sistema de Gestión: <b>HairSoft</b>", subtitle_style),
                 Spacer(1, 6),
-                Paragraph(f"LIQUIDACIÓN DE SUELDOS<br/>Período: {inicio} al {fin}", subtitle_style)
+                Paragraph(f"{titulo_texto}<br/>Período: {inicio} al {fin}", subtitle_style)
             ]
         ]]
         
@@ -263,7 +298,7 @@ class ReporteLiquidacionPDFView(APIView):
         elements.append(Paragraph("<hr width='100%' color='#0ea5e9' size='2'/>", styles['Normal']))
         elements.append(Spacer(1, 20))
 
-        # CUERPO
+        # OBTENCIÓN DE DATOS
         empleados = Usuario.objects.filter(is_active=True, rol__nombre='Peluquero')
         if peluquero_id and peluquero_id != 'null':
             empleados = empleados.filter(id=peluquero_id)
@@ -275,53 +310,69 @@ class ReporteLiquidacionPDFView(APIView):
         hay_datos = False
 
         for emp in empleados:
-            # CORRECCIÓN: 'COMPLETADO' (Mayúsculas)
-            turnos = Turno.objects.filter(
-                peluquero=emp, 
-                estado='COMPLETADO', 
-                fecha__range=[inicio, fin]
-            ).exclude(liquidacion__isnull=False)
+            filtros = {
+                'peluquero': emp, 
+                'estado': 'COMPLETADO', 
+                'fecha__range': [inicio, fin]
+            }
+            
+            # Lógica: Si es historial mostramos todo lo del rango. Si es preliminar, solo lo no pagado.
+            if not es_historial:
+                turnos = Turno.objects.filter(**filtros).exclude(liquidacion__isnull=False)
+            else:
+                turnos = Turno.objects.filter(**filtros)
             
             if not turnos.exists():
                 continue
 
             hay_datos = True
             total_comision = sum(float(t.monto_comision) for t in turnos)
-            grand_total += total_comision
+            sueldo_fijo = float(emp.sueldo_fijo or 0)
+            total_a_pagar = total_comision + sueldo_fijo
+            
+            grand_total += total_a_pagar
 
-            # Nombre
+            # SECCIÓN DEL EMPLEADO
             elements.append(Paragraph(f"<b>PROFESIONAL: {emp.nombre} {emp.apellido}</b>", styles['Heading3']))
             elements.append(Spacer(1, 3))
 
-            # Tabla Resumen
+            # Tabla Resumen de Montos
             resumen_data = [
-                ['COMISIONES', 'TOTAL A PAGAR'],
-                [f"${total_comision:,.2f}", f"${total_comision:,.2f}"]
+                ['CONCEPTO', 'MONTO'],
+                ['Comisiones por Servicios', f"${total_comision:,.2f}"]
             ]
+            if sueldo_fijo > 0:
+                resumen_data.append(['Sueldo Fijo / Base', f"${sueldo_fijo:,.2f}"])
+            
+            # EL TOTAL A PAGAR (DESTACADO)
+            resumen_data.append(['TOTAL A PERCIBIR', f"${total_a_pagar:,.2f}"])
+
             t_res = Table(resumen_data, colWidths=width_resumen)
             t_res.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#0f172a')), 
                 ('TEXTCOLOR', (0,0), (-1,0), colors.white),
                 ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
                 ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('BACKGROUND', (0,1), (-1,1), colors.HexColor('#f1f5f9')), 
-                ('TEXTCOLOR', (0,1), (-1,1), colors.black),
-                ('TEXTCOLOR', (1,1), (1,1), colors.HexColor('#16a34a')), # Total en Verde
-                ('FONTNAME', (0,1), (-1,1), 'Helvetica-Bold'),
-                ('FONTSIZE', (0,1), (-1,1), 10),
+                ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
+                ('BACKGROUND', (0,1), (-1,-2), colors.HexColor('#f1f5f9')), 
+                ('TEXTCOLOR', (0,1), (-1,-1), colors.black),
+                # Estilo Fila Total
+                ('TEXTCOLOR', (0,-1), (-1,-1), colors.HexColor('#16a34a')), 
+                ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0,-1), (-1,-1), 12),
+                ('TOPPADDING', (0,-1), (-1,-1), 8),
+                ('BOTTOMPADDING', (0,-1), (-1,-1), 8),
                 ('BOX', (0,0), (-1,-1), 0.5, colors.grey),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-                ('TOPPADDING', (0,0), (-1,-1), 8),
             ]))
             elements.append(t_res)
             elements.append(Spacer(1, 10))
 
-            # Tabla Detalles
+            # Tabla Detalle de Turnos
             service_style = ParagraphStyle('ServiceList', parent=styles['Normal'], fontSize=8, leading=10)
             data = [[
                 Paragraph('<b>Fecha</b>', styles['Normal']), 
                 Paragraph('<b>Cliente</b>', styles['Normal']), 
-                Paragraph('<b>Servicios Realizados</b>', styles['Normal']), 
+                Paragraph('<b>Servicios</b>', styles['Normal']), 
                 Paragraph('<b>Comisión</b>', styles['Normal'])
             ]]
             
@@ -330,7 +381,6 @@ class ReporteLiquidacionPDFView(APIView):
                 for s in t.servicios.all():
                     pct = getattr(s, 'porcentaje_comision', 0)
                     s_items.append(f"&bull; {s.nombre} <b>({int(pct)}%)</b>")
-                
                 servicios_vertical = "<br/>".join(s_items)
 
                 data.append([
@@ -355,19 +405,30 @@ class ReporteLiquidacionPDFView(APIView):
                 ('TOPPADDING', (0,0), (-1,-1), 8),
             ]))
             elements.append(t_det)
-            
             elements.append(Spacer(1, 25))
 
         if not hay_datos:
-            elements.append(Paragraph("No hay liquidaciones pendientes para el período seleccionado.", styles['Normal']))
+            elements.append(Paragraph("No hay datos para mostrar.", styles['Normal']))
         else:
             elements.append(Spacer(1, 10))
-            total_style = ParagraphStyle('TotalFinal', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=14, textColor=colors.HexColor('#0f172a'), alignment=TA_RIGHT, rightIndent=12)
-            elements.append(Paragraph(f"TOTAL GENERAL CAJA: ${grand_total:,.2f}", total_style))
+            if not peluquero_id or peluquero_id == 'null':
+                total_style = ParagraphStyle('TotalFinal', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=14, textColor=colors.HexColor('#0f172a'), alignment=TA_RIGHT, rightIndent=12)
+                elements.append(Paragraph(f"TOTAL GENERAL LIQUIDADO: ${grand_total:,.2f}", total_style))
 
-        doc.build(elements)
+        # GENERACIÓN DEL PDF
+        try:
+            if es_historial:
+                # Aplicamos el sello si viene del historial
+                doc.build(elements, onFirstPage=dibujar_sello, onLaterPages=dibujar_sello)
+            else:
+                doc.build(elements)
+        except Exception as e:
+            # Fallback por si reportlab falla al construir
+            print(f"Error generando PDF: {e}")
+            return Response({'error': str(e)}, status=500)
+            
         buffer.seek(0)
-        return HttpResponse(buffer, content_type='application/pdf')
+        return HttpResponse(buffer, content_type='application/pdf') 
     
 class HistorialLiquidacionesView(generics.ListAPIView):
     serializer_class = LiquidacionSerializer

@@ -42,7 +42,7 @@
               <th>Nombre</th>
               <th>Descripción</th>
               <th>Tipo</th>
-              <th>Acciones</th>
+              <th style="width: 120px; text-align: center;">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -56,11 +56,11 @@
               </td>
               <td>
                 <div class="action-buttons">
-                  <button @click="abrirModalEditar(cat)" class="action-button edit" title="Editar categoría">
-                    ✏️
+                  <button @click="abrirModalEditar(cat)" class="action-button edit" title="Editar">
+                    <Edit3 :size="14" />
                   </button>
-                  <button @click="eliminarCategoria(cat)" class="action-button delete" title="Eliminar categoría">
-                    🗑️
+                  <button @click="eliminarCategoria(cat)" class="action-button delete" title="Eliminar">
+                    <Trash2 :size="14" />
                   </button>
                 </div>
               </td>
@@ -123,6 +123,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
+import { Edit3, Trash2 } from 'lucide-vue-next'
 
 // Configuración API
 const API_BASE = 'http://127.0.0.1:8000' // Ajusta si usas otra URL
@@ -524,6 +525,7 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   vertical-align: middle;
   color: var(--text-secondary);
   font-weight: 500;
+  font-size: 0.9rem;
 }
 
 .categories-table td strong {
@@ -545,51 +547,41 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   white-space: nowrap;
 }
 
-/* BOTONES DE ACCIÓN - CON VARIABLES */
+/* 🔥 BOTONES DE ACCIÓN MEJORADOS - ESTILO VENTAS */
 .action-buttons { 
   display: flex; 
-  gap: 8px; 
-  flex-wrap: wrap; 
+  gap: 6px;
+  justify-content: center;
 }
 
 .action-button {
-  padding: 8px;
-  border: none;
-  border-radius: 10px;
-  font-size: 0.8rem;
-  font-weight: 800;
-  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
-  width: 40px;
-  height: 40px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
 }
 
-.action-button.edit {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
+.action-button:hover:not(:disabled) {
+  transform: translateY(-2px);
 }
 
 .action-button.edit:hover {
-  background: var(--hover-bg);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-sm);
-}
-
-.action-button.delete {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--error-color);
-  color: var(--error-color);
+  color: #3b82f6;
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
 }
 
 .action-button.delete:hover {
-  background: var(--hover-bg);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
-  border-color: var(--error-color);
+  color: #ef4444;
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
 }
 
 /* CONTADOR Y MENSAJES - CON VARIABLES */
@@ -871,7 +863,7 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   }
   
   .action-buttons {
-    flex-direction: column;
+    flex-direction: row;
     gap: 6px;
   }
   
@@ -913,8 +905,8 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   }
   
   .action-button {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
   }
   
   .register-button {
