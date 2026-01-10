@@ -1,29 +1,39 @@
 import axios from 'axios';
 
-// 1. Definimos la URL correcta automáticamente
-// Si Vercel tiene la variable configurada, usa esa (Render). Si no, usa tu compu (Localhost).
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+// ============================================================
+// CONFIGURACIÓN DE CONEXIÓN (MODO NUCLEAR)
+// ============================================================
 
-// Nos aseguramos de que termine apuntando a /usuarios/api
-// Si la variable de entorno ya trae la barra al final, se la sacamos para evitar errores (//)
-const baseURL = `${API_URL.replace(/\/$/, '')}/usuarios/api`;
+// 1. Ponemos la URL de Render A FUEGO. 
+// Así es imposible que el celular se confunda con localhost.
+// REEMPLAZÁ esta URL por la tuya de Render si es diferente.
+const API_URL = 'https://hairsoft-backend.onrender.com'; 
 
-// 2. Instancia base de Axios
+// NOTA: Si querés volver a probar en tu compu (local), descomentá la línea de abajo:
+// const API_URL = 'http://127.0.0.1:8000';
+
 const api = axios.create({
-  baseURL: baseURL,
-  timeout: 10000,
+  // Aseguramos que apunte a la carpeta correcta de la API
+  baseURL: `${API_URL}/usuarios/api`, 
+  
+  // Aumentamos el tiempo de espera a 15 segundos (los datos móviles a veces son lentos)
+  timeout: 15000, 
+  
   headers: {
     'Content-Type': 'application/json',
   }
 });
 
-// 3. Interceptor de Solicitud (El que inyecta el Token)
+// ============================================================
+// INTERCEPTORES (Igual que antes, esto funciona bien)
+// ============================================================
+
+// 2. Interceptor de Solicitud (Inyecta el Token)
 api.interceptors.request.use(config => {
-  // Buscamos el token guardado en el navegador
   const token = localStorage.getItem('token'); 
   
   if (token) {
-    // Django REST Framework usa el prefijo 'Token ', no 'Bearer '
+    // Django espera 'Token <tu_codigo>', no 'Bearer'
     config.headers.Authorization = `Token ${token}`; 
   }
   return config;
@@ -31,17 +41,16 @@ api.interceptors.request.use(config => {
   return Promise.reject(error);
 });
 
-// 4. Interceptor de Respuesta (Manejo de errores globales)
+// 3. Interceptor de Respuesta (Maneja errores de sesión)
 api.interceptors.response.use(
   response => response,
   error => {
-    // Si el error es 401 (No autorizado), significa que el token venció o es falso
+    // Si la respuesta es 401, el token no sirve
     if (error.response && error.response.status === 401) {
       console.warn('Sesión expirada o token inválido');
-      
-      // Opcional: Forzar cierre de sesión si el token no sirve
+      // Si querés que lo saque al login automáticamente, descomentá esto:
       // localStorage.removeItem('token');
-      // window.location.href = '/'; 
+      // window.location.href = '/login'; 
     }
     return Promise.reject(error);
   }

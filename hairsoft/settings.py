@@ -1,6 +1,7 @@
 """
 Django settings for hairsoft project.
 Production Ready: Render + Vercel + Cloudinary
+Mode: Mobile Compatible
 """
 
 from pathlib import Path
@@ -177,18 +178,17 @@ CLOUDINARY_STORAGE = {
 }
 
 # ================================
-# CONFIGURACIÓN CORS / CSRF (Para Vercel)
+# CONFIGURACIÓN CORS / CSRF (MODO NUCLEAR)
 # ================================
-# En producción permitimos todo inicialmente para asegurar que el Login funcione
+# En producción permitimos todo para que el celular no rebote.
 CORS_ALLOW_ALL_ORIGINS = True 
 CORS_ALLOW_CREDENTIALS = True
 
-# Lista explícita de orígenes permitidos
+# Lista explícita de orígenes permitidos (Backup de seguridad)
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://hairsoft-backend.onrender.com",
-    # TUS DOMINIOS REALES DE VERCEL:
     "https://hairsoft-trabajo-final.vercel.app",
     "https://hairsoft-tr-git-22f909-luciano-agustin-bauers-projects-1743f39e.vercel.app",
 ]
@@ -197,7 +197,6 @@ CORS_ALLOWED_ORIGINS = [
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "https://hairsoft-backend.onrender.com",
-    # TUS DOMINIOS REALES DE VERCEL:
     "https://hairsoft-trabajo-final.vercel.app",
     "https://hairsoft-tr-git-22f909-luciano-agustin-bauers-projects-1743f39e.vercel.app",
 ]
@@ -227,6 +226,7 @@ CORS_ALLOW_HEADERS = [
 CORS_ALLOW_METHODS = [
     'DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT',
 ]
+
 # ================================
 # AUTENTICACIÓN
 # ================================
@@ -256,15 +256,15 @@ MERCADO_PAGO = {
 }
 
 # ================================
-# DJANGO REST FRAMEWORK
+# DJANGO REST FRAMEWORK (CLAVE PARA MOBILE)
 # ================================
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
-        #'rest_framework.authentication.SessionAuthentication',
+        # 'rest_framework.authentication.SessionAuthentication', <--- DESACTIVADO PARA QUE ANDE EN EL CELULAR
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny', # Ojo: Permite acceso público por defecto, ajustalo en las vistas
+        'rest_framework.permissions.AllowAny', 
     ],
     'DEFAULT_PAGINATION_CLASS': None,
     'PAGE_SIZE': None,
