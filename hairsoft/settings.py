@@ -178,22 +178,22 @@ CLOUDINARY_STORAGE = {
 }
 
 # ================================
-# CONFIGURACIÓN CORS / CSRF (MODO NUCLEAR)
+# CONFIGURACIÓN CORS / CSRF (SOLUCIÓN DEFINITIVA: MODO TOKEN)
 # ================================
-# En producción permitimos todo para que el celular no rebote.
-CORS_ALLOW_ALL_ORIGINS = False 
-CORS_ALLOW_CREDENTIALS = True
+# ALERTA: Esta es la combinación EXACTA para que funcione en MÓVILES y PC.
 
-# Lista explícita de orígenes permitidos (Backup de seguridad)
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://hairsoft-backend.onrender.com",
-    "https://hairsoft-trabajo-final.vercel.app",
-    "https://hairsoft-tr-git-22f909-luciano-agustin-bauers-projects-1743f39e.vercel.app",
-]
+# 1. Permitimos cualquier origen (*). Esto elimina el error de bloqueo en celulares.
+CORS_ALLOW_ALL_ORIGINS = True 
 
-# ESTA ES LA PARTE IMPORTANTE PARA EL LOGIN (CSRF):
+# 2. IMPORTANTE: Desactivamos cookies/credenciales.
+# Como usamos TOKEN en el Header (que pusimos en api.js), NO necesitamos cookies de sesión.
+# Al poner esto en False, el navegador del celular acepta el "Allow All" sin bloquearte.
+CORS_ALLOW_CREDENTIALS = False
+
+# Dejamos esto vacío porque con All Origins True ya entra todo
+CORS_ALLOWED_ORIGINS = []
+
+# CSRF Trusted: Mantenemos tus dominios por si Django chequea el origen en peticiones POST
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "https://hairsoft-backend.onrender.com",
@@ -201,7 +201,7 @@ CSRF_TRUSTED_ORIGINS = [
     "https://hairsoft-tr-git-22f909-luciano-agustin-bauers-projects-1743f39e.vercel.app",
 ]
 
-# Cookies y Sesiones (Adaptadas para HTTPS en producción)
+# Cookies y Sesiones (Configuración estándar segura)
 CSRF_COOKIE_SECURE = IS_PRODUCTION
 SESSION_COOKIE_SECURE = IS_PRODUCTION
 CSRF_COOKIE_HTTPONLY = False 
@@ -209,10 +209,11 @@ SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SAMESITE = 'Lax'
 
+# Headers permitidos (Asegurate que 'authorization' esté presente para el Token)
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
-    'authorization',
+    'authorization', # <--- VITAL: Por acá viaja el Token
     'content-type',
     'dnt',
     'origin',
