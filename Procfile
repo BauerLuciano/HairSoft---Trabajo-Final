@@ -1,2 +1,2 @@
 web: gunicorn hairsoft.wsgi --log-file -
-worker: celery -A hairsoft worker --beat -l info
+worker: celery -A hairsoft worker --beat -l info --concurrency 2
