@@ -29,25 +29,27 @@ ALLOWED_HOSTS = ['*']
 # APLICACIONES INSTALADAS
 # ================================
 INSTALLED_APPS = [
-    # Librerías de terceros (Orden importante para Cloudinary)
-    'cloudinary_storage', # <--- Debe ir antes de staticfiles y cloudinary
+    # 1. Apps nativas de Django (PRIMERO)
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django.contrib.staticfiles',
+    'django.contrib.staticfiles', 
     
-    # Resto de librerías
-    'cloudinary',  # <--- Cloudinary
+    # 2. Librerías de terceros
+    'corsheaders', 
+    'cloudinary_storage', # <--- AHORA SÍ, AQUÍ.
+    'cloudinary',
     'django_filters',
-    'usuarios',
     'rest_framework',
     'rest_framework.authtoken',
-    'corsheaders', 
     'dal',
     'dal_select2',
     'widget_tweaks',
+
+    # 3. Tus aplicaciones
+    'usuarios',
 ]
 
 # ================================
@@ -144,7 +146,13 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# Usamos WhiteNoise para servir los estáticos en Render de forma eficiente
+# 🚨 AGREGAR ESTO: Obliga a Django a buscar los archivos del admin
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+]
+
+# Configuración WhiteNoise
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # ================================

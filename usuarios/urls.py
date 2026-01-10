@@ -1,3 +1,4 @@
+from django.contrib import admin  # ✅ NUEVO: Importación obligatoria para el admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
@@ -68,6 +69,11 @@ venta_detail = VentaViewSet.as_view({
 })
 
 urlpatterns = [
+    # ==============================
+    # 🚨 ADMIN DE DJANGO (AGREGADO)
+    # ==============================
+    path('admin/', admin.site.urls), # ✅ NUEVO: Habilita la ruta /admin
+
     # ==============================
     # Autenticación y Perfil
     # ==============================
