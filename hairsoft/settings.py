@@ -183,23 +183,29 @@ CLOUDINARY_STORAGE = {
 CORS_ALLOW_ALL_ORIGINS = True 
 CORS_ALLOW_CREDENTIALS = True
 
-# Lista explícita de orígenes permitidos (Backup de seguridad)
+# Lista explícita de orígenes permitidos
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://hairsoft-frontend.vercel.app", # Tu frontend en producción
+    "https://hairsoft-backend.onrender.com",
+    # TUS DOMINIOS REALES DE VERCEL:
+    "https://hairsoft-trabajo-final.vercel.app",
+    "https://hairsoft-tr-git-22f909-luciano-agustin-bauers-projects-1743f39e.vercel.app",
 ]
 
+# ESTA ES LA PARTE IMPORTANTE PARA EL LOGIN (CSRF):
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
-    "https://hairsoft-backend.onrender.com", # Tu backend
-    "https://hairsoft-frontend.vercel.app",  # Tu frontend
+    "https://hairsoft-backend.onrender.com",
+    # TUS DOMINIOS REALES DE VERCEL:
+    "https://hairsoft-trabajo-final.vercel.app",
+    "https://hairsoft-tr-git-22f909-luciano-agustin-bauers-projects-1743f39e.vercel.app",
 ]
 
 # Cookies y Sesiones (Adaptadas para HTTPS en producción)
 CSRF_COOKIE_SECURE = IS_PRODUCTION
 SESSION_COOKIE_SECURE = IS_PRODUCTION
-CSRF_COOKIE_HTTPONLY = False # False para que Axios/Frontend pueda leer el token si es necesario
+CSRF_COOKIE_HTTPONLY = False 
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SAMESITE = 'Lax'
@@ -221,7 +227,6 @@ CORS_ALLOW_HEADERS = [
 CORS_ALLOW_METHODS = [
     'DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT',
 ]
-
 # ================================
 # AUTENTICACIÓN
 # ================================
