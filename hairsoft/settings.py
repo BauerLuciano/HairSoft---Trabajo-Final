@@ -4,15 +4,21 @@ Django settings for hairsoft project.
 
 from pathlib import Path
 import os
+import dj_database_url # <--- NUEVO: Para conectar la BD de Railway
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ================================
 # CONFIGURACIÓN GENERAL
 # ================================
-SECRET_KEY = 'django-insecure-ip8)+yuz^y06zqgl-%w%05^vjroio(3@@4qo(tz_0ssvtpe@3('
-DEBUG = True
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+# En Producción (Railway) toma la clave del entorno. En local usa la tuya.
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-ip8)+yuz^y06zqgl-%w%05^vjroio(3@@4qo(tz_0ssvtpe@3(')
+
+# Si existe la variable 'RAILWAY_ENVIRONMENT', desactiva DEBUG. Si no, es True (tu PC).
+DEBUG = 'RAILWAY_ENVIRONMENT' not in os.environ
+
+# Aceptamos todo en producción para evitar errores de dominio en la demo
+ALLOWED_HOSTS = ['*']
 
 # ================================
 # APLICACIONES INSTALADAS
@@ -24,27 +30,36 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django_filters',
-    'usuarios',
+    
+    # Apps de terceros
+    'corsheaders', 
     'rest_framework',
     'rest_framework.authtoken',
-    'corsheaders', 
+    'django_filters',
     'dal',
     'dal_select2',
     'widget_tweaks',
+    
+    # NUEVO: Para guardar imágenes en la nube
+    'cloudinary_storage',
+    'cloudinary',
+
+    # Tus apps
+    'usuarios',
 ]
 
 # ================================
-# MIDDLEWARE (CORREGIDO)
+# MIDDLEWARE
 # ================================
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',
-    'usuarios.middleware.DisableCSRFMiddleware', # Tu anti-csrf
     'django.middleware.security.SecurityMiddleware',
+    "whitenoise.middleware.WhiteNoiseMiddleware", # <--- NUEVO: OBLIGATORIO para estilos en Railway
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware', 
-    'django.middleware.csrf.CsrfViewMiddleware', # (A veces necesario aunque uses DisableCSRF)
-    'django.contrib.auth.middleware.AuthenticationMiddleware', # <--- CLAVE: Identifica al usuario
+    'corsheaders.middleware.CorsMiddleware',      # El CORS debe ir alto
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'usuarios.middleware.DisableCSRFMiddleware',  # Tu middleware personalizado
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'usuarios.middleware.AuditoriaMiddleware',
@@ -73,22 +88,29 @@ TEMPLATES = [
 WSGI_APPLICATION = 'hairsoft.wsgi.application'
 
 # ================================
-# BASE DE DATOS
+# BASE DE DATOS (EL CEREBRO DEL CAMBIO)
 # ================================
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'hairsoft_db', 
-        'USER': 'admin', 
-        'PASSWORD': 'admin', 
-        'HOST': 'localhost', 
-        'PORT': '5433', 
-        'OPTIONS': {
-            'options': '-c search_path=public'
-        },
-        'CONN_MAX_AGE': 0,
+# Si Railway nos da una base de datos (DATABASE_URL), usamos esa.
+if 'DATABASE_URL' in os.environ:
+    DATABASES = {
+        'default': dj_database_url.config(conn_max_age=600, ssl_require=True)
     }
-}
+else:
+    # SI NO, USAMOS TU CONFIGURACIÓN LOCAL ORIGINAL (No tocamos nada)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': 'hairsoft_db', 
+            'USER': 'admin', 
+            'PASSWORD': 'admin', 
+            'HOST': 'localhost', 
+            'PORT': '5433', 
+            'OPTIONS': {
+                'options': '-c search_path=public'
+            },
+            'CONN_MAX_AGE': 0,
+        }
+    }
 
 # ================================
 # VALIDADORES DE CONTRASEÑA
@@ -109,41 +131,52 @@ USE_I18N = True
 USE_TZ = True
 
 # ================================
-# ARCHIVOS ESTÁTICOS
+# ARCHIVOS ESTÁTICOS Y MEDIA (IMÁGENES)
 # ================================
-STATIC_URL = 'static/'
+# Static files (CSS, JavaScript, Images)
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+# Compresión para servir archivos rápido en Railway
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# CLOUDINARY (Solo se activa si ponemos las claves en Railway)
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
+    'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
+    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
+}
+
+# Media files
+MEDIA_URL = '/media/'
+# Si hay credenciales de Cloudinary, úsalo. Si no, usa carpeta local.
+if os.environ.get('CLOUDINARY_CLOUD_NAME'):
+    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+else:
+    MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ================================
 # CONFIGURACIÓN CORS / CSRF
 # ================================
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = True # Permitimos todo para asegurar que la demo ande
 CORS_ALLOW_CREDENTIALS = True
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-]
-
+# Dominios confiables para CSRF (Agregamos comodines para Vercel y Railway)
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173", 
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
     "http://localhost:8000",
-    "http://127.0.0.1:8000",
+    "https://*.railway.app", # <--- IMPORTANTE
+    "https://*.vercel.app",  # <--- IMPORTANTE
 ]
 
 CSRF_USE_SESSIONS = False
-CSRF_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = not DEBUG # True en prod, False en local
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = 'Lax'
 
-SESSION_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 
@@ -176,15 +209,17 @@ AUTHENTICATION_BACKENDS = [
 AUTH_USER_MODEL = 'usuarios.Usuario'
 
 # ================================
-# CONFIGURACIÓN MERCADO PAGO
+# MERCADO PAGO
 # ================================
+# Intenta leer del entorno, si no usa los tuyos hardcodeados
 MERCADO_PAGO = {
-    'ACCESS_TOKEN': 'APP_USR-7404896415144376-102322-584184e7db9ca5b628be4d7e21763ae3-2943677918',
-    'PUBLIC_KEY': 'APP_USR-4e145215-f26e-4c2d-8be7-a557300a9154',
+    'ACCESS_TOKEN': os.environ.get('MP_ACCESS_TOKEN', 'APP_USR-7404896415144376-102322-584184e7db9ca5b628be4d7e21763ae3-2943677918'),
+    'PUBLIC_KEY': os.environ.get('MP_PUBLIC_KEY', 'APP_USR-4e145215-f26e-4c2d-8be7-a557300a9154'),
     'BACK_URLS': {
-        'success': 'http://localhost:5173/pago-exitoso',
-        'failure': 'http://localhost:5173/pago-error',
-        'pending': 'http://localhost:5173/pago-pendiente'
+        # OJO: En producción tendrás que cambiar esto por la URL de Vercel en las variables de entorno si quieres que vuelva bien
+        'success': os.environ.get('MP_URL_SUCCESS', 'http://localhost:5173/pago-exitoso'),
+        'failure': os.environ.get('MP_URL_FAILURE', 'http://localhost:5173/pago-error'),
+        'pending': os.environ.get('MP_URL_PENDING', 'http://localhost:5173/pago-pendiente')
     },
     'AUTO_RETURN': 'approved',
     'BINARY_MODE': True,
@@ -192,7 +227,7 @@ MERCADO_PAGO = {
 }
 
 # ================================
-# CONFIGURACIÓN REST FRAMEWORK
+# REST FRAMEWORK
 # ================================
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -207,24 +242,26 @@ REST_FRAMEWORK = {
 }
 
 # ================================
-# LOGGING
+# CELERY & REDIS (CONFIGURACIÓN HÍBRIDA)
 # ================================
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'null': {'class': 'logging.NullHandler'},
-    },
-    'loggers': {
-        'django.security.DisallowedHost': {
-            'handlers': ['null'],
-            'propagate': False,
-        },
-    },
-}
+if 'REDIS_URL' in os.environ:
+    # CONFIGURACIÓN PRODUCCIÓN (RAILWAY)
+    CELERY_BROKER_URL = os.environ.get('REDIS_URL')
+    CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL')
+    CELERY_ACCEPT_CONTENT = ['application/json']
+    CELERY_RESULT_SERIALIZER = 'json'
+    CELERY_TASK_SERIALIZER = 'json'
+    CELERY_TIMEZONE = TIME_ZONE
+    # IMPORTANTE: En producción queremos que sea asíncrono
+    CELERY_TASK_ALWAYS_EAGER = False 
+else:
+    # CONFIGURACIÓN LOCAL (TESTING)
+    # Sin Redis, todo síncrono como lo tenías antes
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True
 
 # ================================
-# CONFIGURACIÓN EMAIL (MAILTRAP) 📧
+# EMAIL (MAILTRAP)
 # ================================
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'sandbox.smtp.mailtrap.io'
@@ -237,21 +274,8 @@ DEFAULT_FROM_EMAIL = 'HairSoft <no-reply@hairsoft.com>'
 EMAIL_FAIL_SILENTLY = False
 
 # ================================
-# CONFIGURACIÓN CELERY (MODO TESTING)
-# ================================
-# Las tareas se ejecutan sincrónicamente (sin necesidad de Redis)
-CELERY_TASK_ALWAYS_EAGER = True
-CELERY_TASK_EAGER_PROPAGATES = True
-
-# ================================
-# CONFIGURACIÓN TWILIO WHATSAPP (REAL)
+# TWILIO WHATSAPP
 # ================================
 TWILIO_ACCOUNT_SID = 'ACb3de53c73913d7ec07a5c253ab2ca97f'
 TWILIO_AUTH_TOKEN = '0f70fae6755002f66c23c4a50aff0400'
 TWILIO_WHATSAPP_NUMBER = 'whatsapp:+14155238886'
-
-# ================================
-# CONFIGURACIÓN DE IMAGENES PARA EL CATALOGO
-# ================================
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
