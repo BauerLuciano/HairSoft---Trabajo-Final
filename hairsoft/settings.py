@@ -5,42 +5,44 @@ Production Ready: Render + Vercel + Cloudinary
 
 from pathlib import Path
 import os
-import dj_database_url  # Librería para la DB de Render
+import dj_database_url  # Librería fundamental para la DB de Render
 
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ================================
 # CONFIGURACIÓN GENERAL Y SEGURIDAD
 # ================================
 
-# Si existe la variable RENDER, estamos en producción -> DEBUG False
-# Si no existe (tu PC), estamos en local -> DEBUG True
+# Detectamos si estamos en Render verificando si existe la variable RENDER
 IS_PRODUCTION = 'RENDER' in os.environ
 
-# En producción usamos la clave de Render. En local usamos la insegura por defecto.
+# En producción usamos la clave secreta de las variables de entorno.
+# En local usamos una por defecto para que no te de error.
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-ip8)+yuz^y06zqgl-%w%05^vjroio(3@@4qo(tz_0ssvtpe@3(')
 
+# DEBUG debe ser False en producción por seguridad
 DEBUG = not IS_PRODUCTION
 
-# Permitimos todos los hosts por ahora para facilitar el deploy
+# Permitimos todos los hosts en producción para evitar errores de dominio en Render
 ALLOWED_HOSTS = ['*']
 
 # ================================
 # APLICACIONES INSTALADAS
 # ================================
 INSTALLED_APPS = [
-    # 1. Apps nativas de Django (PRIMERO)
+    # 1. Apps nativas de Django
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django.contrib.staticfiles', 
+    'django.contrib.staticfiles',
     
     # 2. Librerías de terceros
-    'corsheaders', 
-    'cloudinary_storage', # <--- AHORA SÍ, AQUÍ.
-    'cloudinary',
+    'corsheaders',            # Para conectar con Vue/Vercel
+    'cloudinary_storage',     # Para guardar imágenes en la nube
+    'cloudinary',             # Librería base de Cloudinary
     'django_filters',
     'rest_framework',
     'rest_framework.authtoken',
@@ -58,18 +60,18 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware', # <--- VITAL PARA RENDER (Archivos estáticos)
-    'corsheaders.middleware.CorsMiddleware',
+    'corsheaders.middleware.CorsMiddleware',      # <--- VITAL PARA VERCEL (Conexión Frontend)
     
-    'usuarios.middleware.DisableCSRFMiddleware', # Tu anti-csrf
+    'usuarios.middleware.DisableCSRFMiddleware',  # Tu middleware para facilitar APIs
     
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware', 
-    'django.middleware.csrf.CsrfViewMiddleware', 
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     
-    'usuarios.middleware.AuditoriaMiddleware', # Tu auditoría
+    'usuarios.middleware.AuditoriaMiddleware',    # Tu auditoría
 ]
 
 ROOT_URLCONF = 'hairsoft.urls'
@@ -98,27 +100,31 @@ WSGI_APPLICATION = 'hairsoft.wsgi.application'
 # BASE DE DATOS (HÍBRIDA)
 # ================================
 # Lógica: Si Render nos da una base de datos (DATABASE_URL), usamos esa.
-# Si no, usamos tu configuración local de PostgreSQL.
+# Si no, usamos tu configuración local (SQLite o PostgreSQL local).
 
 if 'DATABASE_URL' in os.environ:
     # Configuración de Producción (Render)
     DATABASES = {
-        'default': dj_database_url.config(conn_max_age=600, ssl_require=True)
+        'default': dj_database_url.config(
+            conn_max_age=600,
+            conn_health_checks=True,
+            ssl_require=True
+        )
     }
 else:
-    # Tu configuración Local (PostgreSQL 5433)
+    # Tu configuración Local (PostgreSQL)
+    # Si te da error localmente, asegurate de tener tu base 'hairsoft_db' creada.
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': 'hairsoft_db', 
-            'USER': 'admin', 
-            'PASSWORD': 'admin', 
-            'HOST': 'localhost', 
-            'PORT': '5433', 
+            'NAME': 'hairsoft_db',
+            'USER': 'admin',
+            'PASSWORD': 'admin',
+            'HOST': 'localhost',
+            'PORT': '5433', # Ojo con el puerto, dejé el tuyo (5433)
             'OPTIONS': {
                 'options': '-c search_path=public'
             },
-            'CONN_MAX_AGE': 0,
         }
     }
 
@@ -135,7 +141,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # ================================
 # INTERNACIONALIZACIÓN
 # ================================
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'es-ar' # Puse Español Argentina
 TIME_ZONE = 'America/Argentina/Buenos_Aires'
 USE_I18N = True
 USE_TZ = True
@@ -146,13 +152,13 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# 🚨 AGREGAR ESTO: Obliga a Django a buscar los archivos del admin
+# 🚨 Esto asegura que Django encuentre los archivos estáticos de las apps
 STATICFILES_FINDERS = [
     'django.contrib.staticfiles.finders.FileSystemFinder',
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
 ]
 
-# Configuración WhiteNoise
+# Configuración WhiteNoise para servir estáticos en Render
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # ================================
@@ -162,40 +168,40 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 MEDIA_URL = '/media/' 
 
-# Credenciales de Cloudinary (Se cargan desde Render, o vacías en local si no las pones)
+# Credenciales de Cloudinary
+# (Render las leerá de Environment Variables, en local podés dejarlas vacías o ponerlas en .env)
 CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
-    'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
-    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
+    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME', ''),
+    'API_KEY': os.environ.get('CLOUDINARY_API_KEY', ''),
+    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET', ''),
 }
 
 # ================================
-# CONFIGURACIÓN CORS / CSRF
+# CONFIGURACIÓN CORS / CSRF (Para Vercel)
 # ================================
-# En producción permitimos todo inicialmente para evitar dolores de cabeza con Vercel
+# En producción permitimos todo inicialmente para asegurar que el Login funcione
 CORS_ALLOW_ALL_ORIGINS = True 
 CORS_ALLOW_CREDENTIALS = True
 
-# Estos siguen siendo útiles para seguridad específica, aunque Allow All los sobrescribe un poco
+# Lista explícita de orígenes permitidos (Backup de seguridad)
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://hairsoft-frontend.vercel.app", # Agregá aquí tu dominio de Vercel cuando lo tengas
+    "https://hairsoft-frontend.vercel.app", # Tu frontend en producción
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
-    "https://hairsoft-backend.onrender.com", # Tu dominio backend (ejemplo)
-    "https://hairsoft-frontend.vercel.app",  # Tu dominio frontend
+    "https://hairsoft-backend.onrender.com", # Tu backend
+    "https://hairsoft-frontend.vercel.app",  # Tu frontend
 ]
 
-CSRF_USE_SESSIONS = False
-CSRF_COOKIE_SECURE = IS_PRODUCTION # True en producción (HTTPS), False en local
-CSRF_COOKIE_HTTPONLY = False
-CSRF_COOKIE_SAMESITE = 'Lax'
-
+# Cookies y Sesiones (Adaptadas para HTTPS en producción)
+CSRF_COOKIE_SECURE = IS_PRODUCTION
 SESSION_COOKIE_SECURE = IS_PRODUCTION
+CSRF_COOKIE_HTTPONLY = False # False para que Axios/Frontend pueda leer el token si es necesario
 SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SAMESITE = 'Lax'
 
 CORS_ALLOW_HEADERS = [
@@ -217,7 +223,7 @@ CORS_ALLOW_METHODS = [
 ]
 
 # ================================
-# AUTENTICACIÓN PERSONALIZADA
+# AUTENTICACIÓN
 # ================================
 AUTHENTICATION_BACKENDS = [
     'usuarios.auth_backends.EmailAuthBackend', 
@@ -228,14 +234,13 @@ AUTH_USER_MODEL = 'usuarios.Usuario'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ================================
-# CONFIGURACIÓN MERCADO PAGO
+# MERCADO PAGO
 # ================================
-# Nota: Podrías mover estos tokens a variables de entorno en Render por seguridad
 MERCADO_PAGO = {
     'ACCESS_TOKEN': os.environ.get('MP_ACCESS_TOKEN', 'APP_USR-7404896415144376-102322-584184e7db9ca5b628be4d7e21763ae3-2943677918'),
     'PUBLIC_KEY': os.environ.get('MP_PUBLIC_KEY', 'APP_USR-4e145215-f26e-4c2d-8be7-a557300a9154'),
     'BACK_URLS': {
-        # IMPORTANTE: En producción cambiar localhost por tu dominio de Vercel
+        # OJO: Cambiar localhost por URL de Vercel en las variables de entorno de Render
         'success': os.environ.get('MP_SUCCESS_URL', 'http://localhost:5173/pago-exitoso'),
         'failure': os.environ.get('MP_FAILURE_URL', 'http://localhost:5173/pago-error'),
         'pending': os.environ.get('MP_PENDING_URL', 'http://localhost:5173/pago-pendiente')
@@ -246,7 +251,7 @@ MERCADO_PAGO = {
 }
 
 # ================================
-# CONFIGURACIÓN REST FRAMEWORK
+# DJANGO REST FRAMEWORK
 # ================================
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -254,14 +259,14 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.AllowAny', # Ojo: Permite acceso público por defecto, ajustalo en las vistas
     ],
     'DEFAULT_PAGINATION_CLASS': None,
     'PAGE_SIZE': None,
 }
 
 # ================================
-# CONFIGURACIÓN EMAIL (MAILTRAP)
+# EMAIL (Mailtrap)
 # ================================
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'sandbox.smtp.mailtrap.io'
@@ -274,19 +279,20 @@ DEFAULT_FROM_EMAIL = 'HairSoft <no-reply@hairsoft.com>'
 EMAIL_FAIL_SILENTLY = False
 
 # ================================
-# CONFIGURACIÓN CELERY
+# CELERY / REDIS
 # ================================
-# Si Render nos da un Redis, lo usamos. Si no, modo síncrono (EAGER)
 if 'REDIS_URL' in os.environ:
+    # Producción (Si agregás Redis en Render)
     CELERY_BROKER_URL = os.environ.get('REDIS_URL')
     CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL')
-    CELERY_TASK_ALWAYS_EAGER = False # Realmente asíncrono
+    CELERY_TASK_ALWAYS_EAGER = False 
 else:
+    # Local (Sin Redis -> Ejecuta tareas síncronas)
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
 
 # ================================
-# CONFIGURACIÓN TWILIO WHATSAPP
+# TWILIO WHATSAPP
 # ================================
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_SID', 'ACb3de53c73913d7ec07a5c253ab2ca97f')
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_TOKEN', '0f70fae6755002f66c23c4a50aff0400')
