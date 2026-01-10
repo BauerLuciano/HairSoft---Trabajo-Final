@@ -181,7 +181,7 @@ CLOUDINARY_STORAGE = {
 # CONFIGURACIÓN CORS / CSRF (MODO NUCLEAR)
 # ================================
 # En producción permitimos todo para que el celular no rebote.
-CORS_ALLOW_ALL_ORIGINS = True 
+CORS_ALLOW_ALL_ORIGINS = False 
 CORS_ALLOW_CREDENTIALS = True
 
 # Lista explícita de orígenes permitidos (Backup de seguridad)
