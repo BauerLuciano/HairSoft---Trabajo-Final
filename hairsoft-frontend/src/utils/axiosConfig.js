@@ -1,27 +1,19 @@
 import axios from 'axios';
 
-// 1. DETECCIÓN AUTOMÁTICA DE ENTORNO
-// Si en la barra de direcciones dice "vercel.app", usa Railway.
-// Si dice "localhost", usa tu PC.
-const isProduction = window.location.hostname.includes('vercel.app');
+// --- CONFIGURACIÓN FIJA (HARDCODEADA) ---
+// Ponemos la URL de Railway directo. Así obligamos al celular a ir a la nube.
+const API_URL = 'https://web-production-ac47c.up.railway.app';
 
-const API_URL = isProduction 
-  ? 'https://web-production-ac47c.up.railway.app' 
-  : 'http://localhost:8000';
-
-console.log('🔌 Conectando a:', API_URL); // Para que veas en la consola a dónde apunta
+console.log('🚀 Conectando DIRECTO a la Nube:', API_URL);
 
 const axiosInstance = axios.create({
   baseURL: API_URL,
-  // 2. IMPORTANTE: Sacamos 'withCredentials' por ahora. 
-  // Con Token Auth no es obligatorio y suele dar problemas de CORS con "Allowed Hosts *".
-  // withCredentials: true, 
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Interceptor para agregar el Token automáticamente
+// Interceptor para el Token
 axiosInstance.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
