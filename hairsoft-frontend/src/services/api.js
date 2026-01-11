@@ -1,13 +1,13 @@
 import axios from 'axios';
 
-// === CONFIGURACIÓN INTELIGENTE ===
-// 1. Detectamos si estamos en Vercel o en tu compu
+// === CONFIGURACIÓN INTELIGENTE Y CORREGIDA ===
 const isProduction = window.location.hostname.includes('vercel.app');
 
-// 2. Elegimos la dirección correcta automáticamente
+// CORRECCIÓN: Usamos window.location.hostname para que coincida con tu navegador (localhost)
+// y así las cookies de Admin funcionen.
 const CURRENT_URL = isProduction 
-  ? 'https://web-production-ac47c.up.railway.app/usuarios/api' // URL NUBE
-  : 'http://127.0.0.1:8000/usuarios/api';                       // URL LOCAL
+  ? 'https://web-production-ac47c.up.railway.app/usuarios/api' 
+  : `http://${window.location.hostname}:8000/usuarios/api`;
 
 console.log('🔌 API Conectada a:', CURRENT_URL);
 
@@ -15,19 +15,19 @@ console.log('🔌 API Conectada a:', CURRENT_URL);
 const api = axios.create({
   baseURL: CURRENT_URL,
   timeout: 10000,
-  withCredentials: true, // <--- ¡ESTA ES LA LÍNEA QUE TE FALTA!
+  withCredentials: true, // Vital para que el Admin local funcione
   headers: {
     'Content-Type': 'application/json',
   }
 });
 
-// Interceptor (El portero que pone el sello)
+// Interceptor (El portero)
 api.interceptors.request.use(config => {
-  // 1. Buscamos la clave EXACTA que usa tu Login ('token')
   const token = localStorage.getItem('token'); 
   
+  // Detectar si estamos logueados como ADMIN en local (para no mandar token de cliente)
+  // Si la URL es local y no hay token, dejamos que pasen las cookies.
   if (token) {
-    // 2. Usamos el prefijo 'Token' que espera Django REST Framework
     config.headers.Authorization = `Token ${token}`; 
   }
   return config;
