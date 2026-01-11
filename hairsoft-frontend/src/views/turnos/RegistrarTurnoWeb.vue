@@ -563,7 +563,7 @@ const router = useRouter()
 const route = useRoute()
 
 // ==========================================
-// ESTADO REACTIVO - CON MEJOR MANEJO DE ERRORES
+// ESTADO REACTIVO - MANTENIDO
 // ==========================================
 const form = ref({
   peluquero: "",
@@ -583,7 +583,7 @@ const usuario = ref({
   dni: '', 
   telefono: '', 
   turnosCount: 0,
-  isAuthenticated: false // ✅ NUEVO: Para controlar autenticación
+  isAuthenticated: false 
 })
 
 const peluqueros = ref([])
@@ -593,10 +593,9 @@ const slotsOcupadosReales = ref([])
 const categoriasSeleccionadas = ref([])
 const busquedaServicio = ref("")
 
-// Estados de carga
 const cargandoMercadoPago = ref(false)
 const cargandoHorarios = ref(false)
-const cargandoDatos = ref(true) // ✅ NUEVO: Para mostrar spinner
+const cargandoDatos = ref(true) 
 const cargandoServicios = ref(false)
 
 const mostrarModalInteres = ref(false)
@@ -606,22 +605,23 @@ const redirigiendoMercadoPago = ref(false)
 const currentDate = ref(new Date())
 
 const intervaloMinutos = 20
-const DIAS_RANGO = 7 
+const DIAS_RANGO = 7 // ✅ Representa los 7 días de trabajo que queremos mostrar
 const cuponCodigo = ref(null)
 const descuentoAplicado = ref(0)
 const mensajePromo = ref("")
 const horariosInteres = ref([])
+const mensaje = ref("")
+const mensajeTipo = ref("")
 
 // ==========================================
-// 🛡️ LÓGICA DE SELECCIÓN Y FILTROS - CORREGIDO
+// 🛡️ LÓGICA DE SELECCIÓN Y FILTROS
 // ==========================================
 
-// Helper seguro para obtener lista plana
 const getListaServicios = () => {
   try {
     if (Array.isArray(servicios.value)) return servicios.value;
-    if (servicios.value && Array.isArray(servicios.value.results)) return servicios.value.results;
-    if (servicios.value && servicios.value.data && Array.isArray(servicios.value.data)) return servicios.value.data;
+    if (servicios.value?.results) return servicios.value.results;
+    if (servicios.value?.data) return servicios.value.data;
     return [];
   } catch (error) {
     console.error('Error en getListaServicios:', error);
@@ -632,34 +632,23 @@ const getListaServicios = () => {
 const serviciosFiltrados = computed(() => {
   try {
     let lista = getListaServicios();
-    
-    // Filtro Categoría
     if (categoriasSeleccionadas.value.length > 0) {
       lista = lista.filter(s => {
         if (!s || !s.categoria) return false;
-        
-        let catId;
-        if (typeof s.categoria === 'object' && s.categoria !== null) {
-          catId = String(s.categoria.id || s.categoria);
-        } else {
-          catId = String(s.categoria);
-        }
-        
+        let catId = (typeof s.categoria === 'object' && s.categoria !== null) 
+                    ? String(s.categoria.id || s.categoria) 
+                    : String(s.categoria);
         return categoriasSeleccionadas.value.includes(catId);
       });
     }
-    
-    // Filtro Búsqueda
     if (busquedaServicio.value.trim()) {
       const term = busquedaServicio.value.toLowerCase().trim();
       lista = lista.filter(s => 
         s && s.nombre && typeof s.nombre === 'string' && s.nombre.toLowerCase().includes(term)
       );
     }
-    
     return lista;
   } catch (error) {
-    console.error('Error en serviciosFiltrados:', error);
     return [];
   }
 });
@@ -668,90 +657,44 @@ const toggleCategoria = (id) => {
   try {
     const cid = String(id);
     const index = categoriasSeleccionadas.value.indexOf(cid);
-    if (index > -1) {
-      categoriasSeleccionadas.value.splice(index, 1);
-    } else {
-      categoriasSeleccionadas.value.push(cid);
-    }
-  } catch (error) {
-    console.error('Error en toggleCategoria:', error);
-  }
+    if (index > -1) categoriasSeleccionadas.value.splice(index, 1);
+    else categoriasSeleccionadas.value.push(cid);
+  } catch (error) { console.error(error); }
 }
 
 const toggleServicio = (servicio) => {
   try {
-    if (!servicio || !servicio.id) {
-      console.error('Servicio inválido en toggleServicio:', servicio);
-      return;
-    }
-    
+    if (!servicio || !servicio.id) return;
     const id = String(servicio.id);
     const index = form.value.servicios_ids.indexOf(id);
-    
-    if (index > -1) {
-      // Remover servicio
-      form.value.servicios_ids.splice(index, 1);
-    } else {
-      // Agregar servicio
-      form.value.servicios_ids.push(id);
-    }
-    
-    // Resetear horarios si cambian los servicios
-    if (form.value.hora) {
-      form.value.hora = "";
-    }
-    
-    // Recargar turnos ocupados si hay fecha y peluquero
-    if (form.value.fecha && form.value.peluquero) {
-      cargarTurnosOcupados(form.value.fecha);
-    }
-    
-    // Forzar actualización de la vista
+    if (index > -1) form.value.servicios_ids.splice(index, 1);
+    else form.value.servicios_ids.push(id);
+    if (form.value.hora) form.value.hora = "";
+    if (form.value.fecha && form.value.peluquero) cargarTurnosOcupados(form.value.fecha);
     nextTick();
   } catch (error) {
-    console.error('Error en toggleServicio:', error);
-    Swal.fire({
-      title: 'Error',
-      text: 'No se pudo agregar el servicio. Intenta nuevamente.',
-      icon: 'error'
-    });
+    Swal.fire({ title: 'Error', text: 'No se pudo agregar el servicio.', icon: 'error' });
   }
 }
 
 const estaServicioSeleccionado = (servicio) => {
-  try {
-    if (!servicio || !servicio.id) return false;
-    return form.value.servicios_ids.includes(String(servicio.id));
-  } catch {
-    return false;
-  }
+  if (!servicio || !servicio.id) return false;
+  return form.value.servicios_ids.includes(String(servicio.id));
 }
 
 const eliminarServicio = (servicioId) => {
-  try {
-    const idStr = String(servicioId);
-    form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== idStr);
-    
-    if (form.value.hora) form.value.hora = "";
-    if (form.value.fecha && form.value.peluquero) {
-      cargarTurnosOcupados(form.value.fecha);
-    }
-  } catch (error) {
-    console.error('Error en eliminarServicio:', error);
-  }
+  const idStr = String(servicioId);
+  form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== idStr);
+  if (form.value.hora) form.value.hora = "";
+  if (form.value.fecha && form.value.peluquero) cargarTurnosOcupados(form.value.fecha);
 }
 
 const formularioValido = computed(() => {
-  return (
-    form.value.peluquero && 
-    form.value.servicios_ids.length > 0 && 
-    form.value.fecha && 
-    form.value.hora
-  );
+  return form.value.peluquero && form.value.servicios_ids.length > 0 && form.value.fecha && form.value.hora;
 })
 
 // ==========================================
-// 🛡️ CÁLCULOS - MEJORADO CON MANEJO DE ERRORES
+// 🛡️ CÁLCULOS
 // ==========================================
 
 const calcularTotalOriginal = () => {
@@ -760,25 +703,19 @@ const calcularTotalOriginal = () => {
     return form.value.servicios_ids.reduce((acc, id) => {
       const s = lista.find(x => String(x.id) === String(id));
       if (!s) return acc;
-      const precio = parseFloat(s.precio) || 0;
-      return acc + precio;
+      return acc + (parseFloat(s.precio) || 0);
     }, 0);
-  } catch (error) {
-    console.error('Error en calcularTotalOriginal:', error);
-    return 0;
-  }
+  } catch (error) { return 0; }
 }
+
+const calcularTotal = () => calcularTotalOriginal().toFixed(2);
 
 const calcularTotalConDescuento = () => {
   try {
     const total = calcularTotalOriginal();
     const descuento = descuentoAplicado.value || 0;
-    const totalConDescuento = total * (1 - descuento / 100);
-    return totalConDescuento.toFixed(2);
-  } catch (error) {
-    console.error('Error en calcularTotalConDescuento:', error);
-    return "0.00";
-  }
+    return (total * (1 - descuento / 100)).toFixed(2);
+  } catch (error) { return "0.00"; }
 }
 
 const calcularDuracionTotalServicios = () => {
@@ -787,177 +724,197 @@ const calcularDuracionTotalServicios = () => {
     return form.value.servicios_ids.reduce((total, id) => {
       const s = lista.find(x => String(x.id) === String(id));
       if (!s) return total;
-      
-      // Manejar diferentes nombres de propiedad
       const duracion = s.duracion || s.duracion_minutos || 20;
-      return total + parseInt(duracion) || 0;
+      return total + parseInt(duracion);
     }, 0);
-  } catch (error) {
-    console.error('Error en calcularDuracionTotalServicios:', error);
-    return 0;
-  }
+  } catch (error) { return 0; }
+}
+
+const calcularSena = () => (parseFloat(calcularTotalConDescuento()) * 0.5).toFixed(2);
+
+const montoAPagarAhora = () => {
+  const total = parseFloat(calcularTotalConDescuento());
+  return (form.value.tipo_pago === 'SENA_50' ? total * 0.5 : total).toFixed(2);
 }
 
 // ==========================================
-// API CALLS & HELPERS - MEJORADO
+// 🛡️ HELPERS DE TEXTO
 // ==========================================
 
+const getServicioNombre = (servicioId) => {
+  const lista = getListaServicios();
+  const s = lista.find(s => String(s.id) === String(servicioId));
+  return s ? s.nombre : 'Servicio';
+}
+
 const getPeluqueroNombre = () => {
-  try {
-    const lista = Array.isArray(peluqueros.value) 
-      ? peluqueros.value 
-      : (peluqueros.value?.results || []);
-    
-    if (!form.value.peluquero || lista.length === 0) return '';
-    
-    const p = lista.find(x => String(x.id) === String(form.value.peluquero));
-    if (!p) return '';
-    
-    return `${p.nombre || ''} ${p.apellido || ''}`.trim() || p?.username || 'Peluquero';
-  } catch {
-    return '';
-  }
+  const lista = Array.isArray(peluqueros.value) ? peluqueros.value : (peluqueros.value?.results || []);
+  const p = lista.find(x => String(x.id) === String(form.value.peluquero));
+  return p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : '';
 }
 
 const getServiciosNombres = () => {
-  try {
-    const lista = getListaServicios();
-    return form.value.servicios_ids
-      .map(id => {
-        const s = lista.find(s => String(s.id) === String(id));
-        return s?.nombre || '';
-      })
-      .filter(n => n)
-      .join(', ');
-  } catch {
-    return '';
-  }
+  const lista = getListaServicios();
+  return form.value.servicios_ids
+    .map(id => lista.find(s => String(s.id) === String(id))?.nombre || '')
+    .filter(n => n).join(', ');
 }
 
-const getNombreCompletoPeluquero = (p) => {
-  try {
-    if (!p) return '';
-    return `${p.nombre || ''} ${p.apellido || ''}`.trim();
-  } catch {
-    return '';
-  }
-}
-
-const getInicialesPeluquero = (p) => {
-  try {
-    return (p?.nombre || 'P').charAt(0).toUpperCase();
-  } catch {
-    return 'P';
-  }
-}
+const getNombreCompletoPeluquero = (p) => p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : '';
+const getInicialesPeluquero = (p) => (p?.nombre || 'P').charAt(0).toUpperCase();
 
 const formatoFechaLegible = (f) => {
-  try {
-    if (!f) return '';
-    const date = new Date(f);
-    if (isNaN(date.getTime())) return f;
-    return date.toLocaleDateString('es-ES', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  } catch {
-    return f;
-  }
+  if (!f) return '';
+  const date = new Date(f + 'T12:00:00'); 
+  return date.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 const getCategoriaNombre = (cat) => {
-  try {
-    const lista = Array.isArray(categorias.value) 
-      ? categorias.value 
-      : (categorias.value?.results || []);
-    
-    if (typeof cat === 'object' && cat !== null) {
-      return cat.nombre || 'General';
-    }
-    
-    const c = lista.find(x => String(x.id) === String(cat));
-    return c ? c.nombre : 'General';
-  } catch {
-    return 'General';
-  }
+  const lista = Array.isArray(categorias.value) ? categorias.value : (categorias.value?.results || []);
+  if (typeof cat === 'object' && cat !== null) return cat.nombre || 'General';
+  const c = lista.find(x => String(x.id) === String(cat));
+  return c ? c.nombre : 'General';
 }
+
+// ==========================================
+// 🛡️ CALENDARIO (LÓGICA MEJORADA DE 7 DÍAS LABORALES)
+// ==========================================
+
+const nombreMesActual = computed(() => currentDate.value.toLocaleString('es-ES', { month: 'long' }).toUpperCase());
+const currentYear = computed(() => currentDate.value.getFullYear());
+const startingDayOfWeek = computed(() => new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), 1).getDay());
+const daysInMonth = computed(() => new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 0).getDate());
+
+const esHoy = (day) => {
+  const hoy = new Date();
+  return day === hoy.getDate() && currentDate.value.getMonth() === hoy.getMonth() && currentYear.value === hoy.getFullYear();
+};
+
+const esDiaSeleccionado = (day) => {
+  if (!form.value.fecha) return false;
+  const f = new Date(form.value.fecha + 'T12:00:00');
+  return day === f.getDate() && currentDate.value.getMonth() === f.getMonth();
+};
+
+// ✅ LÓGICA DE 7 DÍAS HÁBILES REALES
+const esDiaSeleccionable = (day) => {
+  const target = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), day);
+  target.setHours(0,0,0,0);
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  
+  if (target < hoy || target.getDay() === 0) return false;
+
+  // Contamos cuántos días de trabajo hay entre hoy y la fecha target
+  let tempDate = new Date(hoy);
+  let workableDaysCount = 0;
+  
+  while (tempDate <= target) {
+    if (tempDate.getDay() !== 0) { // Si no es domingo, suma al contador
+      workableDaysCount++;
+    }
+    tempDate.setDate(tempDate.getDate() + 1);
+  }
+  
+  return workableDaysCount <= DIAS_RANGO;
+};
+
+const seleccionarDiaCalendario = (day) => {
+  const year = currentDate.value.getFullYear();
+  const month = String(currentDate.value.getMonth() + 1).padStart(2, '0');
+  const dayStr = String(day).padStart(2, '0');
+  form.value.fecha = `${year}-${month}-${dayStr}`;
+};
+
+const cambiarMes = (delta) => {
+  const newDate = new Date(currentDate.value);
+  newDate.setMonth(newDate.getMonth() + delta);
+  currentDate.value = newDate;
+};
+
+// ✅ Muestra la fecha máxima real en el footer
+const getFechaMaximaReserva = () => {
+  let d = new Date();
+  d.setHours(0,0,0,0);
+  let count = 0;
+  while (count < DIAS_RANGO) {
+    if (d.getDay() !== 0) count++;
+    if (count < DIAS_RANGO) d.setDate(d.getDate() + 1);
+  }
+  return d.toLocaleDateString('es-ES');
+};
+
+// ==========================================
+// 🛡️ HORARIOS
+// ==========================================
+
+const esHorarioDisponible = (h) => {
+  if (!form.value.fecha || !form.value.peluquero) return true;
+  if (slotsOcupadosReales.value.includes(h.substring(0, 5))) return false;
+  const hoy = new Date();
+  const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  if (form.value.fecha === hoyF) {
+    const [hS, mS] = h.substring(0, 5).split(':').map(Number);
+    const ahora = hoy.getHours() * 60 + hoy.getMinutes();
+    return (hS * 60 + mS) > (ahora + 30);
+  }
+  return true;
+}
+
+const horariosDisponibles = computed(() => {
+  const base = ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00'];
+  return base.filter(h => esHorarioDisponible(h));
+});
+
+const horariosOcupadosParaMostrar = computed(() => {
+  const base = ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00'];
+  return base.filter(h => !esHorarioDisponible(h));
+});
+
+const seleccionarPeluquero = (peluqueroId) => {
+  form.value.peluquero = peluqueroId;
+  onPeluqueroSeleccionado();
+}
+
+const seleccionarHora = (h) => { if (esHorarioDisponible(h)) form.value.hora = h; }
+
+const onPeluqueroSeleccionado = () => {
+  form.value.fecha = ""; form.value.hora = ""; slotsOcupadosReales.value = [];
+}
+
+// ==========================================
+// 🛡️ API & CARGA
+// ==========================================
 
 const cargarDatosIniciales = async () => {
   cargandoDatos.value = true;
-  
   try {
-    // Verificar si hay usuario autenticado
     const token = localStorage.getItem('token');
     const userId = localStorage.getItem('user_id');
     
     if (!token || !userId) {
       usuario.value.isAuthenticated = false;
-      // Redirigir a login si no está autenticado
-      Swal.fire({
-        title: 'Sesión requerida',
-        text: 'Debes iniciar sesión para agendar un turno',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Ir a login',
-        cancelButtonText: 'Cancelar'
-      }).then((result) => {
-        if (result.isConfirmed) {
-          router.push('/login');
-        } else {
-          router.back();
-        }
-      });
-      return;
+      return router.push('/login');
     }
-    
+
     usuario.value.isAuthenticated = true;
-    
-    // Cargar datos del usuario
-    if (userId) {
-      const resU = await api.get(`/usuarios/${userId}/`);
-      usuario.value = { ...resU.data, isAuthenticated: true };
-      form.value.cliente = userId;
-    }
-    
-    // Cargar peluqueros, servicios y categorías en paralelo
-    const [p, s, c] = await Promise.all([
-      api.get('/peluqueros/').catch(e => {
-        console.error('Error cargando peluqueros:', e);
-        return { data: [] };
-      }),
-      api.get('/servicios/').catch(e => {
-        console.error('Error cargando servicios:', e);
-        return { data: [] };
-      }),
-      api.get('/categorias/servicios/').catch(e => {
-        console.error('Error cargando categorías:', e);
-        return { data: [] };
-      })
+
+    const [resU, p, s, c] = await Promise.all([
+      api.get(`/api/usuarios/${userId}/`), 
+      api.get('/api/peluqueros/'),
+      api.get('/api/servicios/'),
+      api.get('/api/categorias/servicios/')
     ]);
+
+    usuario.value = { ...resU.data, isAuthenticated: true };
+    form.value.cliente = userId;
     
-    // Normalización de datos
     peluqueros.value = Array.isArray(p.data) ? p.data : (p.data?.results || []);
     servicios.value = Array.isArray(s.data) ? s.data : (s.data?.results || []);
     categorias.value = Array.isArray(c.data) ? c.data : (c.data?.results || []);
     
-    console.log('Datos cargados:', {
-      peluqueros: peluqueros.value.length,
-      servicios: servicios.value.length,
-      categorias: categorias.value.length
-    });
-    
   } catch (error) {
-    console.error('Error en carga inicial:', error);
-    Swal.fire({
-      title: 'Error',
-      text: 'No se pudieron cargar los datos. Por favor, recarga la página.',
-      icon: 'error',
-      confirmButtonText: 'Recargar'
-    }).then(() => {
-      window.location.reload();
-    });
+    console.error('Error en carga:', error);
+    Swal.fire({ title: 'Error', text: 'Error al cargar tus datos.', icon: 'error' });
   } finally {
     cargandoDatos.value = false;
   }
@@ -965,210 +922,89 @@ const cargarDatosIniciales = async () => {
 
 const cargarTurnosOcupados = async (fecha) => {
   if (!form.value.peluquero) return;
-  
   cargandoHorarios.value = true;
   try {
-    const res = await api.get(
-      `/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
-    );
-    
+    const res = await api.get(`/api/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`);
     const turnos = Array.isArray(res.data) ? res.data : (res.data?.results || []);
     const ocupadosSet = new Set();
-    
     turnos.forEach(turno => {
       if (!turno.hora) return;
       const [h, m] = turno.hora.split(':').map(Number);
-      const inicioMin = h * 60 + m;
       const dur = turno.duracion_total || 20;
-      
-      for (let i = inicioMin; i < inicioMin + dur; i += 20) {
-        ocupadosSet.add(
-          `${Math.floor(i / 60).toString().padStart(2, '0')}:${(i % 60).toString().padStart(2, '0')}`
-        );
+      for (let i = (h * 60 + m); i < (h * 60 + m) + dur; i += 20) {
+        ocupadosSet.add(`${Math.floor(i / 60).toString().padStart(2, '0')}:${(i % 60).toString().padStart(2, '0')}`);
       }
     });
-    
     slotsOcupadosReales.value = Array.from(ocupadosSet);
-  } catch (error) {
-    console.error('Error cargando turnos ocupados:', error);
-    slotsOcupadosReales.value = [];
-  } finally {
-    cargandoHorarios.value = false;
-  }
+  } catch (e) { console.error(e); } 
+  finally { cargandoHorarios.value = false; }
 }
 
-// ==========================================
-// MERCADO PAGO - MEJORADO
-// ==========================================
-
 const crearPagoMercadoPago = async () => {
-  if (!formularioValido.value) {
-    Swal.fire({
-      title: 'Formulario incompleto',
-      text: 'Por favor, completa todos los campos requeridos',
-      icon: 'warning'
-    });
-    return;
-  }
-  
-  // Verificar autenticación
-  if (!usuario.value.isAuthenticated) {
-    Swal.fire({
-      title: 'Sesión requerida',
-      text: 'Debes iniciar sesión para continuar',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Ir a login',
-      cancelButtonText: 'Cancelar'
-    }).then((result) => {
-      if (result.isConfirmed) {
-        router.push('/login');
-      }
-    });
-    return;
-  }
-  
+  if (!formularioValido.value) return;
   cargandoMercadoPago.value = true;
   
   try {
     const total = parseFloat(calcularTotalConDescuento());
+    
     const payload = {
-      peluquero_id: form.value.peluquero,
-      cliente_id: usuario.value.id,
-      servicios_ids: form.value.servicios_ids,
+      peluquero_id: parseInt(form.value.peluquero),
+      cliente_id: parseInt(usuario.value.id),      
+      servicios_ids: form.value.servicios_ids.map(id => parseInt(id)), 
       fecha: form.value.fecha,
       hora: form.value.hora,
       canal: 'WEB',
       tipo_pago: form.value.tipo_pago,
       medio_pago: 'MERCADO_PAGO',
       monto_total: total,
-      monto_seña: form.value.tipo_pago === 'SENA_50' ? (total * 0.5).toFixed(2) : 0,
-      duracion_total: calcularDuracionTotalServicios(),
+      monto_seña: form.value.tipo_pago === 'SENA_50' ? parseFloat((total * 0.5).toFixed(2)) : 0,
+      duracion_total: parseInt(calcularDuracionTotalServicios()),
       cup_codigo: cuponCodigo.value
     };
+
+    const res = await api.post('/api/turnos/crear/', payload);
     
-    console.log('Enviando payload a MercadoPago:', payload);
+    const mpUrl = res.data?.mp_data?.init_point || res.data?.init_point;
     
-    const res = await api.post('/turnos/crear/', payload);
-    
-    if (res.data && (res.data.mp_data?.init_point || res.data.init_point)) {
-      const mpUrl = res.data.mp_data?.init_point || res.data.init_point;
+    if (mpUrl) {
+      window.open(mpUrl, '_blank');
       redirigiendoMercadoPago.value = true;
-      
-      // Pequeño delay para mostrar feedback al usuario
-      setTimeout(() => {
-        window.location.href = mpUrl;
-      }, 500);
     } else {
-      throw new Error('No se recibió URL de pago');
+      throw new Error('No se recibió la URL de Mercado Pago');
     }
-    
+
   } catch (error) {
-    console.error('Error en MercadoPago:', error);
-    
-    let errorMessage = 'Error al crear el turno. Por favor, intenta nuevamente.';
-    
-    if (error.response) {
-      if (error.response.status === 400) {
-        errorMessage = error.response.data?.message || 'Datos inválidos. Verifica la información.';
-      } else if (error.response.status === 401) {
-        errorMessage = 'Sesión expirada. Por favor, inicia sesión nuevamente.';
-        localStorage.removeItem('token');
-        localStorage.removeItem('user_id');
-        router.push('/login');
-      }
+    console.error('❌ Error en Mercado Pago:', error);
+    let errorMsg = error.response?.data?.message || 'Error al crear el turno.';
+    if (error.response?.data && typeof error.response.data === 'object') {
+        errorMsg = JSON.stringify(error.response.data);
     }
-    
-    Swal.fire({
-      title: 'Error',
-      text: errorMessage,
-      icon: 'error',
-      confirmButtonText: 'Entendido'
-    });
+    Swal.fire({ title: 'Error de Reserva', text: errorMsg, icon: 'error', confirmButtonText: 'Entendido' });
   } finally {
     cargandoMercadoPago.value = false;
   }
 }
 
 // ==========================================
-// DISPONIBILIDAD HORARIA - MEJORADO
+// 🛡️ INTERÉS & NAV
 // ==========================================
 
-const esHorarioDisponible = (h) => {
-  try {
-    if (!form.value.fecha || !form.value.peluquero) return true;
-    
-    // Verificar si está ocupado
-    if (slotsOcupadosReales.value.includes(h.substring(0, 5))) return false;
-    
-    // Validación de horario pasado para "hoy"
-    const hoy = new Date();
-    const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
-    
-    if (form.value.fecha === hoyF) {
-      const [hS, mS] = h.substring(0, 5).split(':').map(Number);
-      const ahora = hoy.getHours() * 60 + hoy.getMinutes();
-      const horarioSeleccionado = hS * 60 + mS;
-      
-      // Agregar margen de 30 minutos para el futuro
-      return horarioSeleccionado > (ahora + 30);
-    }
-    
-    return true;
-  } catch {
-    return false;
-  }
-}
+const registrarInteresHorario = (hora) => {
+  horarioSeleccionadoInteres.value = hora;
+  mostrarModalInteres.value = true;
+};
 
-const horariosDisponibles = computed(() => {
-  const horariosBase = [
-    '08:00','08:20','08:40','09:00','09:20','09:40',
-    '10:00','10:20','10:40','11:00','11:20','11:40',
-    '15:00','15:20','15:40','16:00','16:20','16:40',
-    '17:00','17:20','17:40','18:00','18:20','18:40',
-    '19:00','19:20','19:40','20:00'
-  ];
-  
-  return horariosBase.filter(h => esHorarioDisponible(h));
-});
+const cancelarRegistroInteres = () => {
+  mostrarModalInteres.value = false;
+  horarioSeleccionadoInteres.value = null;
+};
 
-const seleccionarDiaCalendario = (d) => {
-  const year = currentDate.value.getFullYear();
-  const month = String(currentDate.value.getMonth() + 1).padStart(2, '0');
-  const day = String(d).padStart(2, '0');
-  form.value.fecha = `${year}-${month}-${day}`;
-}
-
-const seleccionarHora = (h) => {
-  if (esHorarioDisponible(h)) {
-    form.value.hora = h;
-  }
-}
-
-const onPeluqueroSeleccionado = () => {
-  form.value.fecha = "";
-  form.value.hora = "";
-  slotsOcupadosReales.value = [];
-}
-
-// ==========================================
-// INTERÉS Y CUPONES - MEJORADO
-// ==========================================
+const estaInteresRegistrado = (hora) => horariosInteres.value.some(h => h.hora === hora && h.fecha === form.value.fecha);
 
 const confirmarRegistroInteres = async () => {
-  if (!form.value.peluquero || !form.value.fecha || !horarioSeleccionadoInteres.value) {
-    Swal.fire({
-      title: 'Error',
-      text: 'Faltan datos para registrar el interés',
-      icon: 'error'
-    });
-    return;
-  }
-  
   registrandoInteres.value = true;
-  
   try {
-    await api.post('/turnos/registrar-interes/', {
+    await api.post('/api/turnos/registrar-interes/', {
       fecha: form.value.fecha,
       hora: horarioSeleccionadoInteres.value,
       peluquero_id: form.value.peluquero,
@@ -1176,76 +1012,25 @@ const confirmarRegistroInteres = async () => {
       servicios_ids: form.value.servicios_ids,
       interes_notificacion: true
     });
-    
-    Swal.fire({
-      title: '¡Interés registrado!',
-      text: 'Te notificaremos cuando se libere este horario.',
-      icon: 'success',
-      timer: 3000
-    });
-    
+    Swal.fire({ title: '¡Interés registrado!', icon: 'success' });
     mostrarModalInteres.value = false;
-    horarioSeleccionadoInteres.value = null;
-  } catch (error) {
-    console.error('Error registrando interés:', error);
-    Swal.fire({
-      title: 'Error',
-      text: 'No se pudo registrar tu interés. Intenta nuevamente.',
-      icon: 'error'
-    });
-  } finally {
-    registrandoInteres.value = false;
-  }
+  } catch (e) { Swal.fire({ title: 'Error', icon: 'error' }); } 
+  finally { registrandoInteres.value = false; }
 }
 
-// ==========================================
-// LIFECYCLE & WATCHERS
-// ==========================================
+const filtrarServicios = () => { nextTick(); };
+const volverAlListado = () => router.push('/cliente/historial');
+const irAlListado = () => router.push('/cliente/historial');
+const nuevaReserva = () => window.location.reload();
+const volverAtras = () => router.back();
+const irAServicios = () => router.push('/servicios');
 
-onMounted(() => {
-  console.log('Componente RegistrarTurnoWeb montado');
-  cargarDatosIniciales();
-});
+onMounted(cargarDatosIniciales);
+watch(() => form.value.fecha, (f) => f && form.value.peluquero && cargarTurnosOcupados(f));
+watch(() => form.value.peluquero, (p) => p && form.value.fecha && cargarTurnosOcupados(form.value.fecha));
 
-watch(() => form.value.fecha, (newFecha) => {
-  if (newFecha && form.value.peluquero) {
-    cargarTurnosOcupados(newFecha);
-  }
-});
-
-watch(() => form.value.peluquero, (newPeluquero) => {
-  if (newPeluquero && form.value.fecha) {
-    cargarTurnosOcupados(form.value.fecha);
-  }
-});
-
-// ==========================================
-// FUNCIONES DE NAVEGACIÓN
-// ==========================================
-
-const volverAtras = () => {
-  router.back();
-}
-
-const irAServicios = () => {
-  router.push('/servicios');
-}
-
-// ==========================================
-// EXPORTAR FUNCIONES SI ES NECESARIO
-// ==========================================
-
-// Si necesitas exponer funciones al template
 defineExpose({
-  form,
-  usuario,
-  serviciosFiltrados,
-  toggleServicio,
-  estaServicioSeleccionado,
-  eliminarServicio,
-  crearPagoMercadoPago,
-  volverAtras,
-  irAServicios
+  form, usuario, serviciosFiltrados, toggleServicio, estaServicioSeleccionado, eliminarServicio, crearPagoMercadoPago, volverAtras, irAServicios
 });
 </script>
 
@@ -2710,6 +2495,299 @@ defineExpose({
   
   .modal-actions {
     flex-direction: column;
+  }
+}
+
+/* Tablet y pantallas medianas */
+@media (max-width: 1024px) {
+  .main-card-container {
+    padding: 30px;
+  }
+  
+  .grid-servicios {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .grid-peluqueros {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .grid-horarios-mejorado {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Móviles grandes (iPhone 12/13, Samsung S20) */
+@media (max-width: 768px) {
+  .page-background {
+    padding: 15px 10px;
+  }
+  
+  .main-card-container {
+    padding: 20px;
+    border-radius: 20px;
+  }
+  
+  /* Header responsive */
+  .header-section {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+    padding: 20px;
+  }
+  
+  .header-section h2 {
+    font-size: 1.5em;
+  }
+  
+  .btn-back {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  /* Cards más compactas */
+  .card-modern {
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  
+  .card-header h3 {
+    font-size: 1.1em;
+  }
+  
+  /* Alerta Mercado Pago */
+  .alerta-contenido {
+    flex-direction: column;
+    text-align: center;
+    gap: 20px;
+  }
+  
+  .alerta-mensaje h4 {
+    font-size: 1.2em;
+  }
+  
+  .alerta-mensaje p {
+    font-size: 1em;
+  }
+  
+  /* Grids a 1 columna */
+  .grid-servicios {
+    grid-template-columns: 1fr;
+  }
+  
+  .grid-peluqueros {
+    grid-template-columns: 1fr;
+  }
+  
+  .grid-horarios-mejorado {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  .pago-options {
+    grid-template-columns: 1fr;
+  }
+  
+  .cliente-datos {
+    grid-template-columns: 1fr;
+  }
+  
+  /* Modal responsive */
+  .modal-content {
+    padding: 24px;
+    width: 95%;
+    max-height: 90vh;
+  }
+  
+  /* Calendario */
+  .calendar-days-header {
+    font-size: 0.85em;
+  }
+  
+  .day-btn {
+    font-size: 0.9rem;
+  }
+  
+  .badge-count {
+    font-size: 0.75rem;
+    padding: 4px 10px;
+  }
+}
+
+/* Móviles pequeños (iPhone SE, Galaxy S10) */
+@media (max-width: 480px) {
+  .page-background {
+    padding: 10px 8px;
+  }
+  
+  .main-card-container {
+    padding: 15px;
+    border-radius: 16px;
+  }
+  
+  /* Header más compacto */
+  .header-section {
+    padding: 15px;
+  }
+  
+  .header-section h2 {
+    font-size: 1.3em;
+  }
+  
+  /* Cards aún más compactas */
+  .card-modern {
+    padding: 15px;
+  }
+  
+  .card-header {
+    gap: 10px;
+  }
+  
+  .card-icon {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .card-header h3 {
+    font-size: 1em;
+  }
+  
+  /* Horarios a 2 columnas */
+  .grid-horarios-mejorado {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .hora-texto-mejorada {
+    font-size: 1rem;
+  }
+  
+  /* Toast más pequeño */
+  .toast-message {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    min-width: auto;
+    padding: 14px 16px;
+    font-size: 0.9rem;
+  }
+  
+  /* Modal acciones en columna */
+  .modal-actions {
+    flex-direction: column;
+  }
+  
+  /* Calendario más compacto */
+  .calendar-wrapper {
+    padding: 16px;
+  }
+  
+  .calendar-header {
+    margin-bottom: 15px;
+  }
+  
+  .mes-titulo {
+    font-size: 1em;
+  }
+  
+  .btn-nav-cal {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .calendar-days-header {
+    font-size: 0.75em;
+    margin-bottom: 10px;
+  }
+  
+  .calendar-grid {
+    gap: 6px;
+  }
+  
+  .day-btn {
+    font-size: 0.85rem;
+    min-height: 38px;
+  }
+  
+  .badge-today {
+    font-size: 0.5em;
+  }
+  
+  /* Resumen más compacto */
+  .resumen-item {
+    font-size: 0.9rem;
+    flex-wrap: wrap;
+  }
+  
+  .monto-final-pago {
+    font-size: 1.2rem;
+  }
+  
+  .btn-confirmar-premium {
+    padding: 16px;
+    font-size: 1rem;
+  }
+  
+  /* Peluqueros más pequeños */
+  .peluquero-avatar {
+    width: 50px;
+    height: 50px;
+    font-size: 20px;
+  }
+  
+  .peluquero-nombre {
+    font-size: 16px;
+  }
+  
+  /* Alerta MP más compacta */
+  .alerta-icono-grande {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .alerta-mensaje h4 {
+    font-size: 1.1em;
+  }
+  
+  .btn-ver-turnos,
+  .btn-nueva-reserva {
+    padding: 14px;
+    font-size: 1rem;
+  }
+}
+
+/* Móviles MUY pequeños (iPhone 5/SE 1st gen) */
+@media (max-width: 360px) {
+  .page-background {
+    padding: 8px 5px;
+  }
+  
+  .main-card-container {
+    padding: 12px;
+  }
+  
+  .header-section {
+    padding: 12px;
+  }
+  
+  .header-section h2 {
+    font-size: 1.2em;
+  }
+  
+  .card-modern {
+    padding: 12px;
+  }
+  
+  /* Horarios a 1 columna en pantallas muy pequeñas */
+  .grid-horarios-mejorado {
+    grid-template-columns: 1fr;
+  }
+  
+  .calendar-days-header span {
+    font-size: 0.7em;
+  }
+  
+  .day-btn {
+    font-size: 0.8rem;
+    min-height: 35px;
   }
 }
 </style>

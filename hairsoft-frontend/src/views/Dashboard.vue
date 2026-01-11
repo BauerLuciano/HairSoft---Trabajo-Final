@@ -436,7 +436,7 @@ const fetchDashboardData = async () => {
       params = { period: selectedPeriod.value }
     }
     
-    const res = await axios.get('/usuarios/api/dashboard/', { params })
+    const res = await axios.get('/api/dashboard/', { params })
     // Mezclamos con los valores actuales para no perder defaults si falta algo
     dashboardData.value = { ...dashboardData.value, ...res.data }
 
