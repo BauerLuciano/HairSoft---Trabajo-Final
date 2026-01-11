@@ -96,8 +96,9 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useCartStore } from '@/stores/cart';
-import api from '@/services/api'; 
+import api from '@/services/api'; // ✅ Usamos tu conexión inteligente
 import { useRouter } from 'vue-router';
+import Swal from 'sweetalert2';
 
 const cartStore = useCartStore();
 const router = useRouter();
@@ -119,26 +120,29 @@ const procesarPedido = async () => {
   if (cartStore.items.length === 0) return;
   
   if (tipoEntrega.value !== 'RETIRO' && !direccion.value.trim()) {
-    alert("⚠️ Por favor ingresa una dirección para el envío.");
+    Swal.fire({ title: 'Atención', text: "Por favor ingresa una dirección de envío.", icon: 'warning' });
     return;
   }
 
-  // 1. ABRIR VENTANA INMEDIATAMENTE (Para evitar bloqueo de popup)
+  // 1. ABRIMOS LA VENTANA INMEDIATAMENTE (Tu técnica para evitar bloqueos)
   const mpWindow = window.open('', '_blank');
+  
   if (mpWindow) {
     mpWindow.document.write(`
       <html>
         <head><title>Procesando Pago...</title></head>
-        <body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#f8f9fa;font-family:sans-serif;">
+        <body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#0f172a;color:white;font-family:sans-serif;">
           <div style="text-align:center;">
+            <div style="border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
             <h2>Conectando con Mercado Pago...</h2>
-            <p>Por favor espere, no cierre esta ventana.</p>
+            <p>Por favor no cierres esta ventana.</p>
+            <style> @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } </style>
           </div>
         </body>
       </html>
     `);
   } else {
-    alert("⚠️ Tu navegador bloqueó la ventana de pago. Por favor habilitá las ventanas emergentes.");
+    Swal.fire({ title: 'Ventana bloqueada', text: "Tu navegador bloqueó la ventana de pago. Por favor permití los popups.", icon: 'error' });
     return;
   }
 
@@ -148,31 +152,34 @@ const procesarPedido = async () => {
     const payload = {
       tipo_entrega: tipoEntrega.value,
       costo_envio: costoEnvio.value,
-      direccion_envio: tipoEntrega.value !== 'RETIRO' ? `${direccion.value} (${referencia.value})` : '',
+      direccion_envio: tipoEntrega.value !== 'RETIRO' ? `${direccion.value} (${referencia.value})` : 'Retiro en local',
       detalles: cartStore.items.map(item => ({ producto: item.id, cantidad: item.cantidad }))
     };
 
-    // 2. Llamada a API
+    // 2. LLAMADA A RAILWAY (vía api.js)
     const response = await api.post('/pedidos-web/', payload);
 
     if (response.data.url_pago) {
-        // 3. Redirigir la ventana emergente a MP
+        // 3. Redirigimos la ventana que ya estaba abierta
         mpWindow.location.href = response.data.url_pago;
 
-        // 4. Limpiar y Redirigir el sitio principal a Mis Pedidos
+        // 4. Limpiamos carrito y mandamos el sitio principal a 'Mis Pedidos'
         cartStore.limpiarCarrito(); 
         router.push({ name: 'DashboardCliente', query: { ver: 'pedidos' } });
 
     } else {
         mpWindow.close();
-        alert("Error: No se recibió el link de pago.");
-        router.push({ name: 'DashboardCliente', query: { ver: 'pedidos' } });
+        throw new Error("No se recibió el link de pago.");
     }
 
   } catch (error) {
-    mpWindow.close();
+    if (mpWindow) mpWindow.close();
     console.error("Error checkout:", error);
-    alert("Ocurrió un error al procesar el pedido. Revisá tu conexión o stock.");
+    Swal.fire({ 
+      title: 'Error', 
+      text: error.response?.data?.message || "No se pudo procesar el pago. Revisá tu conexión.", 
+      icon: 'error' 
+    });
   } finally {
     procesando.value = false;
   }

@@ -314,41 +314,41 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import api from '@/services/api'
+import api from '@/services/api' // ✅ Sincronizado
 import { useCartStore } from '@/stores/cart'
 import { 
   Package, PackageSearch, Search, X, 
   ChevronLeft, ChevronRight, Trash2, Tag, ShoppingCart 
 } from 'lucide-vue-next'
 
-// Inicializar el store
 const cartStore = useCartStore()
-
 const productos = ref([])
 const categorias = ref([])
 const marcas = ref([])
-
-const filtros = ref({ 
-  busqueda: '', 
-  categoria: '', 
-  marca: '',
-  orden: 'nombre'
-})
-
+const filtros = ref({ busqueda: '', categoria: '', marca: '', orden: 'nombre' })
 const pagina = ref(1)
 const itemsPorPagina = 8
 const inputPagina = ref(1)
-
 const mostrarModal = ref(false)
 const productoSeleccionado = ref(null)
 
-// Función para agregar al carrito con validación básica
+// --- DETECCIÓN DE ENTORNO PARA IMÁGENES ---
+const isProduction = window.location.hostname.includes('vercel.app');
+const MEDIA_BASE = isProduction 
+  ? 'https://web-production-ac47c.up.railway.app' 
+  : 'http://127.0.0.1:8000';
+
+const getImageUrl = (img) => {
+  if (!img) return '/placeholder.png'; 
+  if (img.startsWith('http')) return img; // Cloudinary o URL completa
+  return `${MEDIA_BASE}${img}`; // ✅ YA NO ES MÁS 127.0.0.1 FIJO
+}
+
 const agregarAlCarrito = (producto) => {
   if (producto && producto.stock_actual > 0) {
     cartStore.agregarProducto(producto);
   } else {
-    // Si llegamos aquí y el botón estaba habilitado (raro), mostramos alerta
-    alert("Este producto no tiene stock disponible.");
+    alert("Sin stock disponible.");
   }
 }
 
@@ -367,56 +367,44 @@ const cerrarModal = () => {
 const cargarProductos = async () => {
   try {
     const res = await api.get('/catalogo/')
-    productos.value = res.data
+    productos.value = Array.isArray(res.data) ? res.data : (res.data.results || [])
   } catch (err) { console.error(err) }
 }
 
 const cargarCategorias = async () => {
   try {
     const res = await api.get('/categorias/productos/')
-    categorias.value = res.data
+    categorias.value = Array.isArray(res.data) ? res.data : (res.data.results || [])
   } catch (err) { console.error(err) }
 }
 
 const cargarMarcas = async () => {
   try {
     const res = await api.get('/marcas/')
-    marcas.value = res.data
+    marcas.value = Array.isArray(res.data) ? res.data : (res.data.results || [])
   } catch (err) { console.error(err) }
-}
-
-const getImageUrl = (img) => {
-  if (!img) return '/placeholder.png'; 
-  if (img.startsWith('http')) return img;
-  return `http://127.0.0.1:8000${img}`; 
 }
 
 const getCategoriaNombre = (producto) => {
   if (producto.categoria_nombre) return producto.categoria_nombre
-  if (producto.categoria) {
-    const categoria = categorias.value.find(c => c.id === producto.categoria)
-    return categoria ? categoria.nombre : 'General'
-  }
-  return 'General'
+  const cat = categorias.value.find(c => c.id == producto.categoria)
+  return cat ? cat.nombre : 'General'
 }
 
 const getMarcaNombre = (producto) => {
   if (producto.marca_nombre) return producto.marca_nombre
-  if (producto.marca) {
-    const marca = marcas.value.find(m => m.id === producto.marca)
-    return marca ? marca.nombre : 'Genérico'
-  }
-  return 'Genérico'
+  const m = marcas.value.find(m => m.id == producto.marca)
+  return m ? m.nombre : 'Genérico'
 }
 
 onMounted(async () => {
-  await cargarCategorias()
-  await cargarMarcas()
-  await cargarProductos()
+  await Promise.all([cargarCategorias(), cargarMarcas(), cargarProductos()])
 })
 
 const productosFiltrados = computed(() => {
-  let filtrados = productos.value.filter(p => {
+  const lista = Array.isArray(productos.value) ? productos.value : []
+  let filtrados = lista.filter(p => {
+    if (!p) return false
     const busca = filtros.value.busqueda.toLowerCase()
     const matchBusqueda = !busca || (p.nombre?.toLowerCase().includes(busca) || p.descripcion?.toLowerCase().includes(busca))
     const matchCategoria = !filtros.value.categoria || p.categoria == filtros.value.categoria
@@ -424,11 +412,10 @@ const productosFiltrados = computed(() => {
     return matchBusqueda && matchCategoria && matchMarca
   })
 
-  switch(filtros.value.orden) {
-    case 'precio_asc': filtrados.sort((a, b) => Number(a.precio) - Number(b.precio)); break
-    case 'precio_desc': filtrados.sort((a, b) => Number(b.precio) - Number(a.precio)); break
-    default: filtrados.sort((a, b) => a.nombre?.localeCompare(b.nombre || ''))
-  }
+  if (filtros.value.orden === 'precio_asc') filtrados.sort((a, b) => Number(a.precio) - Number(b.precio))
+  else if (filtros.value.orden === 'precio_desc') filtrados.sort((a, b) => Number(b.precio) - Number(a.precio))
+  else filtrados.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+  
   return filtrados
 })
 
@@ -441,49 +428,21 @@ const productosPaginados = computed(() => {
 const getPaginasVisibles = computed(() => {
   const total = totalPaginas.value;
   const current = pagina.value;
-  const paginas = [];
-  
   let start = Math.max(1, current - 2);
   let end = Math.min(total, start + 4);
-  
-  if (end - start < 4) {
-    start = Math.max(1, end - 4);
-  }
-  
-  for (let i = start; i <= end; i++) {
-    paginas.push(i);
-  }
-  
-  return paginas;
+  if (end - start < 4) start = Math.max(1, end - 4);
+  const pages = [];
+  for (let i = start; i <= end; i++) pages.push(i);
+  return pages;
 });
 
 const hayFiltrosActivos = computed(() => filtros.value.busqueda || filtros.value.categoria || filtros.value.marca)
 const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
-const cambiarPagina = (num) => { if (num !== '...') pagina.value = num }
-
-const irAPaginaEspecifica = () => {
-  if (!inputPagina.value || inputPagina.value < 1) {
-    inputPagina.value = 1;
-  } else if (inputPagina.value > totalPaginas.value) {
-    inputPagina.value = totalPaginas.value;
-  }
-  
-  if (pagina.value !== inputPagina.value) {
-    pagina.value = inputPagina.value;
-  }
-};
-
+const cambiarPagina = (num) => { pagina.value = num }
 const limpiarFiltros = () => { filtros.value = { busqueda: '', categoria: '', marca: '', orden: 'nombre' }; pagina.value = 1 }
 
-watch(pagina, (newVal) => {
-  inputPagina.value = newVal;
-}, { immediate: true });
-
-watch(filtros, () => {
-  pagina.value = 1
-  inputPagina.value = 1
-}, { deep: true })
+watch(filtros, () => { pagina.value = 1 }, { deep: true })
 </script>
 
 <style scoped>

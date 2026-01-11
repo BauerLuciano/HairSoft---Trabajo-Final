@@ -199,7 +199,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import api from '@/services/api' // ✅ Usamos el servicio centralizado
+import api from '@/services/api' // ✅ Usamos el motor inteligente
 import { 
   Scissors, Package, Clock, Search, X, 
   ChevronLeft, ChevronRight, Trash2, Star
@@ -218,26 +218,24 @@ const pagina = ref(1)
 const itemsPorPagina = 8
 
 const cargarServicios = async () => {
-  cargando.value = true // Aseguramos que empiece cargando
+  cargando.value = true 
   try {
-    // ✅ Usamos la instancia api que ya tiene la URL base configurada
+    // Llamada limpia al backend
     const response = await api.get('/servicios/') 
     
-    // ✅ DETECCIÓN INTELIGENTE DE PAGINACIÓN
-    // Si Django devuelve { results: [...] }, usamos results. Si devuelve [...], usamos data.
+    // Detección de formato (Lista simple o paginada de Django)
     const datosRecibidos = Array.isArray(response.data) 
       ? response.data 
       : (response.data.results || [])
 
-    // Filtramos solo activos
-    servicios.value = datosRecibidos.filter(s => s.estado === 'ACTIVO' || !s.estado)
+    // Filtramos solo activos con escudo para nulos
+    servicios.value = datosRecibidos.filter(s => s && (s.estado === 'ACTIVO' || !s.estado))
     
-    console.log('✅ Servicios cargados:', servicios.value.length)
+    console.log('✅ Servicios sincronizados:', servicios.value.length)
   } catch (error) {
-    console.error('❌ Error cargando servicios:', error)
-    // Opcional: Podrías mostrar un toast de error aquí
+    console.error('❌ Error en servicios:', error)
   } finally {
-    cargando.value = false // ✅ Esto asegura que el spinner se vaya SIEMPRE
+    cargando.value = false // ✅ SE VA EL SPINNER PASE LO QUE PASE
   }
 }
 
@@ -250,12 +248,12 @@ onMounted(() => {
   cargarServicios()
 })
 
-// --- COMPUTED PROPERTIES ---
+// --- LÓGICA DE FILTROS (BLINDADA) ---
 
 const categoriasUnicas = computed(() => {
-  if (!servicios.value) return []
+  if (!servicios.value || !Array.isArray(servicios.value)) return []
   return servicios.value
-    .map(s => s.categoria_nombre || s.categoria) // Soporte para nombre o ID
+    .map(s => s.categoria_nombre || s.categoria)
     .filter((cat, index, self) => 
       cat && String(cat).trim() && self.indexOf(cat) === index
     )
@@ -263,17 +261,15 @@ const categoriasUnicas = computed(() => {
 })
 
 const serviciosFiltrados = computed(() => {
-  if (!servicios.value) return []
+  const lista = Array.isArray(servicios.value) ? servicios.value : []
   
-  let filtrados = servicios.value.filter(s => {
+  let filtrados = lista.filter(s => {
+    if (!s) return false
     const busca = filtros.value.busqueda.toLowerCase()
-    // Validación segura de nulos
-    const nombre = s.nombre ? s.nombre.toLowerCase() : ''
-    const desc = s.descripcion ? s.descripcion.toLowerCase() : ''
+    const nombre = s.nombre ? String(s.nombre).toLowerCase() : ''
+    const desc = s.descripcion ? String(s.descripcion).toLowerCase() : ''
     
     const matchBusqueda = !busca || (nombre.includes(busca) || desc.includes(busca))
-    
-    // Comparación segura de categoría (puede ser ID o nombre)
     const catActual = s.categoria_nombre || s.categoria
     const matchCategoria = !filtros.value.categoria || catActual === filtros.value.categoria
     
@@ -281,30 +277,23 @@ const serviciosFiltrados = computed(() => {
   })
 
   // Ordenar
-  switch(filtros.value.orden) {
-    case 'precio_asc':
-      filtrados.sort((a, b) => (Number(a.precio) || 0) - (Number(b.precio) || 0))
-      break
-    case 'precio_desc':
-      filtrados.sort((a, b) => (Number(b.precio) || 0) - (Number(a.precio) || 0))
-      break
-    case 'duracion_asc':
-      filtrados.sort((a, b) => (Number(a.duracion) || 0) - (Number(b.duracion) || 0))
-      break
-    case 'duracion_desc':
-      filtrados.sort((a, b) => (Number(b.duracion) || 0) - (Number(a.duracion) || 0))
-      break
-    default:
-      filtrados.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+  const sortMap = {
+    'precio_asc': (a, b) => (Number(a.precio) || 0) - (Number(b.precio) || 0),
+    'precio_desc': (a, b) => (Number(b.precio) || 0) - (Number(a.precio) || 0),
+    'duracion_asc': (a, b) => (Number(a.duracion) || 0) - (Number(b.duracion) || 0),
+    'duracion_desc': (a, b) => (Number(b.duracion) || 0) - (Number(a.duracion) || 0)
+  }
+
+  if (sortMap[filtros.value.orden]) {
+    filtrados.sort(sortMap[filtros.value.orden])
+  } else {
+    filtrados.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
   }
 
   return filtrados
 })
 
-const totalPaginas = computed(() => 
-  Math.max(1, Math.ceil(serviciosFiltrados.value.length / itemsPorPagina))
-)
-
+const totalPaginas = computed(() => Math.max(1, Math.ceil(serviciosFiltrados.value.length / itemsPorPagina)))
 const serviciosPaginados = computed(() => {
   const inicio = (pagina.value - 1) * itemsPorPagina
   return serviciosFiltrados.value.slice(inicio, inicio + itemsPorPagina)
@@ -314,37 +303,21 @@ const paginasVisibles = computed(() => {
   const total = totalPaginas.value
   const current = pagina.value
   const pages = []
-  
   if (total <= 5) {
     for (let i = 1; i <= total; i++) pages.push(i)
   } else {
-    if (current <= 3) {
-      for (let i = 1; i <= 4; i++) pages.push(i)
-      pages.push('...', total)
-    } else if (current >= total - 2) {
-      pages.push(1, '...')
-      for (let i = total - 3; i <= total; i++) pages.push(i)
-    } else {
-      pages.push(1, '...', current - 1, current, current + 1, '...', total)
-    }
+    if (current <= 3) { pages.push(1, 2, 3, 4, '...', total) }
+    else if (current >= total - 2) { pages.push(1, '...', total - 3, total - 2, total - 1, total) }
+    else { pages.push(1, '...', current - 1, current, current + 1, '...', total) }
   }
   return pages
 })
 
-const hayFiltrosActivos = computed(() => {
-  return filtros.value.busqueda || filtros.value.categoria
-})
-
-// --- MÉTODOS ---
-
+const hayFiltrosActivos = computed(() => filtros.value.busqueda || filtros.value.categoria)
 const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 const cambiarPagina = (num) => { if (num !== '...') pagina.value = num }
-
-const limpiarFiltros = () => { 
-  filtros.value = { busqueda: '', categoria: '', orden: 'nombre' }
-  pagina.value = 1 
-}
+const limpiarFiltros = () => { filtros.value = { busqueda: '', categoria: '', orden: 'nombre' }; pagina.value = 1 }
 
 watch(filtros, () => { pagina.value = 1 }, { deep: true })
 </script>
