@@ -2,6 +2,7 @@
   <div class="auth-page">
     <div class="auth-container">
       
+      <!-- Panel Visual - Solo desktop/tablet -->
       <div class="visual-panel">
         <div class="image-wrapper">
           <div class="gradient-overlay"></div>
@@ -12,6 +13,7 @@
         </div>
       </div>
 
+      <!-- Panel de Login -->
       <div class="auth-panel">
         <div class="auth-wrapper">
           
@@ -172,7 +174,6 @@ const handleLogin = async () => {
   loading.value = true;
   
   try {
-    // Usamos la URL dinámica que definimos arriba
     const response = await axios.post(`${API_BASE}/api/auth/login/`, credentials.value);
     
     if (response.data.status === 'ok') {
@@ -209,7 +210,6 @@ const handleLogin = async () => {
   } catch (error) {
     console.error("Error en login:", error);
     
-    // Si no hay respuesta del servidor (error de red), avisamos que es conexión
     const errorMsg = error.response 
       ? (error.response.data?.message || 'Credenciales incorrectas.') 
       : 'No se pudo conectar con el servidor. Revisá tu conexión.';
@@ -263,7 +263,7 @@ const handleForgotPassword = () => {
     radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.08) 0%, transparent 50%),
     linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-  padding: 40px 20px;
+  padding: 20px;
   position: relative;
   overflow: hidden;
 }
@@ -289,9 +289,9 @@ const handleForgotPassword = () => {
   display: flex;
   width: 100%;
   max-width: 1300px;
-  height: 1020px;
+  min-height: 700px;
   background: rgba(255, 255, 255, 0.98);
-  border-radius: 32px;
+  border-radius: 24px;
   overflow: hidden;
   box-shadow: 
     0 0 0 1px rgba(255, 255, 255, 0.1),
@@ -336,40 +336,17 @@ const handleForgotPassword = () => {
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 64px;
+  padding: 48px;
   color: white;
   z-index: 2;
 }
 
-.floating-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 24px;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px);
-  border-radius: 100px;
-  font-size: 0.8125rem;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  margin-bottom: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-}
-
-.floating-badge svg {
-  width: 16px;
-  height: 16px;
-  stroke: #fbbf24;
-}
-
 .content-block h1 {
-  font-size: 3.75rem;
+  font-size: 3rem;
   font-weight: 900;
-  line-height: 1.05;
-  margin-bottom: 24px;
-  letter-spacing: -0.06em;
+  line-height: 1.1;
+  margin-bottom: 20px;
+  letter-spacing: -0.05em;
   background: linear-gradient(135deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -378,33 +355,10 @@ const handleForgotPassword = () => {
 
 .content-block p {
   font-size: 1.125rem;
-  line-height: 1.7;
+  line-height: 1.6;
   opacity: 0.9;
   max-width: 500px;
   font-weight: 400;
-  margin-bottom: 36px;
-}
-
-.features {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.feature-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 0.9375rem;
-  font-weight: 500;
-  opacity: 0.95;
-}
-
-.feature-item svg {
-  width: 20px;
-  height: 20px;
-  stroke: #10b981;
-  flex-shrink: 0;
 }
 
 /* ==================== AUTH PANEL ==================== */
@@ -413,7 +367,7 @@ const handleForgotPassword = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 60px;
+  padding: 48px 40px;
   background: #ffffff;
   position: relative;
 }
@@ -440,19 +394,19 @@ const handleForgotPassword = () => {
 /* BRAND HEADER */
 .brand-header {
   text-align: center;
-  margin-bottom: 48px;
+  margin-bottom: 40px;
 }
 
 .brand-icon {
-  width: 88px;
-  height: 88px;
+  width: 80px;
+  height: 80px;
   background: linear-gradient(135deg, #1f42f0 0%, #129089 100%);
-  border-radius: 24px;
+  border-radius: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: white;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
   position: relative;
   box-shadow: 
     0 20px 40px -12px rgba(99, 102, 241, 0.4),
@@ -463,24 +417,24 @@ const handleForgotPassword = () => {
   position: absolute;
   inset: -8px;
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  border-radius: 28px;
+  border-radius: 24px;
   opacity: 0.2;
   filter: blur(20px);
   z-index: -1;
 }
 
 .brand-icon svg {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.2));
 }
 
 .brand-header h1 {
-  font-size: 2.75rem;
+  font-size: 2.5rem;
   font-weight: 900;
   color: #0f172a;
-  margin-bottom: 12px;
-  letter-spacing: -0.05em;
+  margin-bottom: 10px;
+  letter-spacing: -0.04em;
   background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -488,7 +442,7 @@ const handleForgotPassword = () => {
 }
 
 .brand-header p {
-  font-size: 1.0625rem;
+  font-size: 1rem;
   color: #64748b;
   font-weight: 600;
 }
@@ -499,15 +453,15 @@ const handleForgotPassword = () => {
 }
 
 .input-field {
-  margin-bottom: 26px;
+  margin-bottom: 22px;
 }
 
 .input-field label {
   display: block;
-  font-size: 0.9375rem;
+  font-size: 0.9rem;
   font-weight: 700;
   color: #0f172a;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   letter-spacing: -0.01em;
 }
 
@@ -517,7 +471,7 @@ const handleForgotPassword = () => {
   align-items: center;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   border: 2px solid #e2e8f0;
-  border-radius: 14px;
+  border-radius: 12px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -537,7 +491,7 @@ const handleForgotPassword = () => {
 
 .icon {
   position: absolute;
-  left: 20px;
+  left: 16px;
   color: #94a3b8;
   display: flex;
   align-items: center;
@@ -552,11 +506,11 @@ const handleForgotPassword = () => {
 
 .input-wrap input {
   width: 100%;
-  height: 58px;
-  padding: 0 20px 0 56px;
+  height: 52px;
+  padding: 0 16px 0 50px;
   border: none;
   background: transparent;
-  font-size: 1.0rem;
+  font-size: 0.95rem;
   color: #0f172a;
   font-family: inherit;
   font-weight: 600;
@@ -570,15 +524,15 @@ const handleForgotPassword = () => {
 
 .toggle-btn {
   position: absolute;
-  right: 14px;
+  right: 12px;
   background: transparent;
   border: none;
   color: #94a3b8;
   cursor: pointer;
-  padding: 10px;
+  padding: 8px;
   display: flex;
   align-items: center;
-  border-radius: 10px;
+  border-radius: 8px;
   transition: all 0.2s;
 }
 
@@ -591,11 +545,11 @@ const handleForgotPassword = () => {
 .form-footer {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
 }
 
 .link-secondary {
-  font-size: 0.9375rem;
+  font-size: 0.9rem;
   color: #6366f1;
   text-decoration: none;
   font-weight: 700;
@@ -621,12 +575,12 @@ const handleForgotPassword = () => {
 /* PRIMARY BUTTON */
 .btn-primary {
   width: 100%;
-  height: 58px;
+  height: 52px;
   background: transparent;
   color: white;
   border: none;
-  border-radius: 14px;
-  font-size: 1.0625rem;
+  border-radius: 12px;
+  font-size: 1rem;
   font-weight: 800;
   cursor: pointer;
   font-family: inherit;
@@ -662,14 +616,13 @@ const handleForgotPassword = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   height: 100%;
-
 }
 
 .btn-content svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
 }
 
 .btn-primary:active:not(:disabled) {
@@ -683,8 +636,8 @@ const handleForgotPassword = () => {
 }
 
 .spinner {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border: 3px solid rgba(255,255,255,0.3);
   border-top-color: white;
   border-radius: 50%;
@@ -699,7 +652,7 @@ const handleForgotPassword = () => {
 .divider {
   display: flex;
   align-items: center;
-  margin: 36px 0;
+  margin: 32px 0;
   position: relative;
 }
 
@@ -711,9 +664,9 @@ const handleForgotPassword = () => {
 }
 
 .divider span {
-  padding: 0 20px;
+  padding: 0 16px;
   color: #94a3b8;
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   font-weight: 600;
 }
 
@@ -723,9 +676,9 @@ const handleForgotPassword = () => {
 }
 
 .register-prompt {
-  font-size: 0.9375rem;
+  font-size: 0.9rem;
   color: #64748b;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
   font-weight: 500;
 }
 
@@ -748,17 +701,17 @@ const handleForgotPassword = () => {
   gap: 8px;
   color: #64748b;
   text-decoration: none;
-  font-size: 0.9375rem;
+  font-size: 0.9rem;
   font-weight: 700;
-  padding: 10px 20px;
+  padding: 10px 18px;
   border-radius: 10px;
   transition: all 0.2s;
   border: 1px solid transparent;
 }
 
 .link-home svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .link-home:hover {
@@ -770,48 +723,55 @@ const handleForgotPassword = () => {
 /* TAGLINE */
 .tagline {
   text-align: center;
-  margin-top: 44px;
-  font-size: 0.8125rem;
+  margin-top: 36px;
+  font-size: 0.8rem;
   color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.15em;
   font-weight: 800;
 }
 
-/* RESPONSIVE */
+/* ==================== RESPONSIVE MEJORADO ==================== */
+
+/* Tablet grande */
 @media (max-width: 1100px) {
   .auth-container {
-    max-width: 1200px;
-    height: 680px;
-  }
-  
-  .content-block h1 {
-    font-size: 3rem;
-  }
-}
-
-@media (max-width: 900px) {
-  .auth-page {
-    padding: 20px;
-  }
-  
-  .auth-container {
-    flex-direction: column;
-    height: auto;
-    max-width: 600px;
-  }
-  
-  .visual-panel {
-    min-height: 360px;
-    max-height: 360px;
-  }
-  
-  .content-block {
-    padding: 48px;
+    min-height: 650px;
   }
   
   .content-block h1 {
     font-size: 2.5rem;
+  }
+  
+  .content-block {
+    padding: 40px;
+  }
+}
+
+/* Tablet */
+@media (max-width: 900px) {
+  .auth-page {
+    padding: 16px;
+  }
+  
+  .auth-container {
+    flex-direction: column;
+    min-height: auto;
+    max-width: 600px;
+    border-radius: 20px;
+  }
+  
+  .visual-panel {
+    min-height: 300px;
+    max-height: 300px;
+  }
+  
+  .content-block {
+    padding: 32px;
+  }
+  
+  .content-block h1 {
+    font-size: 2.25rem;
   }
   
   .content-block p {
@@ -819,10 +779,15 @@ const handleForgotPassword = () => {
   }
   
   .auth-panel {
-    padding: 48px 32px;
+    padding: 40px 32px;
+  }
+  
+  .brand-header h1 {
+    font-size: 2.25rem;
   }
 }
 
+/* Mobile grande */
 @media (max-width: 600px) {
   .auth-page {
     padding: 0;
@@ -834,42 +799,122 @@ const handleForgotPassword = () => {
     min-height: 100vh;
   }
   
+  /* OCULTAR imagen en móvil para mejor UX */
   .visual-panel {
-    min-height: 280px;
-    max-height: 280px;
-  }
-  
-  .content-block {
-    padding: 36px;
-  }
-  
-  .content-block h1 {
-    font-size: 2rem;
-  }
-  
-  .floating-badge {
-    padding: 8px 18px;
-    font-size: 0.75rem;
-  }
-  
-  .features {
-    gap: 10px;
-  }
-  
-  .feature-item {
-    font-size: 0.875rem;
-  }
-  
-  .brand-header {
-    margin-bottom: 36px;
-  }
-  
-  .brand-header h1 {
-    font-size: 2.25rem;
+    display: none;
   }
   
   .auth-panel {
-    padding: 36px 24px;
+    padding: 32px 24px;
+    flex: 1;
+  }
+  
+  .brand-header {
+    margin-bottom: 32px;
+  }
+  
+  .brand-icon {
+    width: 70px;
+    height: 70px;
+    margin-bottom: 20px;
+  }
+  
+  .brand-icon svg {
+    width: 38px;
+    height: 38px;
+  }
+  
+  .brand-header h1 {
+    font-size: 2rem;
+  }
+  
+  .brand-header p {
+    font-size: 0.95rem;
+  }
+  
+  .input-field {
+    margin-bottom: 20px;
+  }
+  
+  .input-field label {
+    font-size: 0.875rem;
+    margin-bottom: 8px;
+  }
+  
+  .input-wrap {
+    border-radius: 10px;
+  }
+  
+  .input-wrap input {
+    height: 50px;
+    font-size: 0.9rem;
+  }
+  
+  .btn-primary {
+    height: 50px;
+    font-size: 0.95rem;
+  }
+  
+  .form-footer {
+    margin-bottom: 24px;
+  }
+  
+  .link-secondary {
+    font-size: 0.875rem;
+  }
+  
+  .divider {
+    margin: 28px 0;
+  }
+  
+  .register-prompt {
+    font-size: 0.875rem;
+    margin-bottom: 14px;
+  }
+  
+  .link-home {
+    font-size: 0.875rem;
+    padding: 9px 16px;
+  }
+  
+  .tagline {
+    margin-top: 28px;
+    font-size: 0.75rem;
+  }
+}
+
+/* Mobile pequeño */
+@media (max-width: 380px) {
+  .auth-panel {
+    padding: 28px 20px;
+  }
+  
+  .brand-icon {
+    width: 64px;
+    height: 64px;
+  }
+  
+  .brand-icon svg {
+    width: 34px;
+    height: 34px;
+  }
+  
+  .brand-header h1 {
+    font-size: 1.75rem;
+  }
+  
+  .input-wrap input {
+    height: 48px;
+    font-size: 0.875rem;
+    padding: 0 14px 0 46px;
+  }
+  
+  .icon {
+    left: 14px;
+  }
+  
+  .btn-primary {
+    height: 48px;
   }
 }
 </style>

@@ -549,7 +549,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import api from '@/services/api' 
+import api from '@/services/api' // ✅ Usamos API centralizada
 import Swal from 'sweetalert2'
 import { 
   Calendar, ArrowLeft, User, UserCheck, FolderOpen, Tag, 
@@ -600,30 +600,32 @@ const mensajePromo = ref("")
 const horariosInteres = ref([])
 
 // ==========================================
-// 🛡️ LÓGICA DE SELECCIÓN (BLINDADA)
+// 🛡️ LÓGICA DE SELECCIÓN Y FILTROS (BLINDADA)
 // ==========================================
 
-// ESTA ES LA FUNCIÓN QUE SE ROMPÍA. AHORA ESTÁ ARREGLADA.
-const serviciosFiltrados = computed(() => {
-  // 1. Nos aseguramos de que sea un array SIEMPRE.
-  let lista = [];
-  if (Array.isArray(servicios.value)) {
-    lista = servicios.value;
-  } else if (servicios.value && Array.isArray(servicios.value.results)) {
-    lista = servicios.value.results;
-  }
+// Helper seguro para obtener lista plana
+const getListaServicios = () => {
+  if (Array.isArray(servicios.value)) return servicios.value;
+  if (servicios.value && Array.isArray(servicios.value.results)) return servicios.value.results;
+  return [];
+}
 
-  // 2. Filtro por Categoría
+const serviciosFiltrados = computed(() => {
+  let lista = getListaServicios();
+  
+  // Filtro Categoría
   if (categoriasSeleccionadas.value.length > 0) {
     lista = lista.filter(s => {
-      if (!s || !s.categoria) return false;
-      // Manejamos si categoria es objeto o ID
-      const catId = typeof s.categoria === 'object' ? String(s.categoria.id) : String(s.categoria);
+      if (!s) return false;
+      // Normalizamos ID de categoría a String para comparar
+      const catId = s.categoria && typeof s.categoria === 'object' 
+        ? String(s.categoria.id) 
+        : String(s.categoria);
       return categoriasSeleccionadas.value.includes(catId);
     });
   }
-
-  // 3. Filtro por Búsqueda
+  
+  // Filtro Búsqueda
   if (busquedaServicio.value.trim()) {
     const term = busquedaServicio.value.toLowerCase().trim();
     lista = lista.filter(s => s.nombre && s.nombre.toLowerCase().includes(term));
@@ -631,156 +633,153 @@ const serviciosFiltrados = computed(() => {
   return lista;
 });
 
-const toggleCategoria = (categoriaId) => {
-  const id = String(categoriaId)
-  const index = categoriasSeleccionadas.value.indexOf(id)
-  if (index > -1) categoriasSeleccionadas.value.splice(index, 1)
-  else categoriasSeleccionadas.value.push(id)
+const toggleCategoria = (id) => {
+  const cid = String(id); // Siempre String
+  const index = categoriasSeleccionadas.value.indexOf(cid);
+  if (index > -1) categoriasSeleccionadas.value.splice(index, 1);
+  else categoriasSeleccionadas.value.push(cid);
 }
 
 const toggleServicio = (servicio) => {
-  const servicioId = String(servicio.id)
-  if (form.value.servicios_ids.includes(servicioId)) {
-    form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== servicioId)
+  if (!servicio || !servicio.id) return;
+  const id = String(servicio.id); // Siempre String
+  
+  if (form.value.servicios_ids.includes(id)) {
+    form.value.servicios_ids = form.value.servicios_ids.filter(x => x !== id);
   } else {
-    form.value.servicios_ids = [...form.value.servicios_ids, servicioId]
+    form.value.servicios_ids = [...form.value.servicios_ids, id];
   }
-  if (form.value.hora) form.value.hora = ""
-  if (form.value.fecha && form.value.peluquero) cargarTurnosOcupados(form.value.fecha)
+  
+  // Resets al cambiar servicios
+  if (form.value.hora) form.value.hora = "";
+  if (form.value.fecha && form.value.peluquero) cargarTurnosOcupados(form.value.fecha);
 }
 
-const estaServicioSeleccionado = (servicio) => form.value.servicios_ids.includes(String(servicio.id))
+const estaServicioSeleccionado = (servicio) => {
+  return servicio && form.value.servicios_ids.includes(String(servicio.id));
+}
 
 const eliminarServicio = (servicioId) => {
-  form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== String(servicioId))
-  if (form.value.hora) form.value.hora = ""
-  if (form.value.fecha && form.value.peluquero) cargarTurnosOcupados(form.value.fecha)
+  form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== String(servicioId));
+  if (form.value.hora) form.value.hora = "";
+  if (form.value.fecha && form.value.peluquero) cargarTurnosOcupados(form.value.fecha);
 }
 
 const formularioValido = computed(() => {
-  return form.value.peluquero && form.value.servicios_ids.length > 0 && form.value.fecha && form.value.hora
+  return form.value.peluquero && form.value.servicios_ids.length > 0 && form.value.fecha && form.value.hora;
 })
 
 // ==========================================
-// 3. FUNCIONES DE UTILIDAD
+// 🛡️ CÁLCULOS (ANTI-CRASH)
+// ==========================================
+
+const calcularTotalOriginal = () => {
+  const lista = getListaServicios();
+  return form.value.servicios_ids.reduce((acc, id) => {
+    // Buscamos convirtiendo ambos a String
+    const s = lista.find(x => String(x.id) === String(id));
+    // Si s existe, sumamos. Si no (undefined), sumamos 0.
+    return acc + (s ? parseFloat(s.precio || 0) : 0);
+  }, 0);
+}
+
+const calcularTotalConDescuento = () => {
+  const total = calcularTotalOriginal();
+  return (total * (1 - descuentoAplicado.value / 100)).toFixed(2);
+}
+
+const calcularDuracionTotalServicios = () => {
+  const lista = getListaServicios();
+  return form.value.servicios_ids.reduce((t, id) => {
+    const s = lista.find(x => String(x.id) === String(id));
+    return t + (s ? parseInt(s.duracion || s.duracion_minutos || 20) : 0);
+  }, 0);
+}
+
+// ==========================================
+// API CALLS & HELPERS
 // ==========================================
 
 const getPeluqueroNombre = () => {
-  // Validación extra para evitar crash
   const lista = Array.isArray(peluqueros.value) ? peluqueros.value : (peluqueros.value?.results || []);
   if (!form.value.peluquero || lista.length === 0) return '';
-  
-  const p = lista.find(p => String(p.id) === String(form.value.peluquero));
-  if (!p) return '';
-  const n = p.nombre || p.first_name || '';
-  const a = p.apellido || p.last_name || '';
-  return (n && a) ? `${n} ${a}`.trim() : (n || p.username || 'Peluquero');
-}
-
-const getNombreCompletoPeluquero = (p) => {
-  if (!p) return '';
-  const n = p.nombre || p.first_name || '';
-  const a = p.apellido || p.last_name || '';
-  return (n && a) ? `${n} ${a}`.trim() : (n || p.username || 'Peluquero');
-}
-
-const getInicialesPeluquero = (p) => {
-  if (!p) return 'P';
-  const n = p.nombre || p.first_name || '';
-  const a = p.apellido || p.last_name || '';
-  return (n || p.username || 'P').charAt(0).toUpperCase();
-}
-
-const seleccionarPeluquero = (id) => {
-  form.value.peluquero = id
-  onPeluqueroSeleccionado()
-}
-
-const getCategoriaNombre = (cat) => {
-  if (!cat) return 'General';
-  // Si viene el objeto directo
-  if (typeof cat === 'object') return cat.nombre || 'General';
-  
-  // Si viene el ID, buscamos en la lista (con seguridad)
-  const lista = Array.isArray(categorias.value) ? categorias.value : (categorias.value?.results || []);
-  const c = lista.find(c => String(c.id) === String(cat));
-  return c ? c.nombre : 'General';
+  const p = lista.find(x => String(x.id) === String(form.value.peluquero));
+  return p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : (p?.username || 'Peluquero');
 }
 
 const getServiciosNombres = () => {
-  const lista = Array.isArray(servicios.value) ? servicios.value : (servicios.value?.results || []);
-  return form.value.servicios_ids.map(id => lista.find(s => String(s.id) === String(id))?.nombre || '').filter(n => n).join(', ')
+  const lista = getListaServicios();
+  return form.value.servicios_ids
+    .map(id => lista.find(s => String(s.id) === String(id))?.nombre || '')
+    .filter(n => n)
+    .join(', ');
 }
 
-const getServicioNombre = (id) => {
-  const lista = Array.isArray(servicios.value) ? servicios.value : (servicios.value?.results || []);
-  return lista.find(s => String(s.id) === String(id))?.nombre || 'Servicio eliminado';
+// ... Resto de helpers visuales ...
+const getNombreCompletoPeluquero = (p) => p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : '';
+const getInicialesPeluquero = (p) => (p?.nombre || 'P').charAt(0).toUpperCase();
+const formatoFechaLegible = (f) => f; // Simplificado para evitar errores de parseo
+const getCategoriaNombre = (cat) => {
+    const lista = Array.isArray(categorias.value) ? categorias.value : (categorias.value?.results || []);
+    if (typeof cat === 'object') return cat.nombre || 'General';
+    const c = lista.find(x => String(x.id) === String(cat));
+    return c ? c.nombre : 'General';
 }
-
-const formatoFechaLegible = (f) => f // Simplificado
-
-const estaInteresRegistrado = (hora) => horariosInteres.value.some(item => item.fecha === form.value.fecha && item.hora === hora && item.peluquero_id === form.value.peluquero)
-
-// ==========================================
-// 4. API CALLS (CARGA DE DATOS CORREGIDA)
-// ==========================================
 
 const cargarDatosIniciales = async () => {
-  const userId = localStorage.getItem('user_id')
+  const userId = localStorage.getItem('user_id');
   try {
     if (userId) {
-      const resU = await api.get(`/usuarios/${userId}/`)
+      const resU = await api.get(`/usuarios/${userId}/`);
       usuario.value = resU.data;
       form.value.cliente = userId;
     }
     
-    // CARGA SEGURA: Manejamos si devuelve array o paginación
     const [p, s, c] = await Promise.all([
       api.get('/peluqueros/'),
       api.get('/servicios/'),
       api.get('/categorias/servicios/')
-    ])
+    ]);
     
-    // Normalizamos los datos para que SIEMPRE sean arrays
+    // Normalización forzada de datos
     peluqueros.value = Array.isArray(p.data) ? p.data : (p.data.results || []);
     servicios.value = Array.isArray(s.data) ? s.data : (s.data.results || []);
     categorias.value = Array.isArray(c.data) ? c.data : (c.data.results || []);
     
-    console.log('✅ Datos cargados correctamente. Servicios:', servicios.value.length);
-
   } catch(e) { 
-    console.error('Error carga inicial:', e) 
+    console.error('Error carga inicial:', e);
     Swal.fire({title: 'Error', text: 'No se pudieron cargar los datos.', icon: 'error'});
   }
 }
 
 const cargarTurnosOcupados = async (fecha) => {
-  if (!form.value.peluquero) return
-  cargandoHorarios.value = true
+  if (!form.value.peluquero) return;
+  cargandoHorarios.value = true;
   try {
-    const res = await api.get(`/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`)
-    const turnos = Array.isArray(res.data) ? res.data : (res.data.results || [])
-    const ocupadosSet = new Set()
+    const res = await api.get(`/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`);
+    const turnos = Array.isArray(res.data) ? res.data : (res.data.results || []);
+    const ocupadosSet = new Set();
     
     turnos.forEach(turno => {
-      if (!turno.hora) return
-      const [h, m] = turno.hora.split(':').map(Number)
-      const inicioMin = h * 60 + m
-      let dur = turno.duracion_total || 20
+      if (!turno.hora) return;
+      const [h, m] = turno.hora.split(':').map(Number);
+      const inicioMin = h * 60 + m;
+      const dur = turno.duracion_total || 20; // fallback seguro
       for (let i = inicioMin; i < inicioMin + dur; i += 20) {
-        ocupadosSet.add(`${Math.floor(i / 60).toString().padStart(2, '0')}:${(i % 60).toString().padStart(2, '0')}`)
+        ocupadosSet.add(`${Math.floor(i / 60).toString().padStart(2, '0')}:${(i % 60).toString().padStart(2, '0')}`);
       }
-    })
-    slotsOcupadosReales.value = Array.from(ocupadosSet)
-  } catch (e) { console.error(e) } finally { cargandoHorarios.value = false }
+    });
+    slotsOcupadosReales.value = Array.from(ocupadosSet);
+  } catch (e) { console.error(e) } 
+  finally { cargandoHorarios.value = false }
 }
 
-// RESTO DE FUNCIONES (PAGOS, CÁLCULOS, ETC)
+// Mercado Pago
 const crearPagoMercadoPago = async () => {
-  if (!formularioValido.value) return
-  cargandoMercadoPago.value = true
+  if (!formularioValido.value) return;
+  cargandoMercadoPago.value = true;
   try {
-    const total = parseFloat(calcularTotalConDescuento())
+    const total = parseFloat(calcularTotalConDescuento());
     const payload = {
       peluquero_id: form.value.peluquero,
       cliente_id: usuario.value.id,
@@ -791,65 +790,56 @@ const crearPagoMercadoPago = async () => {
       tipo_pago: form.value.tipo_pago,
       medio_pago: 'MERCADO_PAGO',
       monto_total: total,
-      monto_seña: form.value.tipo_pago === 'SENA_50' ? total * 0.5 : 0,
+      monto_seña: form.value.tipo_pago === 'SENA_50' ? (total * 0.5).toFixed(2) : 0,
       duracion_total: calcularDuracionTotalServicios(),
       cup_codigo: cuponCodigo.value
-    }
-    const res = await api.post('/turnos/crear/', payload)
-    const mpUrl = res.data?.mp_data?.init_point || res.data?.init_point || res.data?.sandbox_init_point
-    if (mpUrl) window.location.href = mpUrl
+    };
+    const res = await api.post('/turnos/crear/', payload);
+    const mpUrl = res.data?.mp_data?.init_point || res.data?.init_point;
+    if (mpUrl) window.location.href = mpUrl;
   } catch (error) {
-    Swal.fire({ title: 'Error', text: error.response?.data?.message || 'Error', icon: 'error' })
+    Swal.fire({ title: 'Error', text: error.response?.data?.message || 'Error al crear turno', icon: 'error' });
   } finally { cargandoMercadoPago.value = false }
 }
 
+// Disponibilidad Horaria
+const esHorarioDisponible = (h) => {
+  if (!form.value.fecha || !form.value.peluquero) return true;
+  if (slotsOcupadosReales.value.includes(h.substring(0, 5))) return false;
+  // Validación de horario pasado para "hoy"
+  const hoy = new Date();
+  const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  if (form.value.fecha === hoyF) {
+    const [hS, mS] = h.substring(0, 5).split(':').map(Number);
+    if (hS < hoy.getHours() || (hS === hoy.getHours() && mS < hoy.getMinutes())) return false;
+  }
+  return true;
+}
+
+const horariosDisponibles = computed(() => ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00'].filter(h => esHorarioDisponible(h)));
+const seleccionarDiaCalendario = (d) => { form.value.fecha = `${new Date(currentDate.value).getFullYear()}-${String(new Date(currentDate.value).getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}` };
+const seleccionarHora = (h) => { if (esHorarioDisponible(h)) form.value.hora = h };
+const onPeluqueroSeleccionado = () => { form.value.fecha = ""; form.value.hora = ""; slotsOcupadosReales.value = [] };
+const validarCuponURL = async () => {}; // Tu lógica de cupón si hace falta
+
+// Interes
 const confirmarRegistroInteres = async () => {
-  registrandoInteres.value = true
   try {
-    const payload = { 
+    await api.post('/turnos/registrar-interes/', { 
       fecha: form.value.fecha, 
       hora: horarioSeleccionadoInteres.value, 
       peluquero_id: form.value.peluquero, 
       cliente_id: usuario.value.id, 
       servicios_ids: form.value.servicios_ids, 
       interes_notificacion: true 
-    }
-    const res = await api.post('/turnos/registrar-interes/', payload)
-    if (res.status === 200 || res.status === 201) Swal.fire({ title: '¡Listo!', icon: 'success' })
+    });
+    Swal.fire({ title: '¡Listo!', icon: 'success' });
   } catch (e) { Swal.fire({ title: 'Error', icon: 'error' }) } 
-  finally { registrandoInteres.value = false; mostrarModalInteres.value = false }
+  finally { mostrarModalInteres.value = false }
 }
 
-// CÁLCULOS AUXILIARES (SEGUROS)
-const calcularTotalOriginal = () => {
-  const lista = Array.isArray(servicios.value) ? servicios.value : [];
-  return form.value.servicios_ids.reduce((acc, id) => {
-    const s = lista.find(x => String(x.id) === String(id));
-    return acc + parseFloat(s?.precio || 0);
-  }, 0);
-}
-const calcularTotalConDescuento = () => (calcularTotalOriginal() * (1 - descuentoAplicado.value / 100)).toFixed(2)
-const calcularDuracionTotalServicios = () => {
-  const lista = Array.isArray(servicios.value) ? servicios.value : [];
-  return form.value.servicios_ids.reduce((t, id) => {
-    const s = lista.find(x => String(x.id) === String(id));
-    return t + (parseInt(s?.duracion || 20));
-  }, 0);
-}
-
-const esHorarioDisponible = (h) => {
-  if (!form.value.fecha || !form.value.peluquero) return true
-  if (slotsOcupadosReales.value.includes(h.substring(0, 5))) return false
-  return true
-}
-const horariosDisponibles = computed(() => ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00'].filter(h => esHorarioDisponible(h)))
-const seleccionarDiaCalendario = (d) => { form.value.fecha = `${new Date(currentDate.value).getFullYear()}-${String(new Date(currentDate.value).getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}` }
-const seleccionarHora = (h) => { if (esHorarioDisponible(h)) form.value.hora = h }
-const onPeluqueroSeleccionado = () => { form.value.fecha = ""; form.value.hora = ""; slotsOcupadosReales.value = [] }
-const validarCuponURL = async () => { /* Tu lógica de cupón */ }
-
-watch(() => form.value.fecha, (f) => { if (f && form.value.peluquero) cargarTurnosOcupados(f) })
 onMounted(() => { cargarDatosIniciales() })
+watch(() => form.value.fecha, (f) => { if (f && form.value.peluquero) cargarTurnosOcupados(f) })
 </script>
 
 <style scoped>
