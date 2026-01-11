@@ -163,6 +163,10 @@ api.interceptors.request.use(config => {
   return Promise.reject(error);
 });
 
+// ==============================================
+// 🔄 INTERCEPTOR DE RESPUESTAS MEJORADO
+// ==============================================
+
 api.interceptors.response.use(
   response => {
     console.log(`📥 Respuesta de ${response.config.url}:`, response.status);
@@ -218,6 +222,11 @@ api.interceptors.response.use(
   }
 );
 
+// ==============================================
+// 🎪 FUNCIONES DE DEPURACIÓN (opcionales, pueden quitarse)
+// ==============================================
+
+// Función para verificar el estado actual de autenticación
 export const checkAuthStatus = () => {
   const token = localStorage.getItem('token');
   console.log('🔍 Estado de autenticación:');
@@ -253,7 +262,11 @@ export const setDevMode = (mode) => {
   }
 };
 
-
+// ==============================================
+// 📦 EXPORTACIÓN
+// ==============================================
 
 export default api;
+
+// Exportar para uso avanzado
 export { isAdminEndpoint, isClientEndpoint, isLocalhost, isProduction };
