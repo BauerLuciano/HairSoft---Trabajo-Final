@@ -1402,6 +1402,7 @@ defineExpose({
 });
 </script>
 
+<style scoped>
 /* ============================================
    ESTILOS MEJORADOS RESPONSIVE - MOBILE FIRST
    Optimizado para verse perfecto en celulares
@@ -3192,3 +3193,4 @@ body {
     font-size: 16px !important;
   }
 }
+</style>
