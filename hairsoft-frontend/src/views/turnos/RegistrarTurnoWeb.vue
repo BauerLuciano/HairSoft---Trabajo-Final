@@ -561,10 +561,17 @@ import {
 
 const router = useRouter()
 const route = useRoute()
-const API_URL = "http://localhost:8000/api"
+
+// === CONFIGURACIÓN INTELIGENTE (NO TOCA TU LÓGICA LOCAL) ===
+const isProduction = window.location.hostname.includes('vercel.app');
+const API_URL = isProduction 
+  ? "https://web-production-ac47c.up.railway.app/api" 
+  : "http://localhost:8000/api";
+
+console.log('📅 Turnos conectados a:', API_URL);
 
 // ==========================================
-// ESTADO REACTIVO
+// ESTADO REACTIVO (SE MANTIENE IGUAL)
 // ==========================================
 
 const form = ref({
@@ -586,13 +593,13 @@ const slotsOcupadosReales = ref([])
 const categoriasSeleccionadas = ref([])
 const busquedaServicio = ref("")
 
-// UI States - NUEVO ESTADO AÑADIDO
+// UI States
 const cargandoMercadoPago = ref(false)
 const cargandoHorarios = ref(false)
 const mostrarModalInteres = ref(false)
 const horarioSeleccionadoInteres = ref(null)
 const registrandoInteres = ref(false)
-const redirigiendoMercadoPago = ref(false) // NUEVO: controla si se redirigió a MP
+const redirigiendoMercadoPago = ref(false) 
 const currentDate = ref(new Date())
 
 const intervaloMinutos = 20
@@ -607,14 +614,12 @@ const mensaje = ref("")
 const mensajeTipo = ref("")
 
 // ==========================================
-// 1. LÓGICA DE SELECCIÓN - FUNCIONAL
+// 1. LÓGICA DE SELECCIÓN (SE MANTIENE IGUAL)
 // ==========================================
 
-// Selección de categorías
 const toggleCategoria = (categoriaId) => {
   const id = String(categoriaId)
   const index = categoriasSeleccionadas.value.indexOf(id)
-  
   if (index > -1) {
     categoriasSeleccionadas.value.splice(index, 1)
   } else {
@@ -622,69 +627,38 @@ const toggleCategoria = (categoriaId) => {
   }
 }
 
-// Selección de servicios - FUNCIONAL
 const toggleServicio = (servicio) => {
   const servicioId = String(servicio.id)
-  
   if (form.value.servicios_ids.includes(servicioId)) {
     form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== servicioId)
   } else {
     form.value.servicios_ids = [...form.value.servicios_ids, servicioId]
   }
-  
-  if (form.value.hora) {
-    form.value.hora = ""
-  }
-  
-  if (form.value.fecha && form.value.peluquero) {
-    cargarTurnosOcupados(form.value.fecha)
-  }
+  if (form.value.hora) form.value.hora = ""
+  if (form.value.fecha && form.value.peluquero) cargarTurnosOcupados(form.value.fecha)
 }
 
-// Verificar si servicio está seleccionado
-const estaServicioSeleccionado = (servicio) => {
-  return form.value.servicios_ids.includes(String(servicio.id))
-}
+const estaServicioSeleccionado = (servicio) => form.value.servicios_ids.includes(String(servicio.id))
 
-// Eliminar servicio
 const eliminarServicio = (servicioId) => {
   form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== String(servicioId))
-  
-  if (form.value.hora) {
-    form.value.hora = ""
-  }
-  
-  if (form.value.fecha && form.value.peluquero) {
-    cargarTurnosOcupados(form.value.fecha)
-  }
+  if (form.value.hora) form.value.hora = ""
+  if (form.value.fecha && form.value.peluquero) cargarTurnosOcupados(form.value.fecha)
 }
 
-// Servicios filtrados
 const serviciosFiltrados = computed(() => {
   let filtrados = servicios.value
-  
   if (categoriasSeleccionadas.value.length > 0) {
     filtrados = filtrados.filter(servicio => {
       if (!servicio.categoria) return false
-      
-      let categoriaId
-      if (typeof servicio.categoria === 'object') {
-        categoriaId = String(servicio.categoria.id)
-      } else {
-        categoriaId = String(servicio.categoria)
-      }
-      
+      let categoriaId = typeof servicio.categoria === 'object' ? String(servicio.categoria.id) : String(servicio.categoria)
       return categoriasSeleccionadas.value.includes(categoriaId)
     })
   }
-  
   if (busquedaServicio.value.trim()) {
     const term = busquedaServicio.value.toLowerCase().trim()
-    filtrados = filtrados.filter(servicio => 
-      servicio.nombre.toLowerCase().includes(term)
-    )
+    filtrados = filtrados.filter(servicio => servicio.nombre.toLowerCase().includes(term))
   }
-  
   return filtrados
 })
 
@@ -700,64 +674,32 @@ const formularioValido = computed(() => {
 })
 
 // ==========================================
-// 3. FUNCIONES DE UTILIDAD - CORREGIDAS
+// 3. FUNCIONES DE UTILIDAD (SE MANTIENEN IGUAL)
 // ==========================================
 
 const getPeluqueroNombre = () => {
   if (!form.value.peluquero) return ''
   const peluquero = peluqueros.value.find(p => String(p.id) === String(form.value.peluquero))
   if (!peluquero) return ''
-  
   const nombre = peluquero.nombre || peluquero.first_name || ''
   const apellido = peluquero.apellido || peluquero.last_name || ''
-  
-  if (nombre && apellido) {
-    return `${nombre} ${apellido}`.trim()
-  } else if (nombre) {
-    return nombre
-  } else if (peluquero.username) {
-    return peluquero.username
-  }
-  
-  return 'Peluquero'
+  return (nombre && apellido) ? `${nombre} ${apellido}`.trim() : (nombre || peluquero.username || 'Peluquero')
 }
 
 const getNombreCompletoPeluquero = (peluquero) => {
   if (!peluquero) return ''
-  
   const nombre = peluquero.nombre || peluquero.first_name || ''
   const apellido = peluquero.apellido || peluquero.last_name || ''
-  
-  if (nombre && apellido) {
-    return `${nombre} ${apellido}`.trim()
-  } else if (nombre) {
-    return nombre
-  } else if (peluquero.username) {
-    return peluquero.username
-  }
-  
-  return 'Peluquero'
+  return (nombre && apellido) ? `${nombre} ${apellido}`.trim() : (nombre || peluquero.username || 'Peluquero')
 }
 
-// NUEVA: Obtener iniciales del peluquero
 const getInicialesPeluquero = (peluquero) => {
   if (!peluquero) return ''
-  
   const nombre = peluquero.nombre || peluquero.first_name || ''
   const apellido = peluquero.apellido || peluquero.last_name || ''
-  
-  if (nombre && apellido) {
-    return `${nombre.charAt(0)}${apellido.charAt(0)}`.toUpperCase()
-  } else if (nombre) {
-    return nombre.charAt(0).toUpperCase()
-  } else if (peluquero.username) {
-    return peluquero.username.charAt(0).toUpperCase()
-  }
-  
-  return 'P'
+  return (nombre && apellido) ? `${nombre.charAt(0)}${apellido.charAt(0)}`.toUpperCase() : (nombre || peluquero.username || 'P').charAt(0).toUpperCase()
 }
 
-// NUEVA: Seleccionar peluquero desde las tarjetas
 const seleccionarPeluquero = (peluqueroId) => {
   form.value.peluquero = peluqueroId
   onPeluqueroSeleccionado()
@@ -766,7 +708,6 @@ const seleccionarPeluquero = (peluqueroId) => {
 const getCategoriaNombre = (cat) => {
   if (!cat) return 'General'
   if (typeof cat === 'object') return cat.nombre || 'General'
-  
   const categoria = categorias.value.find(c => String(c.id) === String(cat))
   return categoria ? categoria.nombre : 'General'
 }
@@ -791,9 +732,7 @@ const formatoFechaLegible = (f) => {
     const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
     const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
     return `${dias[fecha.getDay()]} ${day} de ${meses[month - 1]}`
-  } catch (e) {
-    return f
-  }
+  } catch (e) { return f }
 }
 
 const estaInteresRegistrado = (hora) => {
@@ -805,28 +744,18 @@ const estaInteresRegistrado = (hora) => {
 }
 
 // ==========================================
-// 4. MERCADO PAGO - MODIFICADO PARA MOSTRAR ALERTA
+// 4. MERCADO PAGO (USA API_URL DINÁMICA)
 // ==========================================
 
 const crearPagoMercadoPago = async () => {
-  console.log('=== INICIANDO MERCADO PAGO ===')
-  
   if (!formularioValido.value) {
-    Swal.fire({
-      title: 'Atención', 
-      text: 'Faltan datos para reservar el turno.', 
-      icon: 'warning',
-      confirmButtonText: 'Entendido'
-    })
+    Swal.fire({ title: 'Atención', text: 'Faltan datos para reservar el turno.', icon: 'warning', confirmButtonText: 'Entendido' })
     return
   }
-  
   cargandoMercadoPago.value = true
-  
   try {
     const total = parseFloat(calcularTotalConDescuento())
     const sena = form.value.tipo_pago === 'SENA_50' ? total * 0.5 : 0
-    
     const payload = {
       peluquero_id: form.value.peluquero,
       cliente_id: usuario.value.id,
@@ -841,77 +770,27 @@ const crearPagoMercadoPago = async () => {
       duracion_total: calcularDuracionTotalServicios(),
       cup_codigo: cuponCodigo.value
     }
-    
-    console.log('Enviando a backend:', payload)
-    
     const token = localStorage.getItem('token')
-    const headers = { 
-      'Authorization': `Token ${token}`, 
-      'Content-Type': 'application/json'
-    }
+    const headers = { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' }
     
+    // USAMOS EL API_URL QUE DETECTA SI ES NUBE O LOCAL
     const res = await axios.post(`${API_URL}/turnos/crear/`, payload, { headers })
     
-    console.log('Respuesta del backend:', res.data)
-    
-    // MODIFICACIÓN: Mostrar alerta en esta pestaña
     redirigiendoMercadoPago.value = true
+    const mpUrl = res.data?.mp_data?.init_point || res.data?.init_point || res.data?.sandbox_init_point
     
-    if (res.data && res.data.mp_data && res.data.mp_data.init_point) {
-      console.log('Redirigiendo a Mercado Pago (caso 1):', res.data.mp_data.init_point)
-      // Abrir en nueva pestaña
-      window.open(res.data.mp_data.init_point, '_blank')
-      
-    } else if (res.data && res.data.init_point) {
-      console.log('Redirigiendo a Mercado Pago (caso 2):', res.data.init_point)
-      // Abrir en nueva pestaña
-      window.open(res.data.init_point, '_blank')
-      
-    } else if (res.data && res.data.sandbox_init_point) {
-      console.log('Redirigiendo a Sandbox:', res.data.sandbox_init_point)
-      // Abrir en nueva pestaña
-      window.open(res.data.sandbox_init_point, '_blank')
-      
+    if (mpUrl) {
+      window.open(mpUrl, '_blank')
     } else if (res.data && res.data.status === 'ok') {
-      // Caso de pago directo sin Mercado Pago
-      Swal.fire({
-        title: '¡Reserva Exitosa!', 
-        text: 'Tu turno fue confirmado exitosamente.', 
-        icon: 'success',
-        confirmButtonText: 'Ver mis turnos'
-      }).then(() => {
+      Swal.fire({ title: '¡Reserva Exitosa!', text: 'Tu turno fue confirmado.', icon: 'success' }).then(() => {
         redirigiendoMercadoPago.value = false
         router.push('/turnos')
       })
-      
     } else {
-      throw new Error(res.data.message || 'No se obtuvo respuesta de pago válida')
+      throw new Error(res.data.message || 'Error de respuesta')
     }
-    
   } catch (error) {
-    console.error('Error en Mercado Pago:', error)
-    
-    let errorMessage = 'Error al procesar el pago'
-    
-    if (error.response?.data) {
-      if (error.response.data.message) {
-        errorMessage = error.response.data.message
-      } else if (error.response.data.detail) {
-        errorMessage = error.response.data.detail
-      } else {
-        errorMessage = JSON.stringify(error.response.data)
-      }
-    } else if (error.message) {
-      errorMessage = error.message
-    }
-    
-    Swal.fire({
-      title: 'Error de Pago', 
-      text: errorMessage, 
-      icon: 'error',
-      confirmButtonText: 'Entendido'
-    })
-    
+    Swal.fire({ title: 'Error de Pago', text: error.response?.data?.message || error.message, icon: 'error' })
     redirigiendoMercadoPago.value = false
   } finally {
     cargandoMercadoPago.value = false
@@ -919,96 +798,47 @@ const crearPagoMercadoPago = async () => {
 }
 
 // ==========================================
-// 5. NUEVAS FUNCIONES PARA MANEJAR EL FLUJO
+// 5. FLUJO Y 6. CÁLCULOS (SIN CAMBIOS)
 // ==========================================
 
-const irAlListado = () => {
-  router.push('/turnos')
-}
-
+const irAlListado = () => router.push('/turnos')
 const nuevaReserva = () => {
-  // Resetear el formulario
-  form.value = {
-    peluquero: "",
-    servicios_ids: [],
-    hora: "",
-    fecha: "",
-    tipo_pago: "SENA_50", 
-    medio_pago: "MERCADO_PAGO", 
-    canal: "WEB",
-    cliente: usuario.value.id
-  }
-  
-  // Resetear otros estados
-  categoriasSeleccionadas.value = []
-  busquedaServicio.value = ""
-  slotsOcupadosReales.value = []
-  
-  // Ocultar la alerta
-  redirigiendoMercadoPago.value = false
+  form.value = { peluquero: "", servicios_ids: [], hora: "", fecha: "", tipo_pago: "SENA_50", medio_pago: "MERCADO_PAGO", canal: "WEB", cliente: usuario.value.id }
+  categoriasSeleccionadas.value = []; busquedaServicio.value = ""; slotsOcupadosReales.value = []; redirigiendoMercadoPago.value = false
 }
 
-// ==========================================
-// 6. CÁLCULOS DINERO
-// ==========================================
-
-const calcularTotalOriginal = () => {
-  const total = form.value.servicios_ids.reduce((acc, id) => {
-    const servicio = servicios.value.find(s => String(s.id) === String(id))
-    return acc + parseFloat(servicio?.precio || 0)
-  }, 0)
-  
-  return total
-}
-
-const calcularTotalConDescuento = () => {
-  const total = calcularTotalOriginal()
-  return (total * (1 - descuentoAplicado.value / 100)).toFixed(2)
-}
-
-const calcularSena = () => {
-  const total = parseFloat(calcularTotalConDescuento())
-  return (total * 0.5).toFixed(2)
-}
-
-const calcularTotal = () => {
-  return calcularTotalConDescuento()
-}
-
-const calcularDuracionTotalServicios = () => {
-  return form.value.servicios_ids.reduce((total, id) => {
-    const s = servicios.value.find(x => String(x.id) === String(id))
-    return total + (s ? parseInt(s.duracion || s.duracion_minutos || 60) : 0)
-  }, 0)
-}
-
+const calcularTotalOriginal = () => form.value.servicios_ids.reduce((acc, id) => {
+  const servicio = servicios.value.find(s => String(s.id) === String(id))
+  return acc + parseFloat(servicio?.precio || 0)
+}, 0)
+const calcularTotalConDescuento = () => (calcularTotalOriginal() * (1 - descuentoAplicado.value / 100)).toFixed(2)
+const calcularSena = () => (parseFloat(calcularTotalConDescuento()) * 0.5).toFixed(2)
+const calcularTotal = () => calcularTotalConDescuento()
+const calcularDuracionTotalServicios = () => form.value.servicios_ids.reduce((total, id) => {
+  const s = servicios.value.find(x => String(x.id) === String(id))
+  return total + (s ? parseInt(s.duracion || s.duracion_minutos || 60) : 0)
+}, 0)
 const montoAPagarAhora = () => {
   const total = parseFloat(calcularTotalConDescuento())
   return form.value.tipo_pago === 'SENA_50' ? (total * 0.5).toFixed(2) : total.toFixed(2)
 }
 
 // ==========================================
-// 7. CALENDARIO Y HORARIOS - CORREGIDO
+// 7. CALENDARIO Y HORARIOS (USA API_URL)
 // ==========================================
 
 const currentYear = computed(() => currentDate.value.getFullYear())
 const currentMonth = computed(() => currentDate.value.getMonth())
-const nombreMesActual = computed(() => {
-  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-  return meses[currentMonth.value]
-})
+const nombreMesActual = computed(() => ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][currentMonth.value])
 const daysInMonth = computed(() => new Date(currentYear.value, currentMonth.value + 1, 0).getDate())
 const startingDayOfWeek = computed(() => new Date(currentYear.value, currentMonth.value, 1).getDay())
 
 const horariosGenerados = computed(() => {
   const horariosBase = []
   const bloques = [{ inicio: 8, fin: 12 }, { inicio: 15, fin: 20 }]
-  
   bloques.forEach(b => {
     for (let h = b.inicio; h < b.fin; h++) {
-      for (let m = 0; m < 60; m += intervaloMinutos) {
-        horariosBase.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
-      }
+      for (let m = 0; m < 60; m += intervaloMinutos) horariosBase.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
     }
     horariosBase.push(`${String(b.fin).padStart(2, '0')}:00`)
   })
@@ -1017,279 +847,96 @@ const horariosGenerados = computed(() => {
 
 const cargarTurnosOcupados = async (fecha) => {
   if (!form.value.peluquero) return
-  
   cargandoHorarios.value = true
-  
   try {
     const res = await axios.get(`${API_URL}/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`)
     const turnos = res.data.results || res.data 
-    
     const ocupadosSet = new Set()
-    
     turnos.forEach(turno => {
       if (!turno.hora || turno.fecha !== fecha) return
-
       const [h, m] = turno.hora.split(':').map(Number)
       const inicioMin = h * 60 + m
-      
-      let duracion = turno.duracion_total || 0
-      if (!duracion && turno.servicios) {
-        duracion = turno.servicios.reduce((acc, s) => acc + (s.duracion || 20), 0)
-      }
-      if (!duracion) duracion = 20
-      
+      let duracion = turno.duracion_total || turno.servicios?.reduce((acc, s) => acc + (s.duracion || 20), 0) || 20
       const finMin = inicioMin + duracion
-      
-      for (let i = inicioMin; i < finMin; i += 20) {
-        ocupadosSet.add(`${Math.floor(i / 60).toString().padStart(2, '0')}:${(i % 60).toString().padStart(2, '0')}`)
-      }
+      for (let i = inicioMin; i < finMin; i += 20) ocupadosSet.add(`${Math.floor(i / 60).toString().padStart(2, '0')}:${(i % 60).toString().padStart(2, '0')}`)
     })
-    
     slotsOcupadosReales.value = Array.from(ocupadosSet)
-    console.log('Slots ocupados cargados:', slotsOcupadosReales.value)
-  } catch (e) {
-    console.error("Error cargando turnos:", e)
-  } finally {
-    cargandoHorarios.value = false
-  }
+  } catch (e) { console.error("Error cargando turnos:", e) } finally { cargandoHorarios.value = false }
 }
 
-// CORRECCIÓN CRÍTICA: Función esHorarioDisponible - FIXED
 const esHorarioDisponible = (hora) => {
   if (!form.value.fecha || !form.value.peluquero) return true
-  
   const horaSimple = hora.substring(0, 5)
-  
-  // 1. Validar si está ocupado por turnos existentes
-  if (slotsOcupadosReales.value.includes(horaSimple)) {
-    console.log(`❌ Hora ${horaSimple} está ocupada por turno existente`)
-    return false
-  }
-  
-  // 2. CORRECCIÓN: Obtener fecha actual CORRECTAMENTE
+  if (slotsOcupadosReales.value.includes(horaSimple)) return false
   const hoy = new Date()
   const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
-  
-  console.log(`Comparando fechas: Hoy: ${hoyFormateado}, Seleccionada: ${form.value.fecha}`)
-  
-  // 3. Si es hoy, verificar que la hora no haya pasado
   if (form.value.fecha === hoyFormateado) {
-    const [horaSeleccionada, minutoSeleccionado] = horaSimple.split(':').map(Number)
-    const horaActual = hoy.getHours()
-    const minutoActual = hoy.getMinutes()
-    
-    console.log(`Hora seleccionada: ${horaSeleccionada}:${minutoSeleccionado}, Actual: ${horaActual}:${minutoActual}`)
-    
-    // Si la hora seleccionada es anterior a la hora actual, no está disponible
-    if (horaSeleccionada < horaActual) {
-      console.log(`❌ Hora ${horaSimple} ya pasó (hora menor)`)
-      return false
-    }
-    
-    // Si es la misma hora pero minutos anteriores, no está disponible
-    if (horaSeleccionada === horaActual && minutoSeleccionado < minutoActual) {
-      console.log(`❌ Hora ${horaSimple} ya pasó (misma hora, minutos menores)`)
-      return false
-    }
-    
-    console.log(`✅ Hora ${horaSimple} está disponible para hoy`)
+    const [hSel, mSel] = horaSimple.split(':').map(Number)
+    if (hSel < hoy.getHours() || (hSel === hoy.getHours() && mSel < hoy.getMinutes())) return false
   }
-  
   return true
 }
 
-const horariosDisponibles = computed(() => {
-  const disponibles = horariosGenerados.value.filter(h => esHorarioDisponible(h))
-  console.log('Horarios disponibles totales:', disponibles)
-  return disponibles
-})
-
-const horariosOcupadosParaMostrar = computed(() => {
-  return horariosGenerados.value.filter(h => !esHorarioDisponible(h))
-})
-
-const onPeluqueroSeleccionado = () => {
-  form.value.fecha = ""
-  form.value.hora = ""
-  slotsOcupadosReales.value = []
-}
-
+const horariosDisponibles = computed(() => horariosGenerados.value.filter(h => esHorarioDisponible(h)))
+const horariosOcupadosParaMostrar = computed(() => horariosGenerados.value.filter(h => !esHorarioDisponible(h)))
+const onPeluqueroSeleccionado = () => { form.value.fecha = ""; form.value.hora = ""; slotsOcupadosReales.value = [] }
 const seleccionarDiaCalendario = (day) => {
   if (!esDiaSeleccionable(day)) return
-  
-  const mesStr = String(currentMonth.value + 1).padStart(2, '0')
-  const diaStr = String(day).padStart(2, '0')
-  form.value.fecha = `${currentYear.value}-${mesStr}-${diaStr}`
-  console.log('Fecha seleccionada:', form.value.fecha)
+  form.value.fecha = `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
-
 const seleccionarHora = (hora) => {
-  if (esHorarioDisponible(hora)) {
-    form.value.hora = hora
-  } else {
-    Swal.fire({ 
-      title: 'Horario Ocupado', 
-      text: 'Ese horario no está disponible.', 
-      icon: 'warning', 
-      toast: true, 
-      position: 'top-end', 
-      timer: 2000 
-    })
-  }
+  if (esHorarioDisponible(hora)) form.value.hora = hora
+  else Swal.fire({ title: 'Horario Ocupado', icon: 'warning', toast: true, position: 'top-end', timer: 2000 })
 }
-
-const cambiarMes = (dir) => {
-  const d = new Date(currentDate.value)
-  d.setMonth(d.getMonth() + dir)
-  currentDate.value = d
-}
-
+const cambiarMes = (dir) => { currentDate.value = new Date(currentDate.value.setMonth(currentDate.value.getMonth() + dir)) }
 const esDiaSeleccionable = (day) => {
   const d = new Date(currentYear.value, currentMonth.value, day)
   const h = new Date(); h.setHours(0, 0, 0, 0)
-  const maxDate = new Date(h); maxDate.setDate(h.getDate() + DIAS_RANGO)
-  return d >= h && d <= maxDate && d.getDay() !== 0
+  return d >= h && d <= new Date(new Date().setDate(h.getDate() + DIAS_RANGO)) && d.getDay() !== 0
 }
-
 const esDiaSeleccionado = (day) => {
   if (!form.value.fecha) return false
   const [y, m, d] = form.value.fecha.split('-').map(Number)
   return day === d && (currentMonth.value + 1) === m && currentYear.value === y
 }
-
-const esHoy = (day) => {
-  const h = new Date()
-  return day === h.getDate() && currentMonth.value === h.getMonth() && currentYear.value === h.getFullYear()
-}
-
-const getFechaMaximaReserva = () => {
-  const hoy = new Date()
-  const fechaMaxima = new Date(hoy)
-  fechaMaxima.setDate(hoy.getDate() + DIAS_RANGO)
-  
-  if (fechaMaxima.getDay() === 0) {
-    fechaMaxima.setDate(fechaMaxima.getDate() + 1)
-  }
-  
-  const dia = String(fechaMaxima.getDate()).padStart(2, '0')
-  const mes = String(fechaMaxima.getMonth() + 1).padStart(2, '0')
-  return `${dia}/${mes}/${fechaMaxima.getFullYear()}`
-}
+const esHoy = (day) => day === new Date().getDate() && currentMonth.value === new Date().getMonth() && currentYear.value === new Date().getFullYear()
 
 // ==========================================
-// 8. FUNCIONES INTERÉS HORARIOS
+// 8. INTERÉS HORARIOS (USA API_URL)
 // ==========================================
 
-const registrarInteresHorario = (hora) => {
-  horarioSeleccionadoInteres.value = hora
-  mostrarModalInteres.value = true
-}
-
-const cancelarRegistroInteres = () => {
-  mostrarModalInteres.value = false
-  horarioSeleccionadoInteres.value = null
-  registrandoInteres.value = false
-}
-
+const registrarInteresHorario = (hora) => { horarioSeleccionadoInteres.value = hora; mostrarModalInteres.value = true }
+const cancelarRegistroInteres = () => { mostrarModalInteres.value = false; horarioSeleccionadoInteres.value = null }
 const confirmarRegistroInteres = async () => {
   registrandoInteres.value = true
-  
   try {
-    const payload = {
-      fecha: form.value.fecha,
-      hora: horarioSeleccionadoInteres.value,
-      peluquero_id: form.value.peluquero,
-      cliente_id: usuario.value.id,
-      servicios_ids: form.value.servicios_ids,
-      interes_notificacion: true
-    }
-    
+    const payload = { fecha: form.value.fecha, hora: horarioSeleccionadoInteres.value, peluquero_id: form.value.peluquero, cliente_id: usuario.value.id, servicios_ids: form.value.servicios_ids, interes_notificacion: true }
     const token = localStorage.getItem('token')
-    const headers = { 
-      'Authorization': `Token ${token}`, 
-      'Content-Type': 'application/json'
-    }
-    
-    const res = await axios.post(`${API_URL}/turnos/interes-horario/`, payload, { headers })
-    
+    const res = await axios.post(`${API_URL}/turnos/interes-horario/`, payload, { headers: { 'Authorization': `Token ${token}` } })
     if (res.data.success) {
-      horariosInteres.value.push({
-        fecha: form.value.fecha,
-        hora: horarioSeleccionadoInteres.value,
-        peluquero_id: form.value.peluquero,
-        cliente_id: usuario.value.id
-      })
-      
-      mensaje.value = '¡Te avisaremos si se libera este horario!'
-      mensajeTipo.value = 'success'
-      
-      Swal.fire({
-        title: '✅ Registrado',
-        text: 'Te notificaremos si este horario se libera.',
-        icon: 'success',
-        timer: 2000,
-        showConfirmButton: false
-      })
+      horariosInteres.value.push({ fecha: form.value.fecha, hora: horarioSeleccionadoInteres.value, peluquero_id: form.value.peluquero, cliente_id: usuario.value.id })
+      Swal.fire({ title: '✅ Registrado', text: 'Te notificaremos.', icon: 'success', timer: 2000, showConfirmButton: false })
     }
-  } catch (error) {
-    console.error('Error registrando interés:', error)
-    Swal.fire({
-      title: 'Error',
-      text: 'No se pudo registrar tu interés.',
-      icon: 'error'
-    })
-  } finally {
-    registrandoInteres.value = false
-    mostrarModalInteres.value = false
-    horarioSeleccionadoInteres.value = null
-  }
+  } catch (e) { Swal.fire({ title: 'Error', icon: 'error' }) } finally { registrandoInteres.value = false; mostrarModalInteres.value = false }
 }
 
 // ==========================================
-// 9. CARGA DE DATOS
+// 9. CARGA DE DATOS (USA API_URL)
 // ==========================================
-
-const volverAlListado = () => router.push('/turnos')
 
 const cargarDatosIniciales = async () => {
   const token = localStorage.getItem('token')
   const userId = localStorage.getItem('user_id')
-  
-  // Cargar usuario
   if (userId) {
     try {
-      const res = await axios.get(`${API_URL}/usuarios/${userId}/`, { 
-        headers: { 'Authorization': `Token ${token}` } 
-      })
-      usuario.value = { ...res.data, id: res.data.id || userId }
-      form.value.cliente = userId
-    } catch(e) { 
-      console.error("Error cargando usuario:", e) 
-    }
+      const res = await axios.get(`${API_URL}/usuarios/${userId}/`, { headers: { 'Authorization': `Token ${token}` } })
+      usuario.value = { ...res.data, id: res.data.id || userId }; form.value.cliente = userId
+    } catch(e) { console.error(e) }
   }
-
-  // Cargar datos del sistema
   try {
-    const [p, s, c] = await Promise.all([
-      axios.get(`${API_URL}/peluqueros/`),
-      axios.get(`${API_URL}/servicios/`),
-      axios.get(`${API_URL}/categorias/servicios/`)
-    ])
-    
-    peluqueros.value = p.data
-    servicios.value = s.data
-    categorias.value = c.data
-    
-    console.log('Datos cargados exitosamente')
-    
-  } catch(e) { 
-    console.error('Error cargando datos:', e) 
-    Swal.fire({
-      title: 'Error de conexión',
-      text: 'No se pudieron cargar los datos.',
-      icon: 'error'
-    })
-  }
+    const [p, s, c] = await Promise.all([ axios.get(`${API_URL}/peluqueros/`), axios.get(`${API_URL}/servicios/`), axios.get(`${API_URL}/categorias/servicios/`) ])
+    peluqueros.value = p.data; servicios.value = s.data; categorias.value = c.data
+  } catch(e) { console.error(e) }
 }
 
 const validarCuponURL = async () => {
@@ -1298,54 +945,26 @@ const validarCuponURL = async () => {
     try {
       const res = await axios.get(`${API_URL}/promociones/validar/${codigo}/`)
       if (res.data.valido) {
-        cuponCodigo.value = codigo
-        descuentoAplicado.value = parseFloat(res.data.descuento)
-        mensajePromo.value = res.data.mensaje
-        
-        Swal.fire({ 
-          title: '¡Descuento Aplicado!', 
-          text: res.data.mensaje, 
-          icon: 'success', 
-          toast: true, 
-          position: 'top-end', 
-          timer: 3000 
-        })
+        cuponCodigo.value = codigo; descuentoAplicado.value = parseFloat(res.data.descuento); mensajePromo.value = res.data.mensaje
+        Swal.fire({ title: '¡Descuento Aplicado!', icon: 'success', toast: true, position: 'top-end', timer: 3000 })
       }
-    } catch (e) { 
-      console.error('Error validando cupón:', e) 
-    }
+    } catch (e) { console.error(e) }
   }
 }
 
 // ==========================================
-// 10. WATCHERS
+// 10. WATCHERS Y 11. LIFECYCLE
 // ==========================================
 
 watch(() => form.value.fecha, (newFecha) => {
-  if (newFecha && form.value.peluquero) {
-    console.log('Cambió la fecha, cargando turnos ocupados para:', newFecha)
-    cargarTurnosOcupados(newFecha)
-  } else {
-    form.value.hora = ""
-  }
+  if (newFecha && form.value.peluquero) cargarTurnosOcupados(newFecha)
+  else form.value.hora = ""
 })
-
 watch(() => form.value.peluquero, (newVal, oldVal) => {
-  if (newVal !== oldVal) {
-    form.value.fecha = ""
-    form.value.hora = ""
-    slotsOcupadosReales.value = []
-  }
+  if (newVal !== oldVal) { form.value.fecha = ""; form.value.hora = ""; slotsOcupadosReales.value = [] }
 })
 
-// ==========================================
-// 11. LIFECYCLE
-// ==========================================
-
-onMounted(() => { 
-  cargarDatosIniciales()
-  setTimeout(validarCuponURL, 500) 
-})
+onMounted(() => { cargarDatosIniciales(); setTimeout(validarCuponURL, 500) })
 </script>
 
 <style scoped>

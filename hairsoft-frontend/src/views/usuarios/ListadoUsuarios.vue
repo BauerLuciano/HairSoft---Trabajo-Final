@@ -90,8 +90,19 @@
                   <button @click="editarUsuario(usuario)" class="action-button edit" title="Editar usuario">
                     <Edit3 :size="14" />
                   </button>
-                  <button @click="eliminarUsuario(usuario)" class="action-button delete" title="Desactivar usuario">
+                  <button 
+                    v-if="usuario.estado === 'ACTIVO'"
+                    @click="eliminarUsuario(usuario)" 
+                    class="action-button delete" 
+                    title="Desactivar usuario">
                     <UserX :size="14" />
+                  </button>
+                  <button 
+                    v-else
+                    @click="activarUsuario(usuario)" 
+                    class="action-button activate" 
+                    title="Reactivar usuario">
+                    <UserPlus :size="14" />
                   </button>
                 </div>
               </td>
@@ -282,6 +293,20 @@ const eliminarUsuario = async (usuario) => {
   } catch (err) {
     console.error(err)
     alert('No se pudo desactivar el usuario')
+  }
+}
+
+// 🆕 NUEVA FUNCIÓN: Activar usuario
+const activarUsuario = async (usuario) => {
+  if (!confirm(`¿Reactivar al usuario ${usuario.nombre} ${usuario.apellido}?`)) return
+  try {
+    await axios.post(`${API_BASE}/usuarios/api/usuarios/activar/${usuario.id}/`)
+    usuario.estado = 'ACTIVO'
+    await nextTick()
+    alert('Usuario reactivado con éxito')
+  } catch (err) {
+    console.error(err)
+    alert('No se pudo reactivar el usuario')
   }
 }
 
@@ -643,6 +668,20 @@ watch(filtros, () => {
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
   border-color: var(--error-color);
+}
+
+/* 🆕 NUEVO: Botón de activar usuario */
+.action-button.activate {
+  background: var(--bg-tertiary);
+  border: 1px solid #10b981;
+  color: #10b981;
+}
+
+.action-button.activate:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+  border-color: #10b981;
 }
 
 /* CONTADOR Y MENSAJES - CON VARIABLES */
