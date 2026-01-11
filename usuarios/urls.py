@@ -286,3 +286,21 @@ urlpatterns = [
     # API ROUTER (Al final) - Incluye Auditoría y Pedidos Web
     path('api/', include(router.urls)),
 ]
+try:
+    from django.contrib.auth import get_user_model
+    from django.db.utils import OperationalError, ProgrammingError
+    import sys
+
+    # Evitamos que corra si solo estamos migrando
+    if 'migrate' not in sys.argv:
+        User = get_user_model()
+        try:
+            if not User.objects.filter(username='admin').exists():
+                print('--- CREANDO ADMIN DE EMERGENCIA: admin / 1234 ---')
+                User.objects.create_superuser('admin', 'admin@hairsoft.com', 'Admin123')
+            else:
+                print('--- El usuario admin ya existe ---')
+        except Exception:
+            pass
+except Exception:
+    pass

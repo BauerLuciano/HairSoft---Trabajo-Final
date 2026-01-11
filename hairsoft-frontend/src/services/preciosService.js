@@ -1,10 +1,11 @@
 // hairsoft-frontend/src/services/preciosService.js
 import axios from 'axios'
 
-// --- DETECCIÓN DE ENTORNO (NO TOCA TU LÓGICA LOCAL) ---
-// 1. En tu casa (Localhost) -> Usa http://127.0.0.1:8000
-// 2. En el celular (Vercel) -> Usa la URL de Railway
+// --- DETECCIÓN AUTOMÁTICA DE ENTORNO ---
+// Si estamos en Vercel (Nube), usa Railway.
+// Si estamos en tu PC (Local), usa 127.0.0.1.
 const isProduction = window.location.hostname.includes('vercel.app');
+
 const API_BASE = isProduction 
   ? 'https://web-production-ac47c.up.railway.app' 
   : 'http://127.0.0.1:8000';
