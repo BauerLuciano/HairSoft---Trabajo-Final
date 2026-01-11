@@ -562,16 +562,21 @@ import {
 const router = useRouter()
 const route = useRoute()
 
-// === CONFIGURACIÓN INTELIGENTE (NO TOCA TU LÓGICA LOCAL) ===
+// ============================================================
+// 🔌 CONFIGURACIÓN INTELIGENTE (ESTO ARREGLA EL CELULAR)
+// ============================================================
 const isProduction = window.location.hostname.includes('vercel.app');
+
+// Si es producción, apuntamos a la URL de Railway que ya sabemos que anda.
+// En local, mantenemos tu puerto 8000 intacto.
 const API_URL = isProduction 
-  ? "https://web-production-ac47c.up.railway.app/api" 
+  ? "https://web-production-ac47c.up.railway.app/usuarios/api" 
   : "http://localhost:8000/api";
 
-console.log('📅 Turnos conectados a:', API_URL);
+console.log('📡 Turnos conectando a:', API_URL);
 
 // ==========================================
-// ESTADO REACTIVO (SE MANTIENE IGUAL)
+// ESTADO REACTIVO (TU VIDA ENTERA SIGUE ACÁ)
 // ==========================================
 
 const form = ref({
@@ -608,13 +613,12 @@ const cuponCodigo = ref(null)
 const descuentoAplicado = ref(0)
 const mensajePromo = ref("")
 
-// Para tracking de interés en horarios
 const horariosInteres = ref([])
 const mensaje = ref("")
 const mensajeTipo = ref("")
 
 // ==========================================
-// 1. LÓGICA DE SELECCIÓN (SE MANTIENE IGUAL)
+// 1. LÓGICA DE SELECCIÓN
 // ==========================================
 
 const toggleCategoria = (categoriaId) => {
@@ -674,7 +678,7 @@ const formularioValido = computed(() => {
 })
 
 // ==========================================
-// 3. FUNCIONES DE UTILIDAD (SE MANTIENEN IGUAL)
+// 3. FUNCIONES DE UTILIDAD
 // ==========================================
 
 const getPeluqueroNombre = () => {
@@ -773,14 +777,15 @@ const crearPagoMercadoPago = async () => {
     const token = localStorage.getItem('token')
     const headers = { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' }
     
-    // USAMOS EL API_URL QUE DETECTA SI ES NUBE O LOCAL
+    // USAMOS EL API_URL DINÁMICO
     const res = await axios.post(`${API_URL}/turnos/crear/`, payload, { headers })
     
     redirigiendoMercadoPago.value = true
     const mpUrl = res.data?.mp_data?.init_point || res.data?.init_point || res.data?.sandbox_init_point
     
     if (mpUrl) {
-      window.open(mpUrl, '_blank')
+      // OJO: En celulares, window.open puede ser bloqueado como popup.
+      window.location.href = mpUrl; 
     } else if (res.data && res.data.status === 'ok') {
       Swal.fire({ title: '¡Reserva Exitosa!', text: 'Tu turno fue confirmado.', icon: 'success' }).then(() => {
         redirigiendoMercadoPago.value = false
@@ -798,7 +803,7 @@ const crearPagoMercadoPago = async () => {
 }
 
 // ==========================================
-// 5. FLUJO Y 6. CÁLCULOS (SIN CAMBIOS)
+// 5. FLUJO Y 6. CÁLCULOS
 // ==========================================
 
 const irAlListado = () => router.push('/turnos')
@@ -824,7 +829,7 @@ const montoAPagarAhora = () => {
 }
 
 // ==========================================
-// 7. CALENDARIO Y HORARIOS (USA API_URL)
+// 7. CALENDARIO Y HORARIOS
 // ==========================================
 
 const currentYear = computed(() => currentDate.value.getFullYear())
@@ -902,7 +907,7 @@ const esDiaSeleccionado = (day) => {
 const esHoy = (day) => day === new Date().getDate() && currentMonth.value === new Date().getMonth() && currentYear.value === new Date().getFullYear()
 
 // ==========================================
-// 8. INTERÉS HORARIOS (USA API_URL)
+// 8. INTERÉS HORARIOS
 // ==========================================
 
 const registrarInteresHorario = (hora) => { horarioSeleccionadoInteres.value = hora; mostrarModalInteres.value = true }
@@ -921,7 +926,7 @@ const confirmarRegistroInteres = async () => {
 }
 
 // ==========================================
-// 9. CARGA DE DATOS (USA API_URL)
+// 9. CARGA DE DATOS
 // ==========================================
 
 const cargarDatosIniciales = async () => {

@@ -126,7 +126,10 @@ import Swal from 'sweetalert2'
 import { Edit3, Trash2 } from 'lucide-vue-next'
 
 // Configuración API
-const API_BASE = 'http://127.0.0.1:8000' // Ajusta si usas otra URL
+const isProduction = window.location.hostname.includes('vercel.app');
+const API_BASE = isProduction 
+  ? 'https://web-production-ac47c.up.railway.app' 
+  : 'http://127.0.0.1:8000';
 
 const categorias = ref([])
 const filtros = ref({ busqueda: '', tipo: '' })

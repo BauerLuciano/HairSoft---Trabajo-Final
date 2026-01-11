@@ -99,6 +99,7 @@ urlpatterns = [
     path('api/usuarios/crear/', func_views.crear_usuario, name='crear_usuario'),
     path('api/usuarios/editar/<int:pk>/', func_views.editar_usuario, name='editar_usuario'),
     path('api/usuarios/eliminar/<int:pk>/', func_views.eliminar_usuario, name='eliminar_usuario'),
+    path('api/usuarios/activar/<int:pk>/', func_views.activar_usuario, name='activar_usuario'),
     
     # ================================
     # Clientes / Peluqueros

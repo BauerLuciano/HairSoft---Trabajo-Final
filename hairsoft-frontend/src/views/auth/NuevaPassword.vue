@@ -64,8 +64,11 @@ import Swal from 'sweetalert2'
 
 const route = useRoute()
 const router = useRouter()
-// Ajustá tu API base si es necesario
-const API_BASE = 'http://127.0.0.1:8000'
+
+const isProduction = window.location.hostname.includes('vercel.app');
+const API_BASE = isProduction 
+  ? 'https://web-production-ac47c.up.railway.app' 
+  : 'http://127.0.0.1:8000';
 
 const password = ref('')
 const confirmPassword = ref('')

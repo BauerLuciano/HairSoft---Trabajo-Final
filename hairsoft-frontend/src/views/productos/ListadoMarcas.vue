@@ -164,7 +164,10 @@ import Swal from 'sweetalert2'
 import RegistrarMarca from './RegistrarMarca.vue'
 
 const router = useRouter()
-const API_BASE = 'http://127.0.0.1:8000'
+const isProduction = window.location.hostname.includes('vercel.app');
+const API_BASE = isProduction 
+  ? 'https://web-production-ac47c.up.railway.app' 
+  : 'http://127.0.0.1:8000';
 
 const marcas = ref([])
 const filtros = ref({ busqueda: '', estado: '' })

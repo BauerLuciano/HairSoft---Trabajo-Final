@@ -106,7 +106,10 @@ import {
 // Definimos emits para cuando se usa como modal
 const emit = defineEmits(['marca-registrada', 'cancelar'])
 
-const API_BASE = 'http://127.0.0.1:8000'
+const isProduction = window.location.hostname.includes('vercel.app');
+const API_BASE = isProduction 
+  ? 'https://web-production-ac47c.up.railway.app' 
+  : 'http://127.0.0.1:8000';
 
 const marca = reactive({
   nombre: '',

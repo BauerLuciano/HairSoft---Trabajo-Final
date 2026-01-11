@@ -52,8 +52,11 @@ import Swal from 'sweetalert2'
 const email = ref('')
 const cargando = ref(false)
 const focusedField = ref('')
-// Ajusta la URL base de tu API si es necesario
-const API_BASE = 'http://127.0.0.1:8000'
+
+const isProduction = window.location.hostname.includes('vercel.app');
+const API_BASE = isProduction 
+  ? 'https://web-production-ac47c.up.railway.app' 
+  : 'http://127.0.0.1:8000';
 
 const enviarSolicitud = async () => {
   if (!email.value) return

@@ -425,6 +425,19 @@ def eliminar_usuario(request, pk):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
+@csrf_exempt
+def activar_usuario(request, pk):
+    usuario = get_object_or_404(Usuario, pk=pk)
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+
+    try:
+        usuario.estado = 'ACTIVO'
+        usuario.save()
+        return JsonResponse({'status': 'ok', 'message': 'Usuario activado correctamente'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
 
 # ================================
 # Clientes Autocomplete

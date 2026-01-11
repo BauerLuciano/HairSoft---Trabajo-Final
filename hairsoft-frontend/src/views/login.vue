@@ -139,10 +139,8 @@ import { Mail, Lock, Eye, EyeOff } from 'lucide-vue-next';
 const router = useRouter();
 
 // --- CONFIGURACIÓN HÍBRIDA (PRODUCCIÓN vs LOCAL) ---
-// Detecta si la web corre en Vercel o en tu compu
-const isProduction = window.location.hostname.includes('vercel.app');
 
-// Si es producción usa Railway, si no usa tu IP local de siempre
+const isProduction = window.location.hostname.includes('vercel.app');
 const API_BASE = isProduction 
   ? 'https://web-production-ac47c.up.railway.app/usuarios' 
   : 'http://127.0.0.1:8000/usuarios';
