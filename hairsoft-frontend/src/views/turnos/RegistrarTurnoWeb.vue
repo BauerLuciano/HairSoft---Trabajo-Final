@@ -563,7 +563,7 @@ const router = useRouter()
 const route = useRoute()
 
 // ==========================================
-// ESTADO REACTIVO - CON MEJOR MANEJO DE ERRORES
+// ESTADO REACTIVO - CORREGIDO
 // ==========================================
 const form = ref({
   peluquero: "",
@@ -583,7 +583,7 @@ const usuario = ref({
   dni: '', 
   telefono: '', 
   turnosCount: 0,
-  isAuthenticated: false // ✅ NUEVO: Para controlar autenticación
+  isAuthenticated: false
 })
 
 const peluqueros = ref([])
@@ -596,7 +596,7 @@ const busquedaServicio = ref("")
 // Estados de carga
 const cargandoMercadoPago = ref(false)
 const cargandoHorarios = ref(false)
-const cargandoDatos = ref(true) // ✅ NUEVO: Para mostrar spinner
+const cargandoDatos = ref(true)
 const cargandoServicios = ref(false)
 
 const mostrarModalInteres = ref(false)
@@ -611,6 +611,8 @@ const cuponCodigo = ref(null)
 const descuentoAplicado = ref(0)
 const mensajePromo = ref("")
 const horariosInteres = ref([])
+const mensaje = ref("")
+const mensajeTipo = ref("")
 
 // ==========================================
 // 🛡️ LÓGICA DE SELECCIÓN Y FILTROS - CORREGIDO
@@ -769,6 +771,11 @@ const calcularTotalOriginal = () => {
   }
 }
 
+// ✅ CORRECCIÓN: Esta función NO existe en el template, se usa calcularTotal() 
+const calcularTotal = () => {
+  return calcularTotalOriginal().toFixed(2);
+}
+
 const calcularTotalConDescuento = () => {
   try {
     const total = calcularTotalOriginal();
@@ -798,6 +805,22 @@ const calcularDuracionTotalServicios = () => {
   }
 }
 
+// ✅ CORRECCIÓN: Función para calcular la seña (50%)
+const calcularSena = () => {
+  const total = parseFloat(calcularTotalConDescuento());
+  return (total * 0.5).toFixed(2);
+}
+
+// ✅ CORRECCIÓN: Función para calcular monto a pagar ahora
+const montoAPagarAhora = () => {
+  const total = parseFloat(calcularTotalConDescuento());
+  if (form.value.tipo_pago === 'SENA_50') {
+    return (total * 0.5).toFixed(2);
+  } else {
+    return total.toFixed(2);
+  }
+}
+
 // ==========================================
 // API CALLS & HELPERS - MEJORADO
 // ==========================================
@@ -816,6 +839,18 @@ const getPeluqueroNombre = () => {
     return `${p.nombre || ''} ${p.apellido || ''}`.trim() || p?.username || 'Peluquero';
   } catch {
     return '';
+  }
+}
+
+// ✅ CORRECCIÓN: Esta función NO existe, se usa en el template
+const getServicioNombre = (servicioId) => {
+  try {
+    const lista = getListaServicios();
+    const s = lista.find(s => String(s.id) === String(servicioId));
+    return s ? s.nombre : 'Servicio no encontrado';
+  } catch (error) {
+    console.error('Error en getServicioNombre:', error);
+    return 'Servicio no encontrado';
   }
 }
 
@@ -883,6 +918,126 @@ const getCategoriaNombre = (cat) => {
     return 'General';
   }
 }
+
+// ✅ CORRECCIÓN: Función para seleccionar peluquero
+const seleccionarPeluquero = (peluqueroId) => {
+  form.value.peluquero = peluqueroId;
+  onPeluqueroSeleccionado();
+}
+
+const onPeluqueroSeleccionado = () => {
+  form.value.fecha = "";
+  form.value.hora = "";
+  slotsOcupadosReales.value = [];
+}
+
+// ✅ CORRECCIÓN: Funciones para el calendario
+const nombreMesActual = computed(() => {
+  const meses = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+  return meses[currentDate.value.getMonth()];
+});
+
+const currentYear = computed(() => {
+  return currentDate.value.getFullYear();
+});
+
+const startingDayOfWeek = computed(() => {
+  const firstDay = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), 1);
+  return firstDay.getDay(); // 0 = Domingo, 1 = Lunes, etc.
+});
+
+const daysInMonth = computed(() => {
+  const year = currentDate.value.getFullYear();
+  const month = currentDate.value.getMonth();
+  return new Date(year, month + 1, 0).getDate();
+});
+
+const esHoy = (day) => {
+  const hoy = new Date();
+  const selectedDate = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), day);
+  return hoy.toDateString() === selectedDate.toDateString();
+};
+
+const esDiaSeleccionado = (day) => {
+  if (!form.value.fecha) return false;
+  const selectedDate = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), day);
+  const fechaForm = new Date(form.value.fecha);
+  return selectedDate.toDateString() === fechaForm.toDateString();
+};
+
+const esDiaSeleccionable = (day) => {
+  const selectedDate = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), day);
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  
+  // No permitir días pasados
+  if (selectedDate < hoy) return false;
+  
+  // Limitar a 7 días en el futuro
+  const maxDate = new Date();
+  maxDate.setDate(hoy.getDate() + DIAS_RANGO);
+  return selectedDate <= maxDate;
+};
+
+const seleccionarDiaCalendario = (day) => {
+  const year = currentDate.value.getFullYear();
+  const month = String(currentDate.value.getMonth() + 1).padStart(2, '0');
+  const dayStr = String(day).padStart(2, '0');
+  form.value.fecha = `${year}-${month}-${dayStr}`;
+};
+
+const cambiarMes = (delta) => {
+  const newDate = new Date(currentDate.value);
+  newDate.setMonth(newDate.getMonth() + delta);
+  currentDate.value = newDate;
+};
+
+// ✅ CORRECCIÓN: Función para obtener fecha máxima de reserva
+const getFechaMaximaReserva = () => {
+  const maxDate = new Date();
+  maxDate.setDate(maxDate.getDate() + DIAS_RANGO);
+  return maxDate.toLocaleDateString('es-ES');
+};
+
+// ✅ CORRECCIÓN: Función para filtrar servicios (usada en el template)
+const filtrarServicios = () => {
+  // Esta función se llama desde el input, pero ya tenemos serviciosFiltrados computed
+  // Solo necesitamos actualizar la búsqueda
+  nextTick();
+};
+
+// ✅ CORRECCIÓN: Función para obtener horarios ocupados para mostrar
+const horariosOcupadosParaMostrar = computed(() => {
+  const horariosBase = [
+    '08:00','08:20','08:40','09:00','09:20','09:40',
+    '10:00','10:20','10:40','11:00','11:20','11:40',
+    '15:00','15:20','15:40','16:00','16:20','16:40',
+    '17:00','17:20','17:40','18:00','18:20','18:40',
+    '19:00','19:20','19:40','20:00'
+  ];
+  
+  return horariosBase.filter(h => !esHorarioDisponible(h));
+});
+
+// ✅ CORRECCIÓN: Función para verificar si ya se registró interés
+const estaInteresRegistrado = (hora) => {
+  return horariosInteres.value.some(h => h.hora === hora && h.fecha === form.value.fecha);
+};
+
+// ✅ CORRECCIÓN: Función para registrar interés en horario
+const registrarInteresHorario = (hora) => {
+  horarioSeleccionadoInteres.value = hora;
+  mostrarModalInteres.value = true;
+};
+
+// ✅ CORRECCIÓN: Función para cancelar registro de interés
+const cancelarRegistroInteres = () => {
+  mostrarModalInteres.value = false;
+  horarioSeleccionadoInteres.value = null;
+};
 
 const cargarDatosIniciales = async () => {
   cargandoDatos.value = true;
@@ -1132,23 +1287,10 @@ const horariosDisponibles = computed(() => {
   return horariosBase.filter(h => esHorarioDisponible(h));
 });
 
-const seleccionarDiaCalendario = (d) => {
-  const year = currentDate.value.getFullYear();
-  const month = String(currentDate.value.getMonth() + 1).padStart(2, '0');
-  const day = String(d).padStart(2, '0');
-  form.value.fecha = `${year}-${month}-${day}`;
-}
-
 const seleccionarHora = (h) => {
   if (esHorarioDisponible(h)) {
     form.value.hora = h;
   }
-}
-
-const onPeluqueroSeleccionado = () => {
-  form.value.fecha = "";
-  form.value.hora = "";
-  slotsOcupadosReales.value = [];
 }
 
 // ==========================================
@@ -1199,6 +1341,30 @@ const confirmarRegistroInteres = async () => {
 }
 
 // ==========================================
+// FUNCIONES DE NAVEGACIÓN - CORREGIDAS
+// ==========================================
+
+const volverAlListado = () => {
+  router.back();
+};
+
+const irAlListado = () => {
+  router.push('/cliente/historial');
+};
+
+const nuevaReserva = () => {
+  window.location.reload();
+};
+
+const volverAtras = () => {
+  router.back();
+};
+
+const irAServicios = () => {
+  router.push('/servicios');
+};
+
+// ==========================================
 // LIFECYCLE & WATCHERS
 // ==========================================
 
@@ -1220,22 +1386,9 @@ watch(() => form.value.peluquero, (newPeluquero) => {
 });
 
 // ==========================================
-// FUNCIONES DE NAVEGACIÓN
+// EXPORTAR FUNCIONES
 // ==========================================
 
-const volverAtras = () => {
-  router.back();
-}
-
-const irAServicios = () => {
-  router.push('/servicios');
-}
-
-// ==========================================
-// EXPORTAR FUNCIONES SI ES NECESARIO
-// ==========================================
-
-// Si necesitas exponer funciones al template
 defineExpose({
   form,
   usuario,
