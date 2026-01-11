@@ -549,7 +549,8 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import axios from 'axios'
+// ✅ Usamos tu instancia de api centralizada
+import api from '@/services/api' 
 import Swal from 'sweetalert2'
 import { 
   Calendar, ArrowLeft, User, UserCheck, FolderOpen, Tag, 
@@ -562,23 +563,9 @@ import {
 const router = useRouter()
 const route = useRoute()
 
-// ============================================================
-// 🔌 CONFIGURACIÓN INTELIGENTE (ESTO ARREGLA EL CELULAR)
-// ============================================================
-const isProduction = window.location.hostname.includes('vercel.app');
-
-// Si es producción, apuntamos a la URL de Railway que ya sabemos que anda.
-// En local, mantenemos tu puerto 8000 intacto.
-const API_URL = isProduction 
-  ? "https://web-production-ac47c.up.railway.app/usuarios/api" 
-  : "http://localhost:8000/api";
-
-console.log('📡 Turnos conectando a:', API_URL);
-
 // ==========================================
-// ESTADO REACTIVO (TU VIDA ENTERA SIGUE ACÁ)
+// ESTADO REACTIVO
 // ==========================================
-
 const form = ref({
   peluquero: "",
   servicios_ids: [],
@@ -598,7 +585,6 @@ const slotsOcupadosReales = ref([])
 const categoriasSeleccionadas = ref([])
 const busquedaServicio = ref("")
 
-// UI States
 const cargandoMercadoPago = ref(false)
 const cargandoHorarios = ref(false)
 const mostrarModalInteres = ref(false)
@@ -612,23 +598,16 @@ const DIAS_RANGO = 7
 const cuponCodigo = ref(null)
 const descuentoAplicado = ref(0)
 const mensajePromo = ref("")
-
 const horariosInteres = ref([])
-const mensaje = ref("")
-const mensajeTipo = ref("")
 
 // ==========================================
 // 1. LÓGICA DE SELECCIÓN
 // ==========================================
-
 const toggleCategoria = (categoriaId) => {
   const id = String(categoriaId)
   const index = categoriasSeleccionadas.value.indexOf(id)
-  if (index > -1) {
-    categoriasSeleccionadas.value.splice(index, 1)
-  } else {
-    categoriasSeleccionadas.value.push(id)
-  }
+  if (index > -1) categoriasSeleccionadas.value.splice(index, 1)
+  else categoriasSeleccionadas.value.push(id)
 }
 
 const toggleServicio = (servicio) => {
@@ -651,61 +630,53 @@ const eliminarServicio = (servicioId) => {
 }
 
 const serviciosFiltrados = computed(() => {
-  let filtrados = servicios.value
+  let filtrados = servicios.value || []
   if (categoriasSeleccionadas.value.length > 0) {
     filtrados = filtrados.filter(servicio => {
       if (!servicio.categoria) return false
-      let categoriaId = typeof servicio.categoria === 'object' ? String(servicio.categoria.id) : String(servicio.categoria)
-      return categoriasSeleccionadas.value.includes(categoriaId)
+      let catId = typeof servicio.categoria === 'object' ? String(servicio.categoria.id) : String(servicio.categoria)
+      return categoriasSeleccionadas.value.includes(catId)
     })
   }
   if (busquedaServicio.value.trim()) {
     const term = busquedaServicio.value.toLowerCase().trim()
-    filtrados = filtrados.filter(servicio => servicio.nombre.toLowerCase().includes(term))
+    filtrados = filtrados.filter(s => s.nombre.toLowerCase().includes(term))
   }
   return filtrados
 })
 
-// ==========================================
-// 2. VALIDACIÓN DEL FORMULARIO
-// ==========================================
-
 const formularioValido = computed(() => {
-  return form.value.peluquero && 
-         form.value.servicios_ids.length > 0 && 
-         form.value.fecha && 
-         form.value.hora
+  return form.value.peluquero && form.value.servicios_ids.length > 0 && form.value.fecha && form.value.hora
 })
 
 // ==========================================
-// 3. FUNCIONES DE UTILIDAD
+// 3. FUNCIONES DE UTILIDAD (CON PROTECCIÓN ANTI-CRASH)
 // ==========================================
-
 const getPeluqueroNombre = () => {
-  if (!form.value.peluquero) return ''
-  const peluquero = peluqueros.value.find(p => String(p.id) === String(form.value.peluquero))
-  if (!peluquero) return ''
-  const nombre = peluquero.nombre || peluquero.first_name || ''
-  const apellido = peluquero.apellido || peluquero.last_name || ''
-  return (nombre && apellido) ? `${nombre} ${apellido}`.trim() : (nombre || peluquero.username || 'Peluquero')
+  if (!form.value.peluquero || !peluqueros.value) return ''
+  const p = peluqueros.value.find(p => String(p.id) === String(form.value.peluquero))
+  if (!p) return '' 
+  const n = p.nombre || p.first_name || ''
+  const a = p.apellido || p.last_name || ''
+  return (n && a) ? `${n} ${a}`.trim() : (n || p.username || 'Peluquero')
 }
 
-const getNombreCompletoPeluquero = (peluquero) => {
-  if (!peluquero) return ''
-  const nombre = peluquero.nombre || peluquero.first_name || ''
-  const apellido = peluquero.apellido || peluquero.last_name || ''
-  return (nombre && apellido) ? `${nombre} ${apellido}`.trim() : (nombre || peluquero.username || 'Peluquero')
+const getNombreCompletoPeluquero = (p) => {
+  if (!p) return ''
+  const n = p.nombre || p.first_name || ''
+  const a = p.apellido || p.last_name || ''
+  return (n && a) ? `${n} ${a}`.trim() : (n || p.username || 'Peluquero')
 }
 
-const getInicialesPeluquero = (peluquero) => {
-  if (!peluquero) return ''
-  const nombre = peluquero.nombre || peluquero.first_name || ''
-  const apellido = peluquero.apellido || peluquero.last_name || ''
-  return (nombre && apellido) ? `${nombre.charAt(0)}${apellido.charAt(0)}`.toUpperCase() : (nombre || peluquero.username || 'P').charAt(0).toUpperCase()
+const getInicialesPeluquero = (p) => {
+  if (!p) return 'P'
+  const n = p.nombre || p.first_name || ''
+  const a = p.apellido || p.last_name || ''
+  return (n && a) ? `${n.charAt(0)}${a.charAt(0)}`.toUpperCase() : (n || p.username || 'P').charAt(0).toUpperCase()
 }
 
-const seleccionarPeluquero = (peluqueroId) => {
-  form.value.peluquero = peluqueroId
+const seleccionarPeluquero = (id) => {
+  form.value.peluquero = id
   onPeluqueroSeleccionado()
 }
 
@@ -716,50 +687,16 @@ const getCategoriaNombre = (cat) => {
   return categoria ? categoria.nombre : 'General'
 }
 
-const getServiciosNombres = () => {
-  return form.value.servicios_ids.map(id => {
-    const servicio = servicios.value.find(s => String(s.id) === String(id))
-    return servicio ? servicio.nombre : ''
-  }).filter(n => n).join(', ')
-}
-
-const getServicioNombre = (servicioId) => {
-  const servicio = servicios.value.find(s => String(s.id) === String(servicioId))
-  return servicio ? servicio.nombre : 'Servicio eliminado'
-}
-
-const formatoFechaLegible = (f) => {
-  if (!f) return ''
-  try {
-    const [year, month, day] = f.split('-').map(Number)
-    const fecha = new Date(year, month - 1, day)
-    const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
-    const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
-    return `${dias[fecha.getDay()]} ${day} de ${meses[month - 1]}`
-  } catch (e) { return f }
-}
-
-const estaInteresRegistrado = (hora) => {
-  return horariosInteres.value.some(item => 
-    item.fecha === form.value.fecha && 
-    item.hora === hora && 
-    item.peluquero_id === form.value.peluquero
-  )
-}
+const getServiciosNombres = () => form.value.servicios_ids.map(id => servicios.value.find(s => String(s.id) === String(id))?.nombre || '').filter(n => n).join(', ')
 
 // ==========================================
-// 4. MERCADO PAGO (USA API_URL DINÁMICA)
+// 4. MERCADO PAGO Y TURNOS (RUTAS CORREGIDAS)
 // ==========================================
-
 const crearPagoMercadoPago = async () => {
-  if (!formularioValido.value) {
-    Swal.fire({ title: 'Atención', text: 'Faltan datos para reservar el turno.', icon: 'warning', confirmButtonText: 'Entendido' })
-    return
-  }
+  if (!formularioValido.value) return
   cargandoMercadoPago.value = true
   try {
     const total = parseFloat(calcularTotalConDescuento())
-    const sena = form.value.tipo_pago === 'SENA_50' ? total * 0.5 : 0
     const payload = {
       peluquero_id: form.value.peluquero,
       cliente_id: usuario.value.id,
@@ -770,206 +707,109 @@ const crearPagoMercadoPago = async () => {
       tipo_pago: form.value.tipo_pago,
       medio_pago: 'MERCADO_PAGO',
       monto_total: total,
-      monto_seña: sena,
+      monto_seña: form.value.tipo_pago === 'SENA_50' ? total * 0.5 : 0,
       duracion_total: calcularDuracionTotalServicios(),
       cup_codigo: cuponCodigo.value
     }
-    const token = localStorage.getItem('token')
-    const headers = { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' }
-    
-    // USAMOS EL API_URL DINÁMICO
-    const res = await axios.post(`${API_URL}/turnos/crear/`, payload, { headers })
-    
-    redirigiendoMercadoPago.value = true
+    const res = await api.post('/turnos/crear/', payload)
     const mpUrl = res.data?.mp_data?.init_point || res.data?.init_point || res.data?.sandbox_init_point
-    
-    if (mpUrl) {
-      // OJO: En celulares, window.open puede ser bloqueado como popup.
-      window.location.href = mpUrl; 
-    } else if (res.data && res.data.status === 'ok') {
-      Swal.fire({ title: '¡Reserva Exitosa!', text: 'Tu turno fue confirmado.', icon: 'success' }).then(() => {
-        redirigiendoMercadoPago.value = false
-        router.push('/turnos')
-      })
-    } else {
-      throw new Error(res.data.message || 'Error de respuesta')
-    }
+    if (mpUrl) window.location.href = mpUrl
   } catch (error) {
-    Swal.fire({ title: 'Error de Pago', text: error.response?.data?.message || error.message, icon: 'error' })
-    redirigiendoMercadoPago.value = false
-  } finally {
-    cargandoMercadoPago.value = false
-  }
+    Swal.fire({ title: 'Error', text: error.response?.data?.message || 'Error en pago', icon: 'error' })
+  } finally { cargandoMercadoPago.value = false }
 }
-
-// ==========================================
-// 5. FLUJO Y 6. CÁLCULOS
-// ==========================================
-
-const irAlListado = () => router.push('/turnos')
-const nuevaReserva = () => {
-  form.value = { peluquero: "", servicios_ids: [], hora: "", fecha: "", tipo_pago: "SENA_50", medio_pago: "MERCADO_PAGO", canal: "WEB", cliente: usuario.value.id }
-  categoriasSeleccionadas.value = []; busquedaServicio.value = ""; slotsOcupadosReales.value = []; redirigiendoMercadoPago.value = false
-}
-
-const calcularTotalOriginal = () => form.value.servicios_ids.reduce((acc, id) => {
-  const servicio = servicios.value.find(s => String(s.id) === String(id))
-  return acc + parseFloat(servicio?.precio || 0)
-}, 0)
-const calcularTotalConDescuento = () => (calcularTotalOriginal() * (1 - descuentoAplicado.value / 100)).toFixed(2)
-const calcularSena = () => (parseFloat(calcularTotalConDescuento()) * 0.5).toFixed(2)
-const calcularTotal = () => calcularTotalConDescuento()
-const calcularDuracionTotalServicios = () => form.value.servicios_ids.reduce((total, id) => {
-  const s = servicios.value.find(x => String(x.id) === String(id))
-  return total + (s ? parseInt(s.duracion || s.duracion_minutos || 60) : 0)
-}, 0)
-const montoAPagarAhora = () => {
-  const total = parseFloat(calcularTotalConDescuento())
-  return form.value.tipo_pago === 'SENA_50' ? (total * 0.5).toFixed(2) : total.toFixed(2)
-}
-
-// ==========================================
-// 7. CALENDARIO Y HORARIOS
-// ==========================================
-
-const currentYear = computed(() => currentDate.value.getFullYear())
-const currentMonth = computed(() => currentDate.value.getMonth())
-const nombreMesActual = computed(() => ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][currentMonth.value])
-const daysInMonth = computed(() => new Date(currentYear.value, currentMonth.value + 1, 0).getDate())
-const startingDayOfWeek = computed(() => new Date(currentYear.value, currentMonth.value, 1).getDay())
-
-const horariosGenerados = computed(() => {
-  const horariosBase = []
-  const bloques = [{ inicio: 8, fin: 12 }, { inicio: 15, fin: 20 }]
-  bloques.forEach(b => {
-    for (let h = b.inicio; h < b.fin; h++) {
-      for (let m = 0; m < 60; m += intervaloMinutos) horariosBase.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
-    }
-    horariosBase.push(`${String(b.fin).padStart(2, '0')}:00`)
-  })
-  return horariosBase
-})
 
 const cargarTurnosOcupados = async (fecha) => {
   if (!form.value.peluquero) return
   cargandoHorarios.value = true
   try {
-    const res = await axios.get(`${API_URL}/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`)
+    const res = await api.get(`/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`)
     const turnos = res.data.results || res.data 
     const ocupadosSet = new Set()
-    turnos.forEach(turno => {
-      if (!turno.hora || turno.fecha !== fecha) return
-      const [h, m] = turno.hora.split(':').map(Number)
-      const inicioMin = h * 60 + m
-      let duracion = turno.duracion_total || turno.servicios?.reduce((acc, s) => acc + (s.duracion || 20), 0) || 20
-      const finMin = inicioMin + duracion
-      for (let i = inicioMin; i < finMin; i += 20) ocupadosSet.add(`${Math.floor(i / 60).toString().padStart(2, '0')}:${(i % 60).toString().padStart(2, '0')}`)
-    })
+    if (Array.isArray(turnos)) {
+      turnos.forEach(turno => {
+        if (!turno.hora) return
+        const [h, m] = turno.hora.split(':').map(Number)
+        const inicioMin = h * 60 + m
+        let dur = turno.duracion_total || 20
+        for (let i = inicioMin; i < inicioMin + dur; i += 20) {
+          ocupadosSet.add(`${Math.floor(i / 60).toString().padStart(2, '0')}:${(i % 60).toString().padStart(2, '0')}`)
+        }
+      })
+    }
     slotsOcupadosReales.value = Array.from(ocupadosSet)
-  } catch (e) { console.error("Error cargando turnos:", e) } finally { cargandoHorarios.value = false }
+  } catch (e) { console.error(e) } finally { cargandoHorarios.value = false }
 }
+
+// ✅ RUTA CORREGIDA SEGÚN TU URLS.PY (registrar-interes)
+const confirmarRegistroInteres = async () => {
+  registrandoInteres.value = true
+  try {
+    const payload = { 
+      fecha: form.value.fecha, 
+      hora: horarioSeleccionadoInteres.value, 
+      peluquero_id: form.value.peluquero, 
+      cliente_id: usuario.value.id, 
+      servicios_ids: form.value.servicios_ids, 
+      interes_notificacion: true 
+    }
+    const res = await api.post('/turnos/registrar-interes/', payload)
+    if (res.status === 200 || res.status === 201) {
+      Swal.fire({ title: '✅ ¡Anotado!', text: 'Te avisaremos si se libera.', icon: 'success' })
+    }
+  } catch (e) { Swal.fire({ title: 'Error', text: 'No pudimos registrar tu interés', icon: 'error' }) } 
+  finally { registrandoInteres.value = false; mostrarModalInteres.value = false }
+}
+
+// ==========================================
+// 5. CÁLCULOS Y CARGA (USANDO INSTANCIA API)
+// ==========================================
+const calcularTotalOriginal = () => form.value.servicios_ids.reduce((acc, id) => acc + parseFloat(servicios.value.find(s => String(s.id) === String(id))?.precio || 0), 0)
+const calcularTotalConDescuento = () => (calcularTotalOriginal() * (1 - descuentoAplicado.value / 100)).toFixed(2)
+const calcularDuracionTotalServicios = () => form.value.servicios_ids.reduce((t, id) => t + (parseInt(servicios.value.find(x => String(x.id) === String(id))?.duracion || 20)), 0)
 
 const esHorarioDisponible = (hora) => {
   if (!form.value.fecha || !form.value.peluquero) return true
-  const horaSimple = hora.substring(0, 5)
-  if (slotsOcupadosReales.value.includes(horaSimple)) return false
+  const hSimp = hora.substring(0, 5)
+  if (slotsOcupadosReales.value.includes(hSimp)) return false
   const hoy = new Date()
-  const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
-  if (form.value.fecha === hoyFormateado) {
-    const [hSel, mSel] = horaSimple.split(':').map(Number)
-    if (hSel < hoy.getHours() || (hSel === hoy.getHours() && mSel < hoy.getMinutes())) return false
+  const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+  if (form.value.fecha === hoyF) {
+    const [hS, mS] = hSimp.split(':').map(Number)
+    if (hS < hoy.getHours() || (hS === hoy.getHours() && mS < hoy.getMinutes())) return false
   }
   return true
 }
 
-const horariosDisponibles = computed(() => horariosGenerados.value.filter(h => esHorarioDisponible(h)))
-const horariosOcupadosParaMostrar = computed(() => horariosGenerados.value.filter(h => !esHorarioDisponible(h)))
-const onPeluqueroSeleccionado = () => { form.value.fecha = ""; form.value.hora = ""; slotsOcupadosReales.value = [] }
+const horariosDisponibles = computed(() => ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00'].filter(h => esHorarioDisponible(h)))
 const seleccionarDiaCalendario = (day) => {
-  if (!esDiaSeleccionable(day)) return
-  form.value.fecha = `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  const d = new Date(currentDate.value)
+  form.value.fecha = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
-const seleccionarHora = (hora) => {
-  if (esHorarioDisponible(hora)) form.value.hora = hora
-  else Swal.fire({ title: 'Horario Ocupado', icon: 'warning', toast: true, position: 'top-end', timer: 2000 })
-}
-const cambiarMes = (dir) => { currentDate.value = new Date(currentDate.value.setMonth(currentDate.value.getMonth() + dir)) }
-const esDiaSeleccionable = (day) => {
-  const d = new Date(currentYear.value, currentMonth.value, day)
-  const h = new Date(); h.setHours(0, 0, 0, 0)
-  return d >= h && d <= new Date(new Date().setDate(h.getDate() + DIAS_RANGO)) && d.getDay() !== 0
-}
-const esDiaSeleccionado = (day) => {
-  if (!form.value.fecha) return false
-  const [y, m, d] = form.value.fecha.split('-').map(Number)
-  return day === d && (currentMonth.value + 1) === m && currentYear.value === y
-}
-const esHoy = (day) => day === new Date().getDate() && currentMonth.value === new Date().getMonth() && currentYear.value === new Date().getFullYear()
+const seleccionarHora = (h) => { if (esHorarioDisponible(h)) form.value.hora = h }
 
-// ==========================================
-// 8. INTERÉS HORARIOS
-// ==========================================
-
-const registrarInteresHorario = (hora) => { horarioSeleccionadoInteres.value = hora; mostrarModalInteres.value = true }
-const cancelarRegistroInteres = () => { mostrarModalInteres.value = false; horarioSeleccionadoInteres.value = null }
-const confirmarRegistroInteres = async () => {
-  registrandoInteres.value = true
-  try {
-    const payload = { fecha: form.value.fecha, hora: horarioSeleccionadoInteres.value, peluquero_id: form.value.peluquero, cliente_id: usuario.value.id, servicios_ids: form.value.servicios_ids, interes_notificacion: true }
-    const token = localStorage.getItem('token')
-    const res = await axios.post(`${API_URL}/turnos/interes-horario/`, payload, { headers: { 'Authorization': `Token ${token}` } })
-    if (res.data.success) {
-      horariosInteres.value.push({ fecha: form.value.fecha, hora: horarioSeleccionadoInteres.value, peluquero_id: form.value.peluquero, cliente_id: usuario.value.id })
-      Swal.fire({ title: '✅ Registrado', text: 'Te notificaremos.', icon: 'success', timer: 2000, showConfirmButton: false })
-    }
-  } catch (e) { Swal.fire({ title: 'Error', icon: 'error' }) } finally { registrandoInteres.value = false; mostrarModalInteres.value = false }
+const onPeluqueroSeleccionado = () => {
+  form.value.fecha = ""; form.value.hora = ""; slotsOcupadosReales.value = []
 }
-
-// ==========================================
-// 9. CARGA DE DATOS
-// ==========================================
 
 const cargarDatosIniciales = async () => {
-  const token = localStorage.getItem('token')
   const userId = localStorage.getItem('user_id')
-  if (userId) {
-    try {
-      const res = await axios.get(`${API_URL}/usuarios/${userId}/`, { headers: { 'Authorization': `Token ${token}` } })
-      usuario.value = { ...res.data, id: res.data.id || userId }; form.value.cliente = userId
-    } catch(e) { console.error(e) }
-  }
   try {
-    const [p, s, c] = await Promise.all([ axios.get(`${API_URL}/peluqueros/`), axios.get(`${API_URL}/servicios/`), axios.get(`${API_URL}/categorias/servicios/`) ])
+    if (userId) {
+      const resU = await api.get(`/usuarios/${userId}/`)
+      usuario.value = resU.data; form.value.cliente = userId
+    }
+    const [p, s, c] = await Promise.all([
+      api.get('/peluqueros/'),
+      api.get('/servicios/'),
+      api.get('/categorias/servicios/')
+    ])
     peluqueros.value = p.data; servicios.value = s.data; categorias.value = c.data
-  } catch(e) { console.error(e) }
+  } catch(e) { console.error('Error carga inicial:', e) }
 }
 
-const validarCuponURL = async () => {
-  const codigo = route.query.cup
-  if (codigo) {
-    try {
-      const res = await axios.get(`${API_URL}/promociones/validar/${codigo}/`)
-      if (res.data.valido) {
-        cuponCodigo.value = codigo; descuentoAplicado.value = parseFloat(res.data.descuento); mensajePromo.value = res.data.mensaje
-        Swal.fire({ title: '¡Descuento Aplicado!', icon: 'success', toast: true, position: 'top-end', timer: 3000 })
-      }
-    } catch (e) { console.error(e) }
-  }
-}
-
-// ==========================================
-// 10. WATCHERS Y 11. LIFECYCLE
-// ==========================================
-
-watch(() => form.value.fecha, (newFecha) => {
-  if (newFecha && form.value.peluquero) cargarTurnosOcupados(newFecha)
-  else form.value.hora = ""
-})
-watch(() => form.value.peluquero, (newVal, oldVal) => {
-  if (newVal !== oldVal) { form.value.fecha = ""; form.value.hora = ""; slotsOcupadosReales.value = [] }
-})
-
-onMounted(() => { cargarDatosIniciales(); setTimeout(validarCuponURL, 500) })
+onMounted(cargarDatosIniciales)
+watch(() => form.value.fecha, (f) => { if (f && form.value.peluquero) cargarTurnosOcupados(f) })
 </script>
 
 <style scoped>
