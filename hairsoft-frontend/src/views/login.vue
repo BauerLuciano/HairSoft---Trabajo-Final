@@ -137,7 +137,17 @@ import Swal from 'sweetalert2';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-vue-next';
 
 const router = useRouter();
-const API_BASE = 'http://127.0.0.1:8000/usuarios';
+
+// --- CONFIGURACIÓN HÍBRIDA (PRODUCCIÓN vs LOCAL) ---
+// Detecta si la web corre en Vercel o en tu compu
+const isProduction = window.location.hostname.includes('vercel.app');
+
+// Si es producción usa Railway, si no usa tu IP local de siempre
+const API_BASE = isProduction 
+  ? 'https://web-production-ac47c.up.railway.app/usuarios' 
+  : 'http://127.0.0.1:8000/usuarios';
+
+console.log('🌐 Login conectado a:', API_BASE);
 
 const credentials = ref({
   username: '',
@@ -164,6 +174,7 @@ const handleLogin = async () => {
   loading.value = true;
   
   try {
+    // Usamos la URL dinámica que definimos arriba
     const response = await axios.post(`${API_BASE}/api/auth/login/`, credentials.value);
     
     if (response.data.status === 'ok') {
@@ -198,9 +209,16 @@ const handleLogin = async () => {
       }, 1000);
     }
   } catch (error) {
+    console.error("Error en login:", error);
+    
+    // Si no hay respuesta del servidor (error de red), avisamos que es conexión
+    const errorMsg = error.response 
+      ? (error.response.data?.message || 'Credenciales incorrectas.') 
+      : 'No se pudo conectar con el servidor. Revisá tu conexión.';
+
     Swal.fire({
-      title: 'Error',
-      text: error.response?.data?.message || 'Credenciales incorrectas.',
+      title: 'Error de acceso',
+      text: errorMsg,
       icon: 'error',
       confirmButtonColor: '#007bff',
       background: '#1e293b',
