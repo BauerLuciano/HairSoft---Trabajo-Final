@@ -1,6 +1,14 @@
 import axios from 'axios';
 
-const API_URL = 'http://127.0.0.1:8000/usuarios/api/clientes/';
+// --- DETECCIÓN DE ENTORNO (NO TOCA TU LÓGICA LOCAL) ---
+// Si estamos en Vercel, usa Railway. Si no, usa tu 127.0.0.1 de siempre.
+const isProduction = window.location.hostname.includes('vercel.app');
+const BASE = isProduction 
+  ? 'https://web-production-ac47c.up.railway.app' 
+  : 'http://127.0.0.1:8000';
+
+// Concatenamos la base con tu ruta original
+const API_URL = `${BASE}/usuarios/api/clientes/`;
 
 export const obtenerClientes = async () => {
     try {
