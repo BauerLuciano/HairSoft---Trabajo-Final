@@ -547,9 +547,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import api from '@/services/api' // ✅ Usamos API centralizada
+import api from '@/services/api'
 import Swal from 'sweetalert2'
 import { 
   Calendar, ArrowLeft, User, UserCheck, FolderOpen, Tag, 
@@ -563,7 +563,7 @@ const router = useRouter()
 const route = useRoute()
 
 // ==========================================
-// ESTADO REACTIVO
+// ESTADO REACTIVO - CON MEJOR MANEJO DE ERRORES
 // ==========================================
 const form = ref({
   peluquero: "",
@@ -576,7 +576,16 @@ const form = ref({
   cliente: null
 })
 
-const usuario = ref({ id: null, nombre: '', apellido: '', dni: '', telefono: '', turnosCount: 0 })
+const usuario = ref({ 
+  id: null, 
+  nombre: '', 
+  apellido: '', 
+  dni: '', 
+  telefono: '', 
+  turnosCount: 0,
+  isAuthenticated: false // ✅ NUEVO: Para controlar autenticación
+})
+
 const peluqueros = ref([])
 const servicios = ref([])
 const categorias = ref([])
@@ -584,8 +593,12 @@ const slotsOcupadosReales = ref([])
 const categoriasSeleccionadas = ref([])
 const busquedaServicio = ref("")
 
+// Estados de carga
 const cargandoMercadoPago = ref(false)
 const cargandoHorarios = ref(false)
+const cargandoDatos = ref(true) // ✅ NUEVO: Para mostrar spinner
+const cargandoServicios = ref(false)
+
 const mostrarModalInteres = ref(false)
 const horarioSeleccionadoInteres = ref(null)
 const registrandoInteres = ref(false)
@@ -600,184 +613,423 @@ const mensajePromo = ref("")
 const horariosInteres = ref([])
 
 // ==========================================
-// 🛡️ LÓGICA DE SELECCIÓN Y FILTROS (BLINDADA)
+// 🛡️ LÓGICA DE SELECCIÓN Y FILTROS - CORREGIDO
 // ==========================================
 
 // Helper seguro para obtener lista plana
 const getListaServicios = () => {
-  if (Array.isArray(servicios.value)) return servicios.value;
-  if (servicios.value && Array.isArray(servicios.value.results)) return servicios.value.results;
-  return [];
+  try {
+    if (Array.isArray(servicios.value)) return servicios.value;
+    if (servicios.value && Array.isArray(servicios.value.results)) return servicios.value.results;
+    if (servicios.value && servicios.value.data && Array.isArray(servicios.value.data)) return servicios.value.data;
+    return [];
+  } catch (error) {
+    console.error('Error en getListaServicios:', error);
+    return [];
+  }
 }
 
 const serviciosFiltrados = computed(() => {
-  let lista = getListaServicios();
-  
-  // Filtro Categoría
-  if (categoriasSeleccionadas.value.length > 0) {
-    lista = lista.filter(s => {
-      if (!s) return false;
-      // Normalizamos ID de categoría a String para comparar
-      const catId = s.categoria && typeof s.categoria === 'object' 
-        ? String(s.categoria.id) 
-        : String(s.categoria);
-      return categoriasSeleccionadas.value.includes(catId);
-    });
+  try {
+    let lista = getListaServicios();
+    
+    // Filtro Categoría
+    if (categoriasSeleccionadas.value.length > 0) {
+      lista = lista.filter(s => {
+        if (!s || !s.categoria) return false;
+        
+        let catId;
+        if (typeof s.categoria === 'object' && s.categoria !== null) {
+          catId = String(s.categoria.id || s.categoria);
+        } else {
+          catId = String(s.categoria);
+        }
+        
+        return categoriasSeleccionadas.value.includes(catId);
+      });
+    }
+    
+    // Filtro Búsqueda
+    if (busquedaServicio.value.trim()) {
+      const term = busquedaServicio.value.toLowerCase().trim();
+      lista = lista.filter(s => 
+        s && s.nombre && typeof s.nombre === 'string' && s.nombre.toLowerCase().includes(term)
+      );
+    }
+    
+    return lista;
+  } catch (error) {
+    console.error('Error en serviciosFiltrados:', error);
+    return [];
   }
-  
-  // Filtro Búsqueda
-  if (busquedaServicio.value.trim()) {
-    const term = busquedaServicio.value.toLowerCase().trim();
-    lista = lista.filter(s => s.nombre && s.nombre.toLowerCase().includes(term));
-  }
-  return lista;
 });
 
 const toggleCategoria = (id) => {
-  const cid = String(id); // Siempre String
-  const index = categoriasSeleccionadas.value.indexOf(cid);
-  if (index > -1) categoriasSeleccionadas.value.splice(index, 1);
-  else categoriasSeleccionadas.value.push(cid);
+  try {
+    const cid = String(id);
+    const index = categoriasSeleccionadas.value.indexOf(cid);
+    if (index > -1) {
+      categoriasSeleccionadas.value.splice(index, 1);
+    } else {
+      categoriasSeleccionadas.value.push(cid);
+    }
+  } catch (error) {
+    console.error('Error en toggleCategoria:', error);
+  }
 }
 
 const toggleServicio = (servicio) => {
-  if (!servicio || !servicio.id) return;
-  const id = String(servicio.id); // Siempre String
-  
-  if (form.value.servicios_ids.includes(id)) {
-    form.value.servicios_ids = form.value.servicios_ids.filter(x => x !== id);
-  } else {
-    form.value.servicios_ids = [...form.value.servicios_ids, id];
+  try {
+    if (!servicio || !servicio.id) {
+      console.error('Servicio inválido en toggleServicio:', servicio);
+      return;
+    }
+    
+    const id = String(servicio.id);
+    const index = form.value.servicios_ids.indexOf(id);
+    
+    if (index > -1) {
+      // Remover servicio
+      form.value.servicios_ids.splice(index, 1);
+    } else {
+      // Agregar servicio
+      form.value.servicios_ids.push(id);
+    }
+    
+    // Resetear horarios si cambian los servicios
+    if (form.value.hora) {
+      form.value.hora = "";
+    }
+    
+    // Recargar turnos ocupados si hay fecha y peluquero
+    if (form.value.fecha && form.value.peluquero) {
+      cargarTurnosOcupados(form.value.fecha);
+    }
+    
+    // Forzar actualización de la vista
+    nextTick();
+  } catch (error) {
+    console.error('Error en toggleServicio:', error);
+    Swal.fire({
+      title: 'Error',
+      text: 'No se pudo agregar el servicio. Intenta nuevamente.',
+      icon: 'error'
+    });
   }
-  
-  // Resets al cambiar servicios
-  if (form.value.hora) form.value.hora = "";
-  if (form.value.fecha && form.value.peluquero) cargarTurnosOcupados(form.value.fecha);
 }
 
 const estaServicioSeleccionado = (servicio) => {
-  return servicio && form.value.servicios_ids.includes(String(servicio.id));
+  try {
+    if (!servicio || !servicio.id) return false;
+    return form.value.servicios_ids.includes(String(servicio.id));
+  } catch {
+    return false;
+  }
 }
 
 const eliminarServicio = (servicioId) => {
-  form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== String(servicioId));
-  if (form.value.hora) form.value.hora = "";
-  if (form.value.fecha && form.value.peluquero) cargarTurnosOcupados(form.value.fecha);
+  try {
+    const idStr = String(servicioId);
+    form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== idStr);
+    
+    if (form.value.hora) form.value.hora = "";
+    if (form.value.fecha && form.value.peluquero) {
+      cargarTurnosOcupados(form.value.fecha);
+    }
+  } catch (error) {
+    console.error('Error en eliminarServicio:', error);
+  }
 }
 
 const formularioValido = computed(() => {
-  return form.value.peluquero && form.value.servicios_ids.length > 0 && form.value.fecha && form.value.hora;
+  return (
+    form.value.peluquero && 
+    form.value.servicios_ids.length > 0 && 
+    form.value.fecha && 
+    form.value.hora
+  );
 })
 
 // ==========================================
-// 🛡️ CÁLCULOS (ANTI-CRASH)
+// 🛡️ CÁLCULOS - MEJORADO CON MANEJO DE ERRORES
 // ==========================================
 
 const calcularTotalOriginal = () => {
-  const lista = getListaServicios();
-  return form.value.servicios_ids.reduce((acc, id) => {
-    // Buscamos convirtiendo ambos a String
-    const s = lista.find(x => String(x.id) === String(id));
-    // Si s existe, sumamos. Si no (undefined), sumamos 0.
-    return acc + (s ? parseFloat(s.precio || 0) : 0);
-  }, 0);
+  try {
+    const lista = getListaServicios();
+    return form.value.servicios_ids.reduce((acc, id) => {
+      const s = lista.find(x => String(x.id) === String(id));
+      if (!s) return acc;
+      const precio = parseFloat(s.precio) || 0;
+      return acc + precio;
+    }, 0);
+  } catch (error) {
+    console.error('Error en calcularTotalOriginal:', error);
+    return 0;
+  }
 }
 
 const calcularTotalConDescuento = () => {
-  const total = calcularTotalOriginal();
-  return (total * (1 - descuentoAplicado.value / 100)).toFixed(2);
+  try {
+    const total = calcularTotalOriginal();
+    const descuento = descuentoAplicado.value || 0;
+    const totalConDescuento = total * (1 - descuento / 100);
+    return totalConDescuento.toFixed(2);
+  } catch (error) {
+    console.error('Error en calcularTotalConDescuento:', error);
+    return "0.00";
+  }
 }
 
 const calcularDuracionTotalServicios = () => {
-  const lista = getListaServicios();
-  return form.value.servicios_ids.reduce((t, id) => {
-    const s = lista.find(x => String(x.id) === String(id));
-    return t + (s ? parseInt(s.duracion || s.duracion_minutos || 20) : 0);
-  }, 0);
+  try {
+    const lista = getListaServicios();
+    return form.value.servicios_ids.reduce((total, id) => {
+      const s = lista.find(x => String(x.id) === String(id));
+      if (!s) return total;
+      
+      // Manejar diferentes nombres de propiedad
+      const duracion = s.duracion || s.duracion_minutos || 20;
+      return total + parseInt(duracion) || 0;
+    }, 0);
+  } catch (error) {
+    console.error('Error en calcularDuracionTotalServicios:', error);
+    return 0;
+  }
 }
 
 // ==========================================
-// API CALLS & HELPERS
+// API CALLS & HELPERS - MEJORADO
 // ==========================================
 
 const getPeluqueroNombre = () => {
-  const lista = Array.isArray(peluqueros.value) ? peluqueros.value : (peluqueros.value?.results || []);
-  if (!form.value.peluquero || lista.length === 0) return '';
-  const p = lista.find(x => String(x.id) === String(form.value.peluquero));
-  return p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : (p?.username || 'Peluquero');
+  try {
+    const lista = Array.isArray(peluqueros.value) 
+      ? peluqueros.value 
+      : (peluqueros.value?.results || []);
+    
+    if (!form.value.peluquero || lista.length === 0) return '';
+    
+    const p = lista.find(x => String(x.id) === String(form.value.peluquero));
+    if (!p) return '';
+    
+    return `${p.nombre || ''} ${p.apellido || ''}`.trim() || p?.username || 'Peluquero';
+  } catch {
+    return '';
+  }
 }
 
 const getServiciosNombres = () => {
-  const lista = getListaServicios();
-  return form.value.servicios_ids
-    .map(id => lista.find(s => String(s.id) === String(id))?.nombre || '')
-    .filter(n => n)
-    .join(', ');
+  try {
+    const lista = getListaServicios();
+    return form.value.servicios_ids
+      .map(id => {
+        const s = lista.find(s => String(s.id) === String(id));
+        return s?.nombre || '';
+      })
+      .filter(n => n)
+      .join(', ');
+  } catch {
+    return '';
+  }
 }
 
-// ... Resto de helpers visuales ...
-const getNombreCompletoPeluquero = (p) => p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : '';
-const getInicialesPeluquero = (p) => (p?.nombre || 'P').charAt(0).toUpperCase();
-const formatoFechaLegible = (f) => f; // Simplificado para evitar errores de parseo
+const getNombreCompletoPeluquero = (p) => {
+  try {
+    if (!p) return '';
+    return `${p.nombre || ''} ${p.apellido || ''}`.trim();
+  } catch {
+    return '';
+  }
+}
+
+const getInicialesPeluquero = (p) => {
+  try {
+    return (p?.nombre || 'P').charAt(0).toUpperCase();
+  } catch {
+    return 'P';
+  }
+}
+
+const formatoFechaLegible = (f) => {
+  try {
+    if (!f) return '';
+    const date = new Date(f);
+    if (isNaN(date.getTime())) return f;
+    return date.toLocaleDateString('es-ES', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  } catch {
+    return f;
+  }
+}
+
 const getCategoriaNombre = (cat) => {
-    const lista = Array.isArray(categorias.value) ? categorias.value : (categorias.value?.results || []);
-    if (typeof cat === 'object') return cat.nombre || 'General';
+  try {
+    const lista = Array.isArray(categorias.value) 
+      ? categorias.value 
+      : (categorias.value?.results || []);
+    
+    if (typeof cat === 'object' && cat !== null) {
+      return cat.nombre || 'General';
+    }
+    
     const c = lista.find(x => String(x.id) === String(cat));
     return c ? c.nombre : 'General';
+  } catch {
+    return 'General';
+  }
 }
 
 const cargarDatosIniciales = async () => {
-  const userId = localStorage.getItem('user_id');
+  cargandoDatos.value = true;
+  
   try {
+    // Verificar si hay usuario autenticado
+    const token = localStorage.getItem('token');
+    const userId = localStorage.getItem('user_id');
+    
+    if (!token || !userId) {
+      usuario.value.isAuthenticated = false;
+      // Redirigir a login si no está autenticado
+      Swal.fire({
+        title: 'Sesión requerida',
+        text: 'Debes iniciar sesión para agendar un turno',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Ir a login',
+        cancelButtonText: 'Cancelar'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          router.push('/login');
+        } else {
+          router.back();
+        }
+      });
+      return;
+    }
+    
+    usuario.value.isAuthenticated = true;
+    
+    // Cargar datos del usuario
     if (userId) {
       const resU = await api.get(`/usuarios/${userId}/`);
-      usuario.value = resU.data;
+      usuario.value = { ...resU.data, isAuthenticated: true };
       form.value.cliente = userId;
     }
     
+    // Cargar peluqueros, servicios y categorías en paralelo
     const [p, s, c] = await Promise.all([
-      api.get('/peluqueros/'),
-      api.get('/servicios/'),
-      api.get('/categorias/servicios/')
+      api.get('/peluqueros/').catch(e => {
+        console.error('Error cargando peluqueros:', e);
+        return { data: [] };
+      }),
+      api.get('/servicios/').catch(e => {
+        console.error('Error cargando servicios:', e);
+        return { data: [] };
+      }),
+      api.get('/categorias/servicios/').catch(e => {
+        console.error('Error cargando categorías:', e);
+        return { data: [] };
+      })
     ]);
     
-    // Normalización forzada de datos
-    peluqueros.value = Array.isArray(p.data) ? p.data : (p.data.results || []);
-    servicios.value = Array.isArray(s.data) ? s.data : (s.data.results || []);
-    categorias.value = Array.isArray(c.data) ? c.data : (c.data.results || []);
+    // Normalización de datos
+    peluqueros.value = Array.isArray(p.data) ? p.data : (p.data?.results || []);
+    servicios.value = Array.isArray(s.data) ? s.data : (s.data?.results || []);
+    categorias.value = Array.isArray(c.data) ? c.data : (c.data?.results || []);
     
-  } catch(e) { 
-    console.error('Error carga inicial:', e);
-    Swal.fire({title: 'Error', text: 'No se pudieron cargar los datos.', icon: 'error'});
+    console.log('Datos cargados:', {
+      peluqueros: peluqueros.value.length,
+      servicios: servicios.value.length,
+      categorias: categorias.value.length
+    });
+    
+  } catch (error) {
+    console.error('Error en carga inicial:', error);
+    Swal.fire({
+      title: 'Error',
+      text: 'No se pudieron cargar los datos. Por favor, recarga la página.',
+      icon: 'error',
+      confirmButtonText: 'Recargar'
+    }).then(() => {
+      window.location.reload();
+    });
+  } finally {
+    cargandoDatos.value = false;
   }
 }
 
 const cargarTurnosOcupados = async (fecha) => {
   if (!form.value.peluquero) return;
+  
   cargandoHorarios.value = true;
   try {
-    const res = await api.get(`/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`);
-    const turnos = Array.isArray(res.data) ? res.data : (res.data.results || []);
+    const res = await api.get(
+      `/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
+    );
+    
+    const turnos = Array.isArray(res.data) ? res.data : (res.data?.results || []);
     const ocupadosSet = new Set();
     
     turnos.forEach(turno => {
       if (!turno.hora) return;
       const [h, m] = turno.hora.split(':').map(Number);
       const inicioMin = h * 60 + m;
-      const dur = turno.duracion_total || 20; // fallback seguro
+      const dur = turno.duracion_total || 20;
+      
       for (let i = inicioMin; i < inicioMin + dur; i += 20) {
-        ocupadosSet.add(`${Math.floor(i / 60).toString().padStart(2, '0')}:${(i % 60).toString().padStart(2, '0')}`);
+        ocupadosSet.add(
+          `${Math.floor(i / 60).toString().padStart(2, '0')}:${(i % 60).toString().padStart(2, '0')}`
+        );
       }
     });
+    
     slotsOcupadosReales.value = Array.from(ocupadosSet);
-  } catch (e) { console.error(e) } 
-  finally { cargandoHorarios.value = false }
+  } catch (error) {
+    console.error('Error cargando turnos ocupados:', error);
+    slotsOcupadosReales.value = [];
+  } finally {
+    cargandoHorarios.value = false;
+  }
 }
 
-// Mercado Pago
+// ==========================================
+// MERCADO PAGO - MEJORADO
+// ==========================================
+
 const crearPagoMercadoPago = async () => {
-  if (!formularioValido.value) return;
+  if (!formularioValido.value) {
+    Swal.fire({
+      title: 'Formulario incompleto',
+      text: 'Por favor, completa todos los campos requeridos',
+      icon: 'warning'
+    });
+    return;
+  }
+  
+  // Verificar autenticación
+  if (!usuario.value.isAuthenticated) {
+    Swal.fire({
+      title: 'Sesión requerida',
+      text: 'Debes iniciar sesión para continuar',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Ir a login',
+      cancelButtonText: 'Cancelar'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        router.push('/login');
+      }
+    });
+    return;
+  }
+  
   cargandoMercadoPago.value = true;
+  
   try {
     const total = parseFloat(calcularTotalConDescuento());
     const payload = {
@@ -794,52 +1046,207 @@ const crearPagoMercadoPago = async () => {
       duracion_total: calcularDuracionTotalServicios(),
       cup_codigo: cuponCodigo.value
     };
+    
+    console.log('Enviando payload a MercadoPago:', payload);
+    
     const res = await api.post('/turnos/crear/', payload);
-    const mpUrl = res.data?.mp_data?.init_point || res.data?.init_point;
-    if (mpUrl) window.location.href = mpUrl;
+    
+    if (res.data && (res.data.mp_data?.init_point || res.data.init_point)) {
+      const mpUrl = res.data.mp_data?.init_point || res.data.init_point;
+      redirigiendoMercadoPago.value = true;
+      
+      // Pequeño delay para mostrar feedback al usuario
+      setTimeout(() => {
+        window.location.href = mpUrl;
+      }, 500);
+    } else {
+      throw new Error('No se recibió URL de pago');
+    }
+    
   } catch (error) {
-    Swal.fire({ title: 'Error', text: error.response?.data?.message || 'Error al crear turno', icon: 'error' });
-  } finally { cargandoMercadoPago.value = false }
-}
-
-// Disponibilidad Horaria
-const esHorarioDisponible = (h) => {
-  if (!form.value.fecha || !form.value.peluquero) return true;
-  if (slotsOcupadosReales.value.includes(h.substring(0, 5))) return false;
-  // Validación de horario pasado para "hoy"
-  const hoy = new Date();
-  const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
-  if (form.value.fecha === hoyF) {
-    const [hS, mS] = h.substring(0, 5).split(':').map(Number);
-    if (hS < hoy.getHours() || (hS === hoy.getHours() && mS < hoy.getMinutes())) return false;
-  }
-  return true;
-}
-
-const horariosDisponibles = computed(() => ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00'].filter(h => esHorarioDisponible(h)));
-const seleccionarDiaCalendario = (d) => { form.value.fecha = `${new Date(currentDate.value).getFullYear()}-${String(new Date(currentDate.value).getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}` };
-const seleccionarHora = (h) => { if (esHorarioDisponible(h)) form.value.hora = h };
-const onPeluqueroSeleccionado = () => { form.value.fecha = ""; form.value.hora = ""; slotsOcupadosReales.value = [] };
-const validarCuponURL = async () => {}; // Tu lógica de cupón si hace falta
-
-// Interes
-const confirmarRegistroInteres = async () => {
-  try {
-    await api.post('/turnos/registrar-interes/', { 
-      fecha: form.value.fecha, 
-      hora: horarioSeleccionadoInteres.value, 
-      peluquero_id: form.value.peluquero, 
-      cliente_id: usuario.value.id, 
-      servicios_ids: form.value.servicios_ids, 
-      interes_notificacion: true 
+    console.error('Error en MercadoPago:', error);
+    
+    let errorMessage = 'Error al crear el turno. Por favor, intenta nuevamente.';
+    
+    if (error.response) {
+      if (error.response.status === 400) {
+        errorMessage = error.response.data?.message || 'Datos inválidos. Verifica la información.';
+      } else if (error.response.status === 401) {
+        errorMessage = 'Sesión expirada. Por favor, inicia sesión nuevamente.';
+        localStorage.removeItem('token');
+        localStorage.removeItem('user_id');
+        router.push('/login');
+      }
+    }
+    
+    Swal.fire({
+      title: 'Error',
+      text: errorMessage,
+      icon: 'error',
+      confirmButtonText: 'Entendido'
     });
-    Swal.fire({ title: '¡Listo!', icon: 'success' });
-  } catch (e) { Swal.fire({ title: 'Error', icon: 'error' }) } 
-  finally { mostrarModalInteres.value = false }
+  } finally {
+    cargandoMercadoPago.value = false;
+  }
 }
 
-onMounted(() => { cargarDatosIniciales() })
-watch(() => form.value.fecha, (f) => { if (f && form.value.peluquero) cargarTurnosOcupados(f) })
+// ==========================================
+// DISPONIBILIDAD HORARIA - MEJORADO
+// ==========================================
+
+const esHorarioDisponible = (h) => {
+  try {
+    if (!form.value.fecha || !form.value.peluquero) return true;
+    
+    // Verificar si está ocupado
+    if (slotsOcupadosReales.value.includes(h.substring(0, 5))) return false;
+    
+    // Validación de horario pasado para "hoy"
+    const hoy = new Date();
+    const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+    
+    if (form.value.fecha === hoyF) {
+      const [hS, mS] = h.substring(0, 5).split(':').map(Number);
+      const ahora = hoy.getHours() * 60 + hoy.getMinutes();
+      const horarioSeleccionado = hS * 60 + mS;
+      
+      // Agregar margen de 30 minutos para el futuro
+      return horarioSeleccionado > (ahora + 30);
+    }
+    
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const horariosDisponibles = computed(() => {
+  const horariosBase = [
+    '08:00','08:20','08:40','09:00','09:20','09:40',
+    '10:00','10:20','10:40','11:00','11:20','11:40',
+    '15:00','15:20','15:40','16:00','16:20','16:40',
+    '17:00','17:20','17:40','18:00','18:20','18:40',
+    '19:00','19:20','19:40','20:00'
+  ];
+  
+  return horariosBase.filter(h => esHorarioDisponible(h));
+});
+
+const seleccionarDiaCalendario = (d) => {
+  const year = currentDate.value.getFullYear();
+  const month = String(currentDate.value.getMonth() + 1).padStart(2, '0');
+  const day = String(d).padStart(2, '0');
+  form.value.fecha = `${year}-${month}-${day}`;
+}
+
+const seleccionarHora = (h) => {
+  if (esHorarioDisponible(h)) {
+    form.value.hora = h;
+  }
+}
+
+const onPeluqueroSeleccionado = () => {
+  form.value.fecha = "";
+  form.value.hora = "";
+  slotsOcupadosReales.value = [];
+}
+
+// ==========================================
+// INTERÉS Y CUPONES - MEJORADO
+// ==========================================
+
+const confirmarRegistroInteres = async () => {
+  if (!form.value.peluquero || !form.value.fecha || !horarioSeleccionadoInteres.value) {
+    Swal.fire({
+      title: 'Error',
+      text: 'Faltan datos para registrar el interés',
+      icon: 'error'
+    });
+    return;
+  }
+  
+  registrandoInteres.value = true;
+  
+  try {
+    await api.post('/turnos/registrar-interes/', {
+      fecha: form.value.fecha,
+      hora: horarioSeleccionadoInteres.value,
+      peluquero_id: form.value.peluquero,
+      cliente_id: usuario.value.id,
+      servicios_ids: form.value.servicios_ids,
+      interes_notificacion: true
+    });
+    
+    Swal.fire({
+      title: '¡Interés registrado!',
+      text: 'Te notificaremos cuando se libere este horario.',
+      icon: 'success',
+      timer: 3000
+    });
+    
+    mostrarModalInteres.value = false;
+    horarioSeleccionadoInteres.value = null;
+  } catch (error) {
+    console.error('Error registrando interés:', error);
+    Swal.fire({
+      title: 'Error',
+      text: 'No se pudo registrar tu interés. Intenta nuevamente.',
+      icon: 'error'
+    });
+  } finally {
+    registrandoInteres.value = false;
+  }
+}
+
+// ==========================================
+// LIFECYCLE & WATCHERS
+// ==========================================
+
+onMounted(() => {
+  console.log('Componente RegistrarTurnoWeb montado');
+  cargarDatosIniciales();
+});
+
+watch(() => form.value.fecha, (newFecha) => {
+  if (newFecha && form.value.peluquero) {
+    cargarTurnosOcupados(newFecha);
+  }
+});
+
+watch(() => form.value.peluquero, (newPeluquero) => {
+  if (newPeluquero && form.value.fecha) {
+    cargarTurnosOcupados(form.value.fecha);
+  }
+});
+
+// ==========================================
+// FUNCIONES DE NAVEGACIÓN
+// ==========================================
+
+const volverAtras = () => {
+  router.back();
+}
+
+const irAServicios = () => {
+  router.push('/servicios');
+}
+
+// ==========================================
+// EXPORTAR FUNCIONES SI ES NECESARIO
+// ==========================================
+
+// Si necesitas exponer funciones al template
+defineExpose({
+  form,
+  usuario,
+  serviciosFiltrados,
+  toggleServicio,
+  estaServicioSeleccionado,
+  eliminarServicio,
+  crearPagoMercadoPago,
+  volverAtras,
+  irAServicios
+});
 </script>
 
 <style scoped>
