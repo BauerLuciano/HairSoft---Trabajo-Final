@@ -1,34 +1,30 @@
 import axios from 'axios';
 
-// 1. Apuntamos a la RAÍZ del servidor (importante para no duplicar 'usuarios/api')
-const API_BASE = 'http://127.0.0.1:8000';
+/**
+ * LÓGICA INTELIGENTE DE URL:
+ * 1. Si estamos en Vercel (Producción), usa la variable de entorno VITE_API_URL.
+ * 2. Si estamos en tu PC (Local), usa 'http://localhost:8000'.
+ */
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const axiosInstance = axios.create({
   baseURL: API_BASE,
+  withCredentials: true, // Importante para cookies y sesiones si las usas
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// 2. Interceptor igual al de tu api.js (Usa 'token' y 'Token ' prefijo)
+// Interceptor para agregar el Token automáticamente si existe
 axiosInstance.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token'); // Tu clave real
+    const token = localStorage.getItem('token');
     if (token) {
-      config.headers.Authorization = `Token ${token}`; // Tu prefijo real
+      config.headers['Authorization'] = `Token ${token}`;
     }
     return config;
   },
-  (error) => Promise.reject(error)
-);
-
-// 3. Interceptor de respuesta para evitar errores si la data viene sucia
-axiosInstance.interceptors.response.use(
-  (response) => {
-    return response;
-  },
   (error) => {
-    console.error("Error API:", error.response);
     return Promise.reject(error);
   }
 );
