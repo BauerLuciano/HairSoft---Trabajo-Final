@@ -1034,6 +1034,9 @@ defineExpose({
 });
 </script>
 
+
+Copiar
+
 <style scoped>
 /* ============================================
    ESTILOS ESPECÍFICOS PARA LA ALERTA MERCADO PAGO
@@ -1424,7 +1427,9 @@ defineExpose({
   border-bottom-color: rgba(245, 158, 11, 0.3);
 }
 
-/* Datos del cliente */
+/* ============================================
+   ✅ DATOS DEL CLIENTE - CORREGIDO RESPONSIVE
+   ============================================ */
 .cliente-info-card {
   background: linear-gradient(135deg, #f8fafc, #e2e8f0);
   padding: 25px;
@@ -1433,10 +1438,12 @@ defineExpose({
   position: relative;
 }
 
+/* PC: 2 columnas lado a lado */
 .cliente-datos {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 15px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  row-gap: 16px;
 }
 
 .cliente-datos p {
@@ -1444,15 +1451,19 @@ defineExpose({
   color: #4b5563;
   font-size: 1rem;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.5;
 }
 
 .cliente-datos strong {
   color: #1f2937;
   font-weight: 700;
-  min-width: 140px;
+  min-width: 120px;
   display: inline-block;
+  flex-shrink: 0;
 }
 
 /* Inputs y Selects */
@@ -1751,18 +1762,26 @@ defineExpose({
 /* Horarios */
 .grid-horarios-mejorado {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 12px;
+  width: 100%;
 }
 
 .hora-card-mejorada {
   border: 2px solid #e5e7eb;
   border-radius: 12px;
-  padding: 16px;
+  padding: 14px 10px;
   cursor: pointer;
   text-align: center;
   font-weight: 600;
   background: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100px;
+  width: 100%;
+  transition: all 0.3s ease;
 }
 
 .hora-card-mejorada:hover:not(.hora-ocupada-mejorada) {
@@ -1787,43 +1806,51 @@ defineExpose({
 .hora-content-mejorada {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
 }
 
 .hora-info-mejorada {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 6px;
+  width: 100%;
 }
 
 .hora-icon-mejorada {
   color: #6b7280;
+  flex-shrink: 0;
 }
 
 .hora-texto-mejorada {
-  font-weight: 600;
-  font-size: 1.1rem;
+  font-weight: 700;
+  font-size: 1.15rem;
   color: #1f2937;
+  white-space: nowrap;
 }
 
 .hora-duracion-badge-ocupado {
   background: #fef2f2;
   color: #dc2626;
-  padding: 2px 8px;
+  padding: 4px 8px;
   border-radius: 8px;
   font-size: 0.75rem;
-  margin-left: auto;
+  white-space: nowrap;
 }
 
 .hora-estado-mejorada {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  font-size: 0.9rem;
-  padding: 6px 12px;
+  font-size: 0.85rem;
+  padding: 6px 10px;
   border-radius: 8px;
+  width: fit-content;
+  max-width: 100%;
 }
 
 /* Estilos adicionales para el flujo reorganizado */
@@ -2378,146 +2405,43 @@ defineExpose({
   animation: slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-/* Responsive */
-@media (max-width: 1024px) {
-  .main-card-container {
-    padding: 30px;
-    margin: 20px;
-  }
-  
-  .grid-servicios {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  }
-  
-  .grid-horarios-mejorado {
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  }
-  
-  .grid-peluqueros {
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  }
-}
+/* ============================================
+   📱 MEDIA QUERIES RESPONSIVE
+   ============================================ */
 
-@media (max-width: 768px) {
-  .page-background {
-    padding: 20px 15px;
-  }
-  
-  .main-card-container {
-    padding: 25px;
-    border-radius: 20px;
-  }
-  
-  .header-section {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 20px;
-    padding: 20px;
-  }
-  
-  .btn-back {
-    width: 100%;
-    justify-content: center;
-  }
-  
-  .alerta-contenido {
-    flex-direction: column;
-    text-align: center;
-    gap: 20px;
-  }
-  
-  .alerta-icono-grande {
-    width: 60px;
-    height: 60px;
-  }
-  
+/* Tablet */
+@media (max-width: 1024px) {
   .grid-servicios {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
   }
   
   .grid-peluqueros {
     grid-template-columns: 1fr;
   }
   
+  /* Horarios en tablet: 4 columnas */
   .grid-horarios-mejorado {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   }
   
-  .pago-options {
-    grid-template-columns: 1fr;
-  }
-  
+  /* Tablet: 1 columna para datos del cliente */
   .cliente-datos {
     grid-template-columns: 1fr;
+    gap: 16px;
   }
   
-  .modal-content {
-    padding: 24px;
-    width: 95%;
-  }
-}
-
-@media (max-width: 480px) {
-  .page-background {
-    padding: 15px 10px;
-  }
-  
-  .main-card-container {
-    padding: 20px;
-    border-radius: 16px;
-  }
-  
-  .card-modern {
-    padding: 20px;
-  }
-  
-  .card-header {
+  .cliente-datos p {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
   }
   
-  .card-icon {
-    width: 40px;
-    height: 40px;
-  }
-  
-  .grid-horarios-mejorado {
-    grid-template-columns: 1fr;
-  }
-  
-  .toast-message {
-    left: 15px;
-    right: 15px;
-    bottom: 15px;
+  .cliente-datos strong {
     min-width: auto;
-  }
-  
-  .modal-actions {
-    flex-direction: column;
+    margin-bottom: 4px;
   }
 }
 
-/* Tablet y pantallas medianas */
-@media (max-width: 1024px) {
-  .main-card-container {
-    padding: 30px;
-  }
-  
-  .grid-servicios {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .grid-peluqueros {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .grid-horarios-mejorado {
-    grid-template-columns: repeat(4, 1fr);
-  }
-}
-
-/* Móviles grandes (iPhone 12/13, Samsung S20) */
+/* Móvil Grande */
 @media (max-width: 768px) {
   .page-background {
     padding: 15px 10px;
@@ -2525,13 +2449,10 @@ defineExpose({
   
   .main-card-container {
     padding: 20px;
-    border-radius: 20px;
   }
   
-  /* Header responsive */
   .header-section {
     flex-direction: column;
-    align-items: stretch;
     gap: 15px;
     padding: 20px;
   }
@@ -2545,75 +2466,73 @@ defineExpose({
     justify-content: center;
   }
   
-  /* Cards más compactas */
   .card-modern {
-    padding: 20px;
-    margin-bottom: 20px;
+    padding: 18px;
   }
   
-  .card-header h3 {
-    font-size: 1.1em;
-  }
-  
-  /* Alerta Mercado Pago */
   .alerta-contenido {
     flex-direction: column;
     text-align: center;
-    gap: 20px;
   }
   
-  .alerta-mensaje h4 {
-    font-size: 1.2em;
-  }
-  
-  .alerta-mensaje p {
-    font-size: 1em;
-  }
-  
-  /* Grids a 1 columna */
   .grid-servicios {
     grid-template-columns: 1fr;
   }
   
-  .grid-peluqueros {
-    grid-template-columns: 1fr;
-  }
-  
+  /* Horarios móvil grande: 3 columnas */
   .grid-horarios-mejorado {
     grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  
+  .hora-card-mejorada {
+    min-height: 95px;
+    padding: 12px 8px;
+  }
+  
+  .hora-texto-mejorada {
+    font-size: 1.05rem;
   }
   
   .pago-options {
     grid-template-columns: 1fr;
   }
   
+  /* Móvil: 1 columna para datos del cliente */
   .cliente-datos {
     grid-template-columns: 1fr;
+    gap: 14px;
   }
   
-  /* Modal responsive */
-  .modal-content {
-    padding: 24px;
-    width: 95%;
-    max-height: 90vh;
+  .cliente-datos p {
+    flex-direction: column;
+    align-items: flex-start;
   }
   
-  /* Calendario */
+  .cliente-datos strong {
+    min-width: auto;
+    margin-bottom: 4px;
+  }
+  
+  /* Calendario responsive */
+  .calendar-wrapper {
+    padding: 14px;
+  }
+  
+  .mes-titulo {
+    font-size: 1em;
+  }
+  
   .calendar-days-header {
-    font-size: 0.85em;
+    font-size: 0.75em;
   }
   
   .day-btn {
-    font-size: 0.9rem;
-  }
-  
-  .badge-count {
-    font-size: 0.75rem;
-    padding: 4px 10px;
+    font-size: 0.85rem;
   }
 }
 
-/* Móviles pequeños (iPhone SE, Galaxy S10) */
+/* Móvil Pequeño */
 @media (max-width: 480px) {
   .page-background {
     padding: 10px 8px;
@@ -2621,10 +2540,8 @@ defineExpose({
   
   .main-card-container {
     padding: 15px;
-    border-radius: 16px;
   }
   
-  /* Header más compacto */
   .header-section {
     padding: 15px;
   }
@@ -2633,13 +2550,8 @@ defineExpose({
     font-size: 1.3em;
   }
   
-  /* Cards aún más compactas */
   .card-modern {
     padding: 15px;
-  }
-  
-  .card-header {
-    gap: 10px;
   }
   
   .card-icon {
@@ -2648,113 +2560,116 @@ defineExpose({
   }
   
   .card-header h3 {
-    font-size: 1em;
+    font-size: 1.05em;
   }
   
-  /* Horarios a 2 columnas */
+  /* Horarios móvil pequeño: 2 columnas */
   .grid-horarios-mejorado {
     grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  
+  .hora-card-mejorada {
+    padding: 12px 8px;
+    min-height: 90px;
   }
   
   .hora-texto-mejorada {
     font-size: 1rem;
   }
   
-  /* Toast más pequeño */
-  .toast-message {
-    left: 10px;
-    right: 10px;
-    bottom: 10px;
-    min-width: auto;
-    padding: 14px 16px;
-    font-size: 0.9rem;
+  .hora-estado-mejorada {
+    font-size: 0.75rem;
+    padding: 4px 8px;
   }
   
-  /* Modal acciones en columna */
-  .modal-actions {
+  /* Móvil pequeño: 1 columna datos cliente */
+  .cliente-datos {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .cliente-datos p {
     flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .cliente-datos strong {
+    min-width: auto;
   }
   
   /* Calendario más compacto */
   .calendar-wrapper {
-    padding: 16px;
+    padding: 12px;
   }
   
   .calendar-header {
-    margin-bottom: 15px;
-  }
-  
-  .mes-titulo {
-    font-size: 1em;
+    margin-bottom: 12px;
   }
   
   .btn-nav-cal {
     width: 36px;
     height: 36px;
+    min-width: 36px;
+  }
+  
+  .mes-titulo {
+    font-size: 0.95em;
   }
   
   .calendar-days-header {
-    font-size: 0.75em;
-    margin-bottom: 10px;
+    font-size: 0.7em;
+    gap: 2px;
   }
   
   .calendar-grid {
-    gap: 6px;
+    gap: 4px;
   }
   
   .day-btn {
-    font-size: 0.85rem;
-    min-height: 38px;
+    font-size: 0.8rem;
+    border-radius: 6px;
   }
   
   .badge-today {
-    font-size: 0.5em;
+    font-size: 0.45em;
+    bottom: 1px;
   }
   
-  /* Resumen más compacto */
-  .resumen-item {
-    font-size: 0.9rem;
-    flex-wrap: wrap;
-  }
-  
-  .monto-final-pago {
-    font-size: 1.2rem;
-  }
-  
-  .btn-confirmar-premium {
-    padding: 16px;
-    font-size: 1rem;
-  }
-  
-  /* Peluqueros más pequeños */
+  /* Peluquero más compacto */
   .peluquero-avatar {
     width: 50px;
     height: 50px;
+    min-width: 50px;
     font-size: 20px;
   }
   
   .peluquero-nombre {
-    font-size: 16px;
+    font-size: 15px;
   }
   
-  /* Alerta MP más compacta */
-  .alerta-icono-grande {
-    width: 60px;
-    height: 60px;
+  /* Toast responsive */
+  .toast-message {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    min-width: auto;
+    font-size: 0.9rem;
   }
   
-  .alerta-mensaje h4 {
-    font-size: 1.1em;
+  /* Modal */
+  .modal-content {
+    width: 95%;
+    padding: 20px;
   }
   
-  .btn-ver-turnos,
-  .btn-nueva-reserva {
-    padding: 14px;
-    font-size: 1rem;
+  .modal-actions {
+    flex-direction: column;
   }
 }
 
-/* Móviles MUY pequeños (iPhone 5/SE 1st gen) */
+/* Móvil MUY Pequeño */
 @media (max-width: 360px) {
   .page-background {
     padding: 8px 5px;
@@ -2776,18 +2691,73 @@ defineExpose({
     padding: 12px;
   }
   
-  /* Horarios a 1 columna en pantallas muy pequeñas */
+  /* Horarios a 2 columnas en pantallas muy pequeñas */
   .grid-horarios-mejorado {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
   }
   
-  .calendar-days-header span {
-    font-size: 0.7em;
+  .hora-card-mejorada {
+    min-height: 85px;
+    padding: 10px 6px;
+  }
+  
+  .hora-texto-mejorada {
+    font-size: 0.95rem;
+  }
+  
+  .hora-estado-mejorada {
+    font-size: 0.7rem;
+    padding: 3px 6px;
+  }
+  
+  /* Datos cliente en móviles muy pequeños */
+  .cliente-datos {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  
+  .cliente-datos p {
+    font-size: 0.95rem;
+  }
+  
+  /* Calendario ultra compacto */
+  .calendar-wrapper {
+    padding: 10px;
+  }
+  
+  .mes-titulo {
+    font-size: 0.9em;
+  }
+  
+  .btn-nav-cal {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+  }
+  
+  .calendar-days-header {
+    font-size: 0.65em;
+  }
+  
+  .calendar-grid {
+    gap: 3px;
   }
   
   .day-btn {
-    font-size: 0.8rem;
-    min-height: 35px;
+    font-size: 0.75rem;
+    min-height: 32px;
+  }
+  
+  .badge-today {
+    display: none;
+  }
+  
+  .peluquero-avatar {
+    width: 45px;
+    height: 45px;
+    min-width: 45px;
+    font-size: 18px;
   }
 }
 </style>
