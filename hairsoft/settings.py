@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'cloudinary_storage',
     'cloudinary',
 
+    'drf_spectacular',
     # Tus apps
     'usuarios',
 ]
@@ -87,9 +88,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'hairsoft.wsgi.application'
 
-# ================================
-# BASE DE DATOS (EL CEREBRO DEL CAMBIO)
-# ================================
+# =================
+# BASE DE DATOS
+# =================
 # Si Railway nos da una base de datos (DATABASE_URL), usamos esa.
 if 'DATABASE_URL' in os.environ:
     DATABASES = {

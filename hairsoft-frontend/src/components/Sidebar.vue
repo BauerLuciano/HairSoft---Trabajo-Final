@@ -15,7 +15,7 @@
       <span class="section-title">MENÚ PRINCIPAL</span>
       
       <ul class="nav-links">
-        <li>
+        <li v-if="userRol !== 'PELUQUERO'">
           <router-link to="/dashboard" class="nav-link">
             <div class="link-content">
               <div class="icon-wrapper">
@@ -28,143 +28,95 @@
         </li>
       </ul>
 
-      <div class="acordeon-section">
-        <div class="acordeon-header" @click="toggleSection('comercial')">
-          <div class="acordeon-header-content">
-            <div class="acordeon-icon-wrapper">
-              <i class="ri-store-2-line acordeon-icon"></i>
+      <template v-for="(section, key) in filteredMenu" :key="key">
+        <div v-if="section.items.length > 0" class="acordeon-section">
+          <div class="acordeon-header" @click="toggleSection(key)">
+            <div class="acordeon-header-content">
+              <div class="acordeon-icon-wrapper">
+                <i :class="[section.icon, 'acordeon-icon']"></i>
+              </div>
+              <span class="acordeon-title">{{ section.title }}</span>
             </div>
-            <span class="acordeon-title">Gestión Comercial</span>
+            <i 
+              class="ri-arrow-down-s-line acordeon-arrow"
+              :class="{ 'rotated': openSection === key }"
+            ></i>
           </div>
-          <i 
-            class="ri-arrow-down-s-line acordeon-arrow"
-            :class="{ 'rotated': openSection === 'comercial' }"
-          ></i>
-        </div>
-        <div class="acordeon-content" :class="{ 'open': openSection === 'comercial' }">
-          <ul class="nav-links acordeon-items">
-            <li v-for="item in menuSections.comercial" :key="item.path">
-              <router-link :to="item.path" class="nav-link acordeon-item">
-                <div class="link-content">
-                  <div class="icon-wrapper">
-                    <i :class="['icon', item.icon]"></i>
+          <div class="acordeon-content" :class="{ 'open': openSection === key }">
+            <ul class="nav-links acordeon-items">
+              <li v-for="item in section.items" :key="item.path">
+                <router-link :to="item.path" class="nav-link acordeon-item">
+                  <div class="link-content">
+                    <div class="icon-wrapper">
+                      <i :class="['icon', item.icon]"></i>
+                    </div>
+                    <span class="link-text">{{ item.name }}</span>
                   </div>
-                  <span class="link-text">{{ item.name }}</span>
-                </div>
-                <div class="link-indicator"></div>
-              </router-link>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="acordeon-section">
-        <div class="acordeon-header" @click="toggleSection('inventario')">
-          <div class="acordeon-header-content">
-            <div class="acordeon-icon-wrapper">
-              <i class="ri-archive-line acordeon-icon"></i>
-            </div>
-            <span class="acordeon-title">Inventario</span>
+                  <div class="link-indicator"></div>
+                </router-link>
+              </li>
+            </ul>
           </div>
-          <i 
-            class="ri-arrow-down-s-line acordeon-arrow"
-            :class="{ 'rotated': openSection === 'inventario' }"
-          ></i>
         </div>
-        <div class="acordeon-content" :class="{ 'open': openSection === 'inventario' }">
-          <ul class="nav-links acordeon-items">
-            <li v-for="item in menuSections.inventario" :key="item.path">
-              <router-link :to="item.path" class="nav-link acordeon-item">
-                <div class="link-content">
-                  <div class="icon-wrapper">
-                    <i :class="['icon', item.icon]"></i>
-                  </div>
-                  <span class="link-text">{{ item.name }}</span>
-                </div>
-                <div class="link-indicator"></div>
-              </router-link>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="acordeon-section">
-        <div class="acordeon-header" @click="toggleSection('admin')">
-          <div class="acordeon-header-content">
-            <div class="acordeon-icon-wrapper">
-              <i class="ri-settings-3-line acordeon-icon"></i>
-            </div>
-            <span class="acordeon-title">Administración</span>
-          </div>
-          <i 
-            class="ri-arrow-down-s-line acordeon-arrow"
-            :class="{ 'rotated': openSection === 'admin' }"
-          ></i>
-        </div>
-        <div class="acordeon-content" :class="{ 'open': openSection === 'admin' }">
-          <ul class="nav-links acordeon-items">
-            <li v-for="item in menuSections.admin" :key="item.path">
-              <router-link :to="item.path" class="nav-link acordeon-item">
-                <div class="link-content">
-                  <div class="icon-wrapper">
-                    <i :class="['icon', item.icon]"></i>
-                  </div>
-                  <span class="link-text">{{ item.name }}</span>
-                </div>
-                <div class="link-indicator"></div>
-              </router-link>
-            </li>
-          </ul>
-        </div>
-      </div>
-
+      </template>
     </div>
   </nav>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import logo from '@/assets/logo.jpg';
 
 const openSection = ref('comercial'); 
+const userRol = localStorage.getItem('user_rol'); 
 
-const menuSections = {
-  comercial: [
-    { name: 'Ventas', path: '/ventas', icon: 'ri-bar-chart-2-line' },
-    // Esta ruta ya la corregimos antes:
-    { name: 'Pedidos Web', path: '/pedidos-web-admin', icon: 'ri-global-line' }, 
-    { name: 'Turnos', path: '/turnos', icon: 'ri-calendar-event-line' },
-    { name: 'Servicios', path: '/servicios', icon: 'ri-scissors-line' },
-  ],
-  inventario: [
-    // ⚠️ CORRECCIÓN: En tu router se llama 'ListadoProductos' con path '/productos'
-    { name: 'Productos', path: '/productos', icon: 'ri-shopping-bag-line' },
-    
-    // ⚠️ CORRECCIÓN: En tu router se llama 'CatalogoVisual' con path '/catalogo'
-    { name: 'Catálogo Visual', path: '/catalogo', icon: 'ri-layout-grid-line' }, 
-    
-    // ⚠️ CORRECCIÓN: En tu router se llama 'ListadoPedidos' con path '/pedidos'
-    { name: 'Pedidos Prov.', path: '/pedidos', icon: 'ri-shopping-cart-2-line' },
-    
-    // ⚠️ CORRECCIÓN: En tu router se llama 'ListadoProveedores' con path '/proveedores'
-    { name: 'Proveedores', path: '/proveedores', icon: 'ri-truck-line' },
-    
-    // ⚠️ CORRECCIÓN: En tu router se llama 'ListadoCategorias' con path '/categorias'
-    { name: 'Categorías', path: '/categorias', icon: 'ri-list-settings-line' },
-    
-    // ⚠️ CORRECCIÓN CLAVE: En tu router la ruta de marcas es '/productos/marcas'
-    { name: 'Marcas', path: '/productos/marcas', icon: 'ri-price-tag-2-line' },
-    
-    // ⚠️ CORRECCIÓN: En tu router se llama 'EvaluacionPresupuestos' con path '/proveedores/evaluacion'
-    { name: 'Licitaciones', path: '/proveedores/evaluacion', icon: 'ri-file-list-3-line' },
-  ],
-  admin: [
-    { name: 'Usuarios', path: '/usuarios', icon: 'ri-team-line' },
-    { name: 'Roles', path: '/roles', icon: 'ri-shield-user-line' },
-    { name: 'Liquidación Sueldos', path: '/admin/liquidacion', icon: 'ri-money-dollar-circle-line' },
-    { name: 'Auditoría', path: '/auditoria', icon: 'ri-file-history-line' },
-  ]
+const menuData = {
+  comercial: {
+    title: 'Gestión Comercial',
+    icon: 'ri-store-2-line',
+    items: [
+      { name: 'Ventas', path: '/ventas', icon: 'ri-bar-chart-2-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] },
+      { name: 'Pedidos Web', path: '/pedidos-web-admin', icon: 'ri-global-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] }, 
+      { name: 'Turnos', path: '/turnos', icon: 'ri-calendar-event-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA', 'PELUQUERO'] },
+      { name: 'Servicios', path: '/servicios', icon: 'ri-scissors-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] },
+    ]
+  },
+  inventario: {
+    title: 'Inventario',
+    icon: 'ri-archive-line',
+    items: [
+      { name: 'Productos', path: '/productos', icon: 'ri-shopping-bag-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] },
+      { name: 'Catálogo Visual', path: '/catalogo', icon: 'ri-layout-grid-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] }, 
+      { name: 'Pedidos Prov.', path: '/pedidos', icon: 'ri-shopping-cart-2-line', roles: ['ADMINISTRADOR'] }, 
+      { name: 'Proveedores', path: '/proveedores', icon: 'ri-truck-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] },
+      { name: 'Categorías', path: '/categorias', icon: 'ri-list-settings-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] },
+      { name: 'Marcas', path: '/productos/marcas', icon: 'ri-price-tag-2-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] },
+      { name: 'Licitaciones', path: '/proveedores/evaluacion', icon: 'ri-file-list-3-line', roles: ['ADMINISTRADOR'] }, 
+    ]
+  },
+  admin: {
+    title: 'Administración',
+    icon: 'ri-settings-3-line',
+    items: [
+      { name: 'Usuarios', path: '/usuarios', icon: 'ri-team-line', roles: ['ADMINISTRADOR'] },
+      { name: 'Roles', path: '/roles', icon: 'ri-shield-user-line', roles: ['ADMINISTRADOR'] },
+      { name: 'Liquidación Sueldos', path: '/admin/liquidacion', icon: 'ri-money-dollar-circle-line', roles: ['ADMINISTRADOR'] }, 
+      { name: 'Auditoría', path: '/auditoria', icon: 'ri-file-history-line', roles: ['ADMINISTRADOR'] },
+    ]
+  }
 };
+
+const filteredMenu = computed(() => {
+  const filtered = {};
+  for (const key in menuData) {
+    const section = menuData[key];
+    const items = section.items.filter(item => item.roles.includes(userRol));
+    if (items.length > 0) {
+      filtered[key] = { ...section, items };
+    }
+  }
+  return filtered;
+});
 
 const toggleSection = (section) => {
   openSection.value = openSection.value === section ? null : section;
@@ -172,7 +124,7 @@ const toggleSection = (section) => {
 </script>
 
 <style scoped>
-/* Sidebar Principal */
+/* LOS ESTILOS QUEDARON EXACTAMENTE IGUAL A TU ARCHIVO ORIGINAL */
 .sidebar {
   width: 290px;
   height: 100vh;
@@ -189,7 +141,6 @@ const toggleSection = (section) => {
   overflow-x: hidden;
 }
 
-/* Scrollbar personalizado */
 .sidebar::-webkit-scrollbar {
   width: 6px;
 }
@@ -210,7 +161,6 @@ const toggleSection = (section) => {
   background: linear-gradient(180deg, #4b5563, #374151);
 }
 
-/* Header del Sidebar */
 .sidebar-header {
   padding: 32px 20px 28px;
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
@@ -293,7 +243,6 @@ const toggleSection = (section) => {
   text-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
 }
 
-/* Sección de Navegación */
 .nav-section {
   flex: 1;
   padding: 24px 16px;
@@ -325,7 +274,6 @@ const toggleSection = (section) => {
   border-radius: 2px;
 }
 
-/* Lista de Links */
 .nav-links {
   list-style: none;
   margin: 0 0 8px 0;
@@ -335,7 +283,6 @@ const toggleSection = (section) => {
   gap: 4px;
 }
 
-/* Link Individual */
 .nav-link {
   position: relative;
   display: flex;
@@ -407,7 +354,6 @@ const toggleSection = (section) => {
   z-index: 1;
 }
 
-/* Hover State */
 .nav-link:hover {
   background: rgba(31, 41, 55, 0.8);
   transform: translateX(4px);
@@ -432,7 +378,6 @@ const toggleSection = (section) => {
   color: #fff;
 }
 
-/* Active State */
 .nav-link.router-link-active {
   background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
   box-shadow: 
@@ -460,7 +405,6 @@ const toggleSection = (section) => {
   font-weight: 600;
 }
 
-/* Acordeón */
 .acordeon-section {
   margin-bottom: 6px;
 }
@@ -560,7 +504,6 @@ const toggleSection = (section) => {
   color: #60a5fa;
 }
 
-/* Contenido del Acordeón */
 .acordeon-content {
   max-height: 0;
   overflow: hidden;
@@ -606,7 +549,6 @@ const toggleSection = (section) => {
   font-weight: 600;
 }
 
-/* Responsive */
 @media (max-width: 1024px) {
   .sidebar {
     width: 270px;

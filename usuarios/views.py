@@ -964,37 +964,46 @@ def crear_turno(request):
         traceback.print_exc()
         return Response({'status': 'error', 'message': f"Error interno: {str(e)}"}, status=500)
     
-@csrf_exempt
+# ==============================================================================
+# ARCHIVO: usuarios/views.py (REEMPLAZA ESTA FUNCIÓN)
+# ==============================================================================
+
+@api_view(['GET']) # 🔥 CAMBIO CLAVE: Permite a Django leer el Token del peluquero
+@permission_classes([IsAuthenticated]) # 🔥 Protege la ruta
 def listado_turnos(request):
     if request.method != 'GET':
         return JsonResponse({'error': 'Método no permitido'}, status=405)
 
     try:
-        # 🧹 PASO 0: LIMPIAR LA CASA ANTES DE MOSTRAR
-        # Esto elimina los "zombis" automáticamente
+        # 🧹 PASO 0: Saneamiento automático (Tu lógica original)
         sanear_turnos_vencidos()
 
-        # ===== Parámetros GET =====
-        peluquero_id = request.GET.get('peluquero')
+        # 1. IDENTIFICAMOS AL USUARIO POR SU TOKEN
+        user_autenticado = request.user
+        rol_nombre = user_autenticado.rol.nombre.upper() if user_autenticado.rol else ''
+
+        # 2. QUERY BASE
+        turnos = Turno.objects.all().select_related('cliente', 'peluquero').prefetch_related('servicios').order_by('fecha', 'hora')
+
+        # 🛡️ EL FILTRO DE PRIVACIDAD (LAUTARO SOLO VE LAUTARO)
+        if rol_nombre == 'PELUQUERO':
+            # Si el que pide es Peluquero, filtramos por su usuario y anulamos cualquier filtro externo
+            turnos = turnos.filter(peluquero=user_autenticado)
+        else:
+            # Si es Admin o Recepcionista, puede usar el filtro de la URL
+            peluquero_id_query = request.GET.get('peluquero')
+            if peluquero_id_query:
+                turnos = turnos.filter(peluquero__id=peluquero_id_query)
+
+        # 3. MANTENEMOS EL RESTO DE TUS FILTROS (Mantenidos al 100%)
         estado = request.GET.get('estado')
         canal = request.GET.get('canal')
         fecha_desde = request.GET.get('fecha_desde')
         fecha_hasta = request.GET.get('fecha_hasta')
         fecha_exacta = request.GET.get('fecha')
 
-        # ===== Query base =====
-        turnos = Turno.objects.all().select_related('cliente', 'peluquero').prefetch_related('servicios').order_by('fecha', 'hora')
-
-        # ===== Filtros =====
-        if peluquero_id:
-            turnos = turnos.filter(peluquero__id=peluquero_id)
-
         if estado:
-            estado_map = {
-                'RESERVADO': 'RESERVADO', 'CONFIRMADO': 'CONFIRMADO', 
-                'CANCELADO': 'CANCELADO', 'COMPLETADO': 'COMPLETADO',
-                'PENDIENTE': 'RESERVADO'
-            }
+            estado_map = {'RESERVADO': 'RESERVADO', 'CONFIRMADO': 'CONFIRMADO', 'CANCELADO': 'CANCELADO', 'COMPLETADO': 'COMPLETADO', 'PENDIENTE': 'RESERVADO'}
             if ',' in estado:
                 estados_lista = [estado_map.get(e.strip().upper(), e.strip().upper()) for e in estado.split(',')]
                 turnos = turnos.filter(estado__in=estados_lista)
@@ -1023,21 +1032,16 @@ def listado_turnos(request):
                 turnos = turnos.filter(fecha__lte=fecha_h)
             except ValueError: pass
 
-        # ===== Lógica de Permisos =====
-        es_admin_o_recep = False
-        if request.user.is_authenticated:
-            rol_nombre = request.user.rol.nombre.upper() if request.user.rol else ''
-            if request.user.is_staff or rol_nombre in ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC']:
-                es_admin_o_recep = True
+        # 4. LÓGICA DE PERMISOS PARA BOTONES EN EL FRONT
+        es_admin_o_recep = rol_nombre in ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC']
 
-        # ===== Construcción del resultado =====
+        # 5. CONSTRUCCIÓN DE LA DATA (Tu formato original intacto)
         data = []
         ahora = timezone.now()
 
         for t in turnos:
             servicios_list = []
             duracion_total = 0
-            
             for servicio in t.servicios.all():
                 servicios_list.append({
                     'id': servicio.id,
@@ -1048,16 +1052,15 @@ def listado_turnos(request):
                 })
                 duracion_total += servicio.duracion
 
-            # Reglas de negocio para modificar
             try:
                 fecha_turno_naive = datetime.combine(t.fecha, t.hora)
                 fecha_turno = timezone.make_aware(fecha_turno_naive)
                 tres_horas_antes = fecha_turno - timedelta(hours=3)
-                
                 cumple_tiempo = ahora < tres_horas_antes
                 puede_modificar = (t.estado in ['RESERVADO', 'CONFIRMADO'] and (cumple_tiempo or es_admin_o_recep))
                 puede_cancelar = puede_modificar
-                puede_completar = (t.estado == 'CONFIRMADO' and es_admin_o_recep)
+                # El peluquero solo puede completar sus propios turnos
+                puede_completar = (t.estado == 'CONFIRMADO' and (es_admin_o_recep or rol_nombre == 'PELUQUERO'))
 
             except Exception:
                 puede_modificar = es_admin_o_recep
@@ -1087,6 +1090,8 @@ def listado_turnos(request):
                 'puede_cancelar': puede_cancelar,
                 'puede_completar': puede_completar,
                 'oferta_activa': getattr(t, 'oferta_activa', False),
+                'medio_pago': t.medio_pago or 'PENDIENTE',
+                'reembolsado': getattr(t, 'reembolsado', False),
                 'fecha_expiracion_oferta': t.fecha_expiracion_oferta.isoformat() if getattr(t, 'fecha_expiracion_oferta', None) else None
             })
 
@@ -1095,9 +1100,6 @@ def listado_turnos(request):
     except Exception as e:
         print(f"Error crítico en listado_turnos: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
-
-
-    
 @csrf_exempt
 def verificar_disponibilidad(request):
     """
@@ -4927,24 +4929,26 @@ def mis_turnos(request):
         return Response({'error': str(e)}, status=500)
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated]) # 🔥 CAMBIO: Obligamos a reconocer el Token de Lautaro
 def listar_turnos_general(request):
-    """
-    Vista para el panel de administración/recepción.
-    Filtra por peluquero, fecha, estado, etc.
-    """
     try:
-        # 1. QuerySet Base
         turnos = Turno.objects.all().select_related('cliente', 'peluquero', 'cliente__rol', 'peluquero__rol').prefetch_related('servicios').order_by('-fecha', '-hora')
+        user = request.user
+        rol_nombre = user.rol.nombre.upper() if user.rol else ''
+        
+        if rol_nombre == 'PELUQUERO':
+            turnos = turnos.filter(peluquero=user)
+            print(f"🔒 Filtro de seguridad: {user.nombre} solo accede a sus datos.")
 
-        # 2. FILTROS
+        # 2. FILTROS (Mantenidos exactamente como los tenías)
         peluquero_id = request.GET.get('peluquero') or request.GET.get('peluquero_id')
         fecha_desde = request.GET.get('fecha_desde')
         fecha_hasta = request.GET.get('fecha_hasta')
         estado = request.GET.get('estado')
         canal = request.GET.get('canal')
         
-        if peluquero_id and peluquero_id != 'undefined':
+        # Solo permitimos filtrar por otro peluquero si NO eres peluquero
+        if peluquero_id and peluquero_id != 'undefined' and rol_nombre != 'PELUQUERO':
             turnos = turnos.filter(peluquero_id=peluquero_id)
 
         if fecha_desde:
@@ -4960,7 +4964,6 @@ def listar_turnos_general(request):
             turnos = turnos.filter(canal=canal)
 
         # 3. USA EL SERIALIZER (La forma correcta)
-        # Esto incluye automáticamente 'medio_pago', 'mp_payment_id', etc.
         serializer = TurnoSerializer(turnos, many=True)
         
         return Response(serializer.data)
@@ -4974,12 +4977,10 @@ def listar_turnos_general(request):
 @api_view(['GET'])
 @permission_classes([AllowAny]) # Cambialo a IsAuthenticated cuando quieras cerrar el grifo
 def listado_auditoria(request):
-    # Traemos todo ordenado por fecha (lo más nuevo arriba)
     logs = Auditoria.objects.all().select_related('usuario').order_by('-fecha')
     serializer = AuditoriaSerializer(logs, many=True)
     return Response(serializer.data)
 
-#Para recuperar la contraseña desde el login
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def solicitar_reset_password(request):

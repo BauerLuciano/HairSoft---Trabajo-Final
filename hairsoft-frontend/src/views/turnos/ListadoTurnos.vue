@@ -26,13 +26,15 @@
             <label>Hasta</label>
             <input type="date" v-model="filtros.fechaHasta" class="filter-input"/>
           </div>
-          <div class="filter-group">
+
+          <div v-if="userRol !== 'PELUQUERO'" class="filter-group">
             <label>Peluquero</label>
             <select v-model="filtros.peluquero" class="filter-input">
               <option value="">Todos</option>
               <option v-for="p in peluqueros" :key="p.id" :value="p.id">{{ p.nombre }} {{ p.apellido }}</option>
             </select>
           </div>
+
           <div class="filter-group">
             <label>Estado</label>
             <select v-model="filtros.estado" class="filter-input">
@@ -132,7 +134,7 @@
                   <div class="detalle-financiero">
                     <div v-if="esEstadoActivo(turno.estado) && turno.tipo_pago === 'SENA_50'" class="saldo-pendiente">
                       <small>✅ Seña: ${{ formatPrecio(turno.monto_seña) }}</small>
-                      <small class="falta">⚠️ Resta: ${{ formatPrecio(calcularPrecioTotal(turno) - (turno.monto_seña || 0)) }}</small>
+                      <small class="falta">⚠️ Resta: ${{ formatPrecio(turno.monto_total - (turno.monto_seña || 0)) }}</small>
                     </div>
 
                     <div v-else-if="(esEstadoActivo(turno.estado) && turno.tipo_pago === 'TOTAL') || turno.estado === 'COMPLETADO'" class="saldo-ok">
@@ -158,7 +160,7 @@
                     <Eye :size="14"/>
                   </button>
                   
-                  <button v-if="esEstadoActivo(turno.estado)" @click="modificarTurno(turno.id)" class="action-button edit" title="Editar">
+                  <button v-if="turno.puede_modificar" @click="modificarTurno(turno.id)" class="action-button edit" title="Editar">
                     <Edit3 :size="14"/>
                   </button>
                   
@@ -169,14 +171,14 @@
                     <CreditCard :size="14"/>
                   </button>
                   
-                  <button v-if="esEstadoActivo(turno.estado)" 
+                  <button v-if="turno.puede_completar" 
                           @click="completarTurno(turno)" 
                           class="action-button complete" 
                           title="Finalizar Atención">
                     <Check :size="14"/>
                   </button>
                   
-                  <button v-if="esEstadoActivo(turno.estado)" 
+                  <button v-if="turno.puede_cancelar" 
                           @click="cancelarTurno(turno)" 
                           class="action-button delete" 
                           title="Cancelar Turno">
@@ -208,7 +210,6 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from '../../utils/axiosConfig'
-// 🔥 AGREGAMOS 'ArrowRightLeft' para Transferencia y 'CreditCard' para Tarjeta
 import { 
   Plus, Trash2, Edit3, Check, SearchX, ChevronLeft, ChevronRight, 
   Eye, CreditCard, Clock, Banknote, Smartphone, HelpCircle, ArrowRightLeft 
@@ -222,10 +223,11 @@ const pagina = ref(1)
 const itemsPorPagina = 8
 const filtros = ref({ busqueda: '', peluquero: '', estado: '', canal: '', fechaDesde: '', fechaHasta: '' })
 
-// 🔥 HELPER CLAVE: Permite acciones en RESERVADO y CONFIRMADO
+// 🛡️ REGLA ORO AGREGADA: Necesitamos el rol para que el v-if funcione
+const userRol = localStorage.getItem('user_rol'); 
+
 const esEstadoActivo = (estado) => ['RESERVADO', 'CONFIRMADO'].includes(estado);
 
-// Helpers Formato
 const formatFecha = s => { if(!s) return '-'; try { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`; } catch(e) { return s; } }
 const formatHora = s => (s && s.length >= 5) ? s.slice(0,5) : '-'
 const formatPrecio = (p) => (!p ? '0.00' : parseFloat(p).toFixed(2))
@@ -236,49 +238,36 @@ const getServiciosLista = s => {
   return []
 }
 
-// 🔥🔥 HELPERS DE PAGO MEJORADOS (Detectan Tarjeta y Transferencia) 🔥🔥
 const getMedioPagoLabel = (mp) => {
   if (!mp) return 'Pendiente'
   const m = mp.toUpperCase()
-  
   if (m.includes('EFECTIVO')) return 'Efectivo'
-  
-  // Lógica Web: MP = Digital
   if (m.includes('MERCADO') || m.includes('MP')) return 'Mercado Pago (Web)'
-  
   if (m.includes('TARJETA') || m.includes('CREDITO') || m.includes('DEBITO')) return 'Tarjeta'
   if (m.includes('TRANSF')) return 'Transferencia'
-  
-  return mp // Retorna el texto original si no coincide con nada
+  return mp
 }
 
 const getClaseMedioPago = (mp) => {
     if (!mp) return 'otro'
     const m = mp.toUpperCase()
-    
     if (m.includes('MERCADO')) return 'mp'
     if (m.includes('EFECTIVO')) return 'efectivo'
     if (m.includes('TARJETA') || m.includes('CREDITO') || m.includes('DEBITO')) return 'tarjeta'
     if (m.includes('TRANSF')) return 'transferencia'
-    
     return 'otro'
 }
 
 const getIconoMedioPago = (mp) => {
     if (!mp) return HelpCircle
     const m = mp.toUpperCase()
-    
     if (m.includes('MERCADO')) return Smartphone
     if (m.includes('EFECTIVO')) return Banknote
-    // Tarjetas usan el icono CreditCard
     if (m.includes('TARJETA') || m.includes('CREDITO') || m.includes('DEBITO')) return CreditCard
-    // Transferencia usa las flechitas
     if (m.includes('TRANSF')) return ArrowRightLeft
-    
     return HelpCircle
 }
 
-// ... Resto de funciones igual que antes ...
 const getEstadoTexto = (estado, tipoPago) => {
   if (estado === 'RESERVADO') return tipoPago === 'TOTAL' ? 'Reservado (Pagado)' : 'Reservado (Seña)'
   if (estado === 'CONFIRMADO') return 'Confirmado'
@@ -312,7 +301,6 @@ const verDetalleTurno = async (turno) => {
            <h3 style="margin: 0; color: #3b82f6;">Ficha de Turno #${turno.id}</h3>
            <small style="color: #666;">${formatFecha(turno.fecha)} - ${formatHora(turno.hora)}</small>
         </div>
-        
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
            <div><strong>Cliente:</strong><br>${cliente}</div>
            <div><strong>Peluquero:</strong><br>${turno.peluquero_nombre}</div>
@@ -320,53 +308,32 @@ const verDetalleTurno = async (turno) => {
            <div><strong>Canal:</strong><br>${turno.canal}</div>
            <div><strong>Medio Pago:</strong><br>${getMedioPagoLabel(turno.medio_pago)}</div>
         </div>
-
         <div style="background: #f3f4f6; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
            <strong>Servicios:</strong>
            <ul style="margin: 5px 0; padding-left: 20px;">
              ${getServiciosLista(turno.servicios).map(s => `<li>${s}</li>`).join('')}
            </ul>
         </div>
-
         <div style="text-align: right; font-size: 1.1em;">
            <p style="margin: 5px 0;">Total: <strong>$${formatPrecio(precioTotal)}</strong></p>
            ${turno.tipo_pago === 'SENA_50' ? `<p style="margin: 5px 0; color: #f59e0b;">Falta abonar: <strong>$${formatPrecio(saldo)}</strong></p>` : '<p style="color: #10b981; margin: 5px 0;">✅ Pagado Total</p>'}
         </div>
-    `
-    if (turno.estado === 'CANCELADO' && montoSeña > 0) {
-        html += `<hr>`
-        html += turno.reembolsado 
-            ? `<p style="text-align: center; color: #3b82f6; font-weight: bold;">💰 A favor del cliente: $${formatPrecio(montoSeña)}</p>`
-            : `<p style="text-align: center; color: #ef4444; font-weight: bold;">🔒 Retenido (Penalidad 3 horas)</p>`
-    }
-
-    html += `</div>`
-    await Swal.fire({ 
-        html: html, 
-        showCloseButton: true, 
-        confirmButtonText: 'Cerrar',
-        confirmButtonColor: '#3b82f6'
-    })
+      </div>`
+    await Swal.fire({ html: html, showCloseButton: true, confirmButtonText: 'Cerrar', confirmButtonColor: '#3b82f6' })
 }
 
-const cargarPeluqueros = async () => { try { const res = await axios.get('/usuarios/api/peluqueros/'); peluqueros.value = res.data; } catch(e){} }
+const cargarPeluqueros = async () => { 
+  if (userRol !== 'PELUQUERO') {
+    try { const res = await axios.get('/api/peluqueros/'); peluqueros.value = res.data; } catch(e){} 
+  }
+}
 
 const cargarTurnos = async () => {
     try {
         const p = new URLSearchParams(filtros.value)
-        const res = await axios.get(`/usuarios/api/turnos/?${p.toString()}`);
+        const res = await axios.get(`/api/turnos/?${p.toString()}`);
         const data = Array.isArray(res.data) ? res.data : (res.data.results || []);
-        
-        console.log("📡 TURNOS RECIBIDOS DEL BACKEND:", data); // MIRÁ LA CONSOLA CON ESTO
-
         turnos.value = data.sort((a, b) => new Date(`${b.fecha}T${b.hora}`) - new Date(`${a.fecha}T${a.hora}`))
-        
-        turnos.value = turnos.value.map(t => ({
-            ...t,
-            reembolsado: !!t.reembolsado,
-            monto_seña: parseFloat(t.monto_seña || 0),
-            monto_total: parseFloat(t.monto_total || 0)
-        }))
     } catch(e) { console.error(e) }
 }
 
@@ -374,16 +341,10 @@ const confirmarPagoTotal = async (turno) => {
   const precio = calcularPrecioTotal(turno)
   const falta = precio - (turno.monto_seña || 0)
   const { isConfirmed } = await Swal.fire({ 
-      title: 'Cobrar Restante', 
-      text: `Monto a abonar: $${falta}`, 
-      icon: 'info', 
-      showCancelButton: true, 
-      confirmButtonText: 'Cobrar y Guardar',
-      confirmButtonColor: '#10b981', // Verde
-      cancelButtonColor: '#6b7280'
+      title: 'Cobrar Restante', text: `Monto a abonar: $${falta}`, icon: 'info', showCancelButton: true, confirmButtonText: 'Cobrar y Guardar', confirmButtonColor: '#10b981', cancelButtonColor: '#6b7280'
   })
   if (isConfirmed) {
-      await axios.post(`/usuarios/api/turnos/${turno.id}/actualizar-pago/`, { tipo_pago: 'TOTAL', monto_total: precio });
+      await axios.post(`/api/turnos/${turno.id}/actualizar-pago/`, { tipo_pago: 'TOTAL', monto_total: precio });
       cargarTurnos()
       Swal.fire({ title: '¡Cobrado!', icon: 'success', timer: 1500, showConfirmButton: false })
   }
@@ -391,16 +352,10 @@ const confirmarPagoTotal = async (turno) => {
 
 const completarTurno = async (turno) => {
   const { isConfirmed } = await Swal.fire({ 
-      title: 'Finalizar Turno', 
-      text: 'Se marcará como Completado', 
-      icon: 'warning', 
-      showCancelButton: true, 
-      confirmButtonText: 'Sí, completar',
-      confirmButtonColor: '#3b82f6', // Azul HairSoft
-      cancelButtonColor: '#d33'
+      title: 'Finalizar Turno', text: 'Se marcará como Completado', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, completar', confirmButtonColor: '#3b82f6', cancelButtonColor: '#d33'
   })
   if (isConfirmed) {
-      await axios.post(`/usuarios/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`);
+      await axios.post(`/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`);
       cargarTurnos()
       Swal.fire({ title: '¡Completado!', icon: 'success', timer: 1500, showConfirmButton: false })
   }
@@ -408,16 +363,10 @@ const completarTurno = async (turno) => {
 
 const cancelarTurno = async (turno) => {
   const { isConfirmed } = await Swal.fire({ 
-      title: 'Cancelar Turno', 
-      text: '¿Estás seguro que deseas cancelar?', 
-      icon: 'error', 
-      showCancelButton: true, 
-      confirmButtonText: 'Sí, cancelar',
-      confirmButtonColor: '#ef4444', // Rojo
-      cancelButtonColor: '#6b7280'
+      title: 'Cancelar Turno', text: '¿Estás seguro que deseas cancelar?', icon: 'error', showCancelButton: true, confirmButtonText: 'Sí, cancelar', confirmButtonColor: '#ef4444', cancelButtonColor: '#6b7280'
   })
   if (isConfirmed) {
-      await axios.post(`/usuarios/api/turnos/${turno.id}/cambiar-estado/CANCELADO/`);
+      await axios.post(`/api/turnos/${turno.id}/cambiar-estado/CANCELADO/`);
       cargarTurnos()
       Swal.fire({ title: 'Cancelado', icon: 'success', timer: 1500, showConfirmButton: false })
   }
