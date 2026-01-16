@@ -108,22 +108,35 @@
           </div>
         </div>
 
+        <!-- 🔥 PROFESIONALES CON CARDS EN VEZ DE SELECT -->
         <div v-if="form.servicios_ids.length > 0" class="card-modern slide-in">
           <div class="card-header">
             <div class="card-icon"><UserCheck :size="20" /></div>
             <h3>Profesional</h3>
           </div>
-          <select v-model="form.peluquero" @change="alCambiarPeluquero" class="select-modern">
-            <option value="">-- Seleccionar --</option>
-            <option 
+          
+          <div class="profesionales-grid">
+            <div 
               v-for="p in peluqueros" 
-              :key="p.id" 
-              :value="p.id"
-              :disabled="p.id === form.cliente"
+              :key="p.id"
+              class="profesional-card"
+              :class="{ 
+                'profesional-selected': form.peluquero === p.id,
+                'profesional-disabled': p.id === form.cliente
+              }"
+              @click="p.id !== form.cliente ? seleccionarPeluquero(p.id) : null"
             >
-              {{ p.nombre }} {{ p.apellido || '' }} {{ p.id === form.cliente ? '(Es el cliente)' : '' }}
-            </option>
-          </select>
+              <div class="profesional-avatar">
+                <User :size="24" />
+              </div>
+              <div class="profesional-info">
+                <div class="profesional-nombre">{{ p.nombre }} {{ p.apellido || '' }}</div>
+                <div v-if="p.id === form.cliente" class="profesional-badge-cliente">Es el cliente</div>
+                <div v-else-if="form.peluquero === p.id" class="profesional-badge-selected">✓ Seleccionado</div>
+              </div>
+            </div>
+          </div>
+          
           <div v-if="form.peluquero === form.cliente && form.cliente" class="msg-error mt-2">
             <AlertCircle :size="14" /> No puedes seleccionar al mismo profesional como cliente.
           </div>
@@ -167,6 +180,7 @@
           </div>
         </div>
 
+        <!-- 🔥 HORARIOS CON MEJOR ESTILO PARA OCUPADOS -->
         <div v-if="form.fecha" class="card-modern slide-in">
           <div class="card-header">
             <div class="card-icon"><Clock :size="20" /></div>
@@ -195,8 +209,12 @@
               }"
               @click="esHorarioDisponible(hora) ? seleccionarHora(hora) : null"
             >
+              <div class="hora-icono">
+                <Clock v-if="esHorarioDisponible(hora)" :size="16" />
+                <X v-else :size="18" />
+              </div>
               <span class="hora-texto">{{ hora }}</span>
-              <span v-if="!esHorarioDisponible(hora)" class="etiqueta-ocupado">NO DISP.</span>
+              <span v-if="!esHorarioDisponible(hora)" class="etiqueta-ocupado">OCUPADO</span>
             </div>
           </div>
         </div>
@@ -239,7 +257,9 @@
               <select v-model="form.medio_pago" class="select-modern">
                 <option value="EFECTIVO">💵 Efectivo</option>
                 <option value="TARJETA">💳 Tarjeta</option>
-                <option value="TRANSFERENCIA">📱 Transferencia / MP</option>
+                <option value="TRANSFERENCIA">
+                  <span class="mp-option">🔵 Mercado Pago / Transferencia</span>
+                </option>
               </select>
             </div>
             
@@ -361,7 +381,7 @@ const peluqueros = ref([])
 const busquedaCliente = ref("")
 const clientesSugeridos = ref([])
 const categoriasSeleccionadas = ref([])
-const slotsOcupadosReales = ref([]) // Strings HH:MM
+const slotsOcupadosReales = ref([])
 const currentDate = ref(new Date())
 const errorCliente = ref("")
 const mensaje = ref("")
@@ -372,7 +392,6 @@ const cargandoHorarios = ref(false)
 const intervaloMinutos = 20
 const STORAGE_KEY = 'turno_presencial_context'
 
-// Computed
 const serviciosFiltrados = computed(() => {
   if (categoriasSeleccionadas.value.length === 0) return []
   return servicios.value.filter(s => {
@@ -391,15 +410,12 @@ const nombreMesActual = computed(() => {
 const daysInMonth = computed(() => new Date(currentYear.value, currentMonth.value + 1, 0).getDate())
 const startingDayOfWeek = computed(() => new Date(currentYear.value, currentMonth.value, 1).getDay())
 
-// 🟢 CORRECCIÓN: HORARIOS GENERADOS (YA NO SE OCULTAN LOS PASADOS)
 const horariosGenerados = computed(() => {
   const horariosBase = []
   const bloques = [
     { inicio: 8, fin: 12 }, 
     { inicio: 15, fin: 20 }
   ]
-  // La lógica de "es hoy" la sacamos de acá para que genere TODOS los horarios.
-  // La validación de si pasó o no la hora se hace en esHorarioDisponible
 
   bloques.forEach(b => {
     for (let h = b.inicio; h < b.fin; h++) {
@@ -408,14 +424,12 @@ const horariosGenerados = computed(() => {
         horariosBase.push(horaStr)
       }
     }
-    // Cierre de bloque (ej. 12:00)
     horariosBase.push(`${String(b.fin).padStart(2, '0')}:00`)
   })
 
   return horariosBase
 })
 
-// 🟢 CARGAR HORARIOS OCUPADOS (CORRECCIÓN REPLICACIÓN)
 const cargarHorariosOcupados = async (fecha) => {
   if (!form.value.peluquero || form.value.peluquero === form.value.cliente) return
   
@@ -424,74 +438,76 @@ const cargarHorariosOcupados = async (fecha) => {
   slotsOcupadosReales.value = [] 
   
   try {
-    // Usamos 'peluquero' para coincidir con el backend que usa filtros por param 'peluquero' o 'peluquero_id'
+    const token = localStorage.getItem('token')
     const url = `${API_URL}/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
     
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`Error: ${res.status}`)
+    const res = await fetch(url, {
+      headers: { "Authorization": token ? `Token ${token}` : '' }
+    })
+    
+    if (!res.ok) throw new Error(`Error API: ${res.status}`)
     
     const turnos = await res.json()
+    const resultados = Array.isArray(turnos) ? turnos : (turnos.results || [])
     
     const ocupadosSet = new Set()
     
-    turnos.forEach(turno => {
-        // 🛡️ FILTRO DE SEGURIDAD CLIENT-SIDE
-        // Si la API devuelve turnos de otros días por error, los ignoramos acá
-        if (turno.fecha !== fecha) return
+    resultados.forEach(turno => {
+      if (turno.fecha !== fecha) return
 
-        const [h, m] = turno.hora.split(':').map(Number)
-        const inicioMin = h * 60 + m
-        
-        let duracion = turno.duracion_total || 0
-        if (!duracion && turno.servicios) {
-            duracion = turno.servicios.reduce((acc, s) => acc + (s.duracion || 20), 0)
+      const [h, m] = turno.hora.split(':').map(Number)
+      const inicioMin = h * 60 + m
+      
+      let duracion = turno.duracion_total || 0
+      if (!duracion && turno.servicios) {
+        if (Array.isArray(turno.servicios) && typeof turno.servicios[0] === 'object') {
+          duracion = turno.servicios.reduce((acc, s) => acc + (s.duracion || 20), 0)
+        } else {
+          duracion = 20 
         }
-        if (!duracion) duracion = 20
-        
-        const finMin = inicioMin + duracion
-        
-        // Marcamos los slots que caen dentro de este turno
-        for (let i = inicioMin; i < finMin; i += 20) {
-            const hh = Math.floor(i / 60).toString().padStart(2, '0')
-            const mm = (i % 60).toString().padStart(2, '0')
-            ocupadosSet.add(`${hh}:${mm}`)
-        }
+      }
+      if (!duracion) duracion = 20
+      
+      const finMin = inicioMin + duracion
+      
+      for (let i = inicioMin; i < finMin; i += 20) {
+        const hh = Math.floor(i / 60).toString().padStart(2, '0')
+        const mm = (i % 60).toString().padStart(2, '0')
+        ocupadosSet.add(`${hh}:${mm}`)
+      }
     })
     
     slotsOcupadosReales.value = Array.from(ocupadosSet)
 
   } catch (e) {
-    console.error("❌ Error cargando turnos:", e)
+    console.error("❌ Error cargando horarios:", e)
   } finally {
     cargandoHorarios.value = false
   }
 }
 
-// 🟢 CORRECCIÓN: DISPONIBILIDAD (OCUPADO + PASADO)
 const esHorarioDisponible = (hora) => {
-  // 1. Validar si está ocupado por otro turno
   if (!form.value.fecha || !form.value.peluquero) return true
+  
   const horaSimple = hora.substring(0, 5)
+  
   if (slotsOcupadosReales.value.includes(horaSimple)) return false
 
-  // 2. Validar si ya pasó la hora (Si es HOY)
   const hoy = new Date()
   const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
   
   if (form.value.fecha === hoyFormateado) {
-     const [h, m] = hora.split(':').map(Number)
-     const ahoraH = hoy.getHours()
-     const ahoraM = hoy.getMinutes()
-     
-     // Si la hora es menor a la actual, ya pasó. (Ej: son las 11:00, las 10:40 ya fue)
-     if (h < ahoraH) return false
-     if (h === ahoraH && m < ahoraM) return false
+    const [h, m] = hora.split(':').map(Number)
+    const ahoraH = hoy.getHours()
+    const ahoraM = hoy.getMinutes()
+    
+    if (h < ahoraH) return false
+    if (h === ahoraH && m < ahoraM) return false
   }
 
   return true
 }
 
-// RESTO DE FUNCIONES (Contexto, Cargas, etc. IGUAL QUE ANTES)
 const guardarContexto = () => {
   const contexto = {
     categoriasSeleccionadas: categoriasSeleccionadas.value,
@@ -616,7 +632,11 @@ const toggleServicio = (servicio) => {
   resetFechas()
 }
 
-const alCambiarPeluquero = () => resetFechas()
+// 🔥 NUEVA FUNCIÓN para seleccionar profesional desde las cards
+const seleccionarPeluquero = (id) => {
+  form.value.peluquero = id
+  resetFechas()
+}
 
 const resetFechas = () => {
   form.value.fecha = ""
@@ -655,6 +675,7 @@ const seleccionarDiaCalendario = (day) => {
   const mesStr = String(currentMonth.value + 1).padStart(2, '0')
   const diaStr = String(day).padStart(2, '0')
   form.value.fecha = `${currentYear.value}-${mesStr}-${diaStr}`
+  
   cargarHorariosOcupados(form.value.fecha)
 }
 
@@ -680,9 +701,7 @@ const crearTurno = async () => {
     return acc + (s ? parseInt(s.duracion) : 0)
   }, 0)
 
-  // 🟢 Lógica corregida de montos
   const totalCalculado = parseFloat(calcularTotal())
-  // Validamos si seleccionó seña (compatible si el value es "SENA" o "SENA_50")
   const esPagoSena = form.value.tipo_pago.includes('SENA')
 
   const payload = {
@@ -692,26 +711,16 @@ const crearTurno = async () => {
     fecha: form.value.fecha,
     hora: form.value.hora,
     canal: 'PRESENCIAL',
-    
-    // Forzamos el valor exacto que espera el backend
     tipo_pago: esPagoSena ? 'SENA_50' : 'TOTAL',
     medio_pago: form.value.medio_pago,
-    
-    // 👇👇 ACÁ ESTABA EL ERROR (saqué el punto extra) 👇👇
-    monto_total: totalCalculado, 
-    
-    // ⚠️ Corrección clave: 
-    // Si es TOTAL, el monto abonado (seña) es el 100% del valor.
-    // Si es SEÑA, es la mitad.
+    monto_total: totalCalculado,
     monto_seña: esPagoSena ? parseFloat(calcularSena()) : totalCalculado,
-    
     duracion_total: duracion,
     mp_payment_id: form.value.medio_pago !== 'EFECTIVO' ? form.value.comprobante_id : null
   }
 
   try {
     const token = localStorage.getItem('token')
-    // Ajustá la URL si tu backend usa '/turnos/' o '/turnos/crear_presencial/'
     const res = await fetch(`${API_URL}/turnos/crear/`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": token ? `Token ${token}` : '' },
@@ -741,7 +750,6 @@ const volverAlListado = () => {
   router.push('/turnos')
 }
 
-// Variables modal (compatibilidad)
 const mostrarModalRegistro = ref(false)
 const creandoCliente = ref(false)
 const errorCrearCliente = ref("")
@@ -799,9 +807,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-/* ============================================
-   TURNO CONTAINER (tu estructura original)
-   ============================================ */
 .turno-container {
   width: 100%;
   padding: 0;
@@ -904,7 +909,93 @@ onBeforeUnmount(() => {
   letter-spacing: -0.5px;
 }
 
-/* Grilla de Horarios (ESTILO WEB) */
+/* 🔥 PROFESIONALES - CARDS EN VEZ DE SELECT */
+.profesionales-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.profesional-card {
+  background: #fff;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 18px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.profesional-card:hover:not(.profesional-disabled) {
+  border-color: #3b82f6;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.15);
+}
+
+.profesional-selected {
+  border-color: #10b981 !important;
+  background: #f0fdf4;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+.profesional-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f9fafb;
+}
+
+.profesional-avatar {
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, #dbeafe, #93c5fd);
+  color: #3b82f6;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.profesional-selected .profesional-avatar {
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+  color: #10b981;
+}
+
+.profesional-info {
+  flex: 1;
+}
+
+.profesional-nombre {
+  font-weight: 700;
+  color: #1f2937;
+  font-size: 1.05rem;
+  margin-bottom: 4px;
+}
+
+.profesional-badge-cliente {
+  font-size: 0.8rem;
+  color: #dc2626;
+  font-weight: 600;
+  background: #fee2e2;
+  padding: 3px 10px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.profesional-badge-selected {
+  font-size: 0.8rem;
+  color: #10b981;
+  font-weight: 600;
+  background: #d1fae5;
+  padding: 3px 10px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+/* 🔥 HORARIOS MEJORADOS */
 .grid-horarios {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
@@ -916,7 +1007,7 @@ onBeforeUnmount(() => {
   background: #fff;
   border: 2px solid #e1e5e9;
   border-radius: 12px;
-  padding: 16px 10px;
+  padding: 14px 10px;
   text-align: center;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -926,12 +1017,24 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 6px;
 }
 
-.hora-card:hover {
+.hora-card:hover:not(.hora-ocupada) {
   border-color: #3b82f6;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.hora-icono {
+  color: #3b82f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hora-ocupada .hora-icono {
+  color: #dc2626;
 }
 
 .hora-texto {
@@ -948,29 +1051,41 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
 }
 
-.hora-selected .hora-texto { 
+.hora-selected .hora-texto,
+.hora-selected .hora-icono { 
   color: white; 
 }
 
-/* ESTILO OCUPADO (ROJO Y TACHADO) */
+/* 🔥 HORARIOS OCUPADOS - ESTILO MEJORADO */
 .hora-ocupada {
-  background: #fee2e2;
-  border-color: #fca5a5;
+  background: linear-gradient(135deg, #fee2e2, #fecaca);
+  border: 2px solid #f87171;
   cursor: not-allowed;
-  opacity: 0.7;
+  opacity: 0.85;
 }
 
 .hora-ocupada .hora-texto {
   text-decoration: line-through;
-  color: #dc3545;
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.hora-ocupada:hover {
+  border-color: #f87171;
+  transform: none;
+  box-shadow: none;
 }
 
 .etiqueta-ocupado {
   display: block;
-  font-size: 0.7em;
-  color: #dc3545;
-  font-weight: 700;
-  margin-top: 4px;
+  font-size: 0.65em;
+  color: white;
+  font-weight: 800;
+  background: #dc2626;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* Inputs y Selects */
@@ -1016,6 +1131,12 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
+.cliente-activo {
+  background: #e0f2fe !important;
+  border-color: #0ea5e9 !important;
+  font-weight: 600;
+}
+
 .btn-icon-clean { 
   position: absolute; 
   right: 12px; 
@@ -1054,7 +1175,6 @@ onBeforeUnmount(() => {
   box-shadow: 0 6px 12px rgba(15, 23, 42, 0.3);
 }
 
-/* 🟢 ESTILOS PARA EL MODAL DE REGISTRO */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -1194,7 +1314,6 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-/* Sugerencias */
 .lista-sugerencias {
   position: absolute;
   background: white;
@@ -1254,7 +1373,10 @@ onBeforeUnmount(() => {
   margin-top: 12px;
 }
 
-/* Chips */
+.mt-3 {
+  margin-top: 16px;
+}
+
 .grid-chips { 
   display: flex; 
   flex-wrap: wrap; 
@@ -1289,7 +1411,6 @@ onBeforeUnmount(() => {
   box-shadow: 0 6px 12px rgba(59, 130, 246, 0.3);
 }
 
-/* Servicios */
 .grid-servicios { 
   display: grid; 
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
@@ -1357,7 +1478,6 @@ onBeforeUnmount(() => {
   font-weight: 500;
 }
 
-/* Calendario */
 .calendar-wrapper { 
   background: #f8fafc; 
   border-radius: 16px; 
@@ -1458,18 +1578,6 @@ onBeforeUnmount(() => {
   opacity: 0.6;
 }
 
-.calendar-footer { 
-  text-align: center; 
-  margin-top: 20px; 
-  font-size: 0.9em; 
-  color: #6b7280; 
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-/* Resumen y Pago */
 .resumen-grid { 
   display: flex; 
   flex-direction: column; 
@@ -1492,6 +1600,10 @@ onBeforeUnmount(() => {
   margin-top: 15px; 
   padding-top: 15px;
   border-bottom: none; 
+}
+
+.pago-section {
+  margin-bottom: 25px;
 }
 
 .pago-options { 
@@ -1548,6 +1660,10 @@ onBeforeUnmount(() => {
   margin-bottom: 25px; 
 }
 
+.input-group {
+  margin-bottom: 15px;
+}
+
 .label-modern {
   display: block;
   font-weight: 600;
@@ -1556,7 +1672,6 @@ onBeforeUnmount(() => {
   font-size: 1rem;
 }
 
-/* Botón Final */
 .btn-confirmar-premium {
   width: 100%; 
   background: linear-gradient(135deg, #059669, #047857); 
@@ -1584,7 +1699,6 @@ onBeforeUnmount(() => {
   opacity: 0.7;
 }
 
-/* Loader y Empty States */
 .loading-spinner, .no-resultados { 
   text-align: center; 
   padding: 50px 20px; 
@@ -1609,7 +1723,6 @@ onBeforeUnmount(() => {
   color: #9ca3af;
 }
 
-/* Toast */
 .toast-message {
   position: fixed; 
   bottom: 30px; 
@@ -1646,7 +1759,6 @@ onBeforeUnmount(() => {
   opacity: 0; 
 }
 
-/* Animaciones */
 .slide-in {
   animation: slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
@@ -1676,6 +1788,10 @@ onBeforeUnmount(() => {
   .grid-servicios {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
+  
+  .profesionales-grid {
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  }
 }
 
 @media (max-width: 768px) {
@@ -1700,7 +1816,8 @@ onBeforeUnmount(() => {
     justify-content: center;
   }
   
-  .grid-servicios {
+  .grid-servicios,
+  .profesionales-grid {
     grid-template-columns: 1fr;
   }
   

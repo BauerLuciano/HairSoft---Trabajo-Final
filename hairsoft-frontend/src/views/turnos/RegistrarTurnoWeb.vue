@@ -1025,9 +1025,23 @@ const nuevaReserva = () => window.location.reload();
 const volverAtras = () => router.back();
 const irAServicios = () => router.push('/servicios');
 
-onMounted(cargarDatosIniciales);
-watch(() => form.value.fecha, (f) => f && form.value.peluquero && cargarTurnosOcupados(f));
-watch(() => form.value.peluquero, (p) => p && form.value.fecha && cargarTurnosOcupados(form.value.fecha));
+onMounted(async () => {
+  // 1. Cargamos todos tus datos originales (peluqueros, servicios, etc)
+  await cargarDatosIniciales();
+
+  // 2. ✅ CORRECCIÓN: Capturamos el cupón de la URL
+  const cup = route.query.cup;
+  if (cup) {
+    cuponCodigo.value = cup;
+    descuentoAplicado.value = 15; // Aplicamos el 15% visualmente
+    mensajePromo.value = "Te extrañamos ✂️ ¡Aprovechá tu descuento especial!";
+    console.log("🎟️ Cupón reactivación detectado y aplicado:", cup);
+    
+    mensaje.value = "¡Cupón de 15% OFF aplicado con éxito!";
+    mensajeTipo.value = "success";
+    setTimeout(() => { mensaje.value = ""; }, 4000);
+  }
+});
 
 defineExpose({
   form, usuario, serviciosFiltrados, toggleServicio, estaServicioSeleccionado, eliminarServicio, crearPagoMercadoPago, volverAtras, irAServicios
@@ -2229,6 +2243,38 @@ Copiar
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
   border: 2px solid rgba(255, 255, 255, 0.1);
   animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Cupón alerta */
+.cupon-alerta {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border: 2px solid #f59e0b;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
+.cupon-alerta .card-header {
+  border-bottom-color: rgba(245, 158, 11, 0.3);
+}
+
+/* ✅ AÑADIR ESTOS ESTILOS PARA LETRAS NEGRAS */
+.cupon-alerta .card-header h3 {
+  color: #1f2937 !important;
+}
+
+.cupon-alerta p {
+  color: #1f2937 !important;
+  font-weight: 600;
+}
+
+.cupon-alerta strong {
+  color: #000000 !important;
+  font-weight: 700;
 }
 
 @keyframes slideUp {

@@ -171,7 +171,7 @@
                     <CreditCard :size="14"/>
                   </button>
                   
-                  <button v-if="turno.puede_completar" 
+                  <button v-if="mostrarBotonCompletar(turno)" 
                           @click="completarTurno(turno)" 
                           class="action-button complete" 
                           title="Finalizar Atención">
@@ -220,10 +220,10 @@ const router = useRouter()
 const turnos = ref([])
 const peluqueros = ref([])
 const pagina = ref(1)
-const itemsPorPagina = 8
+const itemsPorPagina = 7
 const filtros = ref({ busqueda: '', peluquero: '', estado: '', canal: '', fechaDesde: '', fechaHasta: '' })
 
-// 🛡️ REGLA ORO AGREGADA: Necesitamos el rol para que el v-if funcione
+// 🛡️ REGLA ORO: Obtenemos el rol del localStorage
 const userRol = localStorage.getItem('user_rol'); 
 
 const esEstadoActivo = (estado) => ['RESERVADO', 'CONFIRMADO'].includes(estado);
@@ -350,14 +350,25 @@ const confirmarPagoTotal = async (turno) => {
   }
 }
 
+// ✅ LIBERADO: Completado forzoso para Gestión
 const completarTurno = async (turno) => {
   const { isConfirmed } = await Swal.fire({ 
-      title: 'Finalizar Turno', text: 'Se marcará como Completado', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, completar', confirmButtonColor: '#3b82f6', cancelButtonColor: '#d33'
+      title: 'Finalizar Turno', 
+      text: `¿Marcar el turno de ${turno.cliente_nombre} como COMPLETADO?`, 
+      icon: 'warning', 
+      showCancelButton: true, 
+      confirmButtonText: 'Sí, completar', 
+      confirmButtonColor: '#10b981', 
+      cancelButtonColor: '#d33'
   })
   if (isConfirmed) {
-      await axios.post(`/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`);
-      cargarTurnos()
-      Swal.fire({ title: '¡Completado!', icon: 'success', timer: 1500, showConfirmButton: false })
+      try {
+        await axios.post(`/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`);
+        cargarTurnos()
+        Swal.fire({ title: '¡Hecho!', text: 'Atención finalizada correctamente.', icon: 'success', timer: 1500, showConfirmButton: false })
+      } catch (e) {
+        Swal.fire({ title: 'Error', text: 'No se pudo cambiar el estado. Revisa si falta cobrar.', icon: 'error' });
+      }
   }
 }
 
@@ -385,6 +396,14 @@ const turnosFiltradosPaginados = computed(() => {
 const totalPaginas = computed(() => Math.ceil(turnos.value.length / itemsPorPagina))
 const paginaAnterior = () => { if(pagina.value>1) pagina.value-- }
 const paginaSiguiente = () => { if(pagina.value<totalPaginas.value) pagina.value++ }
+
+// ✅ NUEVO: Función para determinar si el botón de completar DEBE aparecer
+const mostrarBotonCompletar = (turno) => {
+    if (['COMPLETADO', 'CANCELADO'].includes(turno.estado)) return false;
+    // Si es ADMIN o RECEPCIONISTA, puede completar CUALQUIERA activo
+    if (['ADMINISTRADOR', 'RECEPCIONISTA'].includes(userRol)) return true;
+    return turno.puede_completar;
+}
 
 onMounted(() => { cargarPeluqueros(); cargarTurnos(); })
 watch(filtros.value, () => cargarTurnos())

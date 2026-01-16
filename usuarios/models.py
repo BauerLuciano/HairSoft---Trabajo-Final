@@ -640,40 +640,62 @@ class Turno(models.Model):
     def crear_venta_turno(self):
         # Evitamos importaciones circulares
         from django.apps import apps
+        from django.db import IntegrityError # Importante para manejar el error si ocurre
+        
         MetodoPago = apps.get_model('usuarios', 'MetodoPago')
         Venta = apps.get_model('usuarios', 'Venta')
         DetalleVenta = apps.get_model('usuarios', 'DetalleVenta')
 
         total_servicios = sum(servicio.precio for servicio in self.servicios.all())
-        tipo_map = {
-            'EFECTIVO': 'EFECTIVO',
-            'TARJETA': 'TARJETA',
-            'TRANSFERENCIA': 'TRANSFERENCIA',
-            'MERCADO_PAGO': 'TRANSFERENCIA', # Mapeamos MP a Transferencia
-            'PENDIENTE': 'EFECTIVO' # Default
-        }
         
-        tipo_real = tipo_map.get(self.medio_pago, 'EFECTIVO')
-        nombre_real = self.medio_pago.replace('_', ' ').title() # Ej: Mercado Pago
+        # 1. Definir el Nombre Real y el Tipo ANTES de buscar
+        # Esto soluciona el error: buscamos exactamente por lo que vamos a guardar
+        mp_str = str(self.medio_pago).upper()
+        
+        nombre_real = 'Efectivo'
+        tipo_real = 'EFECTIVO'
 
-        # Buscamos el objeto. Si no existe, LO CREA. Así nunca queda nulo.
-        medio_pago_obj, created = MetodoPago.objects.get_or_create(
-            nombre__iexact=self.medio_pago,
-            defaults={
-                'nombre': nombre_real,
-                'tipo': tipo_real,
-                'activo': True
-            }
-        )
+        if 'MERCADO' in mp_str or 'MP' in mp_str:
+            nombre_real = 'Mercado Pago'
+            tipo_real = 'MERCADO_PAGO'
+        elif 'TARJETA' in mp_str:
+            nombre_real = 'Tarjeta'
+            tipo_real = 'TARJETA'
+        elif 'TRANSFERENCIA' in mp_str:
+            nombre_real = 'Transferencia'
+            tipo_real = 'TRANSFERENCIA'
+        
+        # 2. Buscar o Crear BLINDADO
+        try:
+            # Buscamos por el nombre bonito ('Mercado Pago'), no por el código ('MERCADO_PAGO')
+            medio_pago_obj, created = MetodoPago.objects.get_or_create(
+                nombre__iexact=nombre_real, 
+                defaults={
+                    'nombre': nombre_real,
+                    'tipo': tipo_real,
+                    'activo': True
+                }
+            )
+        except IntegrityError:
+            # Si justo hubo una condición de carrera o falló el unique, lo traemos directo
+            medio_pago_obj = MetodoPago.objects.filter(nombre__iexact=nombre_real).first()
+            
+            # Si aun así falla (caso extremo), usamos Efectivo por defecto para no romper el turno
+            if not medio_pago_obj:
+                medio_pago_obj, _ = MetodoPago.objects.get_or_create(
+                    nombre='Efectivo', defaults={'tipo': 'EFECTIVO'}
+                )
 
+        # 3. Crear la Venta
         venta = Venta.objects.create(
             cliente=self.cliente,
-            usuario=self.peluquero,
+            usuario=self.peluquero, # O el usuario logueado si se pasara, pero usamos peluquero como fallback
             total=total_servicios,
             tipo='TURNO',
-            medio_pago=medio_pago_obj # ¡Ahora sí tiene objeto!
+            medio_pago=medio_pago_obj
         )
         
+        # 4. Crear Detalles
         for servicio in self.servicios.all():
             DetalleVenta.objects.create(
                 venta=venta,
@@ -684,6 +706,7 @@ class Turno(models.Model):
                 subtotal=servicio.precio
             )
             
+        # Actualizar total final de la venta
         venta.total = venta.detalles.aggregate(total=models.Sum('subtotal'))['total'] or 0
         venta.save()
 

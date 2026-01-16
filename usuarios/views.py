@@ -1308,61 +1308,61 @@ def obtener_turno_por_id(request, turno_id):
         return JsonResponse({'error': f'Error interno: {str(e)}'}, status=500)
 
 @csrf_exempt
-@api_view(['POST']) # Agregado para que DRF maneje el request si entra por /api/
-@permission_classes([AllowAny])
+@api_view(['POST'])
+@permission_classes([AllowAny]) 
 def cambiar_estado_turno(request, turno_id, nuevo_estado):
     """
-    Vista para cambiar el estado de un turno desde el frontend.
-    Permite transiciones desde RESERVADO o CONFIRMADO hacia COMPLETADO o CANCELADO.
+    Vista SIMPLIFICADA: Delega la creación de Venta al método save() del modelo Turno.
     """
     try:
-        # Obtener el turno
         turno = get_object_or_404(Turno, id=turno_id)
         
-        print(f"🔄 Cambio estado Turno #{turno.id}: {turno.estado} -> {nuevo_estado}")
-
-        # Estados válidos
-        estados_validos = ['RESERVADO', 'CONFIRMADO', 'COMPLETADO', 'CANCELADO']
-        
-        if nuevo_estado not in estados_validos:
-            return JsonResponse({'status': 'error', 'message': f'Estado destino "{nuevo_estado}" no válido'}, status=400)
-        
-        estado_anterior = turno.estado
-        if estado_anterior == 'COMPLETADO':
-            return JsonResponse({'status': 'error', 'message': 'El turno ya está COMPLETADO. No se puede modificar.'}, status=400)
-        
-        if estado_anterior == 'CANCELADO':
-            return JsonResponse({'status': 'error', 'message': 'El turno ya está CANCELADO. No se puede revivir.'}, status=400)
-        
-        if nuevo_estado == 'COMPLETADO':
-            # Solo permitimos completar si estaba activo
-            if estado_anterior not in ['RESERVADO', 'CONFIRMADO']:
-                 return JsonResponse({'status': 'error', 'message': 'Solo turnos reservados o confirmados pueden completarse.'}, status=400)
-
-            # Si era SEÑA, al completar se asume que paga el resto -> Pasa a TOTAL
-            if turno.tipo_pago == 'SENA_50':
-                turno.tipo_pago = 'TOTAL'
-
-            if turno.monto_total == 0:
-                turno.monto_total = sum(s.precio for s in turno.servicios.all()) or 0
+        # 1. Identificar rol
+        user_rol = "CLIENTE"
+        if request.user.is_authenticated and request.user.rol:
+            user_rol = request.user.rol.nombre.upper()
             
-            if turno.monto_seña == 0 and turno.tipo_pago == 'TOTAL':
-                turno.monto_seña = turno.monto_total
-
-        turno.estado = nuevo_estado
-        turno.save()
+        es_jefe = user_rol in ['ADMINISTRADOR', 'RECEPCIONISTA', 'ADMIN']
         
-        return JsonResponse({
+        print(f"🔄 Cambio estado Turno #{turno.id}: {turno.estado} -> {nuevo_estado} (Operador: {user_rol})")
+
+        if turno.estado == nuevo_estado:
+             return Response({'status': 'ok', 'message': f'El turno ya estaba en estado {nuevo_estado}'})
+
+        with transaction.atomic():
+            # --- LÓGICA PARA COMPLETAR ---
+            if nuevo_estado == 'COMPLETADO':
+                # Validar permisos (Jefe pasa siempre)
+                if not es_jefe:
+                    if turno.estado not in ['RESERVADO', 'CONFIRMADO']:
+                        return Response({'status': 'error', 'message': 'No tienes permisos.'}, status=400)
+
+                # Arreglar números para evitar errores en el modelo
+                if turno.monto_total <= 0:
+                    total_calc = sum(s.precio for s in turno.servicios.all())
+                    turno.monto_total = total_calc
+
+                # Si es SEÑA, pasamos a TOTAL (asumimos cobro del resto)
+                if turno.tipo_pago == 'SENA_50':
+                    turno.tipo_pago = 'TOTAL'
+                    turno.monto_seña = turno.monto_total
+
+            # --- GUARDAR (Esto dispara la creación de Venta en el modelo) ---
+            turno.estado = nuevo_estado
+            turno.save() 
+        
+        return Response({
             'status': 'ok',
-            'message': f'Estado actualizado correctamente a {nuevo_estado}',
-            'turno_id': turno.id
+            'message': f'Turno #{turno.id} actualizado a {nuevo_estado} con éxito.',
+            'nuevo_total': str(turno.monto_total)
         })
         
     except Exception as e:
         print(f"💥 Error crítico cambiando estado: {str(e)}")
+        # Logueamos el error completo para debug
         import traceback
         traceback.print_exc()
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+        return Response({'status': 'error', 'message': f'Error interno: {str(e)}'}, status=500)
     
 @csrf_exempt
 def completar_turno(request, turno_id):

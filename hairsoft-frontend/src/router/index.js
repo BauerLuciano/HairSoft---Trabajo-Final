@@ -156,10 +156,11 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token');
-  const userRol = localStorage.getItem('user_rol'); // 'ADMINISTRADOR', 'RECEPCIONISTA', 'PELUQUERO'
+  const userRol = localStorage.getItem('user_rol'); 
 
+  // ✅ CORREGIDO: Ahora guarda la ruta completa (incluyendo el ?cup=...)
   if (to.meta.requiresAuth && !token) {
-    return next('/login');
+    return next({ name: 'Login', query: { redirect: to.fullPath } });
   } 
 
   if (userRol === 'PELUQUERO') {

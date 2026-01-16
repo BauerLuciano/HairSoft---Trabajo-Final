@@ -20,6 +20,10 @@ DEBUG = 'RAILWAY_ENVIRONMENT' not in os.environ
 # Aceptamos todo en producción para evitar errores de dominio en la demo
 ALLOWED_HOSTS = ['*']
 
+# ✅ URL DEL FRONTEND (Usando tu Ngrok actual)
+# En producción (Railway), podrías definir esto en las variables de entorno.
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://brandi-palmar-pickily.ngrok-free.dev')
+
 # ================================
 # APLICACIONES INSTALADAS
 # ================================
@@ -170,6 +174,7 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8000",
     "https://*.railway.app", # <--- IMPORTANTE
     "https://*.vercel.app",  # <--- IMPORTANTE
+    "https://*.ngrok-free.dev", # <--- AGREGADO PARA NGROK
 ]
 
 CSRF_USE_SESSIONS = False

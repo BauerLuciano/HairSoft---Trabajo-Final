@@ -2,7 +2,6 @@
   <div class="auth-page">
     <div class="auth-container">
       
-      <!-- Panel Visual - Solo desktop/tablet -->
       <div class="visual-panel">
         <div class="image-wrapper">
           <div class="gradient-overlay"></div>
@@ -13,7 +12,6 @@
         </div>
       </div>
 
-      <!-- Panel de Login -->
       <div class="auth-panel">
         <div class="auth-wrapper">
           
@@ -133,12 +131,13 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router'; // ✅ AHORA SÍ: Importamos useRoute
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-vue-next';
 
 const router = useRouter();
+const route = useRoute(); // ✅ AHORA SÍ: Inicializamos la ruta actual
 
 // --- CONFIGURACIÓN HÍBRIDA (PRODUCCIÓN vs LOCAL) ---
 
@@ -159,7 +158,7 @@ const showPassword = ref(false);
 
 const formValid = computed(() => {
   return credentials.value.username.trim() !== '' && 
-         credentials.value.password.trim() !== '';
+          credentials.value.password.trim() !== '';
 });
 
 onMounted(() => {
@@ -199,11 +198,20 @@ const handleLogin = async () => {
       });
 
       setTimeout(() => {
-        const rolUsuario = response.data.rol;
-        if (rolUsuario === 'CLIENTE') {
-          router.push('/cliente/dashboard');
+        // ✅ LÓGICA CORREGIDA:
+        // Si el router nos mandó acá con una ruta pendiente (como la del cupón), volvemos ahí.
+        const pathPendiente = route.query.redirect;
+        
+        if (pathPendiente) {
+          router.push(pathPendiente);
         } else {
-          router.push('/dashboard');
+          // Si no hay nada pendiente, vamos al dashboard normal según el rol.
+          const rolUsuario = response.data.rol;
+          if (rolUsuario === 'CLIENTE') {
+            router.push('/cliente/dashboard');
+          } else {
+            router.push('/dashboard');
+          }
         }
       }, 1000);
     }

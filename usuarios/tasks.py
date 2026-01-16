@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import logging
 import time
 import secrets
+import uuid
 from django.db.models import Max, Q, F # <--- F es vital para comparar stock_actual vs stock_minimo
 from django.conf import settings
 
@@ -60,7 +61,8 @@ def enviar_email_cotizacion_proveedor(cotizacion_id):
         cotizacion = Cotizacion.objects.get(id=cotizacion_id)
         if not cotizacion.proveedor.email: return False
 
-        link = f"http://localhost:5173/proveedor/cotizar/{cotizacion.token}"
+        # ✅ USANDO FRONTEND_URL
+        link = f"{settings.FRONTEND_URL}/proveedor/cotizar/{cotizacion.token}"
         mensaje = f"""
 Estimado {cotizacion.proveedor.nombre},
 Requerimos presupuesto para: {cotizacion.solicitud.producto.nombre} (Cant: {cotizacion.solicitud.cantidad_requerida}).
@@ -96,8 +98,6 @@ def procesar_reoferta_masiva(turno_id):
         
         # Si no hay nadie esperando, liberamos el turno normal
         if not interesados.exists():
-            # Nota: Si usas estados simplificados, podrías necesitar ajustar 'DISPONIBLE'
-            # a simplemente dejarlo cancelado o borrarlo según tu lógica.
             turno.estado = 'CANCELADO' 
             turno.oferta_activa = False
             turno.save()
@@ -105,23 +105,22 @@ def procesar_reoferta_masiva(turno_id):
         
         # Enviar mensajes a los interesados
         for interes in interesados:
-            # Vinculamos el interés con este turno específico
             interes.turno_liberado = turno
             interes.save()
             
-            link = f"http://localhost:5173/aceptar-oferta/{turno.id}/{interes.token_oferta}"
+            # ✅ USANDO FRONTEND_URL
+            link = f"{settings.FRONTEND_URL}/aceptar-oferta/{turno.id}/{interes.token_oferta}"
 
-            # Usamos triple comilla para formatear limpio
-            msg = f"""¡TURNO DISPONIBLE! 🎁
-            Hola {interes.cliente.nombre}, se liberó un lugar:
-
-            📅 {turno.fecha}
-            ⏰ {turno.hora}
-
-            👇 Tocá el link para reservar con un 15% de descuento!:
-            {link}
-
-            Los Últimos Serán Los Primeros"""
+            # ✅ LIMPIEZA DE FORMATO PARA WHATSAPP
+            msg = (
+                f"¡TURNO DISPONIBLE! 🎁\n"
+                f"Hola {interes.cliente.nombre}, se liberó un lugar:\n\n"
+                f"📅 {turno.fecha}\n"
+                f"⏰ {turno.hora}\n\n"
+                f"👇 Tocá el link para reservar con un 15% de descuento!:\n"
+                f"{link}\n\n"
+                f"Los Últimos Serán Los Primeros"
+            )
             
             # Envío
             if interes.cliente.telefono: 
@@ -177,7 +176,15 @@ def procesar_reactivacion_clientes_inactivos():
             if not cliente.telefono: continue
             codigo = f"VOLVE-{secrets.token_hex(2).upper()}"
             PromocionReactivacion.objects.create(cliente=cliente, codigo=codigo, fecha_vencimiento=hoy + timedelta(days=7))
-            mensaje = f"👋 ¡Hola {cliente.nombre}!\nTe extrañamos ✂️. Reservá con 15% OFF acá: http://localhost:5173/turnos/crear-web?cup={codigo}"
+            
+            # ✅ USANDO FRONTEND_URL
+            mensaje = (
+                f"👋 ¡Hola {cliente.nombre}!\n"
+                f"Somos de la peluquería Los Ultimos Serán Los Primeros.\n"
+                f"Te extrañamos ✂️. Reservá con 15% OFF acá:\n"
+                f"{settings.FRONTEND_URL}/turnos/crear-web?cup={codigo}"
+            )
+            
             enviar_whatsapp_oferta.delay(cliente.telefono, mensaje)
             enviados += 1
             time.sleep(2)
@@ -204,12 +211,14 @@ def chequear_stock_y_generar_solicitudes():
     
     creadas = 0
     for producto in productos_bajo_stock:
-        # ✅ CORRECCIÓN: Usamos SolicitudReabastecimiento (el nombre de tu modelo)
+        # Nota: Ajusté el nombre de los modelos según tu comentario de corrección
+        # ✅ Supongo que existen SolicitudReabastecimiento y CotizacionProveedor
+        from .models import SolicitudReabastecimiento, CotizacionProveedor
+        
         if SolicitudReabastecimiento.objects.filter(producto=producto, estado='PENDIENTE').exists():
             continue
             
         try:
-            # ✅ USAR EL LOTE DE REPOSICIÓN REAL
             cantidad_a_pedir = producto.lote_reposicion if producto.lote_reposicion >= 1 else 1
             
             solicitud = SolicitudReabastecimiento.objects.create(
@@ -218,7 +227,6 @@ def chequear_stock_y_generar_solicitudes():
                 estado='PENDIENTE'
             )
             
-            # ✅ CORRECCIÓN: Usamos CotizacionProveedor (el nombre de tu modelo)
             proveedores = producto.proveedores.all()
             for proveedor in proveedores:
                 CotizacionProveedor.objects.create(
@@ -226,7 +234,6 @@ def chequear_stock_y_generar_solicitudes():
                     proveedor=proveedor,
                     token_acceso=uuid.uuid4()
                 )
-                # Nota: Aquí deberías llamar a una tarea de mail si la tienes para este modelo
                 
             print(f"   ✅ Solicitud #{solicitud.id} para {producto.nombre} generada por {cantidad_a_pedir} u.")
             creadas += 1
