@@ -294,7 +294,7 @@ from celery.schedules import crontab
 CELERY_BEAT_SCHEDULE = {
     'reactivar-clientes-diario': {
         'task': 'usuarios.tasks.procesar_reactivacion_clientes_inactivos',
-        # Ejecutar todos los días a las 10:00 AM (Hora Argentina configurada en TIME_ZONE)
-        'schedule': crontab(hour=8, minute=0),
+        # CAMBIO TEMPORAL: Que se ejecute cada minuto para probar YA
+        'schedule': crontab(minute='*'), 
     },
 }
