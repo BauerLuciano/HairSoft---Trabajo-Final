@@ -22,8 +22,7 @@ ALLOWED_HOSTS = ['*']
 
 # ✅ URL DEL FRONTEND (Usando tu Ngrok actual)
 # En producción (Railway), podrías definir esto en las variables de entorno.
-FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://brandi-palmar-pickily.ngrok-free.dev')
-
+FRONTEND_URL = 'https://hair-soft-trabajo-final.vercel.app'
 # ================================
 # APLICACIONES INSTALADAS
 # ================================
