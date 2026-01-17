@@ -285,3 +285,16 @@ EMAIL_FAIL_SILENTLY = False
 TWILIO_ACCOUNT_SID = 'ACb3de53c73913d7ec07a5c253ab2ca97f'
 TWILIO_AUTH_TOKEN = '0f70fae6755002f66c23c4a50aff0400'
 TWILIO_WHATSAPP_NUMBER = 'whatsapp:+14155238886'
+
+# ================================
+# TAREAS AUTOMÁTICAS (CELERY BEAT)
+# ================================
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'reactivar-clientes-diario': {
+        'task': 'usuarios.tasks.procesar_reactivacion_clientes_inactivos',
+        # Ejecutar todos los días a las 10:00 AM (Hora Argentina configurada en TIME_ZONE)
+        'schedule': crontab(hour=8, minute=0),
+    },
+}
