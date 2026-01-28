@@ -454,13 +454,13 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
         return PedidoWeb.objects.filter(cliente=user).order_by('-fecha_creacion')
 
     def create(self, request, *args, **kwargs):
-        # 1. Validar datos
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            pedido = serializer.save(cliente=self.request.user, estado=PedidoWeb.ESTADO_PAGADO) 
+            # ✅ CAMBIO: Nace como PENDIENTE de pago, no PAGADO
+            pedido = serializer.save(cliente=self.request.user, estado='PENDIENTE_PAGO') 
 
             # 3. Generar link MP
             mp_service = MercadoPagoService()

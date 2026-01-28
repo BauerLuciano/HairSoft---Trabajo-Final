@@ -113,7 +113,7 @@ const routes = [
   { path: '/turnos', name: 'ListadoTurnos', component: ListadoTurnos, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/turnos/crear-presencial', name: 'RegistrarTurnoPresencial', component: RegistrarTurnoPresencial, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/turnos/modificar/:id', name: 'ModificarTurno', component: ModificarTurno, meta: { requiresAuth: true, role: 'ADMIN' } },
-  { path: '/aceptar-oferta/:turno_id/:token', name: 'AceptarOferta', component: AceptarOferta, meta: { requiresAuth: true, role: 'ADMIN' } },
+  { path: '/aceptar-oferta/:turno_id/:token', name: 'AceptarOferta', component: AceptarOferta, meta: { public: true} },
   { path: '/servicios', name: 'ListadoServicios', component: ListadoServicios, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/servicios/crear', name: 'RegistrarServicio', component: RegistrarServicio, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/servicios/modificar/:id', name: 'ModificarServicio', component: ModificarServicio, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
@@ -158,17 +158,24 @@ router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token');
   const userRol = localStorage.getItem('user_rol'); 
 
-  // ✅ CORREGIDO: Ahora guarda la ruta completa (incluyendo el ?cup=...)
+  // 1. SI LA RUTA ES PÚBLICA, PASA DIRECTO (Para la oferta y cotizaciones)
+  if (to.meta.public) {
+    return next();
+  }
+
+  // 2. PROTECCIÓN POR AUTH (Si no hay token y la ruta lo pide, al login)
   if (to.meta.requiresAuth && !token) {
     return next({ name: 'Login', query: { redirect: to.fullPath } });
   } 
 
+  // 3. REDIRECCIÓN SEGÚN ROL (Peluquero no entra al dashboard admin)
   if (userRol === 'PELUQUERO') {
     if (to.path === '/dashboard' || to.path === '/') {
       return next('/turnos');
     }
   }
 
+  // 4. CONTROL DE ACCESO A ZONA ADMIN
   const rolesGestion = ['ADMINISTRADOR', 'RECEPCIONISTA', 'PELUQUERO'];
 
   if (to.meta.role === 'ADMIN') {

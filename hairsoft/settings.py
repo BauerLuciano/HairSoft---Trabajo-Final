@@ -4,25 +4,20 @@ Django settings for hairsoft project.
 
 from pathlib import Path
 import os
-import dj_database_url # <--- NUEVO: Para conectar la BD de Railway
+import dj_database_url 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ================================
 # CONFIGURACIÓN GENERAL
 # ================================
-# En Producción (Railway) toma la clave del entorno. En local usa la tuya.
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-ip8)+yuz^y06zqgl-%w%05^vjroio(3@@4qo(tz_0ssvtpe@3(')
-
-# Si existe la variable 'RAILWAY_ENVIRONMENT', desactiva DEBUG. Si no, es True (tu PC).
 DEBUG = 'RAILWAY_ENVIRONMENT' not in os.environ
 
-# Aceptamos todo en producción para evitar errores de dominio en la demo
 ALLOWED_HOSTS = ['*']
 
-# ✅ URL DEL FRONTEND (Usando tu Ngrok actual)
-# En producción (Railway), podrías definir esto en las variables de entorno.
-FRONTEND_URL = 'https://hair-soft-trabajo-final.vercel.app'
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://brandi-palmar-pickily.ngrok-free.dev')
+
 # ================================
 # APLICACIONES INSTALADAS
 # ================================
@@ -34,7 +29,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     
-    # Apps de terceros
     'corsheaders', 
     'rest_framework',
     'rest_framework.authtoken',
@@ -43,12 +37,10 @@ INSTALLED_APPS = [
     'dal_select2',
     'widget_tweaks',
     
-    # NUEVO: Para guardar imágenes en la nube
     'cloudinary_storage',
     'cloudinary',
 
     'drf_spectacular',
-    # Tus apps
     'usuarios',
 ]
 
@@ -57,12 +49,12 @@ INSTALLED_APPS = [
 # ================================
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    "whitenoise.middleware.WhiteNoiseMiddleware", # <--- NUEVO: OBLIGATORIO para estilos en Railway
+    "whitenoise.middleware.WhiteNoiseMiddleware", 
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',      # El CORS debe ir alto
+    'corsheaders.middleware.CorsMiddleware',     
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'usuarios.middleware.DisableCSRFMiddleware',  # Tu middleware personalizado
+    'usuarios.middleware.DisableCSRFMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -94,13 +86,11 @@ WSGI_APPLICATION = 'hairsoft.wsgi.application'
 # =================
 # BASE DE DATOS
 # =================
-# Si Railway nos da una base de datos (DATABASE_URL), usamos esa.
 if 'DATABASE_URL' in os.environ:
     DATABASES = {
         'default': dj_database_url.config(conn_max_age=600, ssl_require=True)
     }
 else:
-    # SI NO, USAMOS TU CONFIGURACIÓN LOCAL ORIGINAL (No tocamos nada)
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
@@ -137,22 +127,17 @@ USE_TZ = True
 # ================================
 # ARCHIVOS ESTÁTICOS Y MEDIA (IMÁGENES)
 # ================================
-# Static files (CSS, JavaScript, Images)
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-# Compresión para servir archivos rápido en Railway
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# CLOUDINARY (Solo se activa si ponemos las claves en Railway)
 CLOUDINARY_STORAGE = {
     'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
     'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
     'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
 }
 
-# Media files
 MEDIA_URL = '/media/'
-# Si hay credenciales de Cloudinary, úsalo. Si no, usa carpeta local.
 if os.environ.get('CLOUDINARY_CLOUD_NAME'):
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 else:
@@ -163,21 +148,20 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ================================
 # CONFIGURACIÓN CORS / CSRF
 # ================================
-CORS_ALLOW_ALL_ORIGINS = True # Permitimos todo para asegurar que la demo ande
+CORS_ALLOW_ALL_ORIGINS = True 
 CORS_ALLOW_CREDENTIALS = True
 
-# Dominios confiables para CSRF (Agregamos comodines para Vercel y Railway)
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173", 
     "http://localhost:8000",
-    "https://*.railway.app", # <--- IMPORTANTE
-    "https://*.vercel.app",  # <--- IMPORTANTE
-    "https://*.ngrok-free.dev", # <--- AGREGADO PARA NGROK
+    "https://*.railway.app", 
+    "https://*.vercel.app",
+    "https://*.ngrok-free.dev", 
 ]
 
 CSRF_USE_SESSIONS = False
-CSRF_COOKIE_SECURE = not DEBUG # True en prod, False en local
+CSRF_COOKIE_SECURE = not DEBUG 
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = 'Lax'
 
@@ -213,24 +197,44 @@ AUTHENTICATION_BACKENDS = [
 
 AUTH_USER_MODEL = 'usuarios.Usuario'
 
+# Configuracion del tunel para mp, cada vez que 
+# ejeuto el comando: npx localtunnel  --port 8000
+# Copiamos la url que nos da y pegamos abajo de esta linea!!!
+
+TUNNEL_URL = "https://hairsoft-pago.loca.lt"
+
 # ================================
 # MERCADO PAGO
 # ================================
-# Intenta leer del entorno, si no usa los tuyos hardcodeados
 MERCADO_PAGO = {
     'ACCESS_TOKEN': os.environ.get('MP_ACCESS_TOKEN', 'APP_USR-7404896415144376-102322-584184e7db9ca5b628be4d7e21763ae3-2943677918'),
     'PUBLIC_KEY': os.environ.get('MP_PUBLIC_KEY', 'APP_USR-4e145215-f26e-4c2d-8be7-a557300a9154'),
+    
+    # URL del Webhook (El túnel)
+    'WEBHOOK_URL': f"{TUNNEL_URL}/api/mercadopago/webhook/",
+    
+    # ✅ REDIRECCIÓN VÍA TÚNEL (Para que MP acepte el HTTPS y no tire error 400)
     'BACK_URLS': {
-        # OJO: En producción tendrás que cambiar esto por la URL de Vercel en las variables de entorno si quieres que vuelva bien
-        'success': os.environ.get('MP_URL_SUCCESS', 'http://localhost:5173/pago-exitoso'),
-        'failure': os.environ.get('MP_URL_FAILURE', 'http://localhost:5173/pago-error'),
-        'pending': os.environ.get('MP_URL_PENDING', 'http://localhost:5173/pago-pendiente')
+        'success': f"{TUNNEL_URL}/api/mercadopago/pago-exitoso/",
+        'failure': f"{TUNNEL_URL}/api/mercadopago/pago-error/",
+        'pending': f"{TUNNEL_URL}/api/mercadopago/pago-pendiente/"
     },
     'AUTO_RETURN': 'approved',
     'BINARY_MODE': True,
     'SANDBOX': True
 }
 
+ALLOWED_HOSTS = ['*', '.loca.lt', 'localhost', '127.0.0.1']
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173", 
+    "http://localhost:8000",
+    "https://*.railway.app", 
+    "https://*.vercel.app",
+    "https://*.ngrok-free.dev",
+    "https://*.loca.lt", 
+]
 # ================================
 # REST FRAMEWORK
 # ================================
@@ -250,18 +254,14 @@ REST_FRAMEWORK = {
 # CELERY & REDIS (CONFIGURACIÓN HÍBRIDA)
 # ================================
 if 'REDIS_URL' in os.environ:
-    # CONFIGURACIÓN PRODUCCIÓN (RAILWAY)
     CELERY_BROKER_URL = os.environ.get('REDIS_URL')
     CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL')
     CELERY_ACCEPT_CONTENT = ['application/json']
     CELERY_RESULT_SERIALIZER = 'json'
     CELERY_TASK_SERIALIZER = 'json'
     CELERY_TIMEZONE = TIME_ZONE
-    # IMPORTANTE: En producción queremos que sea asíncrono
     CELERY_TASK_ALWAYS_EAGER = False 
 else:
-    # CONFIGURACIÓN LOCAL (TESTING)
-    # Sin Redis, todo síncrono como lo tenías antes
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
 
@@ -285,15 +285,3 @@ TWILIO_ACCOUNT_SID = 'ACb3de53c73913d7ec07a5c253ab2ca97f'
 TWILIO_AUTH_TOKEN = '0f70fae6755002f66c23c4a50aff0400'
 TWILIO_WHATSAPP_NUMBER = 'whatsapp:+14155238886'
 
-# ================================
-# TAREAS AUTOMÁTICAS (CELERY BEAT)
-# ================================
-from celery.schedules import crontab
-
-CELERY_BEAT_SCHEDULE = {
-    'reactivar-clientes-diario': {
-        'task': 'usuarios.tasks.procesar_reactivacion_clientes_inactivos',
-        # CAMBIO TEMPORAL: Que se ejecute cada minuto para probar YA
-        'schedule': crontab(minute='*'), 
-    },
-}

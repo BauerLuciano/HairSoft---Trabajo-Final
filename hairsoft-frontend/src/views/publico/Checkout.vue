@@ -28,7 +28,7 @@
                 <input type="radio" v-model="tipoEntrega" value="MOTO" hidden>
                 <div class="card-icon">🛵</div>
                 <div class="card-content">
-                  <span class="card-title">Moto Mensajería</span>
+                  <span class="card-title">Moto Mandado</span>
                   <span class="card-desc">Solo válido para San Vicente.</span>
                 </div>
                 <div class="card-price">$1.500</div>
@@ -116,33 +116,13 @@ const costoEnvio = computed(() => {
 
 const totalFinal = computed(() => cartStore.precioTotal + costoEnvio.value);
 
+// Checkout.vue -> Función procesarPedido corregida
+
 const procesarPedido = async () => {
   if (cartStore.items.length === 0) return;
   
   if (tipoEntrega.value !== 'RETIRO' && !direccion.value.trim()) {
     Swal.fire({ title: 'Atención', text: "Por favor ingresa una dirección de envío.", icon: 'warning' });
-    return;
-  }
-
-  // 1. ABRIMOS LA VENTANA INMEDIATAMENTE (Tu técnica para evitar bloqueos)
-  const mpWindow = window.open('', '_blank');
-  
-  if (mpWindow) {
-    mpWindow.document.write(`
-      <html>
-        <head><title>Procesando Pago...</title></head>
-        <body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#0f172a;color:white;font-family:sans-serif;">
-          <div style="text-align:center;">
-            <div style="border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
-            <h2>Conectando con Mercado Pago...</h2>
-            <p>Por favor no cierres esta ventana.</p>
-            <style> @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } </style>
-          </div>
-        </body>
-      </html>
-    `);
-  } else {
-    Swal.fire({ title: 'Ventana bloqueada', text: "Tu navegador bloqueó la ventana de pago. Por favor permití los popups.", icon: 'error' });
     return;
   }
 
@@ -156,28 +136,25 @@ const procesarPedido = async () => {
       detalles: cartStore.items.map(item => ({ producto: item.id, cantidad: item.cantidad }))
     };
 
-    // 2. LLAMADA A RAILWAY (vía api.js)
+    // 1. Creamos el pedido en el Back (Nace como PENDIENTE_PAGO)
     const response = await api.post('/pedidos-web/', payload);
 
     if (response.data.url_pago) {
-        // 3. Redirigimos la ventana que ya estaba abierta
-        mpWindow.location.href = response.data.url_pago;
-
-        // 4. Limpiamos carrito y mandamos el sitio principal a 'Mis Pedidos'
+        // 2. Limpiamos el carrito (ya está guardado en la DB del Back)
         cartStore.limpiarCarrito(); 
-        router.push({ name: 'DashboardCliente', query: { ver: 'pedidos' } });
-
+        
+        // 3. REDIRECCIÓN DIRECTA A MERCADO PAGO
+        // El Back se encargará de mandarnos al listado de pedidos al volver
+        window.location.href = response.data.url_pago;
     } else {
-        mpWindow.close();
         throw new Error("No se recibió el link de pago.");
     }
 
   } catch (error) {
-    if (mpWindow) mpWindow.close();
     console.error("Error checkout:", error);
     Swal.fire({ 
       title: 'Error', 
-      text: error.response?.data?.message || "No se pudo procesar el pago. Revisá tu conexión.", 
+      text: error.response?.data?.message || "No se pudo procesar la compra.", 
       icon: 'error' 
     });
   } finally {

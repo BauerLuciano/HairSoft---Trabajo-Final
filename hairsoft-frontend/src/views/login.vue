@@ -166,6 +166,27 @@ onMounted(() => {
   if (savedEmail) {
     credentials.value.username = savedEmail;
   }
+  
+  // 🔥 DETECTAR SI VENIMOS DE UN PAGO EXITOSO
+  const query = route.query;
+  if (query.post_payment === 'true') {
+    // Mostrar mensaje especial
+    setTimeout(() => {
+      Swal.fire({
+        title: '¡Pago Confirmado! ✅',
+        text: 'Tu pago fue procesado exitosamente. Ahora inicia sesión para ver tu turno.',
+        icon: 'success',
+        timer: 3000
+      });
+    }, 500);
+    
+    // Guardar datos del pago para después del login
+    localStorage.setItem('pending_payment', JSON.stringify({
+      type: query.type,
+      id: query.id,
+      timestamp: new Date().getTime()
+    }));
+  }
 });
 
 const handleLogin = async () => {
@@ -176,38 +197,50 @@ const handleLogin = async () => {
     const response = await axios.post(`${API_BASE}/api/auth/login/`, credentials.value);
     
     if (response.data.status === 'ok') {
-      localStorage.setItem('saved_email', credentials.value.username);
+      // 🔥 GUARDAR CREDENCIALES (lo que ya tenías)
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user_id', response.data.user_id);
       localStorage.setItem('user_rol', response.data.rol);
-      localStorage.setItem('user_nombre', response.data.nombre || 'Usuario');
-      localStorage.setItem('user_apellido', response.data.apellido || '');
+      localStorage.setItem('user_nombre', response.data.nombre);
       
-      axios.defaults.headers.common['Authorization'] = `Token ${response.data.token}`;
-      window.dispatchEvent(new Event('userChanged'));
+      // 🔥 MARCAR COMO "LOGIN FRESCO" (para ofertas)
+      localStorage.setItem('login_fresh', 'true');
       
       Swal.fire({
         title: '¡Bienvenido!',
-        text: `Hola ${response.data.nombre || 'Usuario'}, has iniciado sesión exitosamente.`,
+        text: `Hola ${response.data.nombre}`,
         icon: 'success',
-        showConfirmButton: false,
-        timer: 1500,
-        background: '#1e293b',
-        color: '#f1f5f9',
-        iconColor: '#007bff'
+        timer: 1500
       });
 
       setTimeout(() => {
-        // ✅ LÓGICA CORREGIDA:
-        // Si el router nos mandó acá con una ruta pendiente (como la del cupón), volvemos ahí.
-        const pathPendiente = route.query.redirect;
+        // 🔥 LÓGICA MEJORADA DE REDIRECCIÓN:
+        const query = route.query;
         
-        if (pathPendiente) {
-          router.push(pathPendiente);
-        } else {
-          // Si no hay nada pendiente, vamos al dashboard normal según el rol.
-          const rolUsuario = response.data.rol;
-          if (rolUsuario === 'CLIENTE') {
+        // CASO 1: Viene de WhatsApp (forzado)
+        if (query.force_whatsapp === 'true' || query.from_whatsapp === 'true') {
+          // Recuperar la oferta pendiente de sessionStorage
+          const pendingOffer = sessionStorage.getItem('pending_offer');
+          
+          if (pendingOffer) {
+            const { turno_id, token } = JSON.parse(pendingOffer);
+            sessionStorage.removeItem('pending_offer');
+            
+            // Ir directamente a la oferta
+            router.push(`/aceptar-oferta/${turno_id}/${token}`);
+          } else {
+            // Si no hay oferta pendiente, al dashboard
+            router.push('/cliente/dashboard');
+          }
+        } 
+        // CASO 2: Redirección normal
+        else if (query.redirect) {
+          router.push(query.redirect);
+        }
+        // CASO 3: Según rol
+        else {
+          const rol = response.data.rol;
+          if (rol === 'CLIENTE') {
             router.push('/cliente/dashboard');
           } else {
             router.push('/dashboard');

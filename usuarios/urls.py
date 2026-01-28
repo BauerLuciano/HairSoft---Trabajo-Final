@@ -286,4 +286,7 @@ urlpatterns = [
 
     # API ROUTER (Al final) - Incluye Auditoría y Pedidos Web
     path('api/', include(router.urls)),
+
+    #Tunel MP
+    path('mercadopago/webhook/', func_views.mercadopago_webhook, name='mercadopago_webhook'),
 ]

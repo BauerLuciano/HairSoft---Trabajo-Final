@@ -89,64 +89,104 @@ import Swal from 'sweetalert2';
 
 const route = useRoute();
 const router = useRouter();
-const API_URL = "http://localhost:8000/api";
 
 const loading = ref(true);
-const procesando = ref(false);
-const errorMsg = ref("");
-const successMsg = ref("");
 const info = ref({});
+const errorMsg = ref("");
 
-// Captura de params flexible
-const turnoId = route.params.turno_id || route.params.id;
+const turnoId = route.params.turno_id;
 const token = route.params.token;
 
 onMounted(async () => {
-  if (!turnoId || !token) {
-    errorMsg.value = "Link inválido.";
-    loading.value = false;
-    return;
+  console.log('🔗 ACCESO DESDE WHATSAPP DETECTADO');
+  
+  // 🔥 PASO 1: NUCLEAR TOTAL - BORRAR ABSOLUTAMENTE TODO
+  localStorage.removeItem('token');
+  localStorage.removeItem('user_id');
+  localStorage.removeItem('user_rol');
+  localStorage.removeItem('user_nombre');
+  localStorage.removeItem('fresh_token');
+  sessionStorage.clear();
+  
+  // 🔥 PASO 2: Verificar si tenemos credenciales válidas
+  const hasValidToken = localStorage.getItem('token') && localStorage.getItem('user_id');
+  
+  // 🔥 PASO 3: SIEMPRE ir a login cuando viene de WhatsApp
+  if (!hasValidToken || route.query.force_login === 'true') {
+    console.log('🔐 FORZANDO LOGIN DESDE WHATSAPP');
+    
+    // Guardar la oferta que queremos ver
+    sessionStorage.setItem('pending_offer', JSON.stringify({
+      turno_id: turnoId,
+      token: token,
+      timestamp: new Date().getTime()
+    }));
+    
+    // 🔴 REDIRIGIR OBLIGATORIAMENTE AL LOGIN
+    router.push({ 
+      name: 'Login', 
+      query: { 
+        redirect: `/aceptar-oferta/${turnoId}/${token}?from_whatsapp=true`,
+        force_whatsapp: 'true'
+      }
+    });
+    return; // ❌ NO CONTINUAR
   }
+  
+  // ✅ PASO 4: Si llegamos aquí, YA estamos logueados
   try {
-    const res = await axios.get(`${API_URL}/turnos/${turnoId}/oferta-info/${token}/`);
+    const userToken = localStorage.getItem('token');
+    const userId = localStorage.getItem('user_id');
+    
+    const res = await axios.get(`http://localhost:8000/api/turnos/${turnoId}/oferta-info/${token}/`, {
+      headers: { 'Authorization': `Token ${userToken}` }
+    });
+    
     info.value = res.data;
-  } catch (e) {
-    console.error(e);
-    errorMsg.value = e.response?.data?.error || "Oferta expirada.";
+    
+    // Verificar que el usuario logueado sea el dueño
+    if (parseInt(userId) !== parseInt(res.data.cliente_id)) {
+      errorMsg.value = "Esta oferta no te pertenece";
+      loading.value = false;
+      return;
+    }
+    
+  } catch (error) {
+    if (error.response?.status === 401) {
+      // Token inválido, volver a login
+      localStorage.clear();
+      router.push({ name: 'Login' });
+    } else {
+      errorMsg.value = "Oferta expirada o inválida";
+    }
   } finally {
     loading.value = false;
   }
 });
 
 const confirmarOferta = async () => {
-  procesando.value = true;
   try {
-    const res = await axios.post(`${API_URL}/turnos/${turnoId}/aceptar-oferta/${token}/`, {
-        tipo_pago: 'SENA_50' 
+    const userToken = localStorage.getItem('token');
+    
+    const res = await axios.post(`http://localhost:8000/api/turnos/${turnoId}/aceptar-oferta/${token}/`, {}, {
+      headers: { 'Authorization': `Token ${userToken}` }
     });
     
-    if (res.data.success) {
-      successMsg.value = res.data.message;
+    if (res.data.success && res.data.mp_init_point) {
+      // 🔥 Guardar en sessionStorage que después del pago vamos al dashboard
+      sessionStorage.setItem('post_payment_action', 'redirect_to_dashboard');
+      sessionStorage.setItem('post_payment_turno_id', turnoId);
       
-      const linkPago = res.data.mp_init_point || res.data.mp_link || res.data.init_point;
-
-      if (linkPago) {
-         window.open(linkPago, '_blank');
-         Swal.fire('Pago Requerido', 'Se abrió una pestaña para abonar la diferencia.', 'info');
-      } else {
-         Swal.fire('¡Listo!', res.data.message, 'success');
-      }
-    } else {
-      errorMsg.value = res.data.error || "Error al procesar.";
+      // Ir a Mercado Pago
+      window.location.href = res.data.mp_init_point;
+    } else if (res.data.success) {
+      // Si no requiere pago, directo al dashboard
+      router.push('/cliente/dashboard');
     }
-  } catch (e) {
-    errorMsg.value = "Error de conexión.";
-  } finally {
-    procesando.value = false;
+  } catch (error) {
+    Swal.fire('Error', error.response?.data?.error || 'Error al aceptar oferta', 'error');
   }
 };
-
-const volver = () => router.push('/turnos');
 </script>
 
 <style scoped>

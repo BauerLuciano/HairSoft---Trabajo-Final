@@ -178,7 +178,7 @@
                     <Check :size="14"/>
                   </button>
                   
-                  <button v-if="turno.puede_cancelar" 
+                  <button v-if="puedeCancelarTurno(turno)" 
                           @click="cancelarTurno(turno)" 
                           class="action-button delete" 
                           title="Cancelar Turno">
@@ -397,12 +397,17 @@ const totalPaginas = computed(() => Math.ceil(turnos.value.length / itemsPorPagi
 const paginaAnterior = () => { if(pagina.value>1) pagina.value-- }
 const paginaSiguiente = () => { if(pagina.value<totalPaginas.value) pagina.value++ }
 
-// ✅ NUEVO: Función para determinar si el botón de completar DEBE aparecer
 const mostrarBotonCompletar = (turno) => {
     if (['COMPLETADO', 'CANCELADO'].includes(turno.estado)) return false;
     // Si es ADMIN o RECEPCIONISTA, puede completar CUALQUIERA activo
     if (['ADMINISTRADOR', 'RECEPCIONISTA'].includes(userRol)) return true;
     return turno.puede_completar;
+}
+
+const puedeCancelarTurno = (turno) => {
+    if (['COMPLETADO', 'CANCELADO'].includes(turno.estado)) return false;
+    const esPersonalGestion = ['ADMINISTRADOR', 'RECEPCIONISTA', 'ADMIN'].includes(userRol?.toUpperCase());
+    return turno.puede_cancelar || esPersonalGestion;
 }
 
 onMounted(() => { cargarPeluqueros(); cargarTurnos(); })

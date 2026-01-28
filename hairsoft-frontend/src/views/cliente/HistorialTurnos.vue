@@ -1,6 +1,5 @@
 <template>
   <div class="turnos-container">
-    <!-- Header principal -->
     <div class="turnos-header">
       <div class="header-content">
         <h1>Mis Turnos</h1>
@@ -12,7 +11,6 @@
       </button>
     </div>
 
-    <!-- Tabs mejoradas - ARREGLADO -->
     <div class="tabs-container">
       <div class="tabs-wrapper">
         <button 
@@ -41,7 +39,6 @@
       <div class="tabs-indicator" :style="indicatorStyle"></div>
     </div>
 
-    <!-- Loading state -->
     <div v-if="cargando" class="loading-state">
       <div class="spinner-container">
         <div class="spinner"></div>
@@ -49,7 +46,6 @@
       </div>
     </div>
 
-    <!-- Sin turnos -->
     <div v-else-if="turnosFiltrados.length === 0" class="sin-turnos">
       <div class="sin-turnos-content">
         <CalendarX :size="64" />
@@ -67,14 +63,11 @@
       </div>
     </div>
 
-    <!-- Grid de turnos -->
     <div v-else class="turnos-grid">
       <div v-for="turno in turnosFiltrados" :key="turno.id" class="turno-card">
-        <!-- Borde lateral según estado -->
         <div class="turno-borde" :class="claseEstado(turno.estado)"></div>
         
         <div class="turno-content">
-          <!-- Header del turno -->
           <div class="turno-header">
             <div class="turno-fecha">
               <Calendar :size="14" />
@@ -88,7 +81,6 @@
             </div>
           </div>
 
-          <!-- Información principal -->
           <div class="turno-info">
             <h3 class="turno-titulo">{{ turno.servicios }}</h3>
             
@@ -107,7 +99,6 @@
             </div>
           </div>
 
-          <!-- Footer con precio y acciones -->
           <div class="turno-footer">
             <div class="turno-precio">
               <div class="precio-total">
@@ -146,7 +137,6 @@
             </div>
           </div>
 
-          <!-- Información adicional -->
           <div v-if="turno.notas" class="turno-notas">
             <MessageSquare :size="14" />
             <span>{{ turno.notas }}</span>
@@ -155,7 +145,6 @@
       </div>
     </div>
 
-    <!-- Paginación para historial -->
     <div v-if="!cargando && tabActiva === 'historial' && totalPaginas > 1" class="paginacion-turnos">
       <div class="paginacion-info">
         <span>Página {{ pagina }} de {{ totalPaginas }}</span>
@@ -192,7 +181,6 @@
       </div>
     </div>
 
-    <!-- Estadísticas -->
     <div v-if="!cargando && turnosFiltrados.length > 0" class="turnos-estadisticas">
       <div class="estadistica-item">
         <Calendar :size="18" />
@@ -217,7 +205,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router' // ✅ AGREGADO useRoute
 import axios from 'axios'
 import Swal from 'sweetalert2'
 import api from '@/services/api'
@@ -228,6 +216,7 @@ import {
 } from 'lucide-vue-next'
 
 const router = useRouter()
+const route = useRoute() // ✅ AGREGADO
 
 const turnos = ref([])
 const cargando = ref(true)
@@ -348,8 +337,53 @@ const verDetalles = (turno) => {
   })
 }
 
-onMounted(() => {
-  cargarMisTurnos()
+// ✅ FUNCIÓN NUEVA PARA LA ALERTA DE FELICIDADES
+const mostrarAlertaFelicidades = async (turnoId) => {
+  try {
+    const res = await api.get(`/turnos/${turnoId}/`);
+    const t = res.data;
+    
+    Swal.fire({
+      title: '¡Felicidades! 🎉',
+      html: `
+        <div style="text-align: left; background: #f0f9ff; padding: 1.2rem; border-radius: 12px; border: 1px solid #bae6fd;">
+          <p style="font-size: 1.1rem; margin-bottom: 1rem;">Tu reserva ha sido confirmada con éxito.</p>
+          <p>📅 <b>Día:</b> ${formatFecha(t.fecha)}</p>
+          <p>⏰ <b>Hora:</b> ${t.hora} hs</p>
+          <p>💇‍♂️ <b>Profesional:</b> ${t.peluquero_nombre}</p>
+          <p>💰 <b>Monto:</b> $${t.monto_total}</p>
+          <p style="margin-top: 1rem; font-size: 0.9rem; color: #0369a1;">¡Te esperamos!</p>
+        </div>
+      `,
+      icon: 'success',
+      confirmButtonText: 'Genial',
+      confirmButtonColor: '#0ea5e9'
+    });
+    
+    // Limpiamos los parámetros de la URL para que no vuelva a saltar al recargar
+    router.replace({ query: {} });
+  } catch (e) { console.error(e); }
+}
+
+onMounted(async () => {
+  await cargarMisTurnos()
+  
+  const query = route.query;
+  if (query.pago_exitoso === 'true') {
+    if (query.tipo === 'pedido') {
+      // ✅ ALERTA PARA COMPRA DE PRODUCTOS
+      Swal.fire({
+        title: '¡Compra Exitosa! 🛍️',
+        text: `Tu pedido #${query.id} ha sido procesado. Podés ver el estado en la pestaña de Pedidos.`,
+        icon: 'success',
+        confirmButtonColor: '#0ea5e9'
+      });
+    } else {
+      // ✅ ALERTA PARA TURNOS (la que ya tenías)
+      mostrarAlertaFelicidades(query.id);
+    }
+    router.replace({ query: {} }); // Limpiar URL
+  }
 })
 
 // Computed: turnos filtrados
@@ -468,8 +502,6 @@ const indicatorStyle = computed(() => {
       width: '50%'
     }
   }
-  
-  // Calculamos la posición basada en qué tab está activa
   const position = tabActiva.value === 'proximos' ? 0 : 100
   return {
     transform: `translateX(${position}%)`,
@@ -477,22 +509,10 @@ const indicatorStyle = computed(() => {
   }
 })
 
-const paginaAnterior = () => { 
-  if (pagina.value > 1) pagina.value-- 
-}
-
-const paginaSiguiente = () => { 
-  if (pagina.value < totalPaginas.value) pagina.value++ 
-}
-
-const cambiarPagina = (num) => {
-  if (num !== '...') pagina.value = num
-}
-
-// Watch: resetear paginación al cambiar tab
-watch(tabActiva, () => {
-  pagina.value = 1
-})
+const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
+const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
+const cambiarPagina = (num) => { if (num !== '...') pagina.value = num }
+watch(tabActiva, () => { pagina.value = 1 })
 </script>
 
 <style scoped>

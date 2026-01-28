@@ -3,7 +3,6 @@
     <div class="main-card-container">
       <div class="turno-container">
         
-        <!-- HEADER PRINCIPAL -->
         <div class="header-section">
           <h2>
             <Calendar class="header-icon" />
@@ -15,65 +14,7 @@
           </button>
         </div>
 
-        <!-- MENSAJE CUANDO SE REDIRIGE A MERCADO PAGO -->
-        <div v-if="redirigiendoMercadoPago" class="card-modern alerta-mercado-pago">
-          <div class="card-header">
-            <div class="card-icon">
-              <CheckCircle :size="20" />
-            </div>
-            <h3> ¡Reserva Creada con Éxito!</h3>
-          </div>
-          
-          <div class="alerta-contenido">
-            <div class="alerta-icono-grande">
-              <CreditCard :size="48" />
-            </div>
-            
-            <div class="alerta-mensaje">
-              <h4>Redirigiendo a Mercado Pago...</h4>
-              <p>Tu turno ha sido reservado exitosamente. Por favor, <strong>completa el pago en la nueva pestaña</strong> que se abrirá automáticamente.</p>
-              
-              <div class="detalles-turno">
-                <div class="detalle-item">
-                  <CalendarDays :size="16" />
-                  <span><strong>Fecha:</strong> {{ formatoFechaLegible(form.fecha) }} a las {{ form.hora }}</span>
-                </div>
-                <div class="detalle-item">
-                  <UserCheck :size="16" />
-                  <span><strong>Peluquero:</strong> {{ getPeluqueroNombre() }}</span>
-                </div>
-                <div class="detalle-item">
-                  <Wallet :size="16" />
-                  <span><strong>Monto a pagar:</strong> ${{ montoAPagarAhora() }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="alerta-acciones">
-            <button @click="irAlListado" class="btn-ver-turnos">
-              <span class="btn-content">
-                <Calendar :size="18" />
-                Ver mis turnos
-              </span>
-            </button>
-            
-            <button @click="nuevaReserva" class="btn-nueva-reserva">
-              <span class="btn-content">
-                <CalendarDays :size="18" />
-                Hacer otra reserva
-              </span>
-            </button>
-            
-            <p class="nota-pago">
-              <Info :size="14" />
-              <strong>Nota:</strong> Si la pestaña de Mercado Pago no se abrió, revisa tu navegador 
-            </p>
-          </div>
-        </div>
-
-        <!-- FORMARIO NORMAL (se oculta cuando se redirige) -->
-        <div v-if="!redirigiendoMercadoPago">
+        <div>
           <transition name="slide">
             <div v-if="descuentoAplicado > 0" class="card-modern cupon-alerta">
               <div class="card-header">
@@ -86,7 +27,6 @@
             </div>
           </transition>
 
-          <!-- 1. DATOS DEL USUARIO -->
           <div class="card-modern">
             <div class="card-header">
               <div class="card-icon">
@@ -105,7 +45,6 @@
             </div>
           </div>
 
-          <!-- 2. CATEGORÍAS -->
           <div class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
@@ -141,7 +80,6 @@
             </p>
           </div>
 
-          <!-- 3. SERVICIOS (visible si hay categorías seleccionadas) -->
           <div v-if="categoriasSeleccionadas.length > 0" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
@@ -223,7 +161,6 @@
             </div>
           </div>
 
-          <!-- 4. PELUQUERO (visible si hay servicios seleccionados) -->
           <div v-if="form.servicios_ids.length > 0" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
@@ -265,7 +202,6 @@
             </p>
           </div>
 
-          <!-- 5. FECHA (visible si hay peluquero seleccionado) -->
           <div v-if="form.peluquero" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
@@ -313,14 +249,8 @@
                 </button>
               </div>
             </div>
-            
-            <div class="calendar-footer">
-              <Info :size="16" />
-              <span>Rango de reserva: Hoy hasta {{ getFechaMaximaReserva() }} (7 días hábiles)</span>
-            </div>
           </div>
 
-          <!-- 6. HORARIOS (visible si hay fecha seleccionada) -->
           <div v-if="form.fecha" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
@@ -335,12 +265,6 @@
             <div v-if="cargandoHorarios" class="loading-spinner">
               <Loader2 class="spinner-icon" :size="32" />
               <p>Buscando horarios disponibles...</p>
-            </div>
-            
-            <div v-else-if="horariosDisponibles.length === 0" class="no-resultados">
-              <Clock class="no-resultados-icon" :size="48" />
-              <p>No hay horarios disponibles para {{ formatoFechaLegible(form.fecha) }}</p>
-              <small>Intenta seleccionar otra fecha</small>
             </div>
             
             <div v-else class="grid-horarios-mejorado">
@@ -375,9 +299,7 @@
                   <div class="hora-info-mejorada">
                     <Clock :size="16" class="hora-icon-mejorada" />
                     <span class="hora-texto-mejorada">{{ hora }}</span>
-                    <span class="hora-duracion-badge-ocupado">
-                      Ocupado
-                    </span>
+                    <span class="hora-duracion-badge-ocupado">Ocupado</span>
                   </div>
                   
                   <button 
@@ -392,13 +314,8 @@
                 </div>
               </div>
             </div>
-            
-            <p v-if="form.hora" class="hint-text">
-              ✅ Horario seleccionado: <strong>{{ form.hora }}</strong>
-            </p>
           </div>
 
-          <!-- 7. OPCIONES DE PAGO (visible si hay hora seleccionada) -->
           <div v-if="form.hora" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
@@ -448,7 +365,6 @@
             </div>
           </div>
 
-          <!-- 8. RESUMEN Y CONFIRMACIÓN -->
           <div v-if="formularioValido" class="card-modern slide-in resumen-final">
             <div class="card-header">
               <div class="card-icon">
@@ -481,7 +397,6 @@
               </div>
             </div>
             
-            <!-- BOTÓN QUE LLAMA A MERCADO PAGO -->
             <button
               type="button"
               @click="crearPagoMercadoPago" 
@@ -499,48 +414,34 @@
               Serás redirigido a Mercado Pago para completar el pago.
             </p>
           </div>
+        </div>
 
-          <!-- Modal de interés en horarios ocupados -->
-          <div v-if="mostrarModalInteres" class="modal-overlay">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h3>🔔 Confirmar Interés</h3>
-                <button class="modal-close-btn" @click="cancelarRegistroInteres">
-                  <X :size="20" />
-                </button>
+        <div v-if="mostrarModalInteres" class="modal-overlay">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>🔔 Confirmar Interés</h3>
+              <button class="modal-close-btn" @click="cancelarRegistroInteres"><X :size="20" /></button>
+            </div>
+            <div class="modal-body">
+              <div class="info-interes-card">
+                <p><strong>📅 Fecha:</strong> {{ formatoFechaLegible(form.fecha) }}</p>
+                <p><strong>⏰ Horario:</strong> {{ horarioSeleccionadoInteres }}</p>
+                <p><strong>👨‍💼 Peluquero:</strong> {{ getPeluqueroNombre() }}</p>
               </div>
-              <div class="modal-body">
-                <div class="info-interes-card">
-                  <div class="info-details">
-                    <p><strong>📅 Fecha:</strong> {{ formatoFechaLegible(form.fecha) }}</p>
-                    <p><strong>⏰ Horario:</strong> {{ horarioSeleccionadoInteres }}</p>
-                    <p><strong>👨‍💼 Peluquero:</strong> {{ getPeluqueroNombre() }}</p>
-                    <p><strong>✂️ Servicios:</strong> {{ getServiciosNombres() }}</p>
-                    <p><strong>⏱️ Duración:</strong> {{ calcularDuracionTotalServicios() }} minutos</p>
-                  </div>
-                  <div class="beneficio-descuento">
-                    <strong>¡Beneficio exclusivo!</strong> 
-                    <p>15% de descuento y 1 hora para confirmar.</p>
-                  </div>
-                </div>
-                <div class="modal-actions">
-                  <button @click="confirmarRegistroInteres" class="btn-confirmar-interes" :disabled="registrandoInteres">
-                    {{ registrandoInteres ? 'Registrando...' : '✅ Sí, avisarme' }}
-                  </button>
-                  <button @click="cancelarRegistroInteres" class="btn-cancelar-interes">❌ Cancelar</button>
-                </div>
+              <div class="modal-actions">
+                <button @click="confirmarRegistroInteres" class="btn-confirmar-interes" :disabled="registrandoInteres">
+                  {{ registrandoInteres ? 'Registrando...' : '✅ Sí, avisarme' }}
+                </button>
+                <button @click="cancelarRegistroInteres" class="btn-cancelar-interes">❌ Cancelar</button>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Toast de mensajes -->
         <transition name="fade">
-          <div v-if="mensaje" class="toast-message" :class="mensajeTipo">
-            <component :is="mensajeTipo === 'success' ? CheckCircle : AlertCircle" :size="18" />
-            {{ mensaje }}
-          </div>
+          <div v-if="mensaje" class="toast-message" :class="mensajeTipo">{{ mensaje }}</div>
         </transition>
+
       </div>
     </div>
   </div>
@@ -562,60 +463,26 @@ import {
 const router = useRouter()
 const route = useRoute()
 
-// ==========================================
-// ESTADO REACTIVO - MANTENIDO
-// ==========================================
 const form = ref({
-  peluquero: "",
-  servicios_ids: [],
-  hora: "",
-  fecha: "",
-  tipo_pago: "SENA_50", 
-  medio_pago: "MERCADO_PAGO", 
-  canal: "WEB",
-  cliente: null
+  peluquero: "", servicios_ids: [], hora: "", fecha: "",
+  tipo_pago: "SENA_50", medio_pago: "MERCADO_PAGO", canal: "WEB", cliente: null
 })
 
-const usuario = ref({ 
-  id: null, 
-  nombre: '', 
-  apellido: '', 
-  dni: '', 
-  telefono: '', 
-  turnosCount: 0,
-  isAuthenticated: false 
-})
+const usuario = ref({ id: null, nombre: '', apellido: '', dni: '', telefono: '', turnosCount: 0, isAuthenticated: false })
+const peluqueros = ref([]); const servicios = ref([]); const categorias = ref([]);
+const slotsOcupadosReales = ref([]); const categoriasSeleccionadas = ref([]);
+const busquedaServicio = ref(""); const cargandoMercadoPago = ref(false);
+const cargandoHorarios = ref(false); const cargandoDatos = ref(true); 
+const cargandoServicios = ref(false); const mostrarModalInteres = ref(false);
+const horarioSeleccionadoInteres = ref(null); const registrandoInteres = ref(false);
+const redirigiendoMercadoPago = ref(false); const currentDate = ref(new Date());
+const DIAS_RANGO = 7; const cuponCodigo = ref(null);
+const descuentoAplicado = ref(0); const mensajePromo = ref("");
+const horariosInteres = ref([]); const mensaje = ref(""); const mensajeTipo = ref("");
 
-const peluqueros = ref([])
-const servicios = ref([])
-const categorias = ref([])
-const slotsOcupadosReales = ref([])
-const categoriasSeleccionadas = ref([])
-const busquedaServicio = ref("")
-
-const cargandoMercadoPago = ref(false)
-const cargandoHorarios = ref(false)
-const cargandoDatos = ref(true) 
-const cargandoServicios = ref(false)
-
-const mostrarModalInteres = ref(false)
-const horarioSeleccionadoInteres = ref(null)
-const registrandoInteres = ref(false)
-const redirigiendoMercadoPago = ref(false) 
-const currentDate = ref(new Date())
-
-const intervaloMinutos = 20
-const DIAS_RANGO = 7 // ✅ Representa los 7 días de trabajo que queremos mostrar
-const cuponCodigo = ref(null)
-const descuentoAplicado = ref(0)
-const mensajePromo = ref("")
-const horariosInteres = ref([])
-const mensaje = ref("")
-const mensajeTipo = ref("")
-
-// ==========================================
-// 🛡️ LÓGICA DE SELECCIÓN Y FILTROS
-// ==========================================
+watch([() => form.value.fecha, () => form.value.peluquero], ([nuevaFecha, nuevoPeluquero]) => {
+  if (nuevaFecha && nuevoPeluquero) cargarTurnosOcupados(nuevaFecha);
+});
 
 const getListaServicios = () => {
   try {
@@ -623,10 +490,7 @@ const getListaServicios = () => {
     if (servicios.value?.results) return servicios.value.results;
     if (servicios.value?.data) return servicios.value.data;
     return [];
-  } catch (error) {
-    console.error('Error en getListaServicios:', error);
-    return [];
-  }
+  } catch (error) { return []; }
 }
 
 const serviciosFiltrados = computed(() => {
@@ -643,142 +507,70 @@ const serviciosFiltrados = computed(() => {
     }
     if (busquedaServicio.value.trim()) {
       const term = busquedaServicio.value.toLowerCase().trim();
-      lista = lista.filter(s => 
-        s && s.nombre && typeof s.nombre === 'string' && s.nombre.toLowerCase().includes(term)
-      );
+      lista = lista.filter(s => s && s.nombre && s.nombre.toLowerCase().includes(term));
     }
     return lista;
-  } catch (error) {
-    return [];
-  }
+  } catch (error) { return []; }
 });
 
 const toggleCategoria = (id) => {
-  try {
-    const cid = String(id);
-    const index = categoriasSeleccionadas.value.indexOf(cid);
-    if (index > -1) categoriasSeleccionadas.value.splice(index, 1);
-    else categoriasSeleccionadas.value.push(cid);
-  } catch (error) { console.error(error); }
+  const cid = String(id);
+  const index = categoriasSeleccionadas.value.indexOf(cid);
+  if (index > -1) categoriasSeleccionadas.value.splice(index, 1);
+  else categoriasSeleccionadas.value.push(cid);
 }
 
 const toggleServicio = (servicio) => {
-  try {
-    if (!servicio || !servicio.id) return;
-    const id = String(servicio.id);
-    const index = form.value.servicios_ids.indexOf(id);
-    if (index > -1) form.value.servicios_ids.splice(index, 1);
-    else form.value.servicios_ids.push(id);
-    if (form.value.hora) form.value.hora = "";
-    if (form.value.fecha && form.value.peluquero) cargarTurnosOcupados(form.value.fecha);
-    nextTick();
-  } catch (error) {
-    Swal.fire({ title: 'Error', text: 'No se pudo agregar el servicio.', icon: 'error' });
-  }
+  if (!servicio || !servicio.id) return;
+  const id = String(servicio.id);
+  const index = form.value.servicios_ids.indexOf(id);
+  if (index > -1) form.value.servicios_ids.splice(index, 1);
+  else form.value.servicios_ids.push(id);
+  if (form.value.hora) form.value.hora = "";
 }
 
-const estaServicioSeleccionado = (servicio) => {
-  if (!servicio || !servicio.id) return false;
-  return form.value.servicios_ids.includes(String(servicio.id));
-}
+const estaServicioSeleccionado = (servicio) => servicio?.id && form.value.servicios_ids.includes(String(servicio.id));
 
 const eliminarServicio = (servicioId) => {
-  const idStr = String(servicioId);
-  form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== idStr);
+  form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== String(servicioId));
   if (form.value.hora) form.value.hora = "";
-  if (form.value.fecha && form.value.peluquero) cargarTurnosOcupados(form.value.fecha);
 }
 
-const formularioValido = computed(() => {
-  return form.value.peluquero && form.value.servicios_ids.length > 0 && form.value.fecha && form.value.hora;
-})
-
-// ==========================================
-// 🛡️ CÁLCULOS
-// ==========================================
+const formularioValido = computed(() => form.value.peluquero && form.value.servicios_ids.length > 0 && form.value.fecha && form.value.hora);
 
 const calcularTotalOriginal = () => {
   try {
     const lista = getListaServicios();
     return form.value.servicios_ids.reduce((acc, id) => {
       const s = lista.find(x => String(x.id) === String(id));
-      if (!s) return acc;
-      return acc + (parseFloat(s.precio) || 0);
+      return acc + (parseFloat(s?.precio) || 0);
     }, 0);
   } catch (error) { return 0; }
 }
 
 const calcularTotal = () => calcularTotalOriginal().toFixed(2);
-
-const calcularTotalConDescuento = () => {
-  try {
-    const total = calcularTotalOriginal();
-    const descuento = descuentoAplicado.value || 0;
-    return (total * (1 - descuento / 100)).toFixed(2);
-  } catch (error) { return "0.00"; }
-}
-
+const calcularTotalConDescuento = () => (calcularTotalOriginal() * (1 - (descuentoAplicado.value || 0) / 100)).toFixed(2);
 const calcularDuracionTotalServicios = () => {
-  try {
-    const lista = getListaServicios();
-    return form.value.servicios_ids.reduce((total, id) => {
-      const s = lista.find(x => String(x.id) === String(id));
-      if (!s) return total;
-      const duracion = s.duracion || s.duracion_minutos || 20;
-      return total + parseInt(duracion);
-    }, 0);
-  } catch (error) { return 0; }
-}
-
-const calcularSena = () => (parseFloat(calcularTotalConDescuento()) * 0.5).toFixed(2);
-
-const montoAPagarAhora = () => {
-  const total = parseFloat(calcularTotalConDescuento());
-  return (form.value.tipo_pago === 'SENA_50' ? total * 0.5 : total).toFixed(2);
-}
-
-// ==========================================
-// 🛡️ HELPERS DE TEXTO
-// ==========================================
-
-const getServicioNombre = (servicioId) => {
   const lista = getListaServicios();
-  const s = lista.find(s => String(s.id) === String(servicioId));
-  return s ? s.nombre : 'Servicio';
+  return form.value.servicios_ids.reduce((total, id) => {
+    const s = lista.find(x => String(x.id) === String(id));
+    return total + parseInt(s?.duracion || s?.duracion_minutos || 20);
+  }, 0);
 }
+const calcularSena = () => (parseFloat(calcularTotalConDescuento()) * 0.5).toFixed(2);
+const montoAPagarAhora = () => (form.value.tipo_pago === 'SENA_50' ? calcularSena() : calcularTotalConDescuento());
 
+const getServicioNombre = (id) => getListaServicios().find(s => String(s.id) === String(id))?.nombre || 'Servicio';
 const getPeluqueroNombre = () => {
   const lista = Array.isArray(peluqueros.value) ? peluqueros.value : (peluqueros.value?.results || []);
   const p = lista.find(x => String(x.id) === String(form.value.peluquero));
   return p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : '';
 }
-
-const getServiciosNombres = () => {
-  const lista = getListaServicios();
-  return form.value.servicios_ids
-    .map(id => lista.find(s => String(s.id) === String(id))?.nombre || '')
-    .filter(n => n).join(', ');
-}
-
+const getServiciosNombres = () => form.value.servicios_ids.map(id => getServicioNombre(id)).join(', ');
 const getNombreCompletoPeluquero = (p) => p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : '';
 const getInicialesPeluquero = (p) => (p?.nombre || 'P').charAt(0).toUpperCase();
-
-const formatoFechaLegible = (f) => {
-  if (!f) return '';
-  const date = new Date(f + 'T12:00:00'); 
-  return date.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-}
-
-const getCategoriaNombre = (cat) => {
-  const lista = Array.isArray(categorias.value) ? categorias.value : (categorias.value?.results || []);
-  if (typeof cat === 'object' && cat !== null) return cat.nombre || 'General';
-  const c = lista.find(x => String(x.id) === String(cat));
-  return c ? c.nombre : 'General';
-}
-
-// ==========================================
-// 🛡️ CALENDARIO (LÓGICA MEJORADA DE 7 DÍAS LABORALES)
-// ==========================================
+const formatoFechaLegible = (f) => f ? new Date(f + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '';
+const getCategoriaNombre = (cat) => (typeof cat === 'object' && cat !== null) ? (cat.nombre || 'General') : 'General';
 
 const nombreMesActual = computed(() => currentDate.value.toLocaleString('es-ES', { month: 'long' }).toUpperCase());
 const currentYear = computed(() => currentDate.value.getFullYear());
@@ -789,267 +581,122 @@ const esHoy = (day) => {
   const hoy = new Date();
   return day === hoy.getDate() && currentDate.value.getMonth() === hoy.getMonth() && currentYear.value === hoy.getFullYear();
 };
-
-const esDiaSeleccionado = (day) => {
-  if (!form.value.fecha) return false;
-  const f = new Date(form.value.fecha + 'T12:00:00');
-  return day === f.getDate() && currentDate.value.getMonth() === f.getMonth();
-};
-
-// ✅ LÓGICA DE 7 DÍAS HÁBILES REALES
+const esDiaSeleccionado = (day) => form.value.fecha && day === new Date(form.value.fecha + 'T12:00:00').getDate() && currentDate.value.getMonth() === new Date(form.value.fecha + 'T12:00:00').getMonth();
 const esDiaSeleccionable = (day) => {
   const target = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), day);
-  target.setHours(0,0,0,0);
-  const hoy = new Date(); hoy.setHours(0,0,0,0);
-  
+  target.setHours(0,0,0,0); const hoy = new Date(); hoy.setHours(0,0,0,0);
   if (target < hoy || target.getDay() === 0) return false;
-
-  // Contamos cuántos días de trabajo hay entre hoy y la fecha target
-  let tempDate = new Date(hoy);
-  let workableDaysCount = 0;
-  
-  while (tempDate <= target) {
-    if (tempDate.getDay() !== 0) { // Si no es domingo, suma al contador
-      workableDaysCount++;
-    }
-    tempDate.setDate(tempDate.getDate() + 1);
-  }
-  
-  return workableDaysCount <= DIAS_RANGO;
+  let tempDate = new Date(hoy); let count = 0;
+  while (tempDate <= target) { if (tempDate.getDay() !== 0) count++; tempDate.setDate(tempDate.getDate() + 1); }
+  return count <= DIAS_RANGO;
 };
-
 const seleccionarDiaCalendario = (day) => {
-  const year = currentDate.value.getFullYear();
   const month = String(currentDate.value.getMonth() + 1).padStart(2, '0');
-  const dayStr = String(day).padStart(2, '0');
-  form.value.fecha = `${year}-${month}-${dayStr}`;
+  form.value.fecha = `${currentYear.value}-${month}-${String(day).padStart(2, '0')}`;
+  form.value.hora = "";
 };
-
-const cambiarMes = (delta) => {
-  const newDate = new Date(currentDate.value);
-  newDate.setMonth(newDate.getMonth() + delta);
-  currentDate.value = newDate;
-};
-
-// ✅ Muestra la fecha máxima real en el footer
+const cambiarMes = (delta) => { const n = new Date(currentDate.value); n.setMonth(n.getMonth() + delta); currentDate.value = n; };
 const getFechaMaximaReserva = () => {
-  let d = new Date();
-  d.setHours(0,0,0,0);
-  let count = 0;
-  while (count < DIAS_RANGO) {
-    if (d.getDay() !== 0) count++;
-    if (count < DIAS_RANGO) d.setDate(d.getDate() + 1);
-  }
+  let d = new Date(); d.setHours(0,0,0,0); let c = 0;
+  while (c < DIAS_RANGO) { if (d.getDay() !== 0) c++; if (c < DIAS_RANGO) d.setDate(d.getDate() + 1); }
   return d.toLocaleDateString('es-ES');
 };
-
-// ==========================================
-// 🛡️ HORARIOS
-// ==========================================
 
 const esHorarioDisponible = (h) => {
   if (!form.value.fecha || !form.value.peluquero) return true;
   if (slotsOcupadosReales.value.includes(h.substring(0, 5))) return false;
-  const hoy = new Date();
-  const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  const hoy = new Date(); const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
   if (form.value.fecha === hoyF) {
-    const [hS, mS] = h.substring(0, 5).split(':').map(Number);
-    const ahora = hoy.getHours() * 60 + hoy.getMinutes();
-    return (hS * 60 + mS) > (ahora + 30);
+    const [hS, mS] = h.substring(0,5).split(':').map(Number);
+    return (hS * 60 + mS) > (hoy.getHours() * 60 + hoy.getMinutes() + 30);
   }
   return true;
 }
+const horariosDisponibles = computed(() => ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00'].filter(h => esHorarioDisponible(h)));
+const horariosOcupadosParaMostrar = computed(() => ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00'].filter(h => !esHorarioDisponible(h)));
 
-const horariosDisponibles = computed(() => {
-  const base = ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00'];
-  return base.filter(h => esHorarioDisponible(h));
-});
-
-const horariosOcupadosParaMostrar = computed(() => {
-  const base = ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00'];
-  return base.filter(h => !esHorarioDisponible(h));
-});
-
-const seleccionarPeluquero = (peluqueroId) => {
-  form.value.peluquero = peluqueroId;
-  onPeluqueroSeleccionado();
-}
-
+const seleccionarPeluquero = (id) => { form.value.peluquero = id; form.value.hora = ""; slotsOcupadosReales.value = []; }
 const seleccionarHora = (h) => { if (esHorarioDisponible(h)) form.value.hora = h; }
-
-const onPeluqueroSeleccionado = () => {
-  form.value.fecha = ""; form.value.hora = ""; slotsOcupadosReales.value = [];
-}
-
-// ==========================================
-// 🛡️ API & CARGA
-// ==========================================
 
 const cargarDatosIniciales = async () => {
   cargandoDatos.value = true;
   try {
-    const token = localStorage.getItem('token');
-    const userId = localStorage.getItem('user_id');
-    
-    if (!token || !userId) {
-      usuario.value.isAuthenticated = false;
-      return router.push('/login');
-    }
-
-    usuario.value.isAuthenticated = true;
-
-    const [resU, p, s, c] = await Promise.all([
-      api.get(`/api/usuarios/${userId}/`), 
-      api.get('/api/peluqueros/'),
-      api.get('/api/servicios/'),
-      api.get('/api/categorias/servicios/')
-    ]);
-
-    usuario.value = { ...resU.data, isAuthenticated: true };
-    form.value.cliente = userId;
-    
-    peluqueros.value = Array.isArray(p.data) ? p.data : (p.data?.results || []);
-    servicios.value = Array.isArray(s.data) ? s.data : (s.data?.results || []);
-    categorias.value = Array.isArray(c.data) ? c.data : (c.data?.results || []);
-    
-  } catch (error) {
-    console.error('Error en carga:', error);
-    Swal.fire({ title: 'Error', text: 'Error al cargar tus datos.', icon: 'error' });
-  } finally {
-    cargandoDatos.value = false;
-  }
+    const userId = localStorage.getItem('user_id'); if (!userId) return router.push('/login');
+    const [resU, p, s, c] = await Promise.all([api.get(`/api/usuarios/${userId}/`), api.get('/api/peluqueros/'), api.get('/api/servicios/'), api.get('/api/categorias/servicios/')]);
+    usuario.value = { ...resU.data, isAuthenticated: true }; form.value.cliente = userId;
+    peluqueros.value = p.data?.results || p.data; servicios.value = s.data?.results || s.data; categorias.value = c.data?.results || c.data;
+  } finally { cargandoDatos.value = false; }
 }
 
-const cargarTurnosOcupados = async (fecha) => {
-  if (!form.value.peluquero) return;
+const cargarTurnosOcupados = async (f) => {
+  if (!form.value.peluquero || !f) return;
   cargandoHorarios.value = true;
   try {
-    const res = await api.get(`/api/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`);
-    const turnos = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-    const ocupadosSet = new Set();
+    const res = await api.get(`/api/turnos/?fecha=${f}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO,PAGADO,COMPLETADO`);
+    const turnos = res.data?.results || res.data; const ocupadosSet = new Set();
     turnos.forEach(turno => {
-      if (!turno.hora) return;
-      const [h, m] = turno.hora.split(':').map(Number);
-      const dur = turno.duracion_total || 20;
-      for (let i = (h * 60 + m); i < (h * 60 + m) + dur; i += 20) {
-        ocupadosSet.add(`${Math.floor(i / 60).toString().padStart(2, '0')}:${(i % 60).toString().padStart(2, '0')}`);
+      if (!turno.hora) return; const [h, m] = turno.hora.split(':').map(Number); const dur = turno.duracion_total || 20; 
+      for (let i = 0; i < dur; i += 20) {
+        const tM = (h * 60 + m) + i;
+        ocupadosSet.add(`${Math.floor(tM/60).toString().padStart(2,'0')}:${(tM%60).toString().padStart(2,'0')}`);
       }
     });
     slotsOcupadosReales.value = Array.from(ocupadosSet);
-  } catch (e) { console.error(e); } 
-  finally { cargandoHorarios.value = false; }
+  } finally { cargandoHorarios.value = false; }
 }
 
+// ==========================================
+// 🚀 PAGO (SÓLO REDIRECCIÓN DIRECTA)
+// ==========================================
 const crearPagoMercadoPago = async () => {
   if (!formularioValido.value) return;
   cargandoMercadoPago.value = true;
-  
   try {
-    const total = parseFloat(calcularTotalConDescuento());
-    
     const payload = {
-      peluquero_id: parseInt(form.value.peluquero),
-      cliente_id: parseInt(usuario.value.id),      
-      servicios_ids: form.value.servicios_ids.map(id => parseInt(id)), 
-      fecha: form.value.fecha,
-      hora: form.value.hora,
-      canal: 'WEB',
-      tipo_pago: form.value.tipo_pago,
-      medio_pago: 'MERCADO_PAGO',
-      monto_total: total,
-      monto_seña: form.value.tipo_pago === 'SENA_50' ? parseFloat((total * 0.5).toFixed(2)) : 0,
-      duracion_total: parseInt(calcularDuracionTotalServicios()),
-      cup_codigo: cuponCodigo.value
+      peluquero_id: parseInt(form.value.peluquero), cliente_id: parseInt(usuario.value.id),      
+      servicios_ids: form.value.servicios_ids.map(id => parseInt(id)), fecha: form.value.fecha,
+      hora: form.value.hora, canal: 'WEB', tipo_pago: form.value.tipo_pago, medio_pago: 'MERCADO_PAGO',
+      monto_total: parseFloat(calcularTotalConDescuento()), cup_codigo: cuponCodigo.value
     };
-
     const res = await api.post('/api/turnos/crear/', payload);
-    
     const mpUrl = res.data?.mp_data?.init_point || res.data?.init_point;
-    
     if (mpUrl) {
-      window.open(mpUrl, '_blank');
-      redirigiendoMercadoPago.value = true;
-    } else {
-      throw new Error('No se recibió la URL de Mercado Pago');
-    }
-
+      window.location.href = mpUrl; // REDIRECCIÓN DIRECTA
+    } else { throw new Error('No se recibió la URL de Mercado Pago'); }
   } catch (error) {
-    console.error('❌ Error en Mercado Pago:', error);
-    let errorMsg = error.response?.data?.message || 'Error al crear el turno.';
-    if (error.response?.data && typeof error.response.data === 'object') {
-        errorMsg = JSON.stringify(error.response.data);
-    }
-    Swal.fire({ title: 'Error de Reserva', text: errorMsg, icon: 'error', confirmButtonText: 'Entendido' });
-  } finally {
-    cargandoMercadoPago.value = false;
-  }
+    Swal.fire({ title: 'Error', text: error.response?.data?.message || 'Error al crear el turno.', icon: 'error' });
+  } finally { cargandoMercadoPago.value = false; }
 }
 
-// ==========================================
-// 🛡️ INTERÉS & NAV
-// ==========================================
-
-const registrarInteresHorario = (hora) => {
-  horarioSeleccionadoInteres.value = hora;
-  mostrarModalInteres.value = true;
-};
-
-const cancelarRegistroInteres = () => {
-  mostrarModalInteres.value = false;
-  horarioSeleccionadoInteres.value = null;
-};
-
-const estaInteresRegistrado = (hora) => horariosInteres.value.some(h => h.hora === hora && h.fecha === form.value.fecha);
+const registrarInteresHorario = (h) => { horarioSeleccionadoInteres.value = h; mostrarModalInteres.value = true; };
+const cancelarRegistroInteres = () => { mostrarModalInteres.value = false; };
+const estaInteresRegistrado = (h) => horariosInteres.value.some(hi => hi.hora === h && hi.fecha === form.value.fecha);
 
 const confirmarRegistroInteres = async () => {
   registrandoInteres.value = true;
   try {
     await api.post('/api/turnos/registrar-interes/', {
-      fecha: form.value.fecha,
-      hora: horarioSeleccionadoInteres.value,
-      peluquero_id: form.value.peluquero,
-      cliente_id: usuario.value.id,
-      servicios_ids: form.value.servicios_ids,
-      interes_notificacion: true
+      fecha: form.value.fecha, hora: horarioSeleccionadoInteres.value,
+      peluquero_id: form.value.peluquero, cliente_id: usuario.value.id,
+      servicios_ids: form.value.servicios_ids, interes_notificacion: true
     });
-    Swal.fire({ title: '¡Interés registrado!', icon: 'success' });
-    mostrarModalInteres.value = false;
-  } catch (e) { Swal.fire({ title: 'Error', icon: 'error' }); } 
-  finally { registrandoInteres.value = false; }
+    Swal.fire({ title: '¡Interés registrado!', icon: 'success' }); mostrarModalInteres.value = false;
+  } finally { registrandoInteres.value = false; }
 }
 
 const filtrarServicios = () => { nextTick(); };
 const volverAlListado = () => router.push('/cliente/historial');
 const irAlListado = () => router.push('/cliente/historial');
 const nuevaReserva = () => window.location.reload();
-const volverAtras = () => router.back();
 const irAServicios = () => router.push('/servicios');
 
 onMounted(async () => {
-  // 1. Cargamos todos tus datos originales (peluqueros, servicios, etc)
   await cargarDatosIniciales();
-
-  // 2. ✅ CORRECCIÓN: Capturamos el cupón de la URL
-  const cup = route.query.cup;
-  if (cup) {
-    cuponCodigo.value = cup;
-    descuentoAplicado.value = 15; // Aplicamos el 15% visualmente
-    mensajePromo.value = "Te extrañamos ✂️ ¡Aprovechá tu descuento especial!";
-    console.log("🎟️ Cupón reactivación detectado y aplicado:", cup);
-    
-    mensaje.value = "¡Cupón de 15% OFF aplicado con éxito!";
-    mensajeTipo.value = "success";
-    setTimeout(() => { mensaje.value = ""; }, 4000);
-  }
+  if (route.query.cup) { cuponCodigo.value = route.query.cup; descuentoAplicado.value = 15; }
 });
 
-defineExpose({
-  form, usuario, serviciosFiltrados, toggleServicio, estaServicioSeleccionado, eliminarServicio, crearPagoMercadoPago, volverAtras, irAServicios
-});
+defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSeleccionado, eliminarServicio, crearPagoMercadoPago });
 </script>
-
-
-Copiar
 
 <style scoped>
 /* ============================================

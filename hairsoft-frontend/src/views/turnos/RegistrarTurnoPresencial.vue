@@ -257,9 +257,7 @@
               <select v-model="form.medio_pago" class="select-modern">
                 <option value="EFECTIVO">💵 Efectivo</option>
                 <option value="TARJETA">💳 Tarjeta</option>
-                <option value="TRANSFERENCIA">
-                  <span class="mp-option">🔵 Mercado Pago / Transferencia</span>
-                </option>
+                <option value="TRANSFERENCIA">🔵 Mercado Pago / Transferencia</option>
               </select>
             </div>
             

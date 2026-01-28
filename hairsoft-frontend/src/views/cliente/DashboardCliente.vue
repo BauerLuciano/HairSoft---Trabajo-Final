@@ -11,7 +11,6 @@
 
     <div v-if="vistaActual === 'resumen'" class="view-content fade-in">
       
-      <!-- ESTADÍSTICAS -->
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-icon-wrapper blue">
@@ -41,7 +40,6 @@
         </div>
       </div>
 
-      <!-- ACCIONES RÁPIDAS -->
       <div class="actions-grid">
         <div class="action-card" @click="irANuevoTurno">
           <div class="action-icon">
@@ -69,6 +67,18 @@
           <p>Comprar productos</p>
           <span class="action-arrow">→</span>
         </div>
+
+        <div class="action-card" @click="cambiarVista('pedidos')">
+          <div class="action-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+              <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4H6z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M3 6h18M16 10a4 4 0 01-8 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <h3>Mis Pedidos</h3>
+          <p>Ver historial de compras</p>
+          <span class="action-arrow">→</span>
+        </div>
         
         <div class="action-card" @click="irAPerfil">
           <div class="action-icon">
@@ -83,7 +93,6 @@
         </div>
       </div>
 
-      <!-- PRÓXIMOS TURNOS -->
       <div class="section-box">
         <div class="section-header">
           <h3>Próximos Turnos</h3>
@@ -157,7 +166,6 @@
                 <span class="item-name">{{ d.nombre_producto }}</span>
               </div>
             </div>
-            
             <div class="pedido-delivery">
               <div class="delivery-badge">
                 <span class="delivery-icon">{{ pedido.tipo_entrega === 'RETIRO' ? '🏪' : '🛵' }}</span>
@@ -182,88 +190,8 @@
           </div>
         </div>
       </div>
-
-      <!-- PAGINACIÓN -->
-      <div v-if="pedidos.length > 0 && totalPaginas > 1" class="pagination-container">
-        <div class="pagination-info">
-          Mostrando {{ (paginaActual - 1) * pedidosPorPagina + 1 }} - 
-          {{ Math.min(paginaActual * pedidosPorPagina, pedidos.length) }} 
-          de {{ pedidos.length }} pedidos
-        </div>
-        
-        <div class="pagination-controls">
-          <button 
-            @click="paginaAnterior" 
-            :disabled="paginaActual === 1"
-            class="pagination-btn prev"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <polyline points="15 18 9 12 15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span>Anterior</span>
-          </button>
-          
-          <div class="pagination-numbers">
-            <button 
-              v-if="paginasVisibles[0] > 1"
-              @click="irAPagina(1)"
-              class="pagination-number"
-            >
-              1
-            </button>
-            
-            <span v-if="paginasVisibles[0] > 2" class="pagination-ellipsis">...</span>
-            
-            <button 
-              v-for="pagina in paginasVisibles" 
-              :key="pagina"
-              @click="irAPagina(pagina)"
-              :class="['pagination-number', { active: pagina === paginaActual }]"
-            >
-              {{ pagina }}
-            </button>
-            
-            <span v-if="paginasVisibles[paginasVisibles.length - 1] < totalPaginas - 1" class="pagination-ellipsis">...</span>
-            
-            <button 
-              v-if="paginasVisibles[paginasVisibles.length - 1] < totalPaginas"
-              @click="irAPagina(totalPaginas)"
-              class="pagination-number"
-            >
-              {{ totalPaginas }}
-            </button>
-          </div>
-          
-          <button 
-            @click="paginaSiguiente" 
-            :disabled="paginaActual === totalPaginas"
-            class="pagination-btn next"
-          >
-            <span>Siguiente</span>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <polyline points="9 18 15 12 9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-        </div>
+      
       </div>
-
-      <div class="empty-state" v-else-if="pedidos.length === 0">
-        <div class="empty-icon">
-          <svg width="80" height="80" viewBox="0 0 24 24" fill="none">
-            <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        <h3>Aún no tienes pedidos</h3>
-        <p>Visita nuestra tienda para realizar tu primera compra.</p>
-        <button class="btn-cta" @click="irAProductos">
-          <span>Ir al Catálogo</span>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <polyline points="9 18 15 12 9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-
   </div>
 </template>
 
@@ -276,187 +204,92 @@ import Swal from 'sweetalert2';
 const router = useRouter();
 const route = useRoute();
 
-const cliente = ref({});
 const todosTurnos = ref([]);
 const pedidos = ref([]);
-const cargando = ref(false);
 const vistaActual = ref('resumen');
+const cliente = ref({ nombre: localStorage.getItem('user_nombre') || 'Cliente' });
 
-// Paginación
-const paginaActual = ref(1);
-const pedidosPorPagina = 8;
+// ✅ FUNCIÓN QUE TRAE DATA REAL DEL SERVER PARA EVITAR EL "UNDEFINED"
+const manejarExitoPago = async (tipo, id) => {
+  if (tipo === 'pedido') {
+    await Swal.fire('¡Compra Exitosa!', `Pedido #${id} procesado.`, 'success');
+    vistaActual.value = 'pedidos';
+  } else {
+    try {
+      // 1. Pedimos al server los datos reales del turno recién pagado
+      const res = await api.get(`/turnos/${id}/`); 
+      const t = res.data;
 
-// --- WATCHERS ---
-watch(() => route.query.ver, (val) => {
-  vistaActual.value = val === 'pedidos' ? 'pedidos' : 'resumen';
-}, { immediate: true });
-
-// --- COMPUTED ---
-const turnosProximos = computed(() => {
-  const ahora = new Date();
-  return todosTurnos.value.filter(t => {
-    if(!t.fecha) return false;
-    const f = new Date(t.fecha + 'T' + t.hora);
-    return f >= ahora && t.estado !== 'CANCELADO' && t.estado !== 'COMPLETADO';
-  }).sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
-});
-
-// Paginación de pedidos
-const totalPaginas = computed(() => Math.ceil(pedidos.value.length / pedidosPorPagina));
-
-const pedidosPaginados = computed(() => {
-  const inicio = (paginaActual.value - 1) * pedidosPorPagina;
-  const fin = inicio + pedidosPorPagina;
-  return pedidos.value.slice(inicio, fin);
-});
-
-const paginasVisibles = computed(() => {
-  const paginas = [];
-  const maxVisible = 5;
-  let inicio = Math.max(1, paginaActual.value - Math.floor(maxVisible / 2));
-  let fin = Math.min(totalPaginas.value, inicio + maxVisible - 1);
-  
-  if (fin - inicio < maxVisible - 1) {
-    inicio = Math.max(1, fin - maxVisible + 1);
+      // 2. Mostramos cartel con info real: fecha, hora, peluquero_nombre
+      await Swal.fire({
+        title: '¡Felicidades! 🎉',
+        html: `
+          <div style="text-align: left; background: #f0f9ff; padding: 1.2rem; border-radius: 12px; border: 1px solid #bae6fd;">
+            <p style="margin-bottom: 10px; font-weight: 600;">Tu reserva ha sido confirmada con éxito.</p>
+            <p>📅 <b>Día:</b> ${t.fecha}</p>
+            <p>⏰ <b>Hora:</b> ${t.hora} hs</p>
+            <p>💇‍♂️ <b>Profesional:</b> ${t.peluquero_nombre}</p>
+            <p>💰 <b>Monto:</b> $${t.monto_seña || t.monto_total}</p>
+          </div>`,
+        icon: 'success',
+        confirmButtonText: 'Genial',
+        confirmButtonColor: '#0ea5e9'
+      });
+    } catch (e) {
+      await Swal.fire('¡Felicidades!', 'Tu turno fue confirmado.', 'success');
+    }
+    vistaActual.value = 'resumen';
   }
   
-  for (let i = inicio; i <= fin; i++) {
-    paginas.push(i);
-  }
-  
-  return paginas;
-});
-
-// --- HELPERS ---
-const formatearDia = (f) => f ? new Date(f).getDate() : '-';
-const formatearMes = (f) => f ? new Date(f).toLocaleDateString('es-ES', { month: 'short' }).toUpperCase() : '-';
-const formatearFecha = (f) => new Date(f).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour:'2-digit', minute:'2-digit' });
-const formatearEstado = (e) => ({ 'RESERVADO': 'Reservado', 'CONFIRMADO': 'Confirmado' }[e] || e);
-const getNombreServicios = (s) => Array.isArray(s) ? (s[0]?.nombre || 'Servicio') + (s.length > 1 ? '...' : '') : s;
-
-const getEstadoClass = (estado) => {
-  const mapa = {
-    'RESERVADO': 'status-reserved',
-    'CONFIRMADO': 'status-confirmed'
-  };
-  return mapa[estado] || 'status-default';
-};
-
-const getEstadoPedidoClass = (estado) => {
-  const mapa = {
-    'PENDIENTE_PAGO': 'status-pending',
-    'PAGADO': 'status-paid',
-    'EN_PREPARACION': 'status-preparing',
-    'LISTO_RETIRO': 'status-ready',
-    'EN_CAMINO': 'status-shipping',
-    'ENTREGADO': 'status-delivered',
-    'CANCELADO': 'status-cancelled'
-  };
-  return mapa[estado] || 'status-default';
-};
-
-// --- ACTIONS ---
-const cambiarVista = (vista) => {
-  router.push({ query: { ...route.query, ver: vista } });
-  vistaActual.value = vista;
-  // Resetear paginación al cambiar a vista de pedidos
-  if (vista === 'pedidos') {
-    paginaActual.value = 1;
-  }
+  await cargarDatos();
+  // Limpiamos parámetros de URL para no repetir el cartel
+  router.replace({ query: { ver: vistaActual.value } });
 };
 
 const cargarDatos = async () => {
-  cargando.value = true;
   try {
-    cliente.value = { nombre: localStorage.getItem('user_nombre') || 'Cliente' };
-    const resTurnos = await api.get('/turnos/mis-turnos/');
-    if (Array.isArray(resTurnos.data)) todosTurnos.value = resTurnos.data;
-    const resPedidos = await api.get('/pedidos-web/');
-    pedidos.value = Array.isArray(resPedidos.data) ? resPedidos.data : (resPedidos.data.results || []);
-  } catch (e) {
-    console.error(e);
-  } finally {
-    cargando.value = false;
-  }
+    const [resT, resP] = await Promise.all([api.get('/turnos/mis-turnos/'), api.get('/pedidos-web/')]);
+    todosTurnos.value = resT.data;
+    pedidos.value = Array.isArray(resP.data) ? resP.data : (resP.data.results || []);
+  } catch (e) { console.error("Error cargando datos"); }
 };
 
+onMounted(async () => {
+  // 🛡️ SEGURIDAD: SI NO HAY TOKEN, AL LOGIN (EVITA VISTA PÚBLICA)
+  if (!localStorage.getItem('token')) {
+    router.push({ name: 'Login', query: { redirect: route.fullPath } });
+    return;
+  }
+
+  await cargarDatos();
+
+  // 🛍️ DETECCIÓN DE PAGO EXITOSO DESDE MERCADO PAGO
+  const { pago_exitoso, pedido_id, turno_id } = route.query;
+  if (pago_exitoso === 'true') {
+    // Esperar un momento para que los datos se carguen
+    setTimeout(async () => {
+      if (pedido_id) await manejarExitoPago('pedido', pedido_id);
+      else if (turno_id) await manejarExitoPago('turno', turno_id);
+    }, 500);
+  }
+});
+
+// Paginación y otros métodos... (Mantenelos igual)
+const paginaActual = ref(1);
+const turnosProximos = computed(() => todosTurnos.value.filter(t => t.estado !== 'CANCELADO'));
+const pedidosPaginados = computed(() => pedidos.value.slice((paginaActual.value - 1) * 8, paginaActual.value * 8));
+const cambiarVista = (v) => { vistaActual.value = v; router.push({ query: { ver: v } }); };
+const irAPagina = (p) => paginaActual.value = p;
 const irANuevoTurno = () => router.push({ name: 'RegistrarTurnoWeb' });
 const irAProductos = () => router.push({ name: 'ProductosPublico' });
 const irAPerfil = () => router.push({ name: 'PerfilCliente' });
 const irAHistorial = () => router.push('/cliente/historial');
-
-// Funciones de paginación
-const irAPagina = (pagina) => {
-  if (pagina >= 1 && pagina <= totalPaginas.value) {
-    paginaActual.value = pagina;
-    // Scroll suave al inicio de la lista
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-};
-
-const paginaAnterior = () => {
-  if (paginaActual.value > 1) {
-    irAPagina(paginaActual.value - 1);
-  }
-};
-
-const paginaSiguiente = () => {
-  if (paginaActual.value < totalPaginas.value) {
-    irAPagina(paginaActual.value + 1);
-  }
-};
-
-const verDetallePedido = (pedido) => {
-  // Detectar si está en modo oscuro o claro
-  const isDarkMode = !document.documentElement.classList.contains('light-theme');
-  
-  // Construir HTML para mejor presentación
-  let itemsHTML = pedido.detalles.map(d => 
-    `<div style="text-align: left; padding: 8px; border-bottom: 1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'};">
-      <strong style="color: ${isDarkMode ? '#60a5fa' : '#3b82f6'};">${d.cantidad}x</strong> ${d.nombre_producto}
-    </div>`
-  ).join('');
-
-  Swal.fire({
-    title: `Pedido #${pedido.id}`,
-    html: `
-      <div style="text-align: left; margin-top: 1rem;">
-        <div style="margin-bottom: 1rem; padding: 10px; background: ${isDarkMode ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.08)'}; border-radius: 8px;">
-          <small style="color: ${isDarkMode ? '#94a3b8' : '#64748b'};">Fecha</small><br>
-          <strong style="color: ${isDarkMode ? '#e2e8f0' : '#0f172a'};">${formatearFecha(pedido.fecha_creacion)}</strong>
-        </div>
-        
-        <div style="margin-bottom: 1rem;">
-          <h4 style="color: ${isDarkMode ? '#60a5fa' : '#3b82f6'}; margin-bottom: 0.5rem;">Items del Pedido:</h4>
-          ${itemsHTML}
-        </div>
-
-        <div style="display: flex; justify-content: space-between; padding: 15px; background: ${isDarkMode ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.08)'}; border-radius: 8px; margin-top: 1rem;">
-          <div>
-            <small style="color: ${isDarkMode ? '#94a3b8' : '#64748b'};">Tipo de Entrega</small><br>
-            <strong style="color: ${isDarkMode ? '#e2e8f0' : '#0f172a'};">${pedido.tipo_entrega === 'RETIRO' ? '🏪 Retiro en Local' : '🛵 Envío a Domicilio'}</strong>
-          </div>
-          <div style="text-align: right;">
-            <small style="color: ${isDarkMode ? '#94a3b8' : '#64748b'};">Total</small><br>
-            <strong style="color: #22c55e; font-size: 1.3rem;">$${Number(pedido.total).toLocaleString()}</strong>
-          </div>
-        </div>
-      </div>
-    `,
-    icon: 'info',
-    confirmButtonText: 'Cerrar',
-    confirmButtonColor: '#3b82f6',
-    background: isDarkMode ? '#1e293b' : '#ffffff',
-    color: isDarkMode ? '#f8fafc' : '#0f172a',
-    customClass: {
-      popup: isDarkMode ? 'swal-popup-dark' : 'swal-popup-light',
-      title: isDarkMode ? 'swal-title-dark' : 'swal-title-light',
-      confirmButton: isDarkMode ? 'swal-button-dark' : 'swal-button-light'
-    }
-  });
-};
-
-onMounted(cargarDatos);
+const formatearDia = (f) => f ? f.split('-')[2] : '-';
+const formatearMes = (f) => f ? new Date(f).toLocaleDateString('es-ES', { month: 'short' }).toUpperCase() : '-';
+const getNombreServicios = (s) => Array.isArray(s) ? s[0]?.nombre : s;
+const getEstadoClass = (e) => e === 'CONFIRMADO' ? 'status-confirmed' : 'status-reserved';
+const getEstadoPedidoClass = (e) => 'status-paid';
+const verDetallePedido = (p) => Swal.fire(`Pedido #${p.id}`, `Total: $${p.total}`, 'info');
 </script>
 
 <style scoped>
