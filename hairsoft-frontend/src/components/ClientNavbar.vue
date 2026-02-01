@@ -218,9 +218,7 @@ const isActiveLink = (linkName) => {
              currentPath.includes('/turnos') ||
              route.name === 'HistorialTurnos';
     case 'pedidos':
-      return (currentPath.includes('dashboard') || currentPath.includes('cliente')) && 
-             currentQuery === 'pedidos';
-    default: return false;
+      return route.name === 'MisPedidos' || currentPath.includes('mis-pedidos');
   }
 };
 
@@ -277,7 +275,7 @@ const irAInicio = () => {
 
 const irAPedidos = () => {
   dropdownOpen.value = false;
-  router.push({ name: 'DashboardCliente', query: { ver: 'pedidos' } });
+  router.push({ name: 'MisPedidos' });
 };
 
 const confirmLogout = () => {
@@ -374,13 +372,116 @@ onUnmounted(() => {
    MODO CLARO - NAVBAR
    ============================================ */
 :root.light-theme .client-nav {
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-  border-bottom: 1px solid rgba(203, 213, 225, 0.4);
-  box-shadow: 0 2px 16px rgba(100, 116, 139, 0.08);
+  background: rgba(255, 255, 255, 0.95); /* Fondo blanco casi sólido */
+  backdrop-filter: blur(10px); /* Efecto vidrio */
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8); /* Borde gris muy suave */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03); /* Sombra sutil y elegante */
 }
 
 :root.light-theme .client-nav::after {
-  background: linear-gradient(90deg, transparent, #cbd5e1, transparent);
+  background: linear-gradient(90deg, transparent, #e2e8f0, transparent); /* Línea decorativa sutil */
+}
+
+/* LOGO MODO CLARO */
+:root.light-theme .brand-name {
+  background: linear-gradient(135deg, #1e293b 0%, #475569 100%); /* Texto oscuro con gradiente */
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none; /* Quitamos sombra para limpieza */
+}
+
+:root.light-theme .brand-subtitle {
+  color: #2563eb; /* Azul corporativo */
+}
+
+/* LINKS DE NAVEGACIÓN MODO CLARO */
+:root.light-theme .links-container {
+  background: #f1f5f9; /* Fondo gris muy claro para el contenedor de links */
+  border: 1px solid #e2e8f0;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+:root.light-theme .nav-link {
+  color: #64748b; /* Gris medio para texto */
+}
+
+:root.light-theme .nav-link:hover {
+  color: #1e293b; /* Texto oscuro al hover */
+  background: #ffffff; /* Fondo blanco al hover */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); /* Sombrita al hover */
+}
+
+/* LINK ACTIVO MODO CLARO */
+:root.light-theme .nav-link.active {
+  background: #ffffff;
+  color: #2563eb; /* Azul activo */
+  border-color: #bfdbfe; /* Borde azul muy claro */
+  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1);
+}
+
+/* PERFIL Y ACCIONES MODO CLARO */
+:root.light-theme .switch-background {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+}
+
+:root.light-theme .user-profile:hover,
+:root.light-theme .user-profile.active {
+  background: #f8fafc;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e2e8f0; /* Borde sutil al hover */
+}
+
+:root.light-theme .user-name {
+  color: #1e293b;
+  font-weight: 700;
+}
+
+:root.light-theme .user-role {
+  color: #64748b;
+}
+
+/* DROPDOWN MODO CLARO */
+:root.light-theme .profile-dropdown {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 
+    0 10px 15px -3px rgba(0, 0, 0, 0.1), 
+    0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Sombra elevada */
+}
+
+:root.light-theme .dropdown-header {
+  border-bottom: 1px solid #f1f5f9;
+  background-color: #f8fafc; /* Cabecera del dropdown ligeramente gris */
+}
+
+:root.light-theme .dropdown-username {
+  background: none;
+  -webkit-text-fill-color: initial;
+  color: #1e293b;
+}
+
+:root.light-theme .dropdown-item {
+  color: #475569;
+}
+
+:root.light-theme .dropdown-item:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+  box-shadow: none; /* Quitamos sombra interna para limpieza */
+}
+
+/* BOTONES AUTH MODO CLARO */
+:root.light-theme .login-btn {
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+:root.light-theme .login-btn:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #94a3b8;
 }
 
 /* ============================================

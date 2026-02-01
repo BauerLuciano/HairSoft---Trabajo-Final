@@ -57,7 +57,7 @@
 
     <div v-if="loading" class="state-container">
       <div class="loader"></div>
-      <p class="loading-text">Generando reporte...</p>
+      <p class="loading-text">Cargando datos...</p>
     </div>
 
     <div v-else-if="error" class="state-container error">
@@ -249,104 +249,127 @@
 
     </main>
 
-    <div id="print-template" style="display: none;">
-      <div class="pdf-page">
+    <div id="print-template" style="display: none; width: 850px; background: white; color: #1e293b; padding: 40px; font-family: Arial, sans-serif;">
+      
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 20px; margin-bottom: 30px;">
         
-        <div class="pdf-header">
-          <div class="pdf-brand-row">
-            <div class="pdf-logo-box">
-              <img :src="logoUrl" class="pdf-logo-img" alt="Logo" crossorigin="anonymous" />
-            </div>
-            <div class="pdf-brand-info">
-              <h1 class="pdf-title">HAIRSOFT</h1>
-              <h2 class="pdf-subtitle">Los Últimos Serán Los Primeros</h2>
-              <div class="pdf-report-meta">
-                <p><strong>REPORTE DE GESTIÓN</strong></p>
-                <p class="pdf-period-badge">Período: {{ getPeriodDisplay }}</p>
-                <p class="pdf-date">Emisión: {{ new Date().toLocaleDateString('es-AR') }}</p>
-              </div>
-            </div>
+        <div style="display: flex; gap: 15px; align-items: flex-start;">
+          <div class="pdf-logo-box">
+            <img :src="logoUrl" class="pdf-logo-img" style="width: 70px; height: 70px; object-fit: cover;" alt="Logo" crossorigin="anonymous" />
           </div>
-          <div class="pdf-divider-line"></div>
-        </div>
-
-        <div class="pdf-summary-grid">
-          <div class="pdf-kpi-box">
-            <span class="pdf-kpi-label">Ingresos Totales</span>
-            <span class="pdf-kpi-value text-green">${{ formatNumber(dashboardData.ingresosTotales) }}</span>
-          </div>
-          <div class="pdf-kpi-box">
-            <span class="pdf-kpi-label">Turnos Realizados</span>
-            <span class="pdf-kpi-value">{{ dashboardData.serviciosRealizados }}</span>
-          </div>
-          <div class="pdf-kpi-box">
-            <span class="pdf-kpi-label">Productos Vendidos</span>
-            <span class="pdf-kpi-value">{{ dashboardData.productosVendidos }}</span>
-          </div>
-          </div>
-
-        <div class="pdf-chart-container">
-          <h4 class="pdf-section-title">Tendencia de Ventas</h4>
-          <svg class="pdf-chart-svg" :viewBox="`0 0 ${chartWidth} ${chartHeight + 40}`" width="100%" height="300">
-             <defs>
-              <linearGradient id="pdfGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" style="stop-color:#ef4444;stop-opacity:0.2" />
-                <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0" />
-              </linearGradient>
-            </defs>
-            <g v-for="i in 5" :key="`pdf-line-${i}`">
-              <line :x1="60" :y1="(chartHeight / 5) * i" :x2="chartWidth - 20" :y2="(chartHeight / 5) * i" stroke="#e2e8f0" stroke-width="1"/>
-              <text :x="50" :y="(chartHeight / 5) * i + 5" text-anchor="end" fill="#64748b" font-size="12" font-family="Helvetica">
-                ${{ formatNumberShort(Math.round((getMaxValue() / 5) * (5 - i))) }}
-              </text>
-            </g>
-            <path :d="getAreaPath()" fill="url(#pdfGradient)" />
-            <path :d="getLinePath()" fill="none" stroke="#dc2626" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-            <g v-for="(label, i) in dashboardData.labelsDias" :key="`pdf-lbl-${i}`" v-if="shouldShowLabelPDF(i)">
-              <text :x="getXPosition(i)" :y="chartHeight + 25" text-anchor="middle" fill="#475569" font-size="11" font-weight="bold" font-family="Helvetica">
-                {{ label }}
-              </text>
-            </g>
-          </svg>
-        </div>
-
-        <div class="pdf-tables-row">
-          <div class="pdf-table-col">
-            <h4 class="pdf-section-title">Top 5 Servicios</h4>
-            <table class="pdf-table">
-              <thead><tr><th width="15%">#</th><th>Servicio</th><th width="25%" class="text-right">Cant.</th></tr></thead>
-              <tbody>
-                <tr v-for="(s, i) in dashboardData.serviciosTop.slice(0, 5)" :key="i">
-                  <td><span class="pdf-rank-circle">{{ i + 1 }}</span></td>
-                  <td>{{ s.nombre }}</td>
-                  <td class="text-right"><strong>{{ s.cantidad }}</strong></td>
-                </tr>
-                <tr v-if="dashboardData.serviciosTop.length === 0"><td colspan="3" class="text-center text-muted">Sin datos</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="pdf-table-col">
-            <h4 class="pdf-section-title">Top 5 Productos</h4>
-            <table class="pdf-table">
-              <thead><tr><th width="15%">#</th><th>Producto</th><th width="25%" class="text-right">Unid.</th></tr></thead>
-              <tbody>
-                <tr v-for="(p, i) in dashboardData.productosTop.slice(0, 5)" :key="i">
-                  <td><span class="pdf-rank-circle">{{ i + 1 }}</span></td>
-                  <td>{{ p.nombre }}</td>
-                  <td class="text-right"><strong>{{ p.cantidad }}</strong></td>
-                </tr>
-                <tr v-if="dashboardData.productosTop.length === 0"><td colspan="3" class="text-center text-muted">Sin datos</td></tr>
-              </tbody>
-            </table>
+          <div style="text-align: left; font-size: 11px; color: #334155; line-height: 1.6;">
+            <p style="margin: 0; font-weight: bold; color: #0f172a; text-transform: uppercase; font-size: 11px;">
+              Razón Social: {{ dashboardData.empresa?.razon_social || 'Los Últimos Serán Los Primeros' }}
+            </p>
+            <p style="margin: 0;">
+              <strong>CUIT:</strong> {{ (dashboardData.empresa?.cuil_cuit && dashboardData.empresa?.cuil_cuit !== '00-00000000-0' && dashboardData.empresa?.cuil_cuit !== '0') ? dashboardData.empresa.cuil_cuit : '27-23456789-3' }}
+            </p>
+            <p style="margin: 0;">
+              <strong>Dirección:</strong> {{ (dashboardData.empresa?.direccion && dashboardData.empresa?.direccion !== 'Calle Falsa 123') ? dashboardData.empresa.direccion : 'Avenida Libertador 600, San Vicente - Misiones' }}
+            </p>
+            <p style="margin: 0;">
+              <strong>Teléfono:</strong> {{ (dashboardData.empresa?.telefono && dashboardData.empresa?.telefono !== '(3755) 12-3456') ? dashboardData.empresa.telefono : '3755 67-2716' }}
+            </p>
           </div>
         </div>
 
-        <div class="pdf-footer">
-          <p>HairSoft - Sistema de Gestión Integral</p>
-          <p class="small text-muted">Documento generado el {{ new Date().toLocaleString() }}</p>
+        <div style="text-align: right;">
+          <h2 style="margin: 0 0 10px 0; font-size: 16px; color: #1e293b; text-transform: uppercase;">Reporte de Gestión</h2>
+          
+          <div style="margin-bottom: 10px;">
+            <p style="margin: 0; font-size: 10px; color: #64748b; text-transform: uppercase;">Período Analizado</p>
+            <p style="margin: 2px 0 0; font-size: 14px; font-weight: bold; color: #0f172a;">
+              {{ getPeriodDisplay }}
+            </p>
+          </div>
+
+          <p style="margin: 0; font-size: 10px; color: #94a3b8;">
+            Emisor: <strong>{{ dashboardData.usuario_emisor }}</strong>
+          </p>
+          <p style="margin: 2px 0 0; font-size: 10px; color: #94a3b8;">
+            Fecha: {{ new Date().toLocaleDateString('es-AR') }}
+          </p>
         </div>
 
       </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 30px;">
+        <div style="padding: 15px; background: #f8fafc; border-radius: 6px; border-top: 3px solid #10b981; text-align: center;">
+          <span style="font-size: 10px; color: #64748b; text-transform: uppercase;">Ingresos Totales</span>
+          <span style="display: block; font-size: 18px; font-weight: bold; color: #10b981;">${{ formatNumber(dashboardData.ingresosTotales) }}</span>
+        </div>
+        <div style="padding: 15px; background: #f8fafc; border-radius: 6px; border-top: 3px solid #3b82f6; text-align: center;">
+          <span style="font-size: 10px; color: #64748b; text-transform: uppercase;">Turnos Realizados</span>
+          <span style="display: block; font-size: 18px; font-weight: bold;">{{ dashboardData.serviciosRealizados }}</span>
+        </div>
+        <div style="padding: 15px; background: #f8fafc; border-radius: 6px; border-top: 3px solid #f59e0b; text-align: center;">
+          <span style="font-size: 10px; color: #64748b; text-transform: uppercase;">Productos Vendidos</span>
+          <span style="display: block; font-size: 18px; font-weight: bold;">{{ dashboardData.productosVendidos }}</span>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 30px;">
+        <h4 style="font-size: 13px; border-left: 4px solid #ef4444; padding-left: 10px; margin-bottom: 15px;">Tendencia de Ventas Diarias</h4>
+        <svg :viewBox="`0 0 ${chartWidth} ${chartHeight + 40}`" width="100%" height="250">
+           <defs>
+            <linearGradient id="pdfGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" style="stop-color:#ef4444;stop-opacity:0.2" />
+              <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0" />
+            </linearGradient>
+          </defs>
+          <g v-for="i in 5" :key="`pdf-line-${i}`">
+            <line :x1="60" :y1="(chartHeight / 5) * i" :x2="chartWidth - 20" :y2="(chartHeight / 5) * i" stroke="#e2e8f0" stroke-width="1"/>
+            <text :x="50" :y="(chartHeight / 5) * i + 5" text-anchor="end" fill="#64748b" font-size="12" font-family="Helvetica">
+              ${{ formatNumberShort(Math.round((getMaxValue() / 5) * (5 - i))) }}
+            </text>
+          </g>
+          <path :d="getAreaPath()" fill="url(#pdfGradient)" />
+          <path :d="getLinePath()" fill="none" stroke="#dc2626" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <g v-for="(label, i) in dashboardData.labelsDias" :key="`pdf-lbl-${i}`" v-if="shouldShowLabelPDF(i)">
+            <text :x="getXPosition(i)" :y="chartHeight + 25" text-anchor="middle" fill="#475569" font-size="11" font-weight="bold" font-family="Helvetica">
+              {{ label }}
+            </text>
+          </g>
+        </svg>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div>
+          <h4 style="font-size: 13px; margin-bottom: 10px;">Top 5 Servicios</h4>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <thead style="background: #f1f5f9; color: #475569; text-transform: uppercase;">
+              <tr><th style="padding: 6px; text-align: left;">Servicio</th><th style="padding: 6px; text-align: right;">Cant.</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(s, i) in dashboardData.serviciosTop.slice(0, 5)" :key="i" style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 6px;">{{ s.nombre }}</td>
+                <td style="padding: 6px; text-align: right;"><strong>{{ s.cantidad }}</strong></td>
+              </tr>
+              <tr v-if="dashboardData.serviciosTop.length === 0"><td colspan="2" style="padding: 15px; text-align: center; color: #94a3b8;">Sin datos</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <h4 style="font-size: 13px; margin-bottom: 10px;">Top 5 Productos</h4>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <thead style="background: #f1f5f9; color: #475569; text-transform: uppercase;">
+              <tr><th style="padding: 6px; text-align: left;">Producto</th><th style="padding: 6px; text-align: right;">Unid.</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(p, i) in dashboardData.productosTop.slice(0, 5)" :key="i" style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 6px;">{{ p.nombre }}</td>
+                <td style="padding: 6px; text-align: right;"><strong>{{ p.cantidad }}</strong></td>
+              </tr>
+              <tr v-if="dashboardData.productosTop.length === 0"><td colspan="2" style="padding: 15px; text-align: center; color: #94a3b8;">Sin datos</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center;">
+        <p style="margin: 0; font-size: 10px; color: #64748b;">HairSoft - Sistema de Gestión Integral</p>
+      </div>
+
     </div>
 
   </div>
@@ -354,311 +377,171 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
 import axios from '@/utils/axiosConfig'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 
-// LOGO
 const logoUrl = '/logo_barberia.jpg'
-
-const router = useRouter()
 const selectedPeriod = ref('semana')
 const loading = ref(true)
 const error = ref(null)
 const hoveredPoint = ref(null)
 const dashboardContent = ref(null)
-
 const customDateRange = ref(false)
 const dateFrom = ref('')
 const dateTo = ref('')
+const tooltip = ref({ visible: false, x: 0, y: 0, value: 0, date: '', index: 0 })
 
-// Función para obtener fecha local formato YYYY-MM-DD
-// Esto evita que "Hoy" se convierta en "Mañana" o "Ayer" por culpa del UTC
+// Fecha local
 const getLocalToday = () => {
-  const d = new Date()
-  const offset = d.getTimezoneOffset()
-  const dLocal = new Date(d.getTime() - (offset*60*1000))
-  return dLocal.toISOString().split('T')[0]
+  const d = new Date()
+  const offset = d.getTimezoneOffset()
+  const dLocal = new Date(d.getTime() - (offset*60*1000))
+  return dLocal.toISOString().split('T')[0]
 }
-
 const today = getLocalToday()
 
 const periods = [
-  { value: 'hoy', label: 'Hoy', icon: 'fas fa-clock' },
-  { value: 'semana', label: '7 Días', icon: 'fas fa-calendar-week' },
-  { value: 'mes', label: 'Este Mes', icon: 'fas fa-calendar-alt' },
+  { value: 'hoy', label: 'Hoy', icon: 'fas fa-clock' },
+  { value: 'semana', label: '7 Días', icon: 'fas fa-calendar-week' },
+  { value: 'mes', label: 'Este Mes', icon: 'fas fa-calendar-alt' },
 ]
 
 const dashboardData = ref({
-  ingresosTotales: 0,
-  serviciosRealizados: 0,
-  productosVendidos: 0,
-  stockBajoCount: 0,
-  ventasPorDia: [],
-  labelsDias: [],
-  serviciosTop: [],
-  productosTop: [],
-  clientesAtendidos: 0
+  ingresosTotales: 0,
+  serviciosRealizados: 0,
+  productosVendidos: 0,
+  ventasPorDia: [],
+  labelsDias: [],
+  serviciosTop: [],
+  productosTop: [],
+  usuario_emisor: '',
+  empresa: null
 })
 
 const getPeriodDisplay = computed(() => {
-  if (customDateRange.value && dateFrom.value && dateTo.value) {
-    return `${formatDate(dateFrom.value)} al ${formatDate(dateTo.value)}`
-  }
-  const period = periods.find(p => p.value === selectedPeriod.value)
-  return period ? period.label : 'Período'
+  if (customDateRange.value && dateFrom.value && dateTo.value) {
+    return `${formatDate(dateFrom.value)} al ${formatDate(dateTo.value)}`
+  }
+  const period = periods.find(p => p.value === selectedPeriod.value)
+  return period ? period.label : 'Período'
 })
 
 const chartWidth = 900
 const chartHeight = 320
 const padding = 60
-const tooltip = ref({ visible: false, x: 0, y: 0, value: 0, date: '', index: 0 })
 
 const fetchDashboardData = async () => {
-  loading.value = true
-  error.value = null
-  try {
-    let params = {}
-
-    // 1. Si el usuario activó rango personalizado y puso fechas
-    if (customDateRange.value && dateFrom.value && dateTo.value) {
-      params = { date_from: dateFrom.value, date_to: dateTo.value }
-    } 
-    // 2. Si eligió "HOY", forzamos el envío de fechas locales
-    // Así el backend lo trata como un rango exacto y no se rompe con zonas horarias
-    else if (selectedPeriod.value === 'hoy') {
-      const fechaLocal = getLocalToday()
-      params = { date_from: fechaLocal, date_to: fechaLocal }
-    } 
-    // 3. Para Semana y Mes, dejamos que el backend decida
-    else {
-      params = { period: selectedPeriod.value }
-    }
-    
-    const res = await axios.get('/api/dashboard/', { params })
-    // Mezclamos con los valores actuales para no perder defaults si falta algo
-    dashboardData.value = { ...dashboardData.value, ...res.data }
-
-  } catch (err) {
-    console.error(err)
-    error.value = "Error al conectar con el servidor."
-  } finally {
-    loading.value = false
-  }
+  loading.value = true
+  error.value = null
+  try {
+    let params = customDateRange.value && dateFrom.value && dateTo.value 
+      ? { date_from: dateFrom.value, date_to: dateTo.value }
+      : { period: selectedPeriod.value };
+    
+    const res = await axios.get('/api/dashboard/', { params })
+    dashboardData.value = { ...dashboardData.value, ...res.data }
+  } catch (err) {
+    error.value = "Error al conectar con el servidor."
+  } finally {
+    loading.value = false
+  }
 }
 
-const selectPeriod = (period) => {
-  customDateRange.value = false
-  selectedPeriod.value = period
-  fetchDashboardData()
-}
+const selectPeriod = (p) => { customDateRange.value = false; selectedPeriod.value = p; fetchDashboardData() }
+const toggleCustomRange = () => { customDateRange.value = !customDateRange.value; if (!customDateRange.value) fetchDashboardData() }
+const applyCustomRange = () => { if (dateFrom.value && dateTo.value) fetchDashboardData() }
 
-const toggleCustomRange = () => {
-  customDateRange.value = !customDateRange.value
-  if (!customDateRange.value) fetchDashboardData()
-}
-
-const applyCustomRange = () => {
-  if (dateFrom.value && dateTo.value) fetchDashboardData()
-}
-
-// FORMATOS
-const formatDate = (dateStr) => {
-  if (!dateStr) return '-'
-  const [y, m, d] = dateStr.split('-')
-  return `${d}/${m}`
-}
-
-const formatDateLong = (dateStr) => {
-  if (!dateStr) return '-'
-  const [y, m, d] = dateStr.split('-')
-  const fecha = new Date(y, m - 1, d)
-  return fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
-}
-
+const formatDate = (d) => d ? d.split('-').reverse().join('/') : '-'
+const formatDateLong = (d) => d ? new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'
 const formatNumber = (num) => new Intl.NumberFormat('es-AR').format(num || 0)
+const formatNumberShort = (num) => num >= 1000000 ? (num / 1000000).toFixed(1) + 'M' : num >= 1000 ? (num / 1000).toFixed(1) + 'K' : num
 
-const formatNumberShort = (num) => {
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
-  return num.toString()
-}
-
-// LOGICA GRÁFICOS
-const getMaxValue = () => {
-  if (!dashboardData.value.ventasPorDia || dashboardData.value.ventasPorDia.length === 0) return 100
-  return Math.max(...dashboardData.value.ventasPorDia, 100)
-}
-
-const getXPosition = (index) => {
-  const count = dashboardData.value.ventasPorDia.length
-  if (count <= 1) return chartWidth / 2
-  return padding + (index / (count - 1)) * (chartWidth - padding * 2)
-}
-
-const getXPositionPercent = (index) => {
-  const count = dashboardData.value.ventasPorDia.length
-  if (count <= 1) return 50
-  return (padding / chartWidth * 100) + (index / (count - 1)) * ((chartWidth - padding * 2) / chartWidth * 100)
-}
-
-const getYPosition = (value) => {
-  const max = getMaxValue()
-  if (max === 0) return chartHeight - padding
-  const normalized = value / max
-  return chartHeight - padding - (normalized * (chartHeight - padding * 2))
-}
+// Métodos para el Gráfico SVG
+const getMaxValue = () => Math.max(...dashboardData.value.ventasPorDia, 100)
+const getXPosition = (i) => padding + (i / (dashboardData.value.ventasPorDia.length - 1 || 1)) * (chartWidth - padding * 2)
+const getYPosition = (v) => chartHeight - padding - ((v / getMaxValue()) * (chartHeight - padding * 2))
+const getXPositionPercent = (i) => (getXPosition(i) / chartWidth) * 100
 
 const getLinePath = () => {
-  if (!dashboardData.value.ventasPorDia.length) return ''
-  let path = ''
-  dashboardData.value.ventasPorDia.forEach((value, i) => {
-    const x = getXPosition(i)
-    const y = getYPosition(value)
-    if (i === 0) path += `M ${x} ${y}`
-    else {
-      const prevX = getXPosition(i - 1)
-      const prevY = getYPosition(dashboardData.value.ventasPorDia[i - 1])
-      const cpX = (prevX + x) / 2
-      path += ` Q ${cpX} ${prevY}, ${x} ${y}`
-    }
-  })
-  return path
+  if (!dashboardData.value.ventasPorDia.length) return ''
+  return dashboardData.value.ventasPorDia.reduce((path, val, i) => {
+    const x = getXPosition(i), y = getYPosition(val)
+    return i === 0 ? `M ${x} ${y}` : `${path} Q ${(getXPosition(i-1)+x)/2} ${getYPosition(dashboardData.value.ventasPorDia[i-1])}, ${x} ${y}`
+  }, '')
 }
 
 const getAreaPath = () => {
-  if (!dashboardData.value.ventasPorDia.length) return ''
-  let path = getLinePath()
-  const lastX = getXPosition(dashboardData.value.ventasPorDia.length - 1)
-  const firstX = getXPosition(0)
-  path += ` L ${lastX} ${chartHeight - padding} L ${firstX} ${chartHeight - padding} Z`
-  return path
+  if (!dashboardData.value.ventasPorDia.length) return ''
+  return `${getLinePath()} L ${getXPosition(dashboardData.value.ventasPorDia.length-1)} ${chartHeight-padding} L ${getXPosition(0)} ${chartHeight-padding} Z`
 }
 
-const getPiePath = (startPercent, endPercent) => {
-  const startAngle = (startPercent / 100) * 360
-  const endAngle = (endPercent / 100) * 360
-  const cx = 100, cy = 100, r = 80
-  const startRad = (startAngle - 90) * Math.PI / 180
-  const endRad = (endAngle - 90) * Math.PI / 180
-  const x1 = cx + r * Math.cos(startRad)
-  const y1 = cy + r * Math.sin(startRad)
-  const x2 = cx + r * Math.cos(endRad)
-  const y2 = cy + r * Math.sin(endRad)
-  const largeArc = endAngle - startAngle > 180 ? 1 : 0
-  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`
+const getPiePath = (start, end) => {
+  const s = (start / 100) * 360 - 90, e = (end / 100) * 360 - 90
+  const rad = Math.PI / 180, r = 80, cx = 100, cy = 100
+  const x1 = cx + r * Math.cos(s * rad), y1 = cy + r * Math.sin(s * rad)
+  const x2 = cx + r * Math.cos(e * rad), y2 = cy + r * Math.sin(e * rad)
+  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${end - start > 180 ? 1 : 0} 1 ${x2} ${y2} Z`
 }
 
 const getServicePercentage = () => {
-  const total = dashboardData.value.serviciosRealizados + dashboardData.value.productosVendidos
-  if (total === 0) return 50
-  return (dashboardData.value.serviciosRealizados / total) * 100
+  const t = dashboardData.value.serviciosRealizados + dashboardData.value.productosVendidos
+  return t === 0 ? 50 : (dashboardData.value.serviciosRealizados / t) * 100
 }
-
 const getProductPercentage = () => 100 - getServicePercentage()
-
 const getTotalTransactions = () => dashboardData.value.serviciosRealizados + dashboardData.value.productosVendidos
 
-// FUNCIÓN MEJORADA PARA FILTRAR ETIQUETAS EN EL GRÁFICO PRINCIPAL
-const shouldShowLabel = (index) => {
-  const total = dashboardData.value.labelsDias.length
-  
-  // Si son muy pocos días (hasta 7), mostramos todos
-  if (total <= 7) return true
-  
-  // Entre 8 y 15 días, mostramos 1 de cada 2
-  if (total <= 15) return index % 2 === 0 || index === total - 1
-  
-  // Entre 16 y 25 días, mostramos 1 de cada 3
-  if (total <= 25) return index % 3 === 0 || index === total - 1
-  
-  // Más de 25 días (mes completo), mostramos 1 de cada 5
-  return index % 5 === 0 || index === total - 1
+const shouldShowLabel = (i) => {
+  const t = dashboardData.value.labelsDias.length
+  return t <= 7 || (t <= 15 ? i % 2 === 0 : t <= 25 ? i % 3 === 0 : i % 5 === 0) || i === t - 1
+}
+const shouldShowLabelPDF = (i) => {
+  const t = dashboardData.value.labelsDias.length
+  return t <= 7 || (t <= 15 ? i % 3 === 0 : t <= 31 ? i % 6 === 0 : i % 8 === 0) || i === t - 1
 }
 
-// FUNCIÓN SEPARADA PARA ETIQUETAS EN PDF (más espaciadas)
-const shouldShowLabelPDF = (index) => {
-  const total = dashboardData.value.labelsDias.length
-  
-  if (total <= 7) return true
-  if (total <= 15) return index % 3 === 0 || index === total - 1
-  if (total <= 31) return index % 6 === 0 || index === total - 1
-  
-  return index % 8 === 0 || index === total - 1
+const showTooltip = (i, v, e) => {
+  const rect = e.target.getBoundingClientRect(), container = e.target.closest('.trading-chart-container').getBoundingClientRect()
+  tooltip.value = { visible: true, x: rect.left - container.left, y: rect.top - container.top - 90, value: v, date: dashboardData.value.labelsDias[i] }
 }
+const hideTooltip = () => tooltip.value.visible = false
+const getRankClass = (i) => i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''
+const getPercentage = (v, arr) => (v / Math.max(...arr.map(x => x.cantidad), 1)) * 100
 
-const showTooltip = (index, value, event) => {
-  hoveredPoint.value = index
-  const rect = event.target.getBoundingClientRect()
-  const container = event.target.closest('.trading-chart-container').getBoundingClientRect()
-  tooltip.value = {
-    visible: true,
-    x: rect.left - container.left,
-    y: rect.top - container.top - 90,
-    value: value,
-    date: dashboardData.value.labelsDias[index],
-    index: index
-  }
-}
-
-const hideTooltip = () => {
-  tooltip.value.visible = false
-  hoveredPoint.value = null
-}
-
-const getRankClass = (index) => {
-  if (index === 0) return 'gold'
-  if (index === 1) return 'silver'
-  if (index === 2) return 'bronze'
-  return ''
-}
-
-const getPercentage = (value, array) => {
-  const max = Math.max(...array.map(item => item.cantidad))
-  return max > 0 ? (value / max) * 100 : 0
-}
-
-// GENERACIÓN PDF
+// GENERACIÓN PDF CON PAGINACIÓN AL PIE
 const generatePDF = async () => {
-  try {
-    loading.value = true
-    const printTemplate = document.getElementById('print-template')
-    if (!printTemplate) throw new Error('Template no encontrado')
+  loading.value = true
+  const el = document.getElementById('print-template')
+  el.style.display = 'block'
+  
+  await new Promise(r => setTimeout(r, 600)) // Espera renderizado
+  
+  const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+  el.style.display = 'none'
+  
+  const pdf = new jsPDF('p', 'mm', 'a4')
+  const pdfWidth = pdf.internal.pageSize.getWidth()
+  const pdfHeight = pdf.internal.pageSize.getHeight()
+  
+  const imgProps = pdf.getImageProperties(canvas.toDataURL('image/jpeg', 0.95))
+  const imgHeight = (imgProps.height * pdfWidth) / imgProps.width
+  
+  pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pdfWidth, imgHeight)
+  
+  // PAGINACIÓN AL PIE (Punto 1)
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+  pdf.setTextColor(150);
+  pdf.text('Página 1 de 1', pdfWidth - 20, pdfHeight - 10, { align: 'right' });
 
-    printTemplate.style.display = 'block'
-    await new Promise(resolve => setTimeout(resolve, 800))
-    
-    const canvas = await html2canvas(printTemplate, {
-      scale: 2,
-      backgroundColor: '#ffffff',
-      useCORS: true,
-      logging: false,
-      allowTaint: true
-    })
-    
-    printTemplate.style.display = 'none'
-    
-    const imgData = canvas.toDataURL('image/jpeg', 0.95)
-    const pdf = new jsPDF('p', 'mm', 'a4')
-    const pdfWidth = pdf.internal.pageSize.getWidth()
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width
-    
-    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight)
-    pdf.save(`Reporte_HAIRSOFT_${selectedPeriod.value}.pdf`)
-    
-  } catch (err) {
-    console.error('Error PDF:', err)
-  } finally {
-    loading.value = false
-  }
+  pdf.save(`Reporte_HAIRSOFT_${selectedPeriod.value}.pdf`)
+  loading.value = false
 }
 
 onMounted(() => fetchDashboardData())
 </script>
 
 <style scoped>
-/* ESTILOS DASHBOARD */
 :root {
   --bg-dark: #0f172a;
   --bg-card: #1e293b;

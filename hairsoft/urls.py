@@ -5,7 +5,6 @@ from django.conf import settings
 from django.conf.urls.static import static
 import os
 
-# Función para servir el frontend
 def serve_frontend(request, path=''):
     frontend_path = os.path.join(settings.BASE_DIR, 'hairsoft-frontend', 'index.html')
     if os.path.exists(frontend_path):
@@ -14,20 +13,13 @@ def serve_frontend(request, path=''):
         return serve(request, path, document_root=settings.STATIC_ROOT)
 
 urlpatterns = [
-    # 1. Admin
+    # 1. El Admin se queda ACÁ, es su único lugar.
     path('admin/', admin.site.urls),
-
-    # 2. LA CLAVE: Conectar tu archivo usuarios/urls.py bajo el prefijo 'usuarios/'
-    # Esto hace que funcionen las rutas tipo: /usuarios/api/turnos/
-    path('usuarios/', include('usuarios.urls')),
-
-    # 3. Soporte extra por si alguna ruta llama directo a /api/
     path('', include('usuarios.urls')),
 
-    # 4. Archivos estáticos y media
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
-# 5. Todo lo demás -> Frontend (Vue)
+# 3. Frontend (Siempre al final)
 urlpatterns += [
     re_path(r'^.*$', serve_frontend),
 ]

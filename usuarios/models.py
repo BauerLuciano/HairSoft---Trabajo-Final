@@ -1419,3 +1419,30 @@ class Liquidacion(models.Model):
 
     def __str__(self):
         return f"Pago a {self.empleado} - ${self.total_pagado} ({self.fecha_pago.date()})"
+
+# para reportes!
+
+# usuarios/models.py
+
+class ConfiguracionSistema(models.Model):
+    # Datos Fijos de la Empresa (CORREGIDOS)
+    razon_social = models.CharField(max_length=255, default="Los Últimos Serán Los Primeros")
+    cuil_cuit = models.CharField(max_length=20, default="27-23456789-3") 
+    inicio_actividad = models.DateField(null=True, blank=True)
+    # Dirección completa con ciudad
+    direccion = models.CharField(max_length=255, default="Avenida Libertador 600, San Vicente - Misiones")
+    # Teléfono real
+    telefono = models.CharField(max_length=50, default="3755-72716")
+    email = models.EmailField(default="contacto@hairsoft.com")
+
+    # Parámetros del Sistema
+    margen_horas_cancelacion = models.PositiveIntegerField(default=24)
+    politica_senia = models.TextField(default="Política de señas: ...")
+
+    class Meta:
+        verbose_name = "Configuración del Sistema"
+
+    @classmethod
+    def get_solo(cls):
+        obj, created = cls.objects.get_or_create(pk=1)
+        return obj

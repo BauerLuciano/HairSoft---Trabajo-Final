@@ -24,7 +24,7 @@ except ImportError:
     ARG_TZ = pytz.timezone('America/Argentina/Buenos_Aires')
 
 from django.utils import timezone
-from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, PromocionReactivacion, Auditoria, PasswordResetToken, PedidoWeb
+from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, PromocionReactivacion, Auditoria, PasswordResetToken, PedidoWeb, ConfiguracionSistema
 from .mercadopago_service import MercadoPagoService
 import json, re, requests, unicodedata
 from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer, ListaPrecioProveedorSerializer, HistorialPreciosSerializer, PrecioSugeridoSerializer, ActualizarListaPreciosSerializer, CotizacionExternaSerializer, SolicitudPresupuestoSerializer, MarcaSerializer, AuditoriaSerializer, SolicitarResetPasswordSerializer, ResetPasswordConfirmarSerializer, ServicioSerializer, RolSerializer, PermisoSerializer, TurnoSerializer
@@ -762,9 +762,8 @@ def crear_turno(request):
         # 1. IDENTIFICACIÓN DEL CLIENTE Y CANAL
         # ---------------------------------------------------------
         cliente = None
-        canal = data.get('canal', 'WEB') # Default a WEB si no viene nada
+        canal = data.get('canal', 'WEB') 
         
-        # Lógica para Presencial (Admin registra) o Web (Usuario logueado)
         if canal == 'PRESENCIAL':
             cliente_id = data.get('cliente_id') or data.get('cliente')
             if not cliente_id:
@@ -777,7 +776,6 @@ def crear_turno(request):
         elif request.user.is_authenticated:
             cliente = request.user
         
-        # Intento de fallback si viene cliente_id en modo WEB (raro pero posible)
         if not cliente and data.get('cliente_id'):
              cliente = Usuario.objects.filter(pk=data.get('cliente_id')).first()
 
@@ -787,7 +785,7 @@ def crear_turno(request):
         print(f"✅ Cliente: {cliente.nombre} {cliente.apellido} ({canal})")
 
         # ---------------------------------------------------------
-        # 2. DATOS BÁSICOS Y VALIDACIONES
+        # 2. DATOS BÁSICOS
         # ---------------------------------------------------------
         peluquero_id = data.get('peluquero_id')
         servicios_ids = data.get('servicios_ids', [])
@@ -795,52 +793,52 @@ def crear_turno(request):
         hora_str = data.get('hora')
 
         if not all([peluquero_id, fecha_str, hora_str, servicios_ids]):
-            return Response({'status': 'error', 'message': "Faltan datos obligatorios (peluquero, fecha, hora, servicios)"}, status=400)
+            return Response({'status': 'error', 'message': "Faltan datos obligatorios."}, status=400)
 
-        # Normalizar hora (HH:MM)
         if len(hora_str) > 5: hora_str = hora_str[:5]
 
         try:
             fecha_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
             hora_obj = datetime.strptime(hora_str, "%H:%M").time()
         except ValueError as e:
-            return Response({'status': 'error', 'message': f"Formato de fecha/hora inválido: {e}"}, status=400)
+            return Response({'status': 'error', 'message': f"Formato fecha/hora inválido: {e}"}, status=400)
 
-        peluquero = Usuario.objects.get(pk=peluquero_id)
+        peluquero = get_object_or_404(Usuario, pk=peluquero_id)
         servicios = Servicio.objects.filter(pk__in=servicios_ids)
         
         if not servicios.exists():
              return Response({'status': 'error', 'message': "Servicios no válidos"}, status=400)
 
         # ---------------------------------------------------------
-        # 3. VALIDACIÓN DE DISPONIBILIDAD (Lógica Robusta)
+        # 3. VALIDACIÓN DE DISPONIBILIDAD (CORREGIDO)
         # ---------------------------------------------------------
-        # A. Calcular duración y rango del NUEVO turno
+        # Duración del nuevo turno
         duracion_total = sum(s.duracion for s in servicios) or 30
         inicio_nuevo = datetime.combine(fecha_obj, hora_obj)
         fin_nuevo = inicio_nuevo + timedelta(minutes=duracion_total)
 
-        # B. Buscar conflictos
+        # Buscar turnos SOLO de esa fecha y ese peluquero
         turnos_existentes = Turno.objects.filter(
             fecha=fecha_obj,
             peluquero=peluquero,
             estado__in=['RESERVADO', 'COMPLETADO'] 
-        ).exclude(estado='CANCELADO') # Por seguridad explícita
+        ).exclude(estado='CANCELADO')
 
         for t in turnos_existentes:
-            duracion_t = getattr(t, 'duracion_total', 0)
+            # 🛑 SEGURIDAD EXTRA: Si por error viene un turno de otro día, lo saltamos
+            if t.fecha != fecha_obj:
+                continue
 
+            duracion_t = getattr(t, 'duracion_total', 0)
             if not duracion_t and t.servicios.exists():
                  duracion_t = sum(s.duracion for s in t.servicios.all())
+            if not duracion_t: duracion_t = 30
             
-            # Si aun así es 0, usamos default 30 min
-            if not duracion_t: 
-                duracion_t = 30
-            
-            t_inicio = datetime.combine(fecha_obj, t.hora)
+            # Usamos la fecha del turno REAL (t.fecha) no la forzada
+            t_inicio = datetime.combine(t.fecha, t.hora)
             t_fin = t_inicio + timedelta(minutes=duracion_t)
 
-            # Colisión: (InicioNuevo < FinViejo) Y (FinNuevo > InicioViejo)
+            # Colisión
             if inicio_nuevo < t_fin and fin_nuevo > t_inicio:
                 return Response({
                     'status': 'error', 
@@ -848,19 +846,19 @@ def crear_turno(request):
                 }, status=400)
 
         # ---------------------------------------------------------
-        # 4. LIMPIEZA DE "ZOMBIES" (Ofertas expiradas)
+        # 4. LIMPIEZA ZOMBIES
         # ---------------------------------------------------------
         Turno.objects.filter(
             fecha=fecha_obj, hora=hora_obj, peluquero=peluquero, oferta_activa=True
         ).update(estado='CANCELADO', oferta_activa=False)
 
         # ---------------------------------------------------------
-        # 5. CÁLCULO DE MONTOS (Cupones y Señas)
+        # 5. CÁLCULOS Y CREACIÓN
         # ---------------------------------------------------------
         monto_total_original = sum(float(s.precio) for s in servicios)
         monto_final = monto_total_original
         
-        # Aplicar Cupón si existe
+        # Cupón
         cup_codigo = data.get('cup_codigo')
         promo_usada = None
         if cup_codigo:
@@ -871,23 +869,13 @@ def crear_turno(request):
                     descuento = monto_total_original * (float(promo.descuento_porcentaje) / 100)
                     monto_final -= descuento
                     promo_usada = promo
-            except Exception:
-                pass # Si falla el cupón, cobramos normal
+            except: pass
 
-        # Definir Pago
+        # Pagos
         tipo_pago = data.get('tipo_pago', 'SENA_50')
         medio_pago = data.get('medio_pago', 'EFECTIVO')
-        
-        # Regla de Negocio:
-        # - Si es TOTAL: Seña = Total
-        # - Si es SENA_50: Seña = 50% del Total
         monto_seña = monto_final * 0.5 if tipo_pago == 'SENA_50' else monto_final
 
-        print(f"💰 Finanzas -> Total: ${monto_final} | Seña a pagar: ${monto_seña} ({tipo_pago})")
-
-        # ---------------------------------------------------------
-        # 6. CREACIÓN DEL TURNO (ESTADO CORREGIDO)
-        # ---------------------------------------------------------
         turno = Turno.objects.create(
             cliente=cliente,
             peluquero=peluquero,
@@ -899,24 +887,22 @@ def crear_turno(request):
             monto_seña=monto_seña,
             monto_total=monto_final,
             duracion_total=duracion_total,
-            estado='RESERVADO', # <--- ¡SIEMPRE RESERVADO AL NACER!
-            mp_payment_id=data.get('mp_payment_id') # ID si viene de presencial con tarjeta externa o similar
+            estado='RESERVADO',
+            mp_payment_id=data.get('mp_payment_id')
         )
         turno.servicios.set(servicios)
 
-        # Marcar cupón como usado
         if promo_usada:
             promo_usada.estado = 'USADA'
             promo_usada.turno_canje = turno
             promo_usada.save()
 
         # ---------------------------------------------------------
-        # 7. INTEGRACIÓN MERCADO PAGO (Solo WEB)
+        # 6. MERCADO PAGO
         # ---------------------------------------------------------
         mp_data = None
         procesar_pago = False
 
-        # Si es WEB y elige MercadoPago, generamos el link AHORA
         if canal == 'WEB' and medio_pago == 'MERCADO_PAGO':
             print("💳 Iniciando Checkout MercadoPago...")
             try:
@@ -936,15 +922,14 @@ def crear_turno(request):
                 
                 if res_mp.get('success'):
                     procesar_pago = True
-                    # Usamos sandbox o init_point según configuración
-                    link = res_mp.get('sandbox_init_point') or res_mp.get('init_point')
+                    link = res_mp.get('init_point')
                     mp_data = {
                         'init_point': link,
                         'preference_id': res_mp.get('preference_id')
                     }
                     print(f"✅ Link MP generado: {link}")
                 else:
-                    print(f"❌ Error al crear preferencia MP: {res_mp.get('error')}")
+                    print(f"❌ Error MP: {res_mp.get('error')}")
 
             except Exception as e:
                 print(f"💥 Error crítico MP: {e}")
@@ -958,10 +943,10 @@ def crear_turno(request):
         }, status=201)
 
     except Exception as e:
-        print(f"💥 ERROR FATAL EN CREAR_TURNO: {str(e)}")
+        print(f"💥 ERROR FATAL: {str(e)}")
         import traceback
         traceback.print_exc()
-        return Response({'status': 'error', 'message': f"Error interno: {str(e)}"}, status=500)
+        return Response({'status': 'error', 'message': str(e)}, status=500)
     
 # ==============================================================================
 # ARCHIVO: usuarios/views.py (REEMPLAZA ESTA FUNCIÓN)
@@ -1177,72 +1162,84 @@ def obtener_horarios_disponibles(request):
     peluquero_id = request.GET.get('peluquero_id')
     servicio_id = request.GET.get('servicio_id')
 
-    print(f"📅 Buscando horarios: Fecha={fecha_str}, Peluquero={peluquero_id}")
-
     if not all([fecha_str, peluquero_id]):
         return Response({'error': 'Falta fecha o peluquero'}, status=400)
 
     try:
+        # 1. Definir fecha y hora actual
         fecha_solicitada = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         ahora = timezone.now()
         
-        # 1. BUSCAR TURNOS OCUPADOS (Solo de ese día y peluquero)
-        turnos_ocupados = Turno.objects.filter(
-            fecha=fecha_solicitada,
-            peluquero_id=peluquero_id, 
+        # 2. Buscar turnos OCUPADOS de ESE día
+        # Usamos filter estricto por fecha.
+        turnos = Turno.objects.filter(
+            fecha=fecha_solicitada, 
+            peluquero_id=peluquero_id,
             estado__in=['RESERVADO', 'CONFIRMADO', 'COMPLETADO']
-        )
+        ).exclude(estado='CANCELADO')
 
-        # 2. CONFIGURACIÓN DE JORNADA
+        # 3. Crear lista de rangos ocupados (SOLO HORAS)
+        # Esto evita cualquier confusión de fechas cruzadas
+        rangos_ocupados = []
+        for t in turnos:
+            inicio = t.hora
+            duracion = getattr(t, 'duracion_total', 0)
+            if not duracion:
+                duracion = sum(s.duracion for s in t.servicios.all()) or 30
+            
+            # Calculamos hora fin sumando minutos a un dummy date
+            dummy_date = datetime(2000, 1, 1, inicio.hour, inicio.minute)
+            fin = (dummy_date + timedelta(minutes=duracion)).time()
+            rangos_ocupados.append((inicio, fin))
+
+        # 4. Configurar Jornada
         hora_inicio = time(9, 0)
         hora_fin = time(21, 0)
         
-        # Duración del slot (según servicio o 30 min default)
-        duracion_minutos = 30
+        duracion_slot = 30
         if servicio_id:
             try:
-                servicio = Servicio.objects.get(pk=servicio_id)
-                duracion_minutos = servicio.duracion
-            except:
-                pass
+                s = Servicio.objects.get(pk=servicio_id)
+                duracion_slot = s.duracion
+            except: pass
         
-        delta = timedelta(minutes=duracion_minutos)
+        # 5. Generar Slots
         horarios_disponibles = []
-        
-        # Iterador de tiempo
-        actual_dt = datetime.combine(fecha_solicitada, hora_inicio)
-        fin_dt = datetime.combine(fecha_solicitada, hora_fin)
+        # Usamos un datetime arbitrario para sumar tiempo, solo nos importa la hora resultante
+        iter_dt = datetime.combine(fecha_solicitada, hora_inicio)
+        limit_dt = datetime.combine(fecha_solicitada, hora_fin)
+        delta = timedelta(minutes=duracion_slot)
 
-        # 3. GENERACIÓN DE SLOTS
-        while actual_dt + delta <= fin_dt:
-            inicio_slot = actual_dt
-            fin_slot = actual_dt + delta
+        while iter_dt + delta <= limit_dt:
+            slot_inicio = iter_dt.time()
+            slot_fin = (iter_dt + delta).time()
             
             es_valido = True
 
+            # A. Validar pasado (si es hoy)
             if fecha_solicitada == ahora.date():
-                if inicio_slot.time() < (ahora + timedelta(minutes=15)).time():
-                    es_valido = False 
+                # Margen de 15 min
+                margen = (ahora + timedelta(minutes=15)).time()
+                if slot_inicio < margen:
+                    es_valido = False
 
+            # B. Validar colisión con turnos (Comparación pura de horas)
             if es_valido:
-                for t in turnos_ocupados:
-                    inicio_turno = datetime.combine(t.fecha, t.hora)
-                    duracion_turno = sum(s.duracion for s in t.servicios.all()) or 30
-                    fin_turno = inicio_turno + timedelta(minutes=duracion_turno)
-
-                    if max(inicio_slot, inicio_turno) < min(fin_slot, fin_turno):
+                for ocupado_inicio, ocupado_fin in rangos_ocupados:
+                    # Lógica de solapamiento: (InicioA < FinB) y (FinA > InicioB)
+                    if slot_inicio < ocupado_fin and slot_fin > ocupado_inicio:
                         es_valido = False
                         break
             
             if es_valido:
-                horarios_disponibles.append(actual_dt.strftime("%H:%M"))
+                horarios_disponibles.append(slot_inicio.strftime("%H:%M"))
             
-            actual_dt += delta
+            iter_dt += delta
 
         return Response({'horarios': horarios_disponibles})
 
     except Exception as e:
-        print(f"❌ Error buscando horarios: {e}")
+        print(f"Error horarios: {e}")
         return Response({'error': str(e)}, status=500)
     
 @csrf_exempt
@@ -2140,7 +2137,7 @@ def crear_preferencia_pago_seña(request):
 @csrf_exempt
 def pago_exitoso(request):
     """
-    DESPUÉS DE MERCADO PAGO → REDIRIGIR AL LOGIN CON PARÁMETROS ESPECIALES
+    DESPUÉS DE MERCADO PAGO → REDIRIGIR AL HISTORIAL
     """
     try:
         payment_id = request.GET.get('payment_id')
@@ -2154,13 +2151,9 @@ def pago_exitoso(request):
             pedido.mp_payment_id = payment_id
             pedido.save()
             
-            # 🔴 REDIRIGIR AL LOGIN PARA QUE SE LOGUEE
+            # 🔴 CAMBIO: Redirigir AL DASHBOARD, NO al login
             return redirect(
-                f"http://localhost:5173/login?" +
-                f"post_payment=true&" +
-                f"type=pedido&" +
-                f"id={pedido_id}&" +
-                f"redirect=/cliente/dashboard?ver=pedidos"
+                f"http://localhost:5173/cliente/dashboard?ver=pedidos&pago_exitoso=true"
             )
         
         else:
@@ -2172,18 +2165,15 @@ def pago_exitoso(request):
                 turno.mp_payment_id = payment_id
             turno.save()
             
-            # 🔴 REDIRIGIR AL LOGIN PARA QUE SE LOGUEE
+            # 🔴 CAMBIO: Redirigir AL HISTORIAL, NO al login
             return redirect(
-                f"http://localhost:5173/login?" +
-                f"post_payment=true&" +
-                f"type=turno&" +
-                f"id={turno_id}&" +
-                f"redirect=/cliente/dashboard"
+                f"http://localhost:5173/cliente/historial?pago_exitoso=true&turno_id={turno_id}"
             )
 
     except Exception as e:
         print(f"❌ Error pago_exitoso: {e}")
-        return redirect("http://localhost:5173/login")
+        # Si hay error, igual al historial
+        return redirect("http://localhost:5173/cliente/historial")
     
 @csrf_exempt
 def pago_error(request):
@@ -2684,48 +2674,40 @@ def debug_ventas(request):
     })
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([AllowAny]) 
 def generar_comprobante_pdf(request, venta_id):
-    """
-    Vista para generar y descargar el comprobante PDF de una venta
-    """
     try:
-        print(f"🔍 VISTA: Iniciando generación PDF para venta {venta_id}")
-        
-        # 1. Obtener el objeto Venta y sus detalles
+        # 1. Obtener datos de la venta
         venta = get_object_or_404(Venta, id=venta_id)
         detalles = DetalleVenta.objects.filter(venta=venta)
-        
-        print(f"✅ VISTA: Venta {venta.id} encontrada, {detalles.count()} detalles")
-        
-        # 2. SERIALIZAR LA VENTA (Convertir Objeto -> Diccionario)
-        # Importamos aquí para evitar ciclos si es necesario, o por orden
-        from .serializers import VentaSerializer
         venta_data = VentaSerializer(venta).data
         
-        # 3. Generar el PDF pasando el DICCIONARIO (venta_data) y los detalles
-        from .pdf_utils import generar_comprobante_venta
-        pdf_content = generar_comprobante_venta(venta_data, detalles)
-        
-        if pdf_content:
-            print("✅ VISTA: PDF generado, enviando respuesta")
-            response = HttpResponse(pdf_content, content_type='application/pdf')
-            
-            # Nombre del archivo para descarga
-            filename = f"Comprobante_HairSoft_Venta_{venta.id}.pdf"
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            
-            return response
-        else:
-            print("❌ VISTA: pdf_content es None")
-            return HttpResponse("Error al generar el PDF (contenido vacío)", status=500)
-            
-    except Exception as e:
-        print(f"❌ VISTA: Error: {str(e)}")
-        import traceback
-        print(f"❌ VISTA: Traceback: {traceback.format_exc()}")
-        return HttpResponse(f"Error generando comprobante: {str(e)}", status=500)
+        # 3. DETERMINAR EL NOMBRE DEL EMISOR (LÓGICA CORREGIDA)
+        # Prioridad 1: Lo que manda el Frontend por URL (Ej: ?impreso_por=Lionel Messi)
+        usuario_impresor = request.query_params.get('impreso_por')
 
+        # Prioridad 2: Si por milagro hay usuario autenticado (difícil en PDF/NewTab)
+        if not usuario_impresor and request.user and request.user.is_authenticated:
+            n = getattr(request.user, 'nombre', '')
+            a = getattr(request.user, 'apellido', '')
+            usuario_impresor = f"{n} {a}".strip()
+
+        # Prioridad 3: Fallback si no hay nada
+        if not usuario_impresor:
+            usuario_impresor = "Caja Principal"
+
+        # 4. Generar PDF pasando el usuario forzado
+        pdf_content = generar_comprobante_venta(venta_data, detalles, usuario_impresor)
+        
+        response = HttpResponse(pdf_content, content_type='application/pdf')
+        filename = f"Comprobante_Venta_{venta.id}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+
+    except Exception as e:
+        return HttpResponse(f"Error generando comprobante: {str(e)}", status=500)
+    
 @api_view(['POST'])
 def anular_venta(request, venta_id):
     """
@@ -3747,135 +3729,91 @@ def actualizar_listas_masivo(request):
 @permission_classes([AllowAny])
 def dashboard_data(request):
     try:
-        # 1. SETUP DE FECHAS (FORZANDO ARGENTINA)
+        from django.db.models import Sum, Count, Q, F
+        from .models import Venta, Turno, Producto, DetalleVenta, ConfiguracionSistema
+        
+        # 1. SETUP DE FECHAS
         period = request.GET.get('period', 'semana')
         date_from_str = request.GET.get('date_from')
         date_to_str = request.GET.get('date_to')
-        
-        # "Ahora" en Argentina
         ahora_arg = datetime.now(ARG_TZ)
         hoy_date = ahora_arg.date()
-        
-        start_date = None
-        end_date = None
+        start_date, end_date = None, None
 
-        # A) Rango Personalizado
         if date_from_str and date_to_str:
             try:
-                # Parseamos el string (que viene "naive" sin zona)
                 d_from = datetime.strptime(date_from_str, '%Y-%m-%d').date()
                 d_to = datetime.strptime(date_to_str, '%Y-%m-%d').date()
-                
-                # Convertimos a datetime con la zona horaria correcta (00:00:00 a 23:59:59 AR)
                 start_date = datetime.combine(d_from, time.min).replace(tzinfo=ARG_TZ)
                 end_date = datetime.combine(d_to, time.max).replace(tzinfo=ARG_TZ)
-            except ValueError:
-                pass # Fallback a semana abajo
+            except ValueError: pass
 
-        # B) Rango Predefinido
         if not start_date:
             if period == 'hoy':
                 start_date = datetime.combine(hoy_date, time.min).replace(tzinfo=ARG_TZ)
                 end_date = datetime.combine(hoy_date, time.max).replace(tzinfo=ARG_TZ)
-            
             elif period == 'mes':
                 start_date = datetime.combine(hoy_date.replace(day=1), time.min).replace(tzinfo=ARG_TZ)
                 end_date = datetime.combine(hoy_date, time.max).replace(tzinfo=ARG_TZ)
-            
-            else: # Default: Semana (últimos 7 días)
+            else:
                 start_date_d = hoy_date - timedelta(days=6)
                 start_date = datetime.combine(start_date_d, time.min).replace(tzinfo=ARG_TZ)
                 end_date = datetime.combine(hoy_date, time.max).replace(tzinfo=ARG_TZ)
 
-        # 2. CONSULTAS BASE
-        # Django convertirá automáticamente nuestro rango 'aware' (AR) a UTC para la consulta SQL
+        # 2. CONSULTAS
         ventas_periodo = Venta.objects.filter(fecha__range=(start_date, end_date), anulada=False)
         turnos_periodo = Turno.objects.filter(fecha__range=(start_date, end_date), estado='COMPLETADO')
         
         ingresos_totales = ventas_periodo.aggregate(total=Sum('total'))['total'] or 0
         servicios_realizados = turnos_periodo.count()
-        
-        productos_vendidos = DetalleVenta.objects.filter(
-            venta__in=ventas_periodo,
-            producto__isnull=False
-        ).aggregate(total=Sum('cantidad'))['total'] or 0
+        productos_vendidos = DetalleVenta.objects.filter(venta__in=ventas_periodo, producto__isnull=False).aggregate(total=Sum('cantidad'))['total'] or 0
 
         # 3. GRÁFICO (Evolución diaria)
-        labels_dias = []
-        ventas_por_dia = []
-        
-        # Calcular delta de días usando las fechas base
+        labels_dias, ventas_por_dia = [], []
         delta_days = (end_date.date() - start_date.date()).days
-        if delta_days < 0: delta_days = 0
-        
         for i in range(delta_days + 1):
-            current_loop_date = start_date.date() + timedelta(days=i)
-            
-            # Rango exacto para ESTE día del bucle en Argentina
-            loop_start = datetime.combine(current_loop_date, time.min).replace(tzinfo=ARG_TZ)
-            loop_end = datetime.combine(current_loop_date, time.max).replace(tzinfo=ARG_TZ)
-            
-            # Filtro exacto por rango horario
-            total_dia = Venta.objects.filter(
-                fecha__range=(loop_start, loop_end), 
-                anulada=False
-            ).aggregate(total=Sum('total'))['total'] or 0
-            
-            # Etiquetas
-            nombre_dia = loop_start.strftime('%a')
-            num_dia = loop_start.day
-            traduccion = {'Mon':'Lun', 'Tue':'Mar', 'Wed':'Mié', 'Thu':'Jue', 'Fri':'Vie', 'Sat':'Sáb', 'Sun':'Dom'}
-            nombre_traducido = next((v for k,v in traduccion.items() if k in nombre_dia), nombre_dia)
-            
-            labels_dias.append(f"{nombre_traducido} {num_dia}")
-            ventas_por_dia.append(float(total_dia))
+            curr = start_date.date() + timedelta(days=i)
+            l_s = datetime.combine(curr, time.min).replace(tzinfo=ARG_TZ)
+            l_e = datetime.combine(curr, time.max).replace(tzinfo=ARG_TZ)
+            tot = Venta.objects.filter(fecha__range=(l_s, l_e), anulada=False).aggregate(t=Sum('total'))['t'] or 0
+            labels_dias.append(f"{curr.day}/{curr.month}")
+            ventas_por_dia.append(float(tot))
 
-        # 4. TOP SERVICIOS
-        top_servicios_query = turnos_periodo.values('servicios__nombre').annotate(
-            cantidad=Count('id'),
-            ingresos=Sum('servicios__precio')
-        ).order_by('-cantidad')[:5]
+        # 4. TOPS (Limpios)
+        top_s = turnos_periodo.values('servicios__nombre').annotate(c=Count('id')).order_by('-c')[:5]
+        servicios_top = [{'nombre': s['servicios__nombre'] or 'Sin nombre', 'cantidad': s['c']} for s in top_s]
+        
+        top_p = DetalleVenta.objects.filter(venta__in=ventas_periodo, producto__isnull=False).values('producto__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:5]
+        productos_top = [{'nombre': p['producto__nombre'], 'cantidad': p['c']} for p in top_p]
 
-        servicios_top = [
-            {'nombre': s['servicios__nombre'] or 'Sin nombre', 'cantidad': s['cantidad'], 'ingresos': float(s['ingresos'] or 0)}
-            for s in top_servicios_query
-        ]
+        # 5. CONFIG Y EMISOR (Puntos 1 y 2)
+        config = ConfiguracionSistema.get_solo()
+        if request.user.is_authenticated:
+            # FIX: usamos campos directos de tu modelo Usuario
+            usuario_emisor = f"{request.user.nombre} {request.user.apellido}".strip() or request.user.username
+        else:
+            usuario_emisor = "Anónimo"
 
-        # 5. TOP PRODUCTOS
-        top_productos_query = DetalleVenta.objects.filter(
-            venta__in=ventas_periodo,
-            producto__isnull=False
-        ).values('producto__nombre').annotate(
-            cantidad=Sum('cantidad')
-        ).order_by('-cantidad')[:5]
-
-        productos_top = [
-            {'nombre': p['producto__nombre'], 'cantidad': p['cantidad']}
-            for p in top_productos_query
-        ]
-
-        # 6. STOCK BAJO
-        stock_bajo_count = Producto.objects.filter(
-            Q(stock_actual__lte=F('stock_minimo')) | Q(stock_actual=0)
-        ).count()
-
-        data = {
+        return Response({
             'ingresosTotales': float(ingresos_totales),
             'serviciosRealizados': servicios_realizados,
             'productosVendidos': productos_vendidos,
-            'stockBajoCount': stock_bajo_count,
             'ventasPorDia': ventas_por_dia,
             'labelsDias': labels_dias,
             'serviciosTop': servicios_top,
-            'productosTop': productos_top
-        }
-
-        return Response(data)
-
+            'productosTop': productos_top,
+            'usuario_emisor': usuario_emisor,
+            'empresa': {
+                'razon_social': config.razon_social,
+                'cuil_cuit': config.cuil_cuit,
+                'direccion': config.direccion,
+                'telefono': config.telefono,
+                'email': config.email
+            }
+        })
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print(f"❌ Error Dashboard: {e}")
         return Response({'error': str(e)}, status=500)
 # ================================
 # CONFIGURACIÓN REOFERTA AUTOMÁTICA
@@ -5044,3 +4982,34 @@ def mercadopago_webhook(request):
         print("*****************************************")
         return HttpResponse(status=200)
     return HttpResponse(status=405)
+
+class PaginacionReportesHairSoft(PageNumberPagination):
+    page_size = 15
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        user = self.request.user
+        nombre_emisor = f"{getattr(user, 'nombre', '')} {getattr(user, 'apellido', '')}".strip() or user.username if user.is_authenticated else "Anónimo"
+        
+        # Traemos la config para mandarla en cada reporte
+        config = ConfiguracionSistema.get_solo()
+
+        return Response({
+            'count': self.page.paginator.count,
+            'total_pages': self.page.paginator.num_pages,
+            'current_page': self.page.number,
+            'next': self.get_next_link(),
+            'previous': self.get_previous_link(),
+            'usuario_emisor': nombre_emisor,
+            'fecha_reporte': timezone.now().strftime("%d/%m/%Y %H:%M"),
+            # AGREGAMOS ESTO:
+            'empresa': {
+                'razon_social': config.razon_social,
+                'cuil_cuit': config.cuil_cuit,
+                'direccion': config.direccion,
+                'telefono': config.telefono,
+                'email': config.email
+            },
+            'results': data
+        })

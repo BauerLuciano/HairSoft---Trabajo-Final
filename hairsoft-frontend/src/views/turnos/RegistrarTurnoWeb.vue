@@ -633,9 +633,20 @@ const cargarTurnosOcupados = async (f) => {
   cargandoHorarios.value = true;
   try {
     const res = await api.get(`/api/turnos/?fecha=${f}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO,PAGADO,COMPLETADO`);
-    const turnos = res.data?.results || res.data; const ocupadosSet = new Set();
+    const turnos = res.data?.results || res.data; 
+    const ocupadosSet = new Set();
+    
     turnos.forEach(turno => {
-      if (!turno.hora) return; const [h, m] = turno.hora.split(':').map(Number); const dur = turno.duracion_total || 20; 
+      // 🛑 BLINDAJE FINAL: ACÁ ESTABA EL ERROR 🛑
+      // Si el turno que viene de la API no es EXACTAMENTE de la fecha seleccionada, LO IGNORAMOS.
+      if (turno.fecha !== f) return; 
+
+      if (!turno.hora) return; 
+      const [h, m] = turno.hora.split(':').map(Number); 
+      // Usamos la duración real o 30 por defecto (ajustado a tu backend)
+      const dur = turno.duracion_total || 30; 
+      
+      // Iteramos cada 20 o 30 min según tu lógica de slots
       for (let i = 0; i < dur; i += 20) {
         const tM = (h * 60 + m) + i;
         ocupadosSet.add(`${Math.floor(tM/60).toString().padStart(2,'0')}:${(tM%60).toString().padStart(2,'0')}`);

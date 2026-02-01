@@ -340,7 +340,8 @@ const verDetalles = (turno) => {
 // ✅ FUNCIÓN NUEVA PARA LA ALERTA DE FELICIDADES
 const mostrarAlertaFelicidades = async (turnoId) => {
   try {
-    const res = await api.get(`/turnos/${turnoId}/`);
+    // 🛑 ACÁ ESTABA EL ERROR: Faltaba el "/api" al principio
+    const res = await api.get(`/api/turnos/${turnoId}/`);
     const t = res.data;
     
     Swal.fire({
@@ -362,7 +363,16 @@ const mostrarAlertaFelicidades = async (turnoId) => {
     
     // Limpiamos los parámetros de la URL para que no vuelva a saltar al recargar
     router.replace({ query: {} });
-  } catch (e) { console.error(e); }
+  } catch (e) { 
+    console.error("Error al obtener datos del turno:", e); 
+    // Fallback por si falla la API, para que no quede undefined
+    Swal.fire({
+        title: '¡Turno Confirmado!',
+        text: 'Tu pago se procesó correctamente y el turno ya figura en tu historial.',
+        icon: 'success',
+        confirmButtonColor: '#0ea5e9'
+    });
+  }
 }
 
 onMounted(async () => {
@@ -374,15 +384,17 @@ onMounted(async () => {
       // ✅ ALERTA PARA COMPRA DE PRODUCTOS
       Swal.fire({
         title: '¡Compra Exitosa! 🛍️',
-        text: `Tu pedido #${query.id} ha sido procesado. Podés ver el estado en la pestaña de Pedidos.`,
+        text: `Tu pedido #${query.pedido_id || query.id} ha sido procesado.`,
         icon: 'success',
         confirmButtonColor: '#0ea5e9'
       });
     } else {
-      // ✅ ALERTA PARA TURNOS (la que ya tenías)
-      mostrarAlertaFelicidades(query.id);
+      // ✅ ALERTA PARA TURNOS (CORREGIDO)
+      mostrarAlertaFelicidades(query.turno_id); 
     }
-    router.replace({ query: {} }); // Limpiar URL
+    
+    // Limpiar URL para que no salga el cartel al recargar
+    router.replace({ query: {} }); 
   }
 })
 

@@ -14,9 +14,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-ip8)+yuz^y06zqgl-%w%05^vjroio(3@@4qo(tz_0ssvtpe@3(')
 DEBUG = 'RAILWAY_ENVIRONMENT' not in os.environ
 
-ALLOWED_HOSTS = ['*']
+# Permitimos todo para desarrollo local sin dolores de cabeza
+ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1', '.ngrok-free.dev', '.loca.lt']
 
-FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://brandi-palmar-pickily.ngrok-free.dev')
+# ✅ CORRECCIÓN CRÍTICA: URL DEL FRONTEND LOCAL
+# Esto asegura que al volver de Mercado Pago, el usuario caiga en tu Vue local
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
 
 # ================================
 # APLICACIONES INSTALADAS
@@ -125,7 +128,7 @@ USE_I18N = True
 USE_TZ = True
 
 # ================================
-# ARCHIVOS ESTÁTICOS Y MEDIA (IMÁGENES)
+# ARCHIVOS ESTÁTICOS Y MEDIA
 # ================================
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
@@ -157,7 +160,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8000",
     "https://*.railway.app", 
     "https://*.vercel.app",
-    "https://*.ngrok-free.dev", 
+    "https://*.ngrok-free.dev",
+    "https://*.loca.lt",
 ]
 
 CSRF_USE_SESSIONS = False
@@ -197,44 +201,30 @@ AUTHENTICATION_BACKENDS = [
 
 AUTH_USER_MODEL = 'usuarios.Usuario'
 
-# Configuracion del tunel para mp, cada vez que 
-# ejeuto el comando: npx localtunnel  --port 8000
-# Copiamos la url que nos da y pegamos abajo de esta linea!!!
-
+# ================================
+# MERCADO PAGO - CONF TÚNEL SOLO PARA WEBHOOK
+# ================================
+# URL del túnel (Solo para recibir notificaciones del servidor de MP)
 TUNNEL_URL = "https://hairsoft-pago.loca.lt"
 
-# ================================
-# MERCADO PAGO
-# ================================
 MERCADO_PAGO = {
     'ACCESS_TOKEN': os.environ.get('MP_ACCESS_TOKEN', 'APP_USR-7404896415144376-102322-584184e7db9ca5b628be4d7e21763ae3-2943677918'),
     'PUBLIC_KEY': os.environ.get('MP_PUBLIC_KEY', 'APP_USR-4e145215-f26e-4c2d-8be7-a557300a9154'),
     
-    # URL del Webhook (El túnel)
+    # URL del Webhook (El túnel es necesario aquí)
     'WEBHOOK_URL': f"{TUNNEL_URL}/api/mercadopago/webhook/",
     
-    # ✅ REDIRECCIÓN VÍA TÚNEL (Para que MP acepte el HTTPS y no tire error 400)
-    'BACK_URLS': {
-        'success': f"{TUNNEL_URL}/api/mercadopago/pago-exitoso/",
-        'failure': f"{TUNNEL_URL}/api/mercadopago/pago-error/",
-        'pending': f"{TUNNEL_URL}/api/mercadopago/pago-pendiente/"
-    },
-    'AUTO_RETURN': 'approved',
+    # LAS BACK_URLS SE DEFINEN DINÁMICAMENTE EN EL SERVICIO USANDO FRONTEND_URL
+    # PERO DEJAMOS ESTO POR SI ACASO ALGUNA VISTA VIEJA LO USA
+    #'BACK_URLS': {
+    #    'success': f"{FRONTEND_URL}/cliente/historial",
+    #    'failure': f"{FRONTEND_URL}/reserva",
+    #    'pending': f"{FRONTEND_URL}/reserva"
+    #'AUTO_RETURN': 'approved',
     'BINARY_MODE': True,
     'SANDBOX': True
 }
 
-ALLOWED_HOSTS = ['*', '.loca.lt', 'localhost', '127.0.0.1']
-
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173", 
-    "http://localhost:8000",
-    "https://*.railway.app", 
-    "https://*.vercel.app",
-    "https://*.ngrok-free.dev",
-    "https://*.loca.lt", 
-]
 # ================================
 # REST FRAMEWORK
 # ================================
@@ -251,7 +241,7 @@ REST_FRAMEWORK = {
 }
 
 # ================================
-# CELERY & REDIS (CONFIGURACIÓN HÍBRIDA)
+# CELERY & REDIS
 # ================================
 if 'REDIS_URL' in os.environ:
     CELERY_BROKER_URL = os.environ.get('REDIS_URL')
@@ -284,4 +274,3 @@ EMAIL_FAIL_SILENTLY = False
 TWILIO_ACCOUNT_SID = 'ACb3de53c73913d7ec07a5c253ab2ca97f'
 TWILIO_AUTH_TOKEN = '0f70fae6755002f66c23c4a50aff0400'
 TWILIO_WHATSAPP_NUMBER = 'whatsapp:+14155238886'
-

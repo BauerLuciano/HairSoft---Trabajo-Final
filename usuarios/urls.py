@@ -72,7 +72,7 @@ urlpatterns = [
     # ==============================
     # 🚨 ADMIN DE DJANGO (AGREGADO)
     # ==============================
-    path('admin/', admin.site.urls), # ✅ NUEVO: Habilita la ruta /admin
+    #path('admin/', admin.site.urls), # ✅ NUEVO: Habilita la ruta /admin
 
     # ==============================
     # Autenticación y Perfil
@@ -285,7 +285,7 @@ urlpatterns = [
     path('api/liquidaciones/historial/', HistorialLiquidacionesView.as_view(), name='historial_pagos'),
 
     # API ROUTER (Al final) - Incluye Auditoría y Pedidos Web
-    path('api/', include(router.urls)),
+    #path('api/', include(router.urls)),
 
     #Tunel MP
     path('mercadopago/webhook/', func_views.mercadopago_webhook, name='mercadopago_webhook'),

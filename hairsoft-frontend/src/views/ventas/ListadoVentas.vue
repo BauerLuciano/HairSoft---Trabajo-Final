@@ -6,10 +6,18 @@
           <h1>Gestión de ventas</h1>
           <p>Historial y administración de transacciones</p>
         </div>
-        <button @click="mostrarRegistrar = true" class="register-button">
-          <Plus :size="18" />
-          Registrar Venta
-        </button>
+        
+        <div style="display: flex; gap: 10px;">
+          <button @click="generarReporteListado" class="register-button" style="background-color: #7c3aed;" :disabled="loadingPdf">
+            <FileText :size="18" />
+            {{ loadingPdf ? 'Generando...' : 'Exportar Listado' }}
+          </button>
+
+          <button @click="mostrarRegistrar = true" class="register-button">
+            <Plus :size="18" />
+            Registrar Venta
+          </button>
+        </div>
       </div>
 
       <div class="filters-container">
@@ -80,7 +88,6 @@
               <th style="width: 140px;">Fecha</th>
               <th>Cliente</th>
               <th>Usuario</th>
-              <th style="width: 80px;">ID</th>
               <th>Total</th>
               <th>Método Pago</th>
               <th>Tipo</th>
@@ -101,8 +108,6 @@
               <td><strong>{{ venta.cliente_nombre || 'Venta Rápida' }}</strong></td>
               
               <td class="usuario-cell">{{ venta.usuario_nombre || '–' }}</td>
-              
-              <td class="id-cell">#{{ venta.id }}</td>
               
               <td class="total-cell">${{ formatPrecio(venta.total) }}</td>
               
@@ -228,23 +233,66 @@
         />
       </div>
     </div>
+
+    <div id="print-template" style="display: none; width: 850px; background: white; color: #1e293b; padding: 40px; font-family: Arial, sans-serif;">
+      
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 20px; margin-bottom: 30px;">
+        
+        <div style="display: flex; gap: 15px; align-items: flex-start;">
+          <div class="pdf-logo-box" style="width: 70px; height: 70px; border-radius: 50%; border: 3px solid #ef4444; padding: 3px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <img :src="logoUrl" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" crossorigin="anonymous" />
+          </div>
+          <div style="text-align: left; font-size: 11px; color: #334155; line-height: 1.6;">
+            <p style="margin: 0; font-weight: bold; color: #0f172a; text-transform: uppercase;">
+              Razón Social: {{ empresaData?.razon_social || 'Los Últimos Serán Los Primeros' }}
+            </p>
+            <p style="margin: 0;"><strong>CUIT:</strong> {{ empresaData?.cuil_cuit || '27-23456789-3' }}</p>
+            <p style="margin: 0;"><strong>Dirección:</strong> {{ empresaData?.direccion || 'Avenida Libertador 600, San Vicente - Misiones' }}</p>
+            <p style="margin: 0;"><strong>Teléfono:</strong> {{ empresaData?.telefono || '3755 67-2716' }}</p>
+          </div>
+        </div>
+
+        <div style="text-align: right;">
+          <h2 style="margin: 0 0 10px 0; font-size: 16px; color: #1e293b; text-transform: uppercase;">Reporte de Ventas</h2>
+          <div style="margin-bottom: 10px;">
+            <p style="margin: 0; font-size: 10px; color: #64748b; text-transform: uppercase;">Estado del Listado</p>
+          </div>
+          <p style="margin: 0; font-size: 10px; color: #94a3b8;">
+            Emisor: <strong>{{ usuarioEmisor || 'Admin' }}</strong>
+          </p>
+          <p style="margin: 2px 0 0; font-size: 10px; color: #94a3b8;">
+            Fecha: {{ new Date().toLocaleDateString('es-AR') }}
+          </p>
+        </div>
+      </div>
+
+      <div id="pdf-table-container">
+          </div>
+      
+      <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center;">
+        <p style="margin: 0; font-size: 10px; color: #64748b;">HairSoft - Sistema de Gestión Integral</p>
+      </div>
+
+    </div>
+
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from '@/utils/axiosConfig' 
 import Swal from 'sweetalert2'
+import jsPDF from 'jspdf'
 import RegistrarVenta from './RegistrarVenta.vue'
 import ModificarVenta from './ModificarVenta.vue'
-// 🔥 ÍCONOS AGREGADOS (CreditCard, Banknote, Smartphone, etc.)
 import { 
   Plus, Trash2, Edit3, Eye, FileText, Loader, Package, PackageX,
   ChevronLeft, ChevronRight, RefreshCw, AlertTriangle, CheckCircle,
   CreditCard, Banknote, Smartphone, ArrowRightLeft, HelpCircle
 } from 'lucide-vue-next'
 
+const logoUrl = '/logo_barberia.jpg'
 const router = useRouter()
 const ventas = ref([])
 const filtros = ref({ busqueda: '', fechaDesde: '', fechaHasta: '', metodoPago: '', tipo: '', estado: '' })
@@ -257,6 +305,87 @@ const cargando = ref(false)
 const generandoPDF = ref(null)
 const ventaRecienCreada = ref(null)
 
+// Variables para el Reporte
+const loadingPdf = ref(false)
+const usuarioEmisor = ref('')
+const empresaData = ref({
+    razon_social: "Los Últimos Serán Los Primeros",
+    cuil_cuit: "27-23456789-3",
+    direccion: "Avenida Libertador 600, San Vicente - Misiones",
+    telefono: "3755 67-2716"
+})
+
+// =========================================================================
+// 🕵️‍♂️ FUNCIÓN DE DETECCIÓN DE USUARIO (VERSIÓN INTELIGENTE)
+// =========================================================================
+const obtenerUsuarioLogueado = () => {
+  try {
+    let n = '';
+    let a = '';
+
+    // 1. BÚSQUEDA DIRECTA (Prioridad Alta)
+    if (localStorage.getItem('user_nombre')) n = localStorage.getItem('user_nombre');
+    if (localStorage.getItem('user_apellido')) a = localStorage.getItem('user_apellido');
+
+    // 2. BÚSQUEDA PROFUNDA EN JSON (Si falta algún dato)
+    if (!n || !a) {
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            const val = localStorage.getItem(key);
+            
+            // Si parece un JSON y la clave suena a usuario/auth
+            if (val && val.startsWith('{') && (key.includes('user') || key.includes('auth') || key.includes('session'))) {
+                try {
+                    const obj = JSON.parse(val);
+                    
+                    // Buscar Nombre
+                    if (!n) n = obj.nombre || obj.first_name || obj.name || obj.username || '';
+                    
+                    // Buscar Apellido (Español e Inglés)
+                    if (!a) a = obj.apellido || obj.last_name || obj.surname || '';
+                    
+                    // Si encontramos ambos, cortamos el bucle
+                    if (n && a) break;
+                } catch (e) {}
+            }
+        }
+    }
+
+    // 3. INTELIGENCIA DE TEXTO (CORRECCIÓN AUTOMÁTICA)
+    // Si tenemos nombre "Lionel Messi" pero el apellido está vacío, lo separamos.
+    if (n && !a && n.trim().includes(' ')) {
+        const partes = n.trim().split(/\s+/); // Divide por espacios
+        if (partes.length >= 2) {
+            // Asumimos: Primera palabra = Nombre, Resto = Apellido
+            n = partes[0]; 
+            a = partes.slice(1).join(' ');
+        }
+    }
+
+    // Limpiar "null" o "undefined" que a veces quedan como texto
+    n = (n || '').replace(/null|undefined/gi, '').trim();
+    a = (a || '').replace(/null|undefined/gi, '').trim();
+
+    // 4. SETEAR RESULTADO
+    if (n || a) {
+        // Capitalizar primera letra (Estética)
+        const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+        const nCap = n ? capitalize(n) : '';
+        const aCap = a ? capitalize(a) : '';
+        
+        usuarioEmisor.value = `${nCap} ${aCap}`.trim();
+    } else {
+        usuarioEmisor.value = 'Administrador';
+    }
+
+    console.log("👤 Usuario detectado para impresión:", usuarioEmisor.value);
+
+  } catch (error) {
+    console.error('Error recuperando usuario:', error);
+    usuarioEmisor.value = 'Administrador';
+  }
+}
+
 const cargarVentas = async () => {
   cargando.value = true
   try {
@@ -267,6 +396,12 @@ const cargarVentas = async () => {
     } else {
       ventas.value = []
     }
+    
+    // Si la API devuelve info de empresa, la tomamos
+    if (res.data.empresa) {
+      empresaData.value = { ...empresaData.value, ...res.data.empresa }
+    }
+
   } catch (err) {
     console.error('❌ Error cargando ventas:', err)
   } finally {
@@ -274,7 +409,10 @@ const cargarVentas = async () => {
   }
 }
 
-onMounted(() => cargarVentas())
+onMounted(() => {
+  obtenerUsuarioLogueado() 
+  cargarVentas()
+})
 
 const ventasFiltradas = computed(() => {
   const busca = filtros.value.busqueda.toLowerCase()
@@ -322,10 +460,133 @@ const anularVenta = async (venta) => {
 const generarComprobantePDF = (venta) => {
   generandoPDF.value = venta.id
   const baseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+  
+  // Refrescar usuario por seguridad
+  obtenerUsuarioLogueado();
+  
+  // Obtener nombre o fallback
+  const quienImprime = usuarioEmisor.value || 'Caja Principal';
+  
+  // Codificar URL
+  const quienImprimeEncoded = encodeURIComponent(quienImprime);
+
   setTimeout(() => {
-      window.open(`${baseUrl}/api/ventas/${venta.id}/comprobante-pdf/`, '_blank')
+      // Abrir PDF enviando el nombre completo
+      window.open(`${baseUrl}/api/ventas/${venta.id}/comprobante-pdf/?impreso_por=${quienImprimeEncoded}`, '_blank')
       generandoPDF.value = null
   }, 500)
+}
+
+// =========================================================================
+// GENERACIÓN DE REPORTE LISTADO (JS PDF)
+// =========================================================================
+const generarReporteListado = async () => {
+    loadingPdf.value = true;
+    try {
+        obtenerUsuarioLogueado();
+        await nextTick();
+        
+        const doc = new jsPDF('p', 'mm', 'a4');
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        
+        const marginLeft = 10;
+        const marginRight = 10;
+        let yPos = 15;
+        
+        // Header
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.setTextColor(15, 23, 42);
+        doc.text("REPORTE DE VENTAS", pageWidth / 2, yPos, { align: 'center' });
+        yPos += 10;
+        
+        // Info empresa
+        doc.setFontSize(9);
+        doc.text(empresaData.value.razon_social, marginLeft, yPos);
+        doc.text(`CUIT: ${empresaData.value.cuil_cuit}`, marginLeft, yPos + 4);
+        doc.text(`Dirección: ${empresaData.value.direccion}`, marginLeft, yPos + 8);
+        doc.text(`Teléfono: ${empresaData.value.telefono}`, marginLeft, yPos + 12);
+        
+        // Info reporte
+        const infoX = pageWidth - marginRight - 60;
+        const nombreEmisor = usuarioEmisor.value || 'Administrador';
+        
+        doc.text(`Emisor: ${nombreEmisor}`, infoX, yPos);
+        doc.text(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, infoX, yPos + 4);
+        doc.text(`Total Ventas: ${ventasFiltradas.value.length}`, infoX, yPos + 8);
+        
+        yPos += 20;
+        
+        // Tabla Header
+        doc.setFillColor(15, 23, 42);
+        doc.rect(marginLeft, yPos, pageWidth - marginLeft - marginRight, 8, 'F');
+        doc.setFontSize(10);
+        doc.setTextColor(255, 255, 255);
+        doc.text("FECHA", marginLeft + 2, yPos + 6);
+        doc.text("CLIENTE", marginLeft + 30, yPos + 6);
+        doc.text("TIPO", marginLeft + 80, yPos + 6);
+        doc.text("PAGO", marginLeft + 105, yPos + 6);
+        doc.text("TOTAL", pageWidth - marginRight - 2, yPos + 6, { align: 'right' });
+        
+        yPos += 15;
+        
+        // Tabla Body
+        const itemsPerPage = 20;
+        const totalItems = ventasFiltradas.value.length;
+        const totalPages = Math.ceil(totalItems / itemsPerPage);
+        
+        for (let pageNum = 0; pageNum < totalPages; pageNum++) {
+            if (pageNum > 0) {
+                doc.addPage();
+                yPos = 20;
+            }
+            
+            const pageItems = ventasFiltradas.value.slice(pageNum * itemsPerPage, (pageNum + 1) * itemsPerPage);
+            
+            doc.setFontSize(9);
+            doc.setTextColor(0, 0, 0);
+            doc.setFont("helvetica", "normal");
+            
+            pageItems.forEach((venta, index) => {
+                const rowY = yPos + (index * 8);
+                if (index % 2 === 1) {
+                    doc.setFillColor(245, 247, 250);
+                    doc.rect(marginLeft, rowY - 6, pageWidth - marginLeft - marginRight, 8, 'F');
+                }
+                
+                const fecha = venta.fecha ? new Date(venta.fecha).toLocaleDateString('es-AR') : '-';
+                doc.text(fecha, marginLeft + 2, rowY);
+                
+                const cliente = venta.cliente_nombre ? venta.cliente_nombre.substring(0, 25) : 'Consumidor Final';
+                doc.text(cliente, marginLeft + 30, rowY);
+                
+                doc.text(venta.tipo || '-', marginLeft + 80, rowY);
+                
+                const pago = venta.medio_pago_nombre ? venta.medio_pago_nombre.substring(0, 15) : '-';
+                doc.text(pago, marginLeft + 105, rowY);
+                
+                doc.setFont("helvetica", "bold");
+                doc.text(`$${formatPrecio(venta.total)}`, pageWidth - marginRight - 2, rowY, { align: 'right' });
+                doc.setFont("helvetica", "normal");
+            });
+            
+            yPos += (pageItems.length * 8) + 10;
+            
+            // Footer Paginación
+            doc.setFontSize(8);
+            doc.setTextColor(100, 100, 100);
+            doc.text(`Página ${pageNum + 1} de ${totalPages}`, pageWidth - marginRight - 2, pageHeight - 10, { align: 'right' });
+        }
+        
+        doc.save(`Listado_Ventas_${new Date().toISOString().slice(0,10)}.pdf`);
+        
+    } catch (error) {
+        console.error("Error generando PDF:", error);
+        Swal.fire("Error", "No se pudo generar el reporte.", "error");
+    } finally {
+        loadingPdf.value = false;
+    }
 }
 
 const cerrarModal = () => { mostrarRegistrar.value = false }
@@ -343,29 +604,15 @@ const formatFechaDia = (f) => f ? new Date(f).toLocaleDateString('es-AR', {day: 
 const formatFechaHora = (f) => f ? new Date(f).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : ''
 const formatPrecio = (p) => p ? parseFloat(p).toLocaleString('es-AR', { minimumFractionDigits: 2 }) : '0.00'
 
-// 🔥 Lógica Inteligente para detectar el tipo de pago y asignar estilo + icono
 const getMedioPagoInfo = (venta) => {
-    // Obtenemos el TIPO (ej: 'EFECTIVO', 'TARJETA') o el NOMBRE si el tipo no está claro
-    const tipo = (venta.medio_pago_tipo || '').toUpperCase();
-    const nombre = (venta.medio_pago_nombre || '').toUpperCase();
-    
-    // Prioridad 1: Detectar por TIPO (más seguro)
-    if (tipo === 'EFECTIVO' || nombre.includes('EFECTIVO')) {
-        return { clase: 'pago-efectivo', icono: Banknote };
-    }
-    if (tipo === 'TARJETA' || nombre.includes('TARJETA') || nombre.includes('DEBITO') || nombre.includes('CREDITO')) {
-        return { clase: 'pago-tarjeta', icono: CreditCard };
-    }
-    if (tipo === 'TRANSFERENCIA' || nombre.includes('TRANSF')) {
-        return { clase: 'pago-transferencia', icono: ArrowRightLeft };
-    }
-    if (tipo === 'MERCADO_PAGO' || nombre.includes('MERCADO')) {
-        return { clase: 'pago-mp', icono: Smartphone };
-    }
-
-    // Default
-    return { clase: 'pago-otro', icono: HelpCircle };
-};
+    const tipo = (venta.medio_pago_tipo || '').toUpperCase()
+    const nombre = (venta.medio_pago_nombre || '').toUpperCase()
+    if (tipo === 'EFECTIVO' || nombre.includes('EFECTIVO')) return { clase: 'pago-efectivo', icono: Banknote }
+    if (tipo === 'TARJETA' || nombre.includes('TARJETA') || nombre.includes('DEBITO') || nombre.includes('CREDITO')) return { clase: 'pago-tarjeta', icono: CreditCard }
+    if (tipo === 'TRANSFERENCIA' || nombre.includes('TRANSF')) return { clase: 'pago-transferencia', icono: ArrowRightLeft }
+    if (tipo === 'MERCADO_PAGO' || nombre.includes('MERCADO')) return { clase: 'pago-mp', icono: Smartphone }
+    return { clase: 'pago-otro', icono: HelpCircle }
+}
 
 const getClaseTipoVenta = (t) => t === 'TURNO' ? 'tipo-turno' : 'tipo-prod'
 const getClaseEstadoVenta = (anulada) => anulada ? 'estado-anulada' : 'estado-activa'

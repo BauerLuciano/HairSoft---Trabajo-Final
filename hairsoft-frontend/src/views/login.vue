@@ -202,6 +202,7 @@ const handleLogin = async () => {
       localStorage.setItem('user_id', response.data.user_id);
       localStorage.setItem('user_rol', response.data.rol);
       localStorage.setItem('user_nombre', response.data.nombre);
+      localStorage.setItem('user_apellido', response.data.apellido || '');
       
       // 🔥 MARCAR COMO "LOGIN FRESCO" (para ofertas)
       localStorage.setItem('login_fresh', 'true');
