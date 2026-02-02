@@ -1189,6 +1189,7 @@ class ConfiguracionReoferta(models.Model):
         return config
 
 # Pedidos del cliente via web!
+from django.db import models
 
 class PedidoWeb(models.Model):
     # Opciones de Estado del Pedido
@@ -1221,36 +1222,34 @@ class PedidoWeb(models.Model):
         (ENTREGA_CORREO, 'Envío Correo (Nacional)'),
     ]
 
-    cliente = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='pedidos_web')
+    cliente = models.ForeignKey('Usuario', on_delete=models.CASCADE, related_name='pedidos_web')
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
     
     estado = models.CharField(max_length=20, choices=ESTADOS_CHOICES, default=ESTADO_PENDIENTE_PAGO)
     tipo_entrega = models.CharField(max_length=20, choices=ENTREGA_CHOICES, default=ENTREGA_RETIRO)
     
-    # Datos para el envío
     direccion_envio = models.TextField(null=True, blank=True, help_text="Dirección completa si es envío")
     costo_envio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
-    # MercadoPago
     mp_payment_id = models.CharField(max_length=100, null=True, blank=True, help_text="ID de pago de MercadoPago")
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Total productos + envío")
 
+    # ✅ Campo para trazabilidad de la moto
+    datos_entrega_interna = models.CharField(max_length=255, null=True, blank=True, help_text="Nombre del cadete")
+
     def __str__(self):
-        return f"Pedido Web #{self.id} - {self.cliente.username} - {self.get_estado_display()}"
+        return f"Pedido Web #{self.id} - {self.cliente.username}"
 
     def calcular_total(self):
-        # Suma los subtotales de los detalles + costo de envío
-        total_productos = sum(item.subtotal for item in self.detalles.all())
+        total_productos = sum(item.cantidad * item.precio_unitario for item in self.detalles.all())
         self.total = total_productos + self.costo_envio
         self.save()
-
 
 class DetallePedidoWeb(models.Model):
     pedido = models.ForeignKey(PedidoWeb, on_delete=models.CASCADE, related_name='detalles')
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT) 
     cantidad = models.PositiveIntegerField(default=1)
-    # Guardamos el precio al momento de la compra por si después aumenta el producto
     precio_unitario = models.DecimalField(max_digits=10, decimal_places=2)
 
     class Meta:
@@ -1259,11 +1258,8 @@ class DetallePedidoWeb(models.Model):
 
     @property
     def subtotal(self):
-        return self.cantidad * self.precio_unitario
-
-    def __str__(self):
-        return f"{self.cantidad} x {self.producto.nombre}"
-    
+        return self.cantidad * self.precio_unitario  
+     
 # ==============================================================================
 # MÓDULO INTELIGENTE: REABASTECIMIENTO AUTOMÁTICO (PROVEEDORES)
 # ==============================================================================
@@ -1421,8 +1417,6 @@ class Liquidacion(models.Model):
         return f"Pago a {self.empleado} - ${self.total_pagado} ({self.fecha_pago.date()})"
 
 # para reportes!
-
-# usuarios/models.py
 
 class ConfiguracionSistema(models.Model):
     # Datos Fijos de la Empresa (CORREGIDOS)

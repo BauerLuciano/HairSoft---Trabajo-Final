@@ -33,16 +33,6 @@
                 </div>
                 <div class="card-price">$1.500</div>
               </label>
-
-              <label class="delivery-card" :class="{ active: tipoEntrega === 'CORREO' }">
-                <input type="radio" v-model="tipoEntrega" value="CORREO" hidden>
-                <div class="card-icon">📦</div>
-                <div class="card-content">
-                  <span class="card-title">Correo Argentino</span>
-                  <span class="card-desc">Envío a todo el país.</span>
-                </div>
-                <div class="card-price">$8.000</div>
-              </label>
             </div>
           </section>
 
@@ -51,11 +41,11 @@
             <div class="form-grid">
               <div class="form-group full-width">
                 <label>Dirección Completa</label>
-                <input v-model="direccion" type="text" placeholder="Calle, número, piso..." class="modern-input">
+                <input v-model="direccion" type="text" placeholder="Calle, número, piso, depto..." class="modern-input">
               </div>
               <div class="form-group full-width">
-                <label>Referencia</label>
-                <textarea v-model="referencia" placeholder="Portón negro, dejar en recepción..." class="modern-textarea"></textarea>
+                <label>Observaciones / Referencias</label>
+                <textarea v-model="referencia" placeholder="Ej: Portón negro, timbre roto, dejar en recepción..." class="modern-textarea"></textarea>
               </div>
             </div>
           </section>
@@ -96,13 +86,10 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useCartStore } from '@/stores/cart';
-import api from '@/services/api'; // ✅ Usamos tu conexión inteligente
-import { useRouter } from 'vue-router';
+import api from '@/services/api';
 import Swal from 'sweetalert2';
 
 const cartStore = useCartStore();
-const router = useRouter();
-
 const tipoEntrega = ref('RETIRO');
 const direccion = ref('');
 const referencia = ref('');
@@ -116,35 +103,32 @@ const costoEnvio = computed(() => {
 
 const totalFinal = computed(() => cartStore.precioTotal + costoEnvio.value);
 
-// Checkout.vue -> Función procesarPedido corregida
-
 const procesarPedido = async () => {
   if (cartStore.items.length === 0) return;
   
   if (tipoEntrega.value !== 'RETIRO' && !direccion.value.trim()) {
-    Swal.fire({ title: 'Atención', text: "Por favor ingresa una dirección de envío.", icon: 'warning' });
+    Swal.fire({ title: 'Atención', text: "Por favor ingresa una dirección para el envío.", icon: 'warning', background: '#fff', color: '#000' });
     return;
   }
 
   procesando.value = true;
 
   try {
+    const direccionFinal = tipoEntrega.value === 'RETIRO' 
+      ? 'Retiro en Local' 
+      : `${direccion.value.trim()} | Obs: ${referencia.value.trim() || 'Sin observaciones'}`;
+
     const payload = {
       tipo_entrega: tipoEntrega.value,
       costo_envio: costoEnvio.value,
-      direccion_envio: tipoEntrega.value !== 'RETIRO' ? `${direccion.value} (${referencia.value})` : 'Retiro en local',
+      direccion_envio: direccionFinal,
       detalles: cartStore.items.map(item => ({ producto: item.id, cantidad: item.cantidad }))
     };
 
-    // 1. Creamos el pedido en el Back (Nace como PENDIENTE_PAGO)
-    const response = await api.post('/pedidos-web/', payload);
+    const response = await api.post('/web/pedidos/', payload);
 
     if (response.data.url_pago) {
-        // 2. Limpiamos el carrito (ya está guardado en la DB del Back)
         cartStore.limpiarCarrito(); 
-        
-        // 3. REDIRECCIÓN DIRECTA A MERCADO PAGO
-        // El Back se encargará de mandarnos al listado de pedidos al volver
         window.location.href = response.data.url_pago;
     } else {
         throw new Error("No se recibió el link de pago.");
@@ -154,7 +138,7 @@ const procesarPedido = async () => {
     console.error("Error checkout:", error);
     Swal.fire({ 
       title: 'Error', 
-      text: error.response?.data?.message || "No se pudo procesar la compra.", 
+      text: error.response?.data?.message || "No se pudo procesar la compra. Reintente en unos minutos.", 
       icon: 'error' 
     });
   } finally {
@@ -164,11 +148,14 @@ const procesarPedido = async () => {
 </script>
 
 <style scoped>
+/* ========================================
+   🎨 VARIABLES Y BASE
+   ======================================== */
 .checkout-page {
-  background-color: #f8fafc;
+  background: linear-gradient(to bottom, #f8fafc 0%, #f1f5f9 100%);
   min-height: 100vh;
-  padding: 40px 20px;
-  font-family: 'Segoe UI', sans-serif;
+  padding: 50px 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
 }
 
 .checkout-container {
@@ -176,303 +163,464 @@ const procesarPedido = async () => {
   margin: 0 auto;
 }
 
+/* ========================================
+   📋 HEADER
+   ======================================== */
 .page-header {
-  margin-bottom: 40px;
+  margin-bottom: 50px;
   text-align: center;
 }
 
 .page-header h1 {
-  font-size: 2.5rem;
-  color: #1e293b;
-  margin-bottom: 10px;
+  font-size: 2.75rem;
+  color: #0f172a;
+  margin-bottom: 12px;
   font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .page-header p {
+  font-size: 1.125rem;
   color: #64748b;
-  font-size: 1.1rem;
+  font-weight: 400;
+  letter-spacing: 0.01em;
 }
 
+/* ========================================
+   📐 GRID LAYOUT
+   ======================================== */
 .checkout-grid {
   display: grid;
-  grid-template-columns: 1.5fr 1fr; /* Columna izquierda más ancha */
+  grid-template-columns: 1.5fr 1fr;
   gap: 40px;
   align-items: start;
 }
 
-/* Columna de Formularios */
-.form-column {
-  display: flex;
-  flex-direction: column;
-  gap: 30px;
+@media (max-width: 968px) {
+  .checkout-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
+/* ========================================
+   📦 SECCIONES
+   ======================================== */
 .checkout-section {
   background: white;
-  padding: 30px;
-  border-radius: 16px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  padding: 35px;
+  border-radius: 20px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.05);
   border: 1px solid #e2e8f0;
+  margin-bottom: 24px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.checkout-section:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 20px 25px -5px rgba(0, 0, 0, 0.08);
 }
 
 .section-title {
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   color: #0f172a;
-  margin-bottom: 25px;
+  margin-bottom: 28px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .step-number {
-  background: #0ea5e9;
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
   color: white;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 700;
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
 }
 
-/* Tarjetas de Envío */
+/* ========================================
+   🚚 DELIVERY CARDS
+   ======================================== */
 .delivery-cards {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 16px;
 }
 
 .delivery-card {
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 20px;
+  padding: 22px;
   border: 2px solid #e2e8f0;
-  border-radius: 12px;
+  border-radius: 14px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  background: #fafafa;
 }
 
 .delivery-card:hover {
   border-color: #cbd5e1;
-  background-color: #f8fafc;
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
 .delivery-card.active {
   border-color: #0ea5e9;
-  background-color: #f0f9ff;
-  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.1);
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  box-shadow: 0 8px 16px rgba(14, 165, 233, 0.15);
+  transform: translateX(0);
 }
 
-.card-icon {
-  font-size: 1.8rem;
-  background: white;
-  width: 50px;
-  height: 50px;
+.delivery-card.active::before {
+  content: '✓';
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  background: #0ea5e9;
+  color: white;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.card-icon {
+  font-size: 2.5rem;
+  line-height: 1;
+  filter: grayscale(0.3);
+  transition: filter 0.2s ease;
+}
+
+.delivery-card.active .card-icon {
+  filter: grayscale(0);
 }
 
 .card-content {
   flex: 1;
   display: flex;
   flex-direction: column;
+  gap: 6px;
 }
 
 .card-title {
   font-weight: 700;
   color: #1e293b;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
+  letter-spacing: -0.01em;
 }
 
 .card-desc {
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   color: #64748b;
-  margin-top: 4px;
+  font-weight: 400;
 }
 
 .card-price {
   font-weight: 700;
-  font-size: 1.1rem;
   color: #0f172a;
+  font-size: 1.25rem;
+  padding: 8px 16px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
 }
 
 .card-price.free {
-  color: #10b981;
+  color: #059669;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
 }
 
-/* Inputs */
+/* ========================================
+   📝 FORMULARIOS
+   ======================================== */
 .form-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 20px;
 }
 
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group.full-width {
+  grid-column: 1 / -1;
+}
+
 .form-group label {
-  display: block;
   margin-bottom: 8px;
-  font-weight: 600;
   color: #334155;
+  font-weight: 600;
   font-size: 0.95rem;
+  letter-spacing: 0.01em;
 }
 
-.modern-input, .modern-textarea {
+.modern-input,
+.modern-textarea {
   width: 100%;
-  padding: 14px;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
+  padding: 15px 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  background-color: #fafafa;
   font-size: 1rem;
-  color: #1e293b;
-  transition: border-color 0.2s;
-  background-color: #f8fafc;
+  color: #0f172a;
+  font-family: inherit;
+  transition: all 0.2s ease;
 }
 
-.modern-input:focus, .modern-textarea:focus {
+.modern-input:hover,
+.modern-textarea:hover {
+  border-color: #cbd5e1;
+  background-color: white;
+}
+
+.modern-input:focus,
+.modern-textarea:focus {
   outline: none;
   border-color: #0ea5e9;
   background-color: white;
-  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.1);
 }
 
 .modern-textarea {
   resize: vertical;
   min-height: 100px;
+  font-family: inherit;
 }
 
-/* Resumen (Columna Derecha) */
+/* ========================================
+   💳 SUMMARY CARD
+   ======================================== */
 .summary-column {
-  position: sticky;
-  top: 20px;
+  position: relative;
 }
 
 .summary-card {
   background: white;
-  padding: 30px;
-  border-radius: 16px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  padding: 35px;
+  border-radius: 20px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 20px 25px -5px rgba(0, 0, 0, 0.08);
   border: 1px solid #e2e8f0;
+  position: sticky;
+  top: 30px;
 }
 
 .summary-card h3 {
-  margin: 0 0 20px 0;
-  font-size: 1.3rem;
+  font-size: 1.5rem;
   color: #0f172a;
-  border-bottom: 1px solid #f1f5f9;
-  padding-bottom: 15px;
+  margin-bottom: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .summary-items-list {
-  max-height: 300px;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   margin-bottom: 20px;
-  padding-right: 5px;
 }
 
 .summary-item {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 15px;
-  font-size: 0.95rem;
+  align-items: center;
+  padding: 14px;
+  background: #f8fafc;
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+
+.summary-item:hover {
+  background: #f1f5f9;
 }
 
 .item-info {
   display: flex;
-  gap: 8px;
-  color: #334155;
+  align-items: center;
+  gap: 12px;
 }
 
 .item-qty {
+  background: #0ea5e9;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 6px;
   font-weight: 700;
-  color: #0ea5e9;
+  font-size: 0.9rem;
+}
+
+.item-name {
+  color: #334155;
+  font-weight: 500;
+  font-size: 1rem;
 }
 
 .item-price {
-  font-weight: 600;
-  color: #1e293b;
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 1.05rem;
 }
 
 .divider {
   height: 1px;
-  background-color: #e2e8f0;
-  margin: 20px 0;
+  background: linear-gradient(to right, transparent, #e2e8f0, transparent);
+  margin: 24px 0;
 }
 
 .summary-totals {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .total-row {
   display: flex;
   justify-content: space-between;
-  color: #64748b;
-  font-size: 1rem;
+  align-items: center;
+  font-size: 1.05rem;
+  color: #475569;
+  font-weight: 500;
 }
 
 .total-row.shipping {
-  color: #10b981;
+  color: #64748b;
 }
 
 .total-row.final {
-  margin-top: 10px;
-  font-size: 1.5rem;
+  padding-top: 16px;
+  border-top: 2px solid #e2e8f0;
+  font-size: 1.35rem;
   font-weight: 800;
   color: #0f172a;
 }
 
-/* Botón de Pago */
+.total-row.final span:last-child {
+  color: #0ea5e9;
+}
+
+/* ========================================
+   🔘 BOTÓN DE CHECKOUT
+   ======================================== */
 .btn-checkout-action {
   width: 100%;
-  margin-top: 25px;
-  padding: 18px;
+  margin-top: 28px;
+  padding: 18px 24px;
   background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
   color: white;
   border: none;
-  border-radius: 12px;
-  font-size: 1.1rem;
+  border-radius: 14px;
   font-weight: 700;
+  font-size: 1.1rem;
   cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8px 16px rgba(14, 165, 233, 0.25);
+  letter-spacing: 0.02em;
 }
 
 .btn-checkout-action:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(14, 165, 233, 0.4);
+  box-shadow: 0 12px 24px rgba(14, 165, 233, 0.35);
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+}
+
+.btn-checkout-action:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
 }
 
 .btn-checkout-action:disabled {
   background: #cbd5e1;
   cursor: not-allowed;
-  transform: none;
   box-shadow: none;
 }
 
+/* ========================================
+   🔒 SECURITY BADGE
+   ======================================== */
 .security-badge {
-  margin-top: 20px;
+  margin-top: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   color: #64748b;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  font-weight: 500;
 }
 
-/* Responsive */
-@media (max-width: 900px) {
-  .checkout-grid {
-    grid-template-columns: 1fr;
+.security-badge svg {
+  opacity: 0.7;
+}
+
+/* ========================================
+   📱 RESPONSIVE
+   ======================================== */
+@media (max-width: 968px) {
+  .page-header h1 {
+    font-size: 2rem;
   }
-  .summary-column {
-    order: -1; /* Muestra el resumen primero en móviles */
+
+  .checkout-section {
+    padding: 25px;
+  }
+
+  .summary-card {
     position: static;
+    margin-top: 20px;
+  }
+
+  .delivery-card {
+    padding: 18px;
+  }
+
+  .card-icon {
+    font-size: 2rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .checkout-page {
+    padding: 30px 15px;
+  }
+
+  .page-header h1 {
+    font-size: 1.75rem;
+  }
+
+  .section-title {
+    font-size: 1.25rem;
+  }
+
+  .delivery-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .card-price {
+    align-self: flex-end;
   }
 }
 </style>

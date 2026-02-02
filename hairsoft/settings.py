@@ -207,6 +207,12 @@ AUTH_USER_MODEL = 'usuarios.Usuario'
 # URL del túnel (Solo para recibir notificaciones del servidor de MP)
 TUNNEL_URL = "https://hairsoft-pago.loca.lt"
 
+# ================================
+# MERCADO PAGO - CONF TÚNEL SOLO PARA WEBHOOK
+# ================================
+# URL del túnel (Solo para recibir notificaciones del servidor de MP)
+TUNNEL_URL = "https://hairsoft-pago.loca.lt"
+
 MERCADO_PAGO = {
     'ACCESS_TOKEN': os.environ.get('MP_ACCESS_TOKEN', 'APP_USR-7404896415144376-102322-584184e7db9ca5b628be4d7e21763ae3-2943677918'),
     'PUBLIC_KEY': os.environ.get('MP_PUBLIC_KEY', 'APP_USR-4e145215-f26e-4c2d-8be7-a557300a9154'),

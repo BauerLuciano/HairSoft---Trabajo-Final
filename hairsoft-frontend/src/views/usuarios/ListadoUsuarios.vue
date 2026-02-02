@@ -173,7 +173,8 @@ import {
   ChevronLeft, ChevronRight, Trash2, X
 } from 'lucide-vue-next'
 
-const API_BASE = 'http://127.0.0.1:8000'
+// 1. CORRECCIÓN DE LA BASE (Sin subcarpetas)
+const API_BASE = 'http://127.0.0.1:8000';
 
 const usuarios = ref([])
 const roles = ref([])
@@ -189,8 +190,13 @@ const hayAdminActivo = ref(false)
 // Cargar usuarios desde backend
 const cargarUsuarios = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/usuarios/`)
-    usuarios.value = res.data.sort((a, b) => {
+    // 2. CORRECCIÓN DE LA RUTA: Sacamos el '/usuarios' que sobraba
+    const res = await axios.get(`${API_BASE}/api/usuarios/`)
+    
+    // 3. SEGURIDAD: Si viene paginado (results) o plano, lo tomamos igual
+    const datos = Array.isArray(res.data) ? res.data : (res.data.results || [])
+
+    usuarios.value = datos.sort((a, b) => {
       const fechaA = new Date(a.fecha_creacion || 0)
       const fechaB = new Date(b.fecha_creacion || 0)
       return fechaB - fechaA
@@ -201,15 +207,20 @@ const cargarUsuarios = async () => {
     )
   } catch (err) {
     console.error('Error al cargar usuarios:', err)
-    alert('No se pudo cargar la lista de usuarios')
+    // alert('No se pudo cargar la lista de usuarios') 
   }
 }
 
 // Cargar roles
 const cargarRoles = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/roles/`)
-    roles.value = res.data.filter(r => r.activo || r.nombre.toLowerCase() === 'administrador')
+    // 2. CORRECCIÓN DE LA RUTA: Sacamos el '/usuarios' que sobraba
+    const res = await axios.get(`${API_BASE}/api/roles/`)
+    
+    // 3. SEGURIDAD: Igual acá
+    const datos = Array.isArray(res.data) ? res.data : (res.data.results || [])
+
+    roles.value = datos.filter(r => r.activo || r.nombre.toLowerCase() === 'administrador')
   } catch (err) {
     console.error('Error al cargar roles:', err)
   }
@@ -219,6 +230,8 @@ onMounted(async () => {
   await cargarUsuarios()
   await cargarRoles()
 })
+
+// --- EL RESTO DE TU CÓDIGO ORIGINAL (INTACTO) ---
 
 // Filtros por fecha
 const filtrarPorFecha = (usuario) => {
@@ -286,7 +299,8 @@ const usuarioActualizado = async () => {
 const eliminarUsuario = async (usuario) => {
   if (!confirm(`¿Desactivar al usuario ${usuario.nombre}?`)) return
   try {
-    await axios.post(`${API_BASE}/usuarios/api/usuarios/eliminar/${usuario.id}/`)
+    // CORRECCIÓN RUTA
+    await axios.post(`${API_BASE}/api/usuarios/eliminar/${usuario.id}/`)
     usuario.estado = 'INACTIVO'
     await nextTick()
     alert('Usuario desactivado con éxito')
@@ -296,11 +310,12 @@ const eliminarUsuario = async (usuario) => {
   }
 }
 
-// 🆕 NUEVA FUNCIÓN: Activar usuario
+// Activar usuario
 const activarUsuario = async (usuario) => {
   if (!confirm(`¿Reactivar al usuario ${usuario.nombre} ${usuario.apellido}?`)) return
   try {
-    await axios.post(`${API_BASE}/usuarios/api/usuarios/activar/${usuario.id}/`)
+    // CORRECCIÓN RUTA
+    await axios.post(`${API_BASE}/api/usuarios/activar/${usuario.id}/`)
     usuario.estado = 'ACTIVO'
     await nextTick()
     alert('Usuario reactivado con éxito')

@@ -18,14 +18,10 @@ const axiosInstance = axios.create({
   },
 });
 
-// 2. Interceptor (El portero)
 axiosInstance.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
-    
-    // CORRECCIÓN AUTOMÁTICA DE RUTAS
-    // Si la ruta viene con /usuarios/api/ y NO es el perfil 'me', se lo sacamos
-    // para que coincida con tu urls.py que usa 'api/'
+
     if (config.url && config.url.includes('/usuarios/api/') && !config.url.includes('/me/')) {
         config.url = config.url.replace('/usuarios/api/', '/api/');
     }

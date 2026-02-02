@@ -1,14 +1,12 @@
-from django.contrib import admin  # ✅ NUEVO: Importación obligatoria para el admin
+from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-# ✅ 1. Importación para funciones: Renombrar 'views' a 'func_views'
-from . import views as func_views 
+from . import views as func_views
 
-# ✅ 2. Importamos las CLASES NUEVAS desde api_views.py
 from .api_views import (
     AuditoriaViewSet,
-    PedidoWebViewSet,  # <--- ¡NUEVO! Para pedidos de clientes
+    PedidoWebViewSet,
     ServicioListAPIView,
     ServicioCreateAPIView,
     ServicioUpdateAPIView,
@@ -20,17 +18,16 @@ from .api_views import (
     HistorialLiquidacionesView
 )
 
-# ✅ 3. Importación para CLASES VIEJAS desde views.py
 from .views import (
-    VentaViewSet, 
-    ProductoListCreateAPIView, 
+    VentaViewSet,
+    ProductoListCreateAPIView,
     ProductoRetrieveUpdateDestroyAPIView,
-    ProveedorListCreateView, 
+    ProveedorListCreateView,
     ProveedorRetrieveUpdateDestroyView,
     CategoriaProductoListAPIView,
     MetodoPagoListAPIView,
     generar_comprobante_pdf,
-    PedidoListCreateAPIView, 
+    PedidoListCreateAPIView,
     PedidoRetrieveUpdateDestroyAPIView,
     buscar_pedidos,
     cancelar_pedido,
@@ -50,11 +47,11 @@ from .views import (
 )
 
 # ================================
-# Configuración del Router para ViewSets (AUDITORÍA Y PEDIDOS WEB)
+# ✅ CORRECCIÓN: Router SIN NINGÚN PREFIJO DUPLICADO
 # ================================
 router = DefaultRouter()
 router.register(r'auditoria', AuditoriaViewSet, basename='auditoria')
-router.register(r'pedidos-web', PedidoWebViewSet, basename='pedidos-web') # <--- Ruta para la API de compras cliente
+router.register(r'web/pedidos', PedidoWebViewSet, basename='pedidos-web')
 
 # ================================
 # Configuración de ViewSet Manual para Ventas
@@ -70,16 +67,27 @@ venta_detail = VentaViewSet.as_view({
 
 urlpatterns = [
     # ==============================
-    # 🚨 ADMIN DE DJANGO (AGREGADO)
+    # 🚨 ADMIN DE DJANGO
     # ==============================
-    #path('admin/', admin.site.urls), # ✅ NUEVO: Habilita la ruta /admin
+    ##No hace falta tenerlo dos veces pero por las dudass ..... 
+    ##path('admin/', admin.site.urls),
+
+    # ==============================
+    # ✅ ÚNICA INCLUSIÓN DEL ROUTER - ESTO ES CLAVE
+    # ==============================
+    path('api/', include(router.urls)),  # Esto crea: /api/auditoria/ y /api/web/pedidos/
+
+    # ==============================
+    # ✅ DEBUG ENDPOINT PARA AUDITORÍA (AGREGÁ ESTO)
+    # ==============================
+    path('api/debug/auditoria/', func_views.debug_auditoria, name='debug_auditoria'),
 
     # ==============================
     # Autenticación y Perfil
     # ==============================
-    path('api/auth/login/', func_views.login_auth, name='api_login'), 
+    path('api/auth/login/', func_views.login_auth, name='api_login'),
     path('api/auth/logout/', func_views.logout_view, name='api_logout'),
-    path('api/me/', func_views.me_api_view, name='me_api_view'), 
+    path('api/me/', func_views.me_api_view, name='me_api_view'),
     path('api/usuario_actual/', func_views.me_api_view, name='usuario_actual'),
     path('usuarios/api/me/', func_views.me_api_view, name='me_api_view_alias'),
 
@@ -100,7 +108,7 @@ urlpatterns = [
     path('api/usuarios/editar/<int:pk>/', func_views.editar_usuario, name='editar_usuario'),
     path('api/usuarios/eliminar/<int:pk>/', func_views.eliminar_usuario, name='eliminar_usuario'),
     path('api/usuarios/activar/<int:pk>/', func_views.activar_usuario, name='activar_usuario'),
-    
+
     # ================================
     # Clientes / Peluqueros
     # ================================
@@ -111,7 +119,7 @@ urlpatterns = [
     # ✂️ SERVICIOS
     # ================================
     path('api/categorias/servicios/', func_views.listado_categorias_servicios, name='listado_categorias_servicios'),
-    
+
     path('api/servicios/', ServicioListAPIView.as_view(), name='listado_servicios'),
     path('api/servicios/crear/', ServicioCreateAPIView.as_view(), name='crear_servicio'),
     path('api/servicios/editar/<int:id>/', ServicioUpdateAPIView.as_view(), name='editar_servicio'),
@@ -125,10 +133,10 @@ urlpatterns = [
     # ================================
     # Productos
     # ================================
-    path('api/categorias/productos/', CategoriaProductoListAPIView.as_view(), name='listado_categorias_productos'), 
+    path('api/categorias/productos/', CategoriaProductoListAPIView.as_view(), name='listado_categorias_productos'),
     path('api/productos/', ProductoListCreateAPIView.as_view(), name='productos_api'),
     path('api/productos/<int:pk>/', ProductoRetrieveUpdateDestroyAPIView.as_view(), name='productos-detail'),
-    
+
     path('api/metodos-pago/', MetodoPagoListAPIView.as_view(), name='listado_metodos_pago'),
     path('api/catalogo/', ProductoCatalogoView.as_view(), name='catalogo-publico'),
 
@@ -136,15 +144,15 @@ urlpatterns = [
     # 📅 TURNOS
     # ================================
     path('api/turnos/', func_views.listar_turnos_general, name='listado_turnos'),
-    
+
     path('api/turnos/crear/', func_views.crear_turno, name='crear_turno'),
     path('api/turnos/<int:turno_id>/completar/', func_views.completar_turno, name='completar_turno'),
     path('api/turnos/<int:turno_id>/modificar/', func_views.modificar_turno, name='modificar_turno'),
     path('api/turnos/<int:turno_id>/procesar-sena/', func_views.procesar_sena_turno, name='procesar_sena_turno'),
-    
-    path('api/turnos/verificar-horarios/', func_views.obtener_horarios_disponibles, name='verificar_horarios'), 
+
+    path('api/turnos/verificar-horarios/', func_views.obtener_horarios_disponibles, name='verificar_horarios'),
     path('api/turnos/verificar-disponibilidad/', func_views.verificar_disponibilidad, name='verificar_disponibilidad'),
-    
+
     path('api/turnos/cancelar-propio/<int:turno_id>/', func_views.cancelar_mi_turno, name='cancelar_mi_turno'),
     path('api/turnos/<int:turno_id>/cambiar-estado/<str:nuevo_estado>/', func_views.cambiar_estado_turno, name='cambiar_estado_turno'),
     path('api/turnos/<int:turno_id>/', func_views.obtener_turno_por_id, name='obtener_turno_por_id'),
@@ -196,7 +204,7 @@ urlpatterns = [
     # Ventas
     # ================================
     path('api/ventas/registrar/', func_views.registrar_venta, name='registrar_venta_custom'),
-    path('api/ventas/', venta_list, name='ventas-list'), 
+    path('api/ventas/', venta_list, name='ventas-list'),
     path('api/ventas/<int:pk>/', venta_detail, name='ventas-detail'),
     path('api/ventas/<int:venta_id>/editar/', func_views.obtener_venta_para_edicion, name='venta-detalle'),
     path('api/ventas/<int:venta_id>/actualizar/', func_views.actualizar_venta, name='venta-actualizar'),
@@ -217,7 +225,7 @@ urlpatterns = [
     path('api/pedidos/datos-crear/', datos_crear_pedido, name='datos-crear-pedido'),
     path('api/pedidos/debug/', debug_crear_pedido, name='debug_crear_pedido'),
     path('api/pedidos/<int:pedido_id>/enviar/', enviar_pedido_proveedor, name='enviar-pedido'),
-    
+
     path('api/externo/pedido/<str:token>/', func_views.obtener_pedido_externo, name='pedido-externo-get'),
     path('api/externo/pedido/<str:token>/confirmar/', func_views.confirmar_pedido_externo, name='pedido-externo-post'),
 
@@ -232,10 +240,10 @@ urlpatterns = [
     path('api/listas-precios/por-proveedor/', func_views.listas_por_proveedor, name='listas-por-proveedor'),
     path('api/listas-precios/<int:pk>/desactivar/', func_views.desactivar_lista_precio, name='desactivar-lista-precio'),
     path('api/listas-precios/actualizar-masivo/', func_views.actualizar_listas_masivo, name='actualizar-listas-masivo'),
-    
+
     path('api/historial-precios/', HistorialPreciosViewSet.as_view({'get': 'list'}), name='historial-precios-list'),
     path('api/historial-precios/<int:pk>/', HistorialPreciosViewSet.as_view({'get': 'retrieve'}), name='historial-precios-detail'),
-    
+
     path('api/calcular-precios-pedido/', func_views.calcular_precios_pedido, name='calcular-precios-pedido'),
     path('api/calcular-precio-sugerido/', func_views.calcular_precio_sugerido, name='calcular-precio-sugerido'),
 
@@ -258,7 +266,7 @@ urlpatterns = [
     path('api/reoferta/respuesta/<int:interes_id>/', func_views.procesar_respuesta_oferta, name='procesar-respuesta-oferta'),
     path('api/turnos/<int:turno_id>/oferta-info/<str:token>/', func_views.obtener_info_oferta, name='oferta_info'),
     path('api/turnos/<int:turno_id>/interesados/', contar_interesados, name='contar_interesados'),
-    
+
     # Otras
     path('api/turnos/ocupados/', turnos_ocupados, name='turnos_ocupados'),
     path('api/cotizacion-externa/<str:token>/', gestionar_cotizacion_externa, name='cotizacion_externa'),
@@ -273,7 +281,7 @@ urlpatterns = [
 
     # Validar cupón
     path('api/promociones/validar/<str:codigo>/', validar_cupon, name='validar_cupon'),
-    
+
     # Password Reset
     path('api/password-reset/solicitar/', func_views.solicitar_reset_password, name='solicitar-reset'),
     path('api/password-reset/confirmar/', func_views.confirmar_reset_password, name='confirmar-reset'),
@@ -284,9 +292,6 @@ urlpatterns = [
     path('api/liquidaciones/registrar/', RegistrarPagoLiquidacionView.as_view(), name='registrar_pago'),
     path('api/liquidaciones/historial/', HistorialLiquidacionesView.as_view(), name='historial_pagos'),
 
-    # API ROUTER (Al final) - Incluye Auditoría y Pedidos Web
-    #path('api/', include(router.urls)),
-
-    #Tunel MP
+    # Tunel MP
     path('mercadopago/webhook/', func_views.mercadopago_webhook, name='mercadopago_webhook'),
 ]

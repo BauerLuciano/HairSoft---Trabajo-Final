@@ -1,21 +1,31 @@
+import json
+import re
+import requests
+import unicodedata
+import secrets
+import logging
+from datetime import datetime, timedelta, time
+from decimal import Decimal
+
+# 2. Django Core
 from django.db import models, transaction
 from django.db.models import Count, Sum, F, Q
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse, HttpResponse
 from django.views import View
-from django.contrib.auth.hashers import make_password
 from django.contrib.auth import authenticate, login
+from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.signals import user_logged_in
+from django.contrib.auth.decorators import login_required
 from django.utils.html import strip_tags
-from rest_framework import viewsets, status, generics , filters, serializers
-from rest_framework.pagination import PageNumberPagination
-from rest_framework.authtoken.models import Token
-from rest_framework.decorators import api_view, permission_classes, action
-from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
-from rest_framework.response import Response 
 from django.utils.decorators import method_decorator
-from datetime import datetime, timedelta, time
+from django.utils import timezone
+from django.core.paginator import Paginator
+from django.core.mail import send_mail
+from django.conf import settings
+
+# 3. Third Party (Rest Framework / ZoneInfo)
 try:
     from zoneinfo import ZoneInfo
     ARG_TZ = ZoneInfo('America/Argentina/Buenos_Aires')
@@ -23,33 +33,39 @@ except ImportError:
     import pytz
     ARG_TZ = pytz.timezone('America/Argentina/Buenos_Aires')
 
-from django.utils import timezone
-from .models import Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, PromocionReactivacion, Auditoria, PasswordResetToken, PedidoWeb, ConfiguracionSistema
+from rest_framework import viewsets, status, generics, filters, serializers
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.authtoken.models import Token
+from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
+from rest_framework.response import Response 
+
+# 4. Local App Imports
+from .models import (
+    Rol, Permiso, Usuario, Servicio, CategoriaProducto, CategoriaServicio, 
+    Producto, Turno, Proveedor, Venta, DetalleVenta, MetodoPago, Pedido, 
+    DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, 
+    InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, 
+    PromocionReactivacion, Auditoria, PasswordResetToken, PedidoWeb, 
+    ConfiguracionSistema
+)
+from .serializers import (
+    LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, 
+    DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, 
+    VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, 
+    DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer, 
+    ListaPrecioProveedorSerializer, HistorialPreciosSerializer, PrecioSugeridoSerializer, 
+    ActualizarListaPreciosSerializer, CotizacionExternaSerializer, SolicitudPresupuestoSerializer, 
+    MarcaSerializer, AuditoriaSerializer, SolicitarResetPasswordSerializer, 
+    ResetPasswordConfirmarSerializer, ServicioSerializer, RolSerializer, 
+    PermisoSerializer, TurnoSerializer
+)
+from .forms import UsuarioForm # Ajustado si tenías formularios específicos
 from .mercadopago_service import MercadoPagoService
-import json, re, requests, unicodedata
-from .serializers import LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, DetalleVentaSerializer, CategoriaProductoSerializer, MetodoPagoSerializer, VentaUpdateSerializer, CategoriaServicioSerializer, PedidoSerializer, DetallePedidoSerializer, PedidoRecepcionSerializer, PedidoBusquedaSerializer, ListaPrecioProveedorSerializer, HistorialPreciosSerializer, PrecioSugeridoSerializer, ActualizarListaPreciosSerializer, CotizacionExternaSerializer, SolicitudPresupuestoSerializer, MarcaSerializer, AuditoriaSerializer, SolicitarResetPasswordSerializer, ResetPasswordConfirmarSerializer, ServicioSerializer, RolSerializer, PermisoSerializer, TurnoSerializer
-from django.contrib.auth.hashers import check_password
-from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
-from django.http import HttpResponse
 from .pdf_utils import generar_comprobante_venta
-from decimal import Decimal
-import secrets, logging
-from django.core.mail import send_mail
-from django.conf import settings
+
 # Configuración del logger
 logger = logging.getLogger(__name__)
-
-# Modelos y formularios
-from .models import (
-    Usuario,
-    Servicio,
-    Turno,
-    Producto,
-    CategoriaProducto,
-    CategoriaServicio
-)
-from .forms import UsuarioForm
 
 # ================================
 # Funciones Auxiliares
@@ -948,9 +964,7 @@ def crear_turno(request):
         traceback.print_exc()
         return Response({'status': 'error', 'message': str(e)}, status=500)
     
-# ==============================================================================
-# ARCHIVO: usuarios/views.py (REEMPLAZA ESTA FUNCIÓN)
-# ==============================================================================
+
 
 @api_view(['GET']) # 🔥 CAMBIO CLAVE: Permite a Django leer el Token del peluquero
 @permission_classes([IsAuthenticated]) # 🔥 Protege la ruta
@@ -2134,54 +2148,57 @@ def crear_preferencia_pago_seña(request):
             'error': f'Error interno: {str(e)}'
         })
 
+# ================================================================
+# 💸 FUNCIONES DE MERCADO PAGO
+# ================================================================
 @csrf_exempt
 def pago_exitoso(request):
     """
-    DESPUÉS DE MERCADO PAGO → REDIRIGIR AL HISTORIAL
+    PROCESA EL PAGO Y REDIRIGE AL CLIENTE A SU HISTORIAL EN EL FRONTEND
     """
     try:
         payment_id = request.GET.get('payment_id')
-        external_reference = request.GET.get('external_reference')
+        external_reference = request.GET.get('external_reference', '')
         
-        if external_reference and "PEDIDO_" in external_reference:
-            pedido_id = external_reference.replace("PEDIDO_", "")
-            from .models import PedidoWeb 
+        # 🚀 FORZAMOS SALIDA A LOCALHOST PARA EVITAR EL TIMEOUT DEL TÚNEL
+        frontend_url = "http://localhost:5173"
+
+        if "PEDIDO_" in external_reference:
+            pedido_id = external_reference.split('_')[1]
             pedido = PedidoWeb.objects.get(id=pedido_id)
-            pedido.estado = 'PAGADO'
-            pedido.mp_payment_id = payment_id
-            pedido.save()
             
-            # 🔴 CAMBIO: Redirigir AL DASHBOARD, NO al login
-            return redirect(
-                f"http://localhost:5173/cliente/dashboard?ver=pedidos&pago_exitoso=true"
-            )
-        
-        else:
-            turno_id = external_reference.replace("TURNO_", "")
-            from .models import Turno
+            if pedido.estado != 'PAGADO':
+                pedido.estado = 'PAGADO'
+                pedido.mp_payment_id = payment_id
+                pedido.save()
+            
+            # ✅ Redirige a '/client/mis-pedidos' (tal cual está en tu router de Vue)
+            return redirect(f"{frontend_url}/client/mis-pedidos?pago_exitoso=true&pedido_id={pedido_id}")
+
+        elif "TURNO_" in external_reference:
+            turno_id = external_reference.split('_')[1]
             turno = Turno.objects.get(id=turno_id)
-            turno.estado = 'CONFIRMADO'
-            if payment_id: 
-                turno.mp_payment_id = payment_id
-            turno.save()
             
-            # 🔴 CAMBIO: Redirigir AL HISTORIAL, NO al login
-            return redirect(
-                f"http://localhost:5173/cliente/historial?pago_exitoso=true&turno_id={turno_id}"
-            )
+            if turno.estado != 'CONFIRMADO':
+                turno.estado = 'CONFIRMADO'
+                turno.mp_payment_id = payment_id
+                turno.save()
+            
+            return redirect(f"{frontend_url}/cliente/historial?pago_exitoso=true&turno_id={turno_id}")
+
+        return redirect(f"{frontend_url}/cliente/dashboard")
 
     except Exception as e:
         print(f"❌ Error pago_exitoso: {e}")
-        # Si hay error, igual al historial
-        return redirect("http://localhost:5173/cliente/historial")
-    
+        return redirect("http://localhost:5173/cliente/dashboard?error_pago=true")
+
 @csrf_exempt
 def pago_error(request):
-    return redirect("http://localhost:5173/pago-error")
+    return redirect("http://localhost:5173/web/productos?pago_error=true")
 
 @csrf_exempt
 def pago_pendiente(request):
-    return redirect("http://localhost:5173/cliente/historial")
+    return redirect("http://localhost:5173/client/mis-pedidos?pago_pendiente=true")
 
 def procesar_reembolso_si_corresponde(turno):
     """
@@ -5013,3 +5030,56 @@ class PaginacionReportesHairSoft(PageNumberPagination):
             },
             'results': data
         })
+
+# ================================
+# ✅ DEBUG PARA AUDITORÍA - VERSIÓN CORREGIDA
+# ================================
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def debug_auditoria(request):
+    from .models import Auditoria
+    
+    total = Auditoria.objects.count()
+    
+    # ✅ VERIFICAR SI HAY DATOS
+    if total == 0:
+        return Response({
+            'total_registros': 0,
+            'mensaje': '⚠️ La tabla auditoría está vacía',
+            'instruccion': 'Ejecuta: python manage.py crear_datos_prueba_auditoria',
+            'status': 'OK pero sin datos'
+        })
+    
+    ultimos = Auditoria.objects.select_related('usuario').order_by('-fecha')[:5]
+    
+    data = []
+    for log in ultimos:
+        # ✅ CORREGIDO: Usar 'correo' en vez de 'email'
+        usuario_info = 'Anónimo'
+        if log.usuario:
+            # Intenta con diferentes nombres de campo
+            if hasattr(log.usuario, 'correo'):
+                usuario_info = log.usuario.correo
+            elif hasattr(log.usuario, 'email'):
+                usuario_info = log.usuario.email
+            elif hasattr(log.usuario, 'username'):
+                usuario_info = log.usuario.username
+            else:
+                usuario_info = f"Usuario ID: {log.usuario.id}"
+        
+        data.append({
+            'id': log.id,
+            'usuario': usuario_info,
+            'accion': log.accion,
+            'modelo': log.modelo_afectado,
+            'fecha': log.fecha.strftime('%Y-%m-%d %H:%M:%S'),
+            'ip': log.ip_address or 'No registrada'
+        })
+    
+    return Response({
+        'total_registros': total,
+        'ultimos_5': data,
+        'endpoint_real': '/api/auditoria/',
+        'status': '✅ Debug funcionando',
+        'nota': f'Hay {total} registros en la tabla auditoría'
+    })

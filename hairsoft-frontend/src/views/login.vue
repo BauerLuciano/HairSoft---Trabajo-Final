@@ -131,22 +131,26 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import { useRouter, useRoute } from 'vue-router'; // ✅ AHORA SÍ: Importamos useRoute
+import { useRouter, useRoute } from 'vue-router';
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-vue-next';
 
 const router = useRouter();
-const route = useRoute(); // ✅ AHORA SÍ: Inicializamos la ruta actual
+const route = useRoute();
 
-// --- CONFIGURACIÓN HÍBRIDA (PRODUCCIÓN vs LOCAL) ---
-
+// --- CORRECCIÓN DEFINITIVA DE LA URL ---
 const isProduction = window.location.hostname.includes('vercel.app');
-const API_BASE = isProduction 
-  ? 'https://web-production-ac47c.up.railway.app/usuarios' 
-  : 'http://127.0.0.1:8000/usuarios';
 
-console.log('🌐 Login conectado a:', API_BASE);
+// 1. Dominio base (sin subcarpetas)
+const DOMAIN = isProduction 
+  ? 'https://web-production-ac47c.up.railway.app' 
+  : 'http://127.0.0.1:8000';
+
+// 2. Ruta exacta de la API (CONFIRMADO: SIN prefijo /usuarios)
+const API_URL = `${DOMAIN}/api/auth/login/`;
+
+console.log('🌐 Login apuntando a:', API_URL);
 
 const credentials = ref({
   username: '',
@@ -167,20 +171,17 @@ onMounted(() => {
     credentials.value.username = savedEmail;
   }
   
-  // 🔥 DETECTAR SI VENIMOS DE UN PAGO EXITOSO
   const query = route.query;
   if (query.post_payment === 'true') {
-    // Mostrar mensaje especial
     setTimeout(() => {
       Swal.fire({
         title: '¡Pago Confirmado! ✅',
-        text: 'Tu pago fue procesado exitosamente. Ahora inicia sesión para ver tu turno.',
+        text: 'Tu pago fue procesado exitosamente. Ahora inicia sesión.',
         icon: 'success',
         timer: 3000
       });
     }, 500);
     
-    // Guardar datos del pago para después del login
     localStorage.setItem('pending_payment', JSON.stringify({
       type: query.type,
       id: query.id,
@@ -194,71 +195,64 @@ const handleLogin = async () => {
   loading.value = true;
   
   try {
-    const response = await axios.post(`${API_BASE}/api/auth/login/`, credentials.value);
+    const response = await axios.post(API_URL, credentials.value);
     
-    if (response.data.status === 'ok') {
-      // 🔥 GUARDAR CREDENCIALES (lo que ya tenías)
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user_id', response.data.user_id);
-      localStorage.setItem('user_rol', response.data.rol);
-      localStorage.setItem('user_nombre', response.data.nombre);
-      localStorage.setItem('user_apellido', response.data.apellido || '');
-      
-      // 🔥 MARCAR COMO "LOGIN FRESCO" (para ofertas)
+    // Extracción segura de datos
+    const data = response.data || response; 
+
+    // Verificación anti-HTML (por si acaso)
+    if (typeof data === 'string' && data.startsWith('<!DOCTYPE')) {
+        throw new Error('Ruta API incorrecta (Recibí HTML). Revisa urls.py.');
+    }
+
+    if (data.status === 'ok') {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user_id', data.user_id);
+      localStorage.setItem('user_rol', data.rol);
+      localStorage.setItem('user_nombre', data.nombre);
+      localStorage.setItem('user_apellido', data.apellido || '');
       localStorage.setItem('login_fresh', 'true');
       
       Swal.fire({
         title: '¡Bienvenido!',
-        text: `Hola ${response.data.nombre}`,
+        text: `Hola ${data.nombre}`,
         icon: 'success',
         timer: 1500
       });
 
       setTimeout(() => {
-        // 🔥 LÓGICA MEJORADA DE REDIRECCIÓN:
         const query = route.query;
-        
-        // CASO 1: Viene de WhatsApp (forzado)
         if (query.force_whatsapp === 'true' || query.from_whatsapp === 'true') {
-          // Recuperar la oferta pendiente de sessionStorage
-          const pendingOffer = sessionStorage.getItem('pending_offer');
-          
-          if (pendingOffer) {
-            const { turno_id, token } = JSON.parse(pendingOffer);
-            sessionStorage.removeItem('pending_offer');
-            
-            // Ir directamente a la oferta
-            router.push(`/aceptar-oferta/${turno_id}/${token}`);
-          } else {
-            // Si no hay oferta pendiente, al dashboard
-            router.push('/cliente/dashboard');
-          }
-        } 
-        // CASO 2: Redirección normal
-        else if (query.redirect) {
-          router.push(query.redirect);
+             const pendingOffer = sessionStorage.getItem('pending_offer');
+             if (pendingOffer) {
+                const { turno_id, token } = JSON.parse(pendingOffer);
+                sessionStorage.removeItem('pending_offer');
+                router.push(`/aceptar-oferta/${turno_id}/${token}`);
+                return;
+             }
         }
-        // CASO 3: Según rol
-        else {
-          const rol = response.data.rol;
-          if (rol === 'CLIENTE') {
+        if (data.rol === 'CLIENTE') {
             router.push('/cliente/dashboard');
-          } else {
+        } else {
             router.push('/dashboard');
-          }
         }
       }, 1000);
+
+    } else {
+        Swal.fire('Error', data.message || 'Error desconocido', 'warning');
     }
+
   } catch (error) {
-    console.error("Error en login:", error);
+    console.error("❌ Error Login:", error);
     
-    const errorMsg = error.response 
-      ? (error.response.data?.message || 'Credenciales incorrectas.') 
-      : 'No se pudo conectar con el servidor. Revisá tu conexión.';
+    let mensaje = 'No se pudo conectar con el servidor.';
+    if (error.message.includes('HTML')) mensaje = 'Error interno: Ruta de API mal configurada.';
+    else if (error.response?.data?.error) mensaje = error.response.data.error;
+    else if (error.response?.data?.message) mensaje = error.response.data.message;
 
     Swal.fire({
       title: 'Error de acceso',
-      text: errorMsg,
+      text: mensaje,
       icon: 'error',
       confirmButtonColor: '#007bff',
       background: '#1e293b',
@@ -274,14 +268,10 @@ const handleForgotPassword = () => {
     title: 'Recuperar contraseña',
     input: 'email',
     inputLabel: 'Ingresa tu correo electrónico',
-    inputPlaceholder: 'tu@email.com',
     inputValue: credentials.value.username,
     showCancelButton: true,
     confirmButtonText: 'Enviar',
-    cancelButtonText: 'Cancelar',
-    confirmButtonColor: '#007bff',
-    background: '#1e293b',
-    color: '#f1f5f9'
+    cancelButtonText: 'Cancelar'
   });
 };
 </script>

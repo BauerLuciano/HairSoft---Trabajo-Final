@@ -103,10 +103,19 @@ const itemsPorPagina = 10;
 
 onMounted(async () => {
   try {
-    const res = await api.get('/pedidos-web/');
+    // ✅ CORRECCIÓN: La URL debe coincidir con el router de Django (/api/web/pedidos/)
+    const res = await api.get('/web/pedidos/'); 
+    
+    console.log("📦 Pedidos recibidos:", res.data); // Para que veas en la consola si llegan
     pedidos.value = Array.isArray(res.data) ? res.data : (res.data.results || []);
+    
   } catch (e) {
-    console.error(e);
+    console.error("❌ Error cargando pedidos:", e);
+    Swal.fire({
+      title: 'Error',
+      text: 'No se pudieron cargar tus pedidos. Intentá de nuevo más tarde.',
+      icon: 'error'
+    });
   } finally {
     cargando.value = false;
   }
@@ -141,33 +150,26 @@ const formatearDinero = (monto) => {
 
 const getClaseEstado = (e) => {
   const map = {
-    'PENDIENTE': 'bg-yellow', 'PAGADO': 'bg-blue',
-    'CONFIRMADO': 'bg-purple', 'ENTREGADO': 'bg-green',
+    'PENDIENTE_PAGO': 'bg-yellow', // Ajustado para que coincida con tu backend
+    'PAGADO': 'bg-blue',
+    'CONFIRMADO': 'bg-purple', 
+    'ENTREGADO': 'bg-green',
     'CANCELADO': 'bg-red'
   };
   return map[e] || 'bg-gray';
 };
 
 const verDetalle = (p) => {
-  // Calculamos subtotal de items para mostrar desglose si hay envío
-  const costoEnvio = Number(p.costo_envio || 0);
-  const subtotalItems = p.detalles.reduce((acc, d) => acc + (d.cantidad * d.precio_unitario), 0);
-
-  // Construimos filas de la tabla
   const itemsHtml = p.detalles.map(d => `
     <tr>
       <td style="text-align: left;">
-        <div style="font-weight: 600; color: inherit;">${d.nombre_producto}</div>
+        <div style="font-weight: 600;">${d.nombre_producto || 'Producto'}</div>
       </td>
       <td style="text-align: center;">${d.cantidad}</td>
       <td style="text-align: right;">${formatearDinero(d.precio_unitario)}</td>
       <td style="text-align: right; font-weight: 600;">${formatearDinero(d.cantidad * d.precio_unitario)}</td>
     </tr>
   `).join('');
-
-  // Info de entrega y pago
-  const infoEntrega = p.tipo_entrega === 'ENVIO' ? '🛵 Envío a domicilio' : '🏪 Retiro en local';
-  const infoPago = p.medio_pago ? p.medio_pago.replace('_', ' ') : 'Mercado Pago';
 
   Swal.fire({
     title: `<div class="swal-header-title">Pedido #${p.id}</div>`,
@@ -177,7 +179,6 @@ const verDetalle = (p) => {
           <span>📅 ${formatearFecha(p.fecha_creacion)}</span>
           <span class="badge-mini ${getClaseEstado(p.estado)}">${p.estado}</span>
         </div>
-
         <div class="table-responsive">
           <table class="detalle-table">
             <thead>
@@ -191,14 +192,11 @@ const verDetalle = (p) => {
             <tbody>${itemsHtml}</tbody>
           </table>
         </div>
-
         <div class="detalle-totales">
-          <div class="row">
-          </div>
-          ${costoEnvio > 0 ? `
+          ${Number(p.costo_envio) > 0 ? `
           <div class="row">
             <span>Envío:</span>
-            <span>${formatearDinero(costoEnvio)}</span>
+            <span>${formatearDinero(p.costo_envio)}</span>
           </div>` : ''}
           <div class="row total-final">
             <span>TOTAL:</span>
@@ -209,12 +207,7 @@ const verDetalle = (p) => {
     `,
     width: '600px',
     showCloseButton: true,
-    showConfirmButton: false,
-    background: document.documentElement.classList.contains('light-theme') ? '#ffffff' : '#1e293b',
-    color: document.documentElement.classList.contains('light-theme') ? '#0f172a' : '#f8fafc',
-    customClass: {
-      popup: 'detalle-popup-custom'
-    }
+    showConfirmButton: false
   });
 };
 </script>

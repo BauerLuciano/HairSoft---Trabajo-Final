@@ -4,46 +4,32 @@ from django.conf import settings
 
 class MercadoPagoService:
     def __init__(self):
+        # Iniciamos el SDK con el Token de tus settings
         self.sdk = mercadopago.SDK(settings.MERCADO_PAGO['ACCESS_TOKEN'])
         self.config = settings.MERCADO_PAGO 
         self.statement_descriptor = "HAIRSOFT"
 
     def crear_preferencia_seña(self, turno_data):
-        # 1. OBTENER EL TÚNEL (HTTPS)
-        tunnel_url = getattr(settings, 'TUNNEL_URL', '')
+        """
+        CREA PAGO PARA SEÑA DE TURNOS
+        """
+        tunnel_url = getattr(settings, 'TUNNEL_URL', '').rstrip('/')
         
-        if not tunnel_url:
-            base_url = "http://127.0.0.1:5173"
-            # Si no hay túnel, fallback directo al frontend
-            back_urls_dict = {
-                "success": f"{base_url}/cliente/historial?pago_exitoso=true&turno_id={turno_data['turno_id']}",
-                "failure": f"{base_url}/turnos/crear-web?pago_error=true",
-                "pending": f"{base_url}/cliente/historial?pago_pendiente=true"
-            }
+        # Para que MP acepte auto_return, la URL debe ser la del túnel (HTTPS)
+        if tunnel_url:
+            base_url = tunnel_url
         else:
-            # SI HAY TÚNEL, USAMOS LAS RUTAS QUE TENÉS EN URLS.PY
-            tunnel_url = tunnel_url.rstrip('/')
-            
-            # ✅ CORRECCIÓN ACÁ: Usamos /api/mercadopago/... para coincidir con tu urls.py
-            back_urls_dict = {
-                "success": f"{tunnel_url}/api/mercadopago/pago-exitoso/", 
-                "failure": f"{tunnel_url}/api/mercadopago/pago-error/",
-                "pending": f"{tunnel_url}/api/mercadopago/pago-pendiente/"
-            }
+            base_url = "http://127.0.0.1:8000"
 
-        print(f"🔗 MP BACK_URLS: {back_urls_dict}")
+        back_urls_dict = {
+            "success": f"{base_url}/api/mercadopago/pago-exitoso/", 
+            "failure": f"{base_url}/api/mercadopago/pago-error/",
+            "pending": f"{base_url}/api/mercadopago/pago-pendiente/"
+        }
 
-        # 2. PREPARAR DATOS
         monto_pago = round(float(turno_data["monto_pago"]), 2)
         turno_id = str(turno_data['turno_id'])
-        
-        titulo = (
-            f"Reserva peluquería - {turno_data['peluquero_nombre']}"
-            if not turno_data.get("es_pago_total", False)
-            else f"Pago completo turno - {turno_data['peluquero_nombre']}"
-        )
-
-        correo_cliente = turno_data.get("cliente_correo", "test_user_6205179917708892357@testuser.com")
+        titulo = f"Seña Turno - {turno_data['peluquero_nombre']}"
 
         preference_data = {
             "items": [
@@ -56,86 +42,105 @@ class MercadoPagoService:
             ],
             "payer": {
                 "name": str(turno_data["cliente_nombre"]),
-                "email": correo_cliente,
+                "email": turno_data.get("cliente_correo", "test_user_6205179917708892357@testuser.com"),
             },
             "back_urls": back_urls_dict,
-            
-            # ✅ Auto-retorno activado (Funciona porque tunnel_url es HTTPS)
             "auto_return": "approved", 
-            
-            "notification_url": self.config.get('WEBHOOK_URL'),
             "external_reference": f"TURNO_{turno_id}",
             "binary_mode": True,
             "statement_descriptor": self.statement_descriptor,
         }
 
+        if tunnel_url and "localhost" not in tunnel_url:
+            preference_data["notification_url"] = f"{tunnel_url}/mercadopago/webhook/"
+
         try:
             result = self.sdk.preference().create(preference_data)
-            response = result["response"]
-            
-            if result.get("status") == 201 or "id" in response:
-                print("🟦 Respuesta MP (SDK): Preferencia Creada Exitosamente")
-                link = response.get("sandbox_init_point") if settings.DEBUG else response.get("init_point")
-                return {
-                    "success": True,
-                    "init_point": link,
-                    "preference_id": response["id"],
-                }
-            else:
-                error_msg = response.get("message") or "Error desconocido de MP"
-                print(f"❌ Error de MP (Status {result.get('status')}): {error_msg}")
-                return {"success": False, "error": error_msg}
-
+            res = result["response"]
+            return {
+                "success": True, 
+                "init_point": res.get("sandbox_init_point") if settings.DEBUG else res.get("init_point"), 
+                "preference_id": res["id"]
+            }
         except Exception as e:
-            print(f"💥 Excepción en MP Service: {str(e)}")
             return {"success": False, "error": str(e)}
 
+    def crear_preferencia_compra_web(self, pedido, items_pedido):
+        """
+        CREA PAGO PARA CARRITO DE PRODUCTOS
+        """
+        tunnel_url = getattr(settings, 'TUNNEL_URL', '').rstrip('/')
+        
+        # MP exige que si hay auto_return, las back_urls sean HTTPS válidas
+        if tunnel_url:
+            base_url = tunnel_url
+        else:
+            base_url = "http://127.0.0.1:8000"
+
+        back_urls_dict = {
+            "success": f"{base_url}/api/mercadopago/pago-exitoso/", 
+            "failure": f"{base_url}/api/mercadopago/pago-error/",
+            "pending": f"{base_url}/api/mercadopago/pago-pendiente/"
+        }
+
+        # Cargamos los productos al formato de MP
+        items_mp = []
+        for detalle in items_pedido:
+            items_mp.append({
+                "title": str(detalle.producto.nombre),
+                "quantity": int(detalle.cantidad),
+                "currency_id": "ARS",
+                "unit_price": float(detalle.precio_unitario) 
+            })
+
+        if pedido.costo_envio > 0:
+            items_mp.append({
+                "title": "Costo Envío", 
+                "quantity": 1, 
+                "currency_id": "ARS", 
+                "unit_price": float(pedido.costo_envio)
+            })
+
+        preference_data = {
+            "items": items_mp,
+            "payer": {
+                "name": str(pedido.cliente.nombre), 
+                "email": getattr(pedido.cliente, 'correo', "test@testuser.com")
+            },
+            "back_urls": back_urls_dict,
+            "auto_return": "approved",
+            "external_reference": f"PEDIDO_{pedido.id}",
+            "binary_mode": True,
+        }
+
+        if tunnel_url and "localhost" not in tunnel_url:
+            preference_data["notification_url"] = f"{tunnel_url}/mercadopago/webhook/"
+
+        try:
+            res_sdk = self.sdk.preference().create(preference_data)
+            data = res_sdk["response"]
+            if res_sdk["status"] in [200, 201]:
+                return {
+                    "url_pago": data.get("sandbox_init_point") if settings.DEBUG else data.get("init_point"), 
+                    "preference_id": data["id"]
+                }
+            else:
+                raise Exception(f"MP Error: {data.get('message', 'Error desconocido')}")
+        except Exception as e:
+            print(f"💥 Error en crear_preferencia_compra_web: {e}")
+            raise e
+
     def devolver_pago(self, payment_id, amount=None):
+        """
+        REEMBOLSOS
+        """
         try:
             request_options = mercadopago.config.RequestOptions()
             request_options.custom_headers = {'X-Idempotency-Key': str(uuid.uuid4())}
             refund_data = {"amount": float(amount)} if amount else {}
             refund_result = self.sdk.refund().create(payment_id, refund_data, request_options)
-            response = refund_result["response"]
-            if response.get("status") in ["approved", "refunded"]:
+            if refund_result["response"].get("status") in ["approved", "refunded"]:
                 return {"success": True, "status": "refunded"}
-            return {"success": False, "error": response.get("message")}
+            return {"success": False, "error": refund_result["response"].get("message")}
         except Exception as e:
             return {"success": False, "error": str(e)}
-
-    def crear_preferencia_compra_web(self, pedido, items_pedido):
-        base_url = "http://127.0.0.1:5173"
-        
-        items_mp = []
-        for detalle in items_pedido:
-            items_mp.append({
-                "title": str(detalle.producto.nombre), "quantity": int(detalle.cantidad),
-                "currency_id": "ARS", "unit_price": float(detalle.precio_unitario) 
-            })
-
-        if pedido.costo_envio > 0:
-            items_mp.append({"title": "Costo Envío", "quantity": 1, "currency_id": "ARS", "unit_price": float(pedido.costo_envio)})
-
-        email_cliente = getattr(pedido.cliente, 'correo', None) or "test@testuser.com"
-
-        back_urls_dict = {
-            "success": f"{base_url}/cliente/pedidos?pago_exitoso=true&pedido_id={pedido.id}",
-            "failure": f"{base_url}/carrito?pago_error=true",
-            "pending": f"{base_url}/cliente/pedidos?pago_pendiente=true"
-        }
-
-        preference_data = {
-            "items": items_mp,
-            "payer": {"name": str(pedido.cliente.nombre), "email": email_cliente},
-            "back_urls": back_urls_dict,
-            "auto_return": "approved",
-            "notification_url": self.config.get('WEBHOOK_URL'),
-            "external_reference": f"PEDIDO_{pedido.id}",
-            "binary_mode": True,
-        }
-        try:
-            res = self.sdk.preference().create(preference_data)
-            data = res["response"]
-            return {"url_pago": data.get("sandbox_init_point") or data.get("init_point"), "preference_id": data["id"]}
-        except Exception as e:
-            raise e

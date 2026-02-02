@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import action
 from django.db.models import Sum
+from django.db import transaction
 from django.http import HttpResponse
 from .models import Auditoria, Servicio, Turno, Usuario, Producto, Liquidacion, PedidoWeb, ConfiguracionSistema
 from .serializers import AuditoriaSerializer, ServicioSerializer, TurnoSerializer, UsuarioSerializer, ProductoCatalogoSerializer, LiquidacionSerializer, PedidoWebSerializer
@@ -297,10 +298,10 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        # Si es Admin o Recepcionista ve todo
+        # Admin y Recepcionista ven todo
         if user.rol and user.rol.nombre in ['Administrador', 'Recepcionista']:
             return PedidoWeb.objects.all().order_by('-fecha_creacion')
-        # Si es cliente normal, solo ve sus pedidos
+        # Cliente ve solo lo suyo
         return PedidoWeb.objects.filter(cliente=user).order_by('-fecha_creacion')
 
     def create(self, request, *args, **kwargs):
@@ -309,31 +310,24 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # ✅ CAMBIO: Nace como PENDIENTE de pago, no PAGADO
-            pedido = serializer.save(cliente=self.request.user, estado='PENDIENTE_PAGO') 
+            # ✅ Usamos transaction para asegurar que el pedido y MP se sincronicen
+            with transaction.atomic():
+                pedido = serializer.save(cliente=self.request.user, estado='PENDIENTE_PAGO') 
+                
+                # Generar link MP
+                mp_service = MercadoPagoService()
+                detalles = pedido.detalles.all()
+                resultado_mp = mp_service.crear_preferencia_compra_web(pedido, detalles)
+                
+                return Response({
+                    'mensaje': 'Pedido creado. Redirigiendo...',
+                    'pedido_id': pedido.id,
+                    'url_pago': resultado_mp['url_pago']
+                }, status=status.HTTP_201_CREATED)
 
-            # 3. Generar link MP
-            mp_service = MercadoPagoService()
-            detalles = pedido.detalles.all()
-            resultado_mp = mp_service.crear_preferencia_compra_web(pedido, detalles)
-            
-            headers = self.get_success_headers(serializer.data)
-            return Response({
-                'mensaje': 'Pedido creado. Redirigiendo...',
-                'pedido_id': pedido.id,
-                'url_pago': resultado_mp['url_pago']
-            }, status=status.HTTP_201_CREATED, headers=headers)
-
-        except serializers.ValidationError as e:
-            print(f"❌ ERROR DE VALIDACIÓN (STOCK): {e.detail}")
-            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
-            
         except Exception as e:
-            print(f"❌ ERROR GENERAL: {e}")
-            return Response(
-                {'error': f'Ocurrió un error en el servidor: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            print(f"❌ ERROR EN CREATE PEDIDO: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def perform_create(self, serializer):
         serializer.save(cliente=self.request.user)
@@ -342,18 +336,29 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
     def cambiar_estado(self, request, pk=None):
         pedido = self.get_object()
         nuevo_estado = request.data.get('estado')
+        repartidor = request.data.get('repartidor') # Nombre de la moto
         
-        user = request.user
-        if not (user.rol and user.rol.nombre in ['Administrador', 'Recepcionista']):
+        # Seguridad de permisos
+        if not (request.user.rol and request.user.rol.nombre in ['Administrador', 'Recepcionista']):
              return Response({'error': 'No tienes permisos'}, status=status.HTTP_403_FORBIDDEN)
 
+        # Si se cancela, devolvemos stock
         if nuevo_estado == PedidoWeb.ESTADO_CANCELADO and pedido.estado != PedidoWeb.ESTADO_CANCELADO:
             with transaction.atomic():
                 for detalle in pedido.detalles.all():
                     detalle.producto.stock_actual += detalle.cantidad
                     detalle.producto.save()
         
+        # ✅ GUARDAR REPARTIDOR SIEMPRE QUE VENGA
+        if repartidor:
+            pedido.datos_entrega_interna = repartidor
+            print(f"📦 Asignando repartidor: {repartidor} al pedido {pedido.id}") # Debug en consola
+
         pedido.estado = nuevo_estado
         pedido.save()
         
-        return Response({'status': 'Estado actualizado', 'nuevo_estado': pedido.get_estado_display()})
+        return Response({
+            'status': 'Estado actualizado', 
+            'nuevo_estado': pedido.get_estado_display(),
+            'repartidor': pedido.datos_entrega_interna
+        })

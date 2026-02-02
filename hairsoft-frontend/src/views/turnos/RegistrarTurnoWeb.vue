@@ -316,6 +316,36 @@
             </div>
           </div>
 
+          <div v-if="form.hora" class="politica-seccion-card slide-in">
+            <div class="politica-header">
+              <Info :size="18" class="politica-icon" />
+              <span>Política de Reserva y Reembolso</span>
+            </div>
+            <div class="politica-contenido">
+              <p class="politica-texto-principal">
+                Para confirmar tu reserva, es necesario realizar un pago previo. Por favor, lee nuestras condiciones:
+              </p>
+              
+              <div class="politica-reglas">
+                <div class="regla-item positive">
+                  <CheckCircle :size="16" />
+                  <span>
+                    <strong>Más de {{ configSist.margen_horas_cancelacion || 3 }} horas de aviso:</strong> 
+                    Devolución total del dinero (seña o pago completo).
+                  </span>
+                </div>
+                
+                <div class="regla-item negative">
+                  <AlertCircle :size="16" />
+                  <span>
+                    <strong>Menos de {{ configSist.margen_horas_cancelacion || 3 }} horas de aviso:</strong> 
+                    Sin reembolso. La peluquería retiene el monto abonado.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div v-if="form.hora" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
@@ -462,6 +492,12 @@ import {
 
 const router = useRouter()
 const route = useRoute()
+
+// ✅ Referencia para la configuración dinámica (Corrección Profesor)
+const configSist = ref({
+  margen_horas_cancelacion: 3,
+  politica_senia: 'Cargando política de reserva...'
+});
 
 const form = ref({
   peluquero: "", servicios_ids: [], hora: "", fecha: "",
@@ -622,9 +658,26 @@ const cargarDatosIniciales = async () => {
   cargandoDatos.value = true;
   try {
     const userId = localStorage.getItem('user_id'); if (!userId) return router.push('/login');
-    const [resU, p, s, c] = await Promise.all([api.get(`/api/usuarios/${userId}/`), api.get('/api/peluqueros/'), api.get('/api/servicios/'), api.get('/api/categorias/servicios/')]);
+    
+    // ✅ PETICIÓN PARA OBTENER CONFIGURACIÓN (REQUISITO PROFE)
+    const [resU, p, s, c, resConfig] = await Promise.all([
+      api.get(`/api/usuarios/${userId}/`), 
+      api.get('/api/peluqueros/'), 
+      api.get('/api/servicios/'), 
+      api.get('/api/categorias/servicios/'),
+      api.get('/api/configuracion/1/') // Asumiendo que el ID de config es 1
+    ]);
+    
     usuario.value = { ...resU.data, isAuthenticated: true }; form.value.cliente = userId;
-    peluqueros.value = p.data?.results || p.data; servicios.value = s.data?.results || s.data; categorias.value = c.data?.results || c.data;
+    peluqueros.value = p.data?.results || p.data; 
+    servicios.value = s.data?.results || s.data; 
+    categorias.value = c.data?.results || c.data;
+    
+    // ✅ Asignar parámetros de seña
+    if (resConfig.data) {
+      configSist.value = resConfig.data;
+    }
+
   } finally { cargandoDatos.value = false; }
 }
 
@@ -637,16 +690,12 @@ const cargarTurnosOcupados = async (f) => {
     const ocupadosSet = new Set();
     
     turnos.forEach(turno => {
-      // 🛑 BLINDAJE FINAL: ACÁ ESTABA EL ERROR 🛑
-      // Si el turno que viene de la API no es EXACTAMENTE de la fecha seleccionada, LO IGNORAMOS.
       if (turno.fecha !== f) return; 
 
       if (!turno.hora) return; 
       const [h, m] = turno.hora.split(':').map(Number); 
-      // Usamos la duración real o 30 por defecto (ajustado a tu backend)
       const dur = turno.duracion_total || 30; 
       
-      // Iteramos cada 20 o 30 min según tu lógica de slots
       for (let i = 0; i < dur; i += 20) {
         const tM = (h * 60 + m) + i;
         ocupadosSet.add(`${Math.floor(tM/60).toString().padStart(2,'0')}:${(tM%60).toString().padStart(2,'0')}`);
@@ -656,9 +705,6 @@ const cargarTurnosOcupados = async (f) => {
   } finally { cargandoHorarios.value = false; }
 }
 
-// ==========================================
-// 🚀 PAGO (SÓLO REDIRECCIÓN DIRECTA)
-// ==========================================
 const crearPagoMercadoPago = async () => {
   if (!formularioValido.value) return;
   cargandoMercadoPago.value = true;
@@ -672,7 +718,7 @@ const crearPagoMercadoPago = async () => {
     const res = await api.post('/api/turnos/crear/', payload);
     const mpUrl = res.data?.mp_data?.init_point || res.data?.init_point;
     if (mpUrl) {
-      window.location.href = mpUrl; // REDIRECCIÓN DIRECTA
+      window.location.href = mpUrl;
     } else { throw new Error('No se recibió la URL de Mercado Pago'); }
   } catch (error) {
     Swal.fire({ title: 'Error', text: error.response?.data?.message || 'Error al crear el turno.', icon: 'error' });
@@ -711,7 +757,59 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
 
 <style scoped>
 /* ============================================
-   ESTILOS ESPECÍFICOS PARA LA ALERTA MERCADO PAGO
+   NUEVOS ESTILOS: POLÍTICA DE SEÑAS (PEDIDO PROFE)
+   ============================================ */
+.politica-seccion-card {
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 25px;
+}
+
+.politica-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: #1e293b;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+
+.politica-icon {
+  color: #3b82f6;
+}
+
+.politica-contenido {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.politica-texto-principal {
+  color: #4b5563;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.politica-margen-badge {
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  border: 1px solid #dbeafe;
+}
+
+.politica-margen-badge strong {
+  color: #1e3a8a;
+}
+
+/* ============================================
+   ESTILOS ORIGINALES (MANTENIDOS AL 100%)
    ============================================ */
 .alerta-mercado-pago {
   background: linear-gradient(135deg, #e3f2fd, #bbdefb);
@@ -861,9 +959,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   color: #ff9800;
 }
 
-/* ============================================
-   ESTILOS MEJORADOS PARA PELUQUEROS
-   ============================================ */
 .grid-peluqueros {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -946,9 +1041,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   flex-shrink: 0;
 }
 
-/* ============================================
-   ESTILOS GENERALES (MANTENER LOS EXISTENTES)
-   ============================================ */
 .page-background {
   min-height: 100vh;
   padding: 30px 20px;
@@ -1024,7 +1116,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   transform: translateY(-1px); 
 }
 
-/* Cards Modernas */
 .card-modern {
   background: #fff;
   border-radius: 16px;
@@ -1082,26 +1173,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
 }
 
-/* Cupón alerta */
-.cupon-alerta {
-  background: linear-gradient(135deg, #fef3c7, #fde68a);
-  border: 2px solid #f59e0b;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
-  70% { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
-}
-
-.cupon-alerta .card-header {
-  border-bottom-color: rgba(245, 158, 11, 0.3);
-}
-
-/* ============================================
-   ✅ DATOS DEL CLIENTE - CORREGIDO RESPONSIVE
-   ============================================ */
 .cliente-info-card {
   background: linear-gradient(135deg, #f8fafc, #e2e8f0);
   padding: 25px;
@@ -1110,7 +1181,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   position: relative;
 }
 
-/* PC: 2 columnas lado a lado */
 .cliente-datos {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -1138,7 +1208,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   flex-shrink: 0;
 }
 
-/* Inputs y Selects */
 .input-modern, .select-modern {
   width: 100%;
   padding: 14px 16px;
@@ -1167,7 +1236,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   cursor: pointer;
 }
 
-/* Busqueda servicios */
 .busqueda-servicios {
   margin-bottom: 24px;
 }
@@ -1189,7 +1257,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   width: 100%;
 }
 
-/* Chips */
 .grid-chips { 
   display: flex; 
   flex-wrap: wrap; 
@@ -1224,7 +1291,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   box-shadow: 0 6px 12px rgba(59, 130, 246, 0.3);
 }
 
-/* Servicios */
 .grid-servicios { 
   display: grid; 
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); 
@@ -1306,7 +1372,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   align-self: flex-start;
 }
 
-/* No resultados */
 .no-resultados {
   text-align: center;
   padding: 50px 20px;
@@ -1319,7 +1384,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   color: #9ca3af;
 }
 
-/* Calendario */
 .calendar-wrapper { 
   background: #f8fafc; 
   border-radius: 16px; 
@@ -1420,18 +1484,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   opacity: 0.6;
 }
 
-.calendar-footer { 
-  text-align: center; 
-  margin-top: 20px; 
-  font-size: 0.9em; 
-  color: #6b7280; 
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-/* Horarios */
 .grid-horarios-mejorado {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -1524,8 +1576,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   width: fit-content;
   max-width: 100%;
 }
-
-/* Estilos adicionales para el flujo reorganizado */
 
 .hint-text {
   margin-top: 12px;
@@ -1632,8 +1682,7 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  justify-content: center; gap: 6px;
 }
 
 .btn-avisar-liberado-mejorada:hover:not(:disabled) {
@@ -1652,7 +1701,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   cursor: not-allowed;
 }
 
-/* Loading */
 .loading-spinner {
   text-align: center;
   padding: 50px 20px;
@@ -1666,12 +1714,9 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
 }
 
 @keyframes spin {
-  100% {
-    transform: rotate(360deg);
-  }
+  100% { transform: rotate(360deg); }
 }
 
-/* Pago */
 .pago-section {
   margin-bottom: 25px;
 }
@@ -1711,6 +1756,37 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
 .radio-active {
   border-color: #3b82f6;
   background: #eff6ff;
+}
+
+.politica-reglas {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 15px 0;
+}
+
+.regla-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.regla-item.positive {
+  background: rgba(16, 185, 129, 0.1);
+  color: #065f46;
+}
+
+.regla-item.negative {
+  background: rgba(239, 68, 68, 0.1);
+  color: #991b1b;
+}
+
+.politica-texto-principal {
+  color: #1e293b;
+  font-weight: 500;
 }
 
 .hidden-radio {
@@ -1764,7 +1840,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   color: #1f2937;
 }
 
-/* Resumen final */
 .resumen-final {
   background: linear-gradient(135deg, #f8fafc, #e2e8f0);
   border: 2px solid #e2e8f0;
@@ -1869,7 +1944,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   gap: 8px;
 }
 
-/* Modal */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -1903,24 +1977,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-/* Cupón alerta */
-.cupon-alerta {
-  background: linear-gradient(135deg, #fef3c7, #fde68a);
-  border: 2px solid #f59e0b;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
-  70% { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
-}
-
-.cupon-alerta .card-header {
-  border-bottom-color: rgba(245, 158, 11, 0.3);
-}
-
-/* ✅ AÑADIR ESTOS ESTILOS PARA LETRAS NEGRAS */
 .cupon-alerta .card-header h3 {
   color: #1f2937 !important;
 }
@@ -2046,7 +2102,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   background: #e5e7eb;
 }
 
-/* Toast */
 .toast-message {
   position: fixed;
   bottom: 30px;
@@ -2087,7 +2142,6 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   }
 }
 
-/* Animaciones */
 .slide-enter-active, .slide-leave-active {
   transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
@@ -2109,359 +2163,86 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
   animation: slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-/* ============================================
-   📱 MEDIA QUERIES RESPONSIVE
-   ============================================ */
-
-/* Tablet */
 @media (max-width: 1024px) {
-  .grid-servicios {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .grid-peluqueros {
-    grid-template-columns: 1fr;
-  }
-  
-  /* Horarios en tablet: 4 columnas */
-  .grid-horarios-mejorado {
-    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  }
-  
-  /* Tablet: 1 columna para datos del cliente */
-  .cliente-datos {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-  
-  .cliente-datos p {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .cliente-datos strong {
-    min-width: auto;
-    margin-bottom: 4px;
-  }
+  .grid-servicios { grid-template-columns: repeat(2, 1fr); }
+  .grid-peluqueros { grid-template-columns: 1fr; }
+  .grid-horarios-mejorado { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  .cliente-datos { grid-template-columns: 1fr; gap: 16px; }
+  .cliente-datos p { flex-direction: column; align-items: flex-start; }
+  .cliente-datos strong { min-width: auto; margin-bottom: 4px; }
 }
 
-/* Móvil Grande */
 @media (max-width: 768px) {
-  .page-background {
-    padding: 15px 10px;
-  }
-  
-  .main-card-container {
-    padding: 20px;
-  }
-  
-  .header-section {
-    flex-direction: column;
-    gap: 15px;
-    padding: 20px;
-  }
-  
-  .header-section h2 {
-    font-size: 1.5em;
-  }
-  
-  .btn-back {
-    width: 100%;
-    justify-content: center;
-  }
-  
-  .card-modern {
-    padding: 18px;
-  }
-  
-  .alerta-contenido {
-    flex-direction: column;
-    text-align: center;
-  }
-  
-  .grid-servicios {
-    grid-template-columns: 1fr;
-  }
-  
-  /* Horarios móvil grande: 3 columnas */
-  .grid-horarios-mejorado {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-  }
-  
-  .hora-card-mejorada {
-    min-height: 95px;
-    padding: 12px 8px;
-  }
-  
-  .hora-texto-mejorada {
-    font-size: 1.05rem;
-  }
-  
-  .pago-options {
-    grid-template-columns: 1fr;
-  }
-  
-  /* Móvil: 1 columna para datos del cliente */
-  .cliente-datos {
-    grid-template-columns: 1fr;
-    gap: 14px;
-  }
-  
-  .cliente-datos p {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .cliente-datos strong {
-    min-width: auto;
-    margin-bottom: 4px;
-  }
-  
-  /* Calendario responsive */
-  .calendar-wrapper {
-    padding: 14px;
-  }
-  
-  .mes-titulo {
-    font-size: 1em;
-  }
-  
-  .calendar-days-header {
-    font-size: 0.75em;
-  }
-  
-  .day-btn {
-    font-size: 0.85rem;
-  }
+  .page-background { padding: 15px 10px; }
+  .main-card-container { padding: 20px; }
+  .header-section { flex-direction: column; gap: 15px; padding: 20px; }
+  .header-section h2 { font-size: 1.5em; }
+  .btn-back { width: 100%; justify-content: center; }
+  .card-modern { padding: 18px; }
+  .alerta-contenido { flex-direction: column; text-align: center; }
+  .grid-servicios { grid-template-columns: 1fr; }
+  .grid-horarios-mejorado { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .hora-card-mejorada { min-height: 95px; padding: 12px 8px; }
+  .hora-texto-mejorada { font-size: 1.05rem; }
+  .pago-options { grid-template-columns: 1fr; }
+  .cliente-datos { grid-template-columns: 1fr; gap: 14px; }
+  .cliente-datos p { flex-direction: column; align-items: flex-start; }
+  .cliente-datos strong { min-width: auto; margin-bottom: 4px; }
+  .calendar-wrapper { padding: 14px; }
+  .mes-titulo { font-size: 1em; }
+  .calendar-days-header { font-size: 0.75em; }
+  .day-btn { font-size: 0.85rem; }
 }
 
-/* Móvil Pequeño */
 @media (max-width: 480px) {
-  .page-background {
-    padding: 10px 8px;
-  }
-  
-  .main-card-container {
-    padding: 15px;
-  }
-  
-  .header-section {
-    padding: 15px;
-  }
-  
-  .header-section h2 {
-    font-size: 1.3em;
-  }
-  
-  .card-modern {
-    padding: 15px;
-  }
-  
-  .card-icon {
-    width: 40px;
-    height: 40px;
-  }
-  
-  .card-header h3 {
-    font-size: 1.05em;
-  }
-  
-  /* Horarios móvil pequeño: 2 columnas */
-  .grid-horarios-mejorado {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-  }
-  
-  .hora-card-mejorada {
-    padding: 12px 8px;
-    min-height: 90px;
-  }
-  
-  .hora-texto-mejorada {
-    font-size: 1rem;
-  }
-  
-  .hora-estado-mejorada {
-    font-size: 0.75rem;
-    padding: 4px 8px;
-  }
-  
-  /* Móvil pequeño: 1 columna datos cliente */
-  .cliente-datos {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-  
-  .cliente-datos p {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-  }
-  
-  .cliente-datos strong {
-    min-width: auto;
-  }
-  
-  /* Calendario más compacto */
-  .calendar-wrapper {
-    padding: 12px;
-  }
-  
-  .calendar-header {
-    margin-bottom: 12px;
-  }
-  
-  .btn-nav-cal {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
-  }
-  
-  .mes-titulo {
-    font-size: 0.95em;
-  }
-  
-  .calendar-days-header {
-    font-size: 0.7em;
-    gap: 2px;
-  }
-  
-  .calendar-grid {
-    gap: 4px;
-  }
-  
-  .day-btn {
-    font-size: 0.8rem;
-    border-radius: 6px;
-  }
-  
-  .badge-today {
-    font-size: 0.45em;
-    bottom: 1px;
-  }
-  
-  /* Peluquero más compacto */
-  .peluquero-avatar {
-    width: 50px;
-    height: 50px;
-    min-width: 50px;
-    font-size: 20px;
-  }
-  
-  .peluquero-nombre {
-    font-size: 15px;
-  }
-  
-  /* Toast responsive */
-  .toast-message {
-    left: 10px;
-    right: 10px;
-    bottom: 10px;
-    min-width: auto;
-    font-size: 0.9rem;
-  }
-  
-  /* Modal */
-  .modal-content {
-    width: 95%;
-    padding: 20px;
-  }
-  
-  .modal-actions {
-    flex-direction: column;
-  }
+  .page-background { padding: 10px 8px; }
+  .main-card-container { padding: 15px; }
+  .header-section { padding: 15px; }
+  .header-section h2 { font-size: 1.3em; }
+  .card-modern { padding: 15px; }
+  .card-icon { width: 40px; height: 40px; }
+  .card-header h3 { font-size: 1.05em; }
+  .grid-horarios-mejorado { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .hora-card-mejorada { padding: 12px 8px; min-height: 90px; }
+  .hora-texto-mejorada { font-size: 1rem; }
+  .hora-estado-mejorada { font-size: 0.75rem; padding: 4px 8px; }
+  .cliente-datos { grid-template-columns: 1fr; gap: 12px; }
+  .cliente-datos p { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .cliente-datos strong { min-width: auto; }
+  .calendar-wrapper { padding: 12px; }
+  .calendar-header { margin-bottom: 12px; }
+  .btn-nav-cal { width: 36px; height: 36px; min-width: 36px; }
+  .mes-titulo { font-size: 0.95em; }
+  .calendar-days-header { font-size: 0.7em; gap: 2px; }
+  .calendar-grid { gap: 4px; }
+  .day-btn { font-size: 0.8rem; border-radius: 6px; }
+  .badge-today { font-size: 0.45em; bottom: 1px; }
+  .peluquero-avatar { width: 50px; height: 50px; min-width: 50px; font-size: 20px; }
+  .peluquero-nombre { font-size: 15px; }
+  .toast-message { left: 10px; right: 10px; bottom: 10px; min-width: auto; font-size: 0.9rem; }
+  .modal-content { width: 95%; padding: 20px; }
+  .modal-actions { flex-direction: column; }
 }
 
-/* Móvil MUY Pequeño */
 @media (max-width: 360px) {
-  .page-background {
-    padding: 8px 5px;
-  }
-  
-  .main-card-container {
-    padding: 12px;
-  }
-  
-  .header-section {
-    padding: 12px;
-  }
-  
-  .header-section h2 {
-    font-size: 1.2em;
-  }
-  
-  .card-modern {
-    padding: 12px;
-  }
-  
-  /* Horarios a 2 columnas en pantallas muy pequeñas */
-  .grid-horarios-mejorado {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 6px;
-  }
-  
-  .hora-card-mejorada {
-    min-height: 85px;
-    padding: 10px 6px;
-  }
-  
-  .hora-texto-mejorada {
-    font-size: 0.95rem;
-  }
-  
-  .hora-estado-mejorada {
-    font-size: 0.7rem;
-    padding: 3px 6px;
-  }
-  
-  /* Datos cliente en móviles muy pequeños */
-  .cliente-datos {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-  
-  .cliente-datos p {
-    font-size: 0.95rem;
-  }
-  
-  /* Calendario ultra compacto */
-  .calendar-wrapper {
-    padding: 10px;
-  }
-  
-  .mes-titulo {
-    font-size: 0.9em;
-  }
-  
-  .btn-nav-cal {
-    width: 32px;
-    height: 32px;
-    min-width: 32px;
-  }
-  
-  .calendar-days-header {
-    font-size: 0.65em;
-  }
-  
-  .calendar-grid {
-    gap: 3px;
-  }
-  
-  .day-btn {
-    font-size: 0.75rem;
-    min-height: 32px;
-  }
-  
-  .badge-today {
-    display: none;
-  }
-  
-  .peluquero-avatar {
-    width: 45px;
-    height: 45px;
-    min-width: 45px;
-    font-size: 18px;
-  }
+  .page-background { padding: 8px 5px; }
+  .main-card-container { padding: 12px; }
+  .header-section { padding: 12px; }
+  .header-section h2 { font-size: 1.2em; }
+  .card-modern { padding: 12px; }
+  .grid-horarios-mejorado { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .hora-card-mejorada { min-height: 85px; padding: 10px 6px; }
+  .hora-texto-mejorada { font-size: 0.95rem; }
+  .hora-estado-mejorada { font-size: 0.7rem; padding: 3px 6px; }
+  .cliente-datos { grid-template-columns: 1fr; gap: 10px; }
+  .cliente-datos p { font-size: 0.95rem; }
+  .calendar-wrapper { padding: 10px; }
+  .mes-titulo { font-size: 0.9em; }
+  .btn-nav-cal { width: 32px; height: 32px; min-width: 32px; }
+  .calendar-days-header { font-size: 0.65em; }
+  .calendar-grid { gap: 3px; }
+  .day-btn { font-size: 0.75rem; min-height: 32px; }
+  .badge-today { display: none; }
+  .peluquero-avatar { width: 45px; height: 45px; min-width: 45px; font-size: 18px; }
 }
 </style>

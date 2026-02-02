@@ -719,45 +719,40 @@ class PedidoBusquedaSerializer(serializers.ModelSerializer):
     def get_puede_completar(self, obj):  # ✅ CAMBIÉ EL NOMBRE Y MÉTODO
         return obj.puede_ser_completado()
 
-
-#Pedido del cliente!!!
 class DetallePedidoWebSerializer(serializers.ModelSerializer):
-    # 'producto' es ForeignKey, por defecto acepta ID, que es lo que manda el front. Perfecto.
-    nombre_producto = serializers.CharField(source='producto.nombre', read_only=True)
-    precio_unitario = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-
+    nombre_producto = serializers.ReadOnlyField(source='producto.nombre')
+    
     class Meta:
         model = DetallePedidoWeb
         fields = ['id', 'producto', 'nombre_producto', 'cantidad', 'precio_unitario', 'subtotal']
+        # ✅ FIX: El precio lo pone el back, no lo pide al front (Evita el Error 400)
+        read_only_fields = ['precio_unitario']
 
 class PedidoWebSerializer(serializers.ModelSerializer):
     detalles = DetallePedidoWebSerializer(many=True)
     estado_display = serializers.CharField(source='get_estado_display', read_only=True)
-    
-    # ✅ CORRECCIÓN: Usamos SerializerMethodField para garantizar que siempre haya un string
     cliente_nombre = serializers.SerializerMethodField()
     cliente_email = serializers.CharField(source='cliente.correo', read_only=True)
 
     class Meta:
         model = PedidoWeb
         fields = [
-            'id', 'cliente', 'cliente_nombre', 'cliente_email', # Usamos solo cliente_nombre compuesto
+            'id', 'cliente', 'cliente_nombre', 'cliente_email', 
             'fecha_creacion', 'estado', 'estado_display', 
             'tipo_entrega', 'direccion_envio', 'costo_envio', 
-            'total', 'detalles'
+            'total', 'detalles',
+            'datos_entrega_interna', # ✅ CORRECCIÓN: Ahora el dato viaja al Front
+            'mp_payment_id'
         ]
-        read_only_fields = ['cliente', 'fecha_creacion', 'estado', 'total']
+        read_only_fields = ['cliente', 'fecha_creacion', 'estado', 'total', 'mp_payment_id']
 
-    # ✅ Método para obtener el nombre completo
     def get_cliente_nombre(self, obj):
         if obj.cliente:
             nombre = f"{obj.cliente.nombre} {obj.cliente.apellido}".strip()
-            return nombre if nombre else obj.cliente.correo # Si no tiene nombre, devuelve el mail
+            return nombre if nombre else obj.cliente.username
         return "Cliente Desconocido"
 
     def create(self, validated_data):
-        # ... (Tu código del create que me pasaste está perfecto, no lo toques) ...
-        # Copia y pega tu método create aquí abajo tal cual lo tenías.
         detalles_data = validated_data.pop('detalles')
         
         with transaction.atomic():
@@ -767,31 +762,24 @@ class PedidoWebSerializer(serializers.ModelSerializer):
             for detalle_data in detalles_data:
                 producto = detalle_data['producto']
                 cantidad = detalle_data['cantidad']
-
                 producto_db = Producto.objects.select_for_update().get(pk=producto.pk)
 
                 if producto_db.stock_actual < cantidad:
-                    raise serializers.ValidationError(
-                        f"Stock insuficiente para {producto_db.nombre}. Quedan {producto_db.stock_actual}."
-                    )
+                    raise serializers.ValidationError(f"Stock insuficiente para {producto_db.nombre}.")
 
                 producto_db.stock_actual -= cantidad
                 producto_db.save()
 
-                precio_actual = producto_db.precio 
-                
                 DetallePedidoWeb.objects.create(
                     pedido=pedido,
                     producto=producto_db,
                     cantidad=cantidad,
-                    precio_unitario=precio_actual
+                    precio_unitario=producto_db.precio
                 )
-                
-                total_acumulado += (precio_actual * cantidad)
+                total_acumulado += (producto_db.precio * cantidad)
 
             pedido.total = total_acumulado + pedido.costo_envio
             pedido.save()
-
             return pedido
 # ----------------------------------------------------------------------
 # LISTAS DE PRECIOS DE PROVEEDORES
@@ -942,15 +930,85 @@ class SolicitudPresupuestoSerializer(serializers.ModelSerializer):
         return mejor.id
 
 class AuditoriaSerializer(serializers.ModelSerializer):
-    # Campos calculados para mostrar info legible
     usuario_nombre = serializers.CharField(source='usuario.nombre', read_only=True, default='Sistema')
     usuario_apellido = serializers.CharField(source='usuario.apellido', read_only=True, default='')
     usuario_rol = serializers.CharField(source='usuario.rol.nombre', read_only=True, default='-')
     usuario_email = serializers.CharField(source='usuario.correo', read_only=True, default='')
-
+    
+    # ✅ NUEVO: Campos extraídos de 'detalles'
+    navegador_info = serializers.SerializerMethodField()
+    sistema_operativo = serializers.SerializerMethodField()
+    dispositivo_info = serializers.SerializerMethodField()
+    
     class Meta:
         model = Auditoria
         fields = '__all__'
+    
+    def get_navegador_info(self, obj):
+        """Extrae información del navegador de los detalles"""
+        if not obj.detalles:
+            return ''
+        
+        detalles = obj.detalles
+        if isinstance(detalles, str):
+            try:
+                detalles = json.loads(detalles)
+            except:
+                return ''
+        
+        if not isinstance(detalles, dict):
+            return ''
+        
+        # Buscar en diferentes ubicaciones posibles
+        if '__meta__' in detalles and 'navegador' in detalles['__meta__']:
+            return detalles['__meta__']['navegador']
+        
+        # También podría estar en otras ubicaciones
+        for key in ['user_agent', 'browser', 'navegador', 'ua']:
+            if key in detalles:
+                return detalles[key]
+        
+        return ''
+    
+    def get_sistema_operativo(self, obj):
+        """Extrae información del sistema operativo"""
+        if not obj.detalles:
+            return ''
+        
+        detalles = obj.detalles
+        if isinstance(detalles, str):
+            try:
+                detalles = json.loads(detalles)
+            except:
+                return ''
+        
+        if not isinstance(detalles, dict):
+            return ''
+        
+        if '__meta__' in detalles and 'so' in detalles['__meta__']:
+            return detalles['__meta__']['so']
+        
+        for key in ['os', 'platform', 'sistema_operativo']:
+            if key in detalles:
+                return detalles[key]
+        
+        return ''
+    
+    def get_dispositivo_info(self, obj):
+        """Información completa del dispositivo"""
+        navegador = self.get_navegador_info(obj)
+        sistema = self.get_sistema_operativo(obj)
+        
+        if not navegador and not sistema:
+            return f"IP: {obj.ip_address or 'No registrada'}"
+        
+        if navegador and sistema:
+            return f"{navegador} en {sistema} (IP: {obj.ip_address or 'N/A'})"
+        
+        if navegador:
+            return f"{navegador} (IP: {obj.ip_address or 'N/A'})"
+        
+        return f"{sistema} (IP: {obj.ip_address or 'N/A'})"
 
 # ================================
 # Recuperar contra desde el login

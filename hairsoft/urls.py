@@ -13,13 +13,11 @@ def serve_frontend(request, path=''):
         return serve(request, path, document_root=settings.STATIC_ROOT)
 
 urlpatterns = [
-    # 1. El Admin se queda ACÁ, es su único lugar.
     path('admin/', admin.site.urls),
     path('', include('usuarios.urls')),
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
-# 3. Frontend (Siempre al final)
 urlpatterns += [
     re_path(r'^.*$', serve_frontend),
 ]
