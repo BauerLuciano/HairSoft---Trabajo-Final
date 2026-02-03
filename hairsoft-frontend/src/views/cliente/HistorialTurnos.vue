@@ -270,44 +270,96 @@ const claseEstado = (estado) => {
 }
 
 const cancelarTurno = async (turno) => {
-  const result = await Swal.fire({
+  // ✅ PASO 1: Obtener el margen dinámico
+  let margenConfig = 3;
+  try {
+    const resConfig = await api.get('/api/configuracion/');
+    if (resConfig.data && resConfig.data.margen_horas_cancelacion) {
+      margenConfig = resConfig.data.margen_horas_cancelacion;
+    }
+  } catch (error) {
+    console.error("Error al obtener margen de cancelación:", error);
+  }
+
+  // ✅ PASO 2: Calcular si corresponde reembolso AHORA
+  const ahora = new Date();
+  const fechaTurno = new Date(`${turno.fecha}T${turno.hora}`);
+  const horasFaltantes = (fechaTurno - ahora) / (1000 * 60 * 60);
+  const hayReembolso = horasFaltantes >= margenConfig;
+
+  // ✅ PASO 3: Abrir el modal con la información visual
+  const { value: formValues } = await Swal.fire({
     title: '¿Cancelar Turno?',
     html: `
-      <div style="text-align: left; margin: 1rem 0;">
-        <p><strong>Fecha:</strong> ${formatFecha(turno.fecha)} - ${turno.hora}hs</p>
-        <p><strong>Servicio:</strong> ${turno.servicios}</p>
-        <p style="color: #f59e0b; margin-top: 1rem;">
-          <small>Si pagaste seña, te contactaremos para el reembolso.</small>
-        </p>
+      <div style="text-align: left; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+        
+        <div style="background: ${hayReembolso ? '#f0fdf4' : '#fffbeb'}; 
+                    padding: 12px; border-radius: 10px; margin-bottom: 15px; 
+                    border: 1px solid ${hayReembolso ? '#bbf7d0' : '#fef3c7'};
+                    display: flex; align-items: center; gap: 10px;">
+          <div style="font-size: 1.2rem;">${hayReembolso ? '✅' : '⚠️'}</div>
+          <div>
+            <div style="font-weight: 700; color: ${hayReembolso ? '#166534' : '#92400e'}; font-size: 0.9rem;">
+              ${hayReembolso ? 'Reembolso disponible' : 'Sin reembolso'}
+            </div>
+            <div style="color: ${hayReembolso ? '#16a34a' : '#b45309'}; font-size: 0.8rem;">
+              Cancelación con ${Math.floor(horasFaltantes)}hs de anticipación (Mínimo: ${margenConfig}hs).
+            </div>
+          </div>
+        </div>
+
+        <div style="background: #f8fafc; padding: 1rem; border-radius: 12px; border: 1px solid #e2e8f0;">
+          <label style="display:block; margin-bottom:5px; font-weight:bold; color: #1e293b; font-size: 0.9rem;">Motivo:</label>
+          <select id="motivo" class="swal2-input" style="width: 100%; margin: 0 0 15px 0; height: 40px; font-size: 0.9rem;">
+            <option value="PERSONAL">Motivos personales</option>
+            <option value="SALUD">Problema de salud</option>
+            <option value="ERROR">Error al reservar</option>
+            <option value="HORARIO">Cambio de planes</option>
+          </select>
+          <label style="display:block; margin-bottom:5px; font-weight:bold; color: #1e293b; font-size: 0.9rem;">Observaciones:</label>
+          <textarea id="obs" class="swal2-textarea" style="width: 100%; margin: 0; height: 80px; font-size: 0.9rem;" placeholder="Opcional..."></textarea>
+        </div>
       </div>
     `,
-    icon: 'warning',
+    icon: 'question',
     showCancelButton: true,
     confirmButtonColor: '#ef4444',
-    cancelButtonColor: '#6b7280',
-    confirmButtonText: 'Sí, cancelar turno',
-    cancelButtonText: 'Mantener turno'
-  })
+    confirmButtonText: 'Confirmar Cancelación',
+    cancelButtonText: 'Volver',
+    preConfirm: () => {
+      const motivo = document.getElementById('motivo').value;
+      if (!motivo) {
+        Swal.showValidationMessage('Por favor selecciona un motivo');
+        return false;
+      }
+      return {
+        motivo: motivo,
+        observaciones: document.getElementById('obs').value
+      }
+    }
+  });
 
-  if (result.isConfirmed) {
+  // ✅ PASO 4: Procesar la cancelación (Lógica original intacta)
+  if (formValues) {
     try {
-      Swal.showLoading()
-      const response = await api.post(`/turnos/cancelar-propio/${turno.id}/`)
+      Swal.fire({ 
+        title: 'Procesando...', 
+        allowOutsideClick: false, 
+        didOpen: () => Swal.showLoading() 
+      });
       
-      Swal.fire({
-        icon: 'success',
-        title: 'Turno cancelado',
-        text: response.data.message,
+      const response = await api.post(`/turnos/cancelar-propio/${turno.id}/`, formValues);
+      
+      await Swal.fire({
+        icon: response.data.reembolso_ok ? 'success' : 'warning',
+        title: 'Turno Cancelado',
+        text: response.data.message, 
         confirmButtonColor: '#0ea5e9'
-      })
-      cargarMisTurnos()
+      });
+      
+      cargarMisTurnos();
     } catch (error) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.response?.data?.error || 'No se pudo cancelar el turno',
-        confirmButtonColor: '#0ea5e9'
-      })
+      Swal.fire('Error', 'No se pudo cancelar el turno.', 'error');
     }
   }
 }

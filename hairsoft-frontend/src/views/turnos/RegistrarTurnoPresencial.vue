@@ -428,6 +428,7 @@ const horariosGenerados = computed(() => {
   return horariosBase
 })
 
+// ✅ FUNCIÓN CORREGIDA: Ahora libera los horarios cancelados
 const cargarHorariosOcupados = async (fecha) => {
   if (!form.value.peluquero || form.value.peluquero === form.value.cliente) return
   
@@ -437,6 +438,7 @@ const cargarHorariosOcupados = async (fecha) => {
   
   try {
     const token = localStorage.getItem('token')
+    // Intentamos filtrar por estado desde la API
     const url = `${API_URL}/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
     
     const res = await fetch(url, {
@@ -451,6 +453,9 @@ const cargarHorariosOcupados = async (fecha) => {
     const ocupadosSet = new Set()
     
     resultados.forEach(turno => {
+      // 🔥 FILTRO CRÍTICO: Si el turno está CANCELADO o DISPONIBLE, NO debe bloquear el horario
+      if (['CANCELADO', 'DISPONIBLE'].includes(turno.estado)) return
+
       if (turno.fecha !== fecha) return
 
       const [h, m] = turno.hora.split(':').map(Number)
@@ -468,6 +473,7 @@ const cargarHorariosOcupados = async (fecha) => {
       
       const finMin = inicioMin + duracion
       
+      // Bloqueamos los slots que ocupa este turno activo
       for (let i = inicioMin; i < finMin; i += 20) {
         const hh = Math.floor(i / 60).toString().padStart(2, '0')
         const mm = (i % 60).toString().padStart(2, '0')
@@ -486,9 +492,7 @@ const cargarHorariosOcupados = async (fecha) => {
 
 const esHorarioDisponible = (hora) => {
   if (!form.value.fecha || !form.value.peluquero) return true
-  
   const horaSimple = hora.substring(0, 5)
-  
   if (slotsOcupadosReales.value.includes(horaSimple)) return false
 
   const hoy = new Date()
@@ -498,11 +502,9 @@ const esHorarioDisponible = (hora) => {
     const [h, m] = hora.split(':').map(Number)
     const ahoraH = hoy.getHours()
     const ahoraM = hoy.getMinutes()
-    
     if (h < ahoraH) return false
     if (h === ahoraH && m < ahoraM) return false
   }
-
   return true
 }
 
@@ -556,9 +558,7 @@ const cargarDatosIniciales = async () => {
       fetch(`${API_URL}/servicios/`),
       fetch(`${API_URL}/peluqueros/`)
     ])
-    
     if (!resCat.ok || !resServ.ok || !resPel.ok) throw new Error("Error cargando datos")
-    
     categorias.value = await resCat.json()
     servicios.value = await resServ.json()
     peluqueros.value = await resPel.json()
@@ -630,7 +630,6 @@ const toggleServicio = (servicio) => {
   resetFechas()
 }
 
-// 🔥 NUEVA FUNCIÓN para seleccionar profesional desde las cards
 const seleccionarPeluquero = (id) => {
   form.value.peluquero = id
   resetFechas()
@@ -673,7 +672,6 @@ const seleccionarDiaCalendario = (day) => {
   const mesStr = String(currentMonth.value + 1).padStart(2, '0')
   const diaStr = String(day).padStart(2, '0')
   form.value.fecha = `${currentYear.value}-${mesStr}-${diaStr}`
-  
   cargarHorariosOcupados(form.value.fecha)
 }
 

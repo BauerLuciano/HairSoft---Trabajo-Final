@@ -67,7 +67,7 @@
                 v-for="categoria in categorias" 
                 :key="categoria.id"
                 class="chip-modern"
-                :class="{ 'chip-active': categoriasSeleccionadas.includes(categoria.id) }"
+                :class="{ 'chip-active': categoriasSeleccionadas.includes(String(categoria.id)) }"
                 @click="toggleCategoria(categoria.id)"
               >
                 <Tag :size="14" />
@@ -274,8 +274,7 @@
                 class="hora-card-mejorada"
                 :class="{
                   'hora-selected-mejorada': form.hora === hora,
-                  'hora-disponible-mejorada': true,
-                  'hora-ocupada-mejorada': false
+                  'hora-disponible-mejorada': true
                 }"
                 @click="seleccionarHora(hora)"
               >
@@ -323,23 +322,23 @@
             </div>
             <div class="politica-contenido">
               <p class="politica-texto-principal">
-                Para confirmar tu reserva, es necesario realizar un pago previo. Por favor, lee nuestras condiciones:
+                {{ configSist.politica_senia }}
               </p>
-              
+
               <div class="politica-reglas">
                 <div class="regla-item positive">
                   <CheckCircle :size="16" />
                   <span>
-                    <strong>Más de {{ configSist.margen_horas_cancelacion || 3 }} horas de aviso:</strong> 
-                    Devolución total del dinero (seña o pago completo).
+                    <strong>Aviso con más de {{ configSist.margen_horas_cancelacion }} horas:</strong> 
+                    Devolución total del dinero abonado.
                   </span>
                 </div>
                 
                 <div class="regla-item negative">
                   <AlertCircle :size="16" />
                   <span>
-                    <strong>Menos de {{ configSist.margen_horas_cancelacion || 3 }} horas de aviso:</strong> 
-                    Sin reembolso. La peluquería retiene el monto abonado.
+                    <strong>Aviso con menos de {{ configSist.margen_horas_cancelacion }} horas:</strong> 
+                    Sin reembolso. Se aplica penalidad por cancelación tardía.
                   </span>
                 </div>
               </div>
@@ -485,15 +484,15 @@ import Swal from 'sweetalert2'
 import { 
   Calendar, ArrowLeft, User, UserCheck, FolderOpen, Tag, 
   Scissors, Check, DollarSign, Clock, CalendarDays, 
-  ChevronLeft, ChevronRight, Loader2, Receipt, 
-  CheckCircle2, Bell, Banknote, FileText, Inbox, CheckCircle, CreditCard, Wallet,
+  ChevronLeft, ChevronRight, Loader2, 
+  CheckCircle2, Bell, Banknote, Inbox, CheckCircle, CreditCard, Wallet,
   Gift, Search, X, AlertCircle, Info
 } from 'lucide-vue-next'
 
 const router = useRouter()
 const route = useRoute()
 
-// ✅ Referencia para la configuración dinámica (Corrección Profesor)
+// ✅ CONFIGURACIÓN DINÁMICA DE LA BASE DE DATOS
 const configSist = ref({
   margen_horas_cancelacion: 3,
   politica_senia: 'Cargando política de reserva...'
@@ -509,9 +508,9 @@ const peluqueros = ref([]); const servicios = ref([]); const categorias = ref([]
 const slotsOcupadosReales = ref([]); const categoriasSeleccionadas = ref([]);
 const busquedaServicio = ref(""); const cargandoMercadoPago = ref(false);
 const cargandoHorarios = ref(false); const cargandoDatos = ref(true); 
-const cargandoServicios = ref(false); const mostrarModalInteres = ref(false);
+const mostrarModalInteres = ref(false);
 const horarioSeleccionadoInteres = ref(null); const registrandoInteres = ref(false);
-const redirigiendoMercadoPago = ref(false); const currentDate = ref(new Date());
+const currentDate = ref(new Date());
 const DIAS_RANGO = 7; const cuponCodigo = ref(null);
 const descuentoAplicado = ref(0); const mensajePromo = ref("");
 const horariosInteres = ref([]); const mensaje = ref(""); const mensajeTipo = ref("");
@@ -524,7 +523,6 @@ const getListaServicios = () => {
   try {
     if (Array.isArray(servicios.value)) return servicios.value;
     if (servicios.value?.results) return servicios.value.results;
-    if (servicios.value?.data) return servicios.value.data;
     return [];
   } catch (error) { return []; }
 }
@@ -632,11 +630,6 @@ const seleccionarDiaCalendario = (day) => {
   form.value.hora = "";
 };
 const cambiarMes = (delta) => { const n = new Date(currentDate.value); n.setMonth(n.getMonth() + delta); currentDate.value = n; };
-const getFechaMaximaReserva = () => {
-  let d = new Date(); d.setHours(0,0,0,0); let c = 0;
-  while (c < DIAS_RANGO) { if (d.getDay() !== 0) c++; if (c < DIAS_RANGO) d.setDate(d.getDate() + 1); }
-  return d.toLocaleDateString('es-ES');
-};
 
 const esHorarioDisponible = (h) => {
   if (!form.value.fecha || !form.value.peluquero) return true;
@@ -659,13 +652,13 @@ const cargarDatosIniciales = async () => {
   try {
     const userId = localStorage.getItem('user_id'); if (!userId) return router.push('/login');
     
-    // ✅ PETICIÓN PARA OBTENER CONFIGURACIÓN (REQUISITO PROFE)
+    // ✅ PETICIÓN PARA OBTENER CONFIGURACIÓN ACTUALIZADA
     const [resU, p, s, c, resConfig] = await Promise.all([
       api.get(`/api/usuarios/${userId}/`), 
       api.get('/api/peluqueros/'), 
       api.get('/api/servicios/'), 
       api.get('/api/categorias/servicios/'),
-      api.get('/api/configuracion/1/') // Asumiendo que el ID de config es 1
+      api.get('/api/configuracion/') 
     ]);
     
     usuario.value = { ...resU.data, isAuthenticated: true }; form.value.cliente = userId;
@@ -673,7 +666,6 @@ const cargarDatosIniciales = async () => {
     servicios.value = s.data?.results || s.data; 
     categorias.value = c.data?.results || c.data;
     
-    // ✅ Asignar parámetros de seña
     if (resConfig.data) {
       configSist.value = resConfig.data;
     }
@@ -685,11 +677,13 @@ const cargarTurnosOcupados = async (f) => {
   if (!form.value.peluquero || !f) return;
   cargandoHorarios.value = true;
   try {
-    const res = await api.get(`/api/turnos/?fecha=${f}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO,PAGADO,COMPLETADO`);
-    const turnos = res.data?.results || res.data; 
+    const res = await api.get(`/api/turnos/?fecha=${f}&peluquero=${form.value.peluquero}`);
+    const turnosData = res.data?.results || res.data; 
     const ocupadosSet = new Set();
     
-    turnos.forEach(turno => {
+    turnosData.forEach(turno => {
+      // ✅ FILTRO PARA LIBERAR HORARIOS CANCELADOS
+      if (turno.estado === 'CANCELADO' || turno.estado === 'DISPONIBLE') return;
       if (turno.fecha !== f) return; 
 
       if (!turno.hora) return; 
@@ -743,9 +737,6 @@ const confirmarRegistroInteres = async () => {
 
 const filtrarServicios = () => { nextTick(); };
 const volverAlListado = () => router.push('/cliente/historial');
-const irAlListado = () => router.push('/cliente/historial');
-const nuevaReserva = () => window.location.reload();
-const irAServicios = () => router.push('/servicios');
 
 onMounted(async () => {
   await cargarDatosIniciales();

@@ -37,7 +37,7 @@ from rest_framework import viewsets, status, generics, filters, serializers
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import api_view, permission_classes, action
-from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly, IsAdminUser
 from rest_framework.response import Response 
 
 # 4. Local App Imports
@@ -58,7 +58,7 @@ from .serializers import (
     ActualizarListaPreciosSerializer, CotizacionExternaSerializer, SolicitudPresupuestoSerializer, 
     MarcaSerializer, AuditoriaSerializer, SolicitarResetPasswordSerializer, 
     ResetPasswordConfirmarSerializer, ServicioSerializer, RolSerializer, 
-    PermisoSerializer, TurnoSerializer
+    PermisoSerializer, TurnoSerializer, ConfiguracionSistemaSerializer
 )
 from .forms import UsuarioForm # Ajustado si tenías formularios específicos
 from .mercadopago_service import MercadoPagoService
@@ -1255,6 +1255,36 @@ def obtener_horarios_disponibles(request):
     except Exception as e:
         print(f"Error horarios: {e}")
         return Response({'error': str(e)}, status=500)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def obtener_turnos_con_reembolso_pendiente(request):
+    """Obtiene todos los turnos con reembolso pendiente"""
+    try:
+        turnos = Turno.objects.filter(
+            reembolso_estado='PENDIENTE',
+            estado='CANCELADO'
+        ).select_related('cliente', 'peluquero')
+        
+        data = []
+        for t in turnos:
+            data.append({
+                'id': t.id,
+                'fecha': t.fecha.strftime('%d/%m/%Y'),
+                'hora': t.hora.strftime('%H:%M'),
+                'cliente_nombre': f"{t.cliente.nombre} {t.cliente.apellido}" if t.cliente else "Sin cliente",
+                'peluquero_nombre': f"{t.peluquero.nombre} {t.peluquero.apellido}",
+                'monto_seña': float(t.monto_seña),
+                'monto_total': float(t.monto_total),
+                'medio_pago': t.medio_pago,
+                'motivo_cancelacion': t.motivo_cancelacion or "Sin motivo",
+                'fecha_cancelacion': t.fecha_modificacion.strftime('%d/%m/%Y %H:%M')
+            })
+        
+        return Response(data)
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
     
 @csrf_exempt
 def obtener_turno_por_id(request, turno_id):
@@ -1407,6 +1437,19 @@ def completar_turno(request, turno_id):
             'status': 'error',
             'message': str(e)
         }, status=400)
+
+@api_view(['POST'])
+def actualizar_pago_presencial(request, turno_id):
+    try:
+        turno = Turno.objects.get(id=turno_id)
+        data = request.data
+        turno.tipo_pago = 'TOTAL'
+        turno.medio_pago = data.get('medio_pago', 'EFECTIVO')
+        turno.nro_transaccion = data.get('nro_transaccion', '')
+        if 'MERCADO' in str(turno.medio_pago).upper(): turno.mp_payment_id = data.get('nro_transaccion', '')
+        turno.save()
+        return Response({'status': 'ok'})
+    except: return Response(status=500)
 
 @csrf_exempt
 def actualizar_pago_turno(request, turno_id):
@@ -2202,39 +2245,61 @@ def pago_pendiente(request):
 
 def procesar_reembolso_si_corresponde(turno):
     """
-    Evalúa si corresponde reembolso (regla de 3 horas) y ejecuta la devolución en MP.
-    Retorna: (bool: se_hizo_reembolso, str: mensaje)
+    ✅ CORREGIDA: Gestiona la devolución de dinero sin modificar estado del turno
+    Solo actualiza campos de reembolso, no el estado del turno
     """
-    try:
-        fecha_hora_turno_naive = datetime.combine(turno.fecha, turno.hora)
-        fecha_hora_turno = timezone.make_aware(fecha_hora_turno_naive)
-        ahora = timezone.now()
-
-        tiempo_restante = fecha_hora_turno - ahora
-        horas_restantes = tiempo_restante.total_seconds() / 3600
-
-        if horas_restantes < 3:
-            return False, "⏳ Menos de 3hs para el turno. Se aplica penalidad (Sin reembolso)."
-
-        if not turno.mp_payment_id or turno.monto_seña <= 0:
-            if turno.canal == 'PRESENCIAL':
-                return False, "🏪 Turno presencial. Devolución manual requerida en caja."
-            return False, "⚠️ No hay pago registrado en MP para reembolsar."
-
-        mp_service = MercadoPagoService()
-        resultado_mp_dict = mp_service.devolver_pago(turno.mp_payment_id) 
-        resultado_mp = resultado_mp_dict.get('success', False) # Extraemos el booleano
-
-        if resultado_mp: # Asumiendo que devuelve True/False o un objeto truthy
-            turno.reembolsado = True
-            turno.save()
-            return True, f"💰 Reembolso de ${turno.monto_seña} procesado exitosamente por MercadoPago."
-        else:
-            return False, "❌ Error al conectar con MercadoPago para el reembolso."
-
-    except Exception as e:
-        print(f"Error calculando reembolso: {e}")
-        return False, f"Error interno procesando reembolso: {str(e)}"
+    # 1. Si ya fue reembolsado, no hacer nada
+    if turno.reembolso_estado == 'COMPLETADO':
+        return False, "El dinero ya fue devuelto."
+    
+    # 2. Verificar si el cliente pagó algo
+    puso_plata = (turno.monto_seña > 0 or turno.tipo_pago == 'TOTAL')
+    if not puso_plata:
+        turno.reembolso_estado = 'NO_APLICA'
+        return False, "El turno no tiene pagos registrados."
+    
+    # 3. ✅ Usar la lógica de tiempo corregida del modelo
+    puede_cancelar, hay_reembolso, msg_tiempo = turno.puede_ser_cancelado()
+    
+    if not hay_reembolso:
+        turno.reembolso_estado = 'NO_APLICA'
+        return False, f"Fuera de término para reembolso: {msg_tiempo}"
+    
+    # 4. ✅ SI HAY REEMBOLSO CORRESPONDIENTE:
+    reembolsado_exitoso = False
+    
+    # Caso MercadoPago
+    if turno.medio_pago == 'MERCADO_PAGO' and turno.mp_payment_id:
+        try:
+            mp = MercadoPagoService()
+            monto = float(turno.monto_seña) if turno.tipo_pago == 'SENA_50' else float(turno.monto_total)
+            res = mp.devolver_pago(turno.mp_payment_id, amount=monto)
+            
+            if res.get('success'):
+                turno.reembolso_estado = 'COMPLETADO'
+                turno.reembolsado = True
+                turno.mp_refund_id = res.get('refund_id', '')
+                reembolsado_exitoso = True
+                return True, "✅ Reembolso automático procesado por Mercado Pago."
+            else:
+                # Si MP falla, queda como pendiente manual
+                turno.reembolso_estado = 'PENDIENTE'
+                return True, "El reembolso debe realizarse manualmente."
+                
+        except Exception as e:
+            print(f"❌ Error MercadoPago: {e}")
+            turno.reembolso_estado = 'PENDIENTE'
+            return True, f"⚠️ Error MP: {str(e)}. Reembolso manual requerido."
+    
+    # 5. ✅ CASO EFECTIVO / TRANSFERENCIA / FALLO MP
+    # Se marca como PENDIENTE para trazabilidad
+    turno.reembolso_estado = 'PENDIENTE'
+    
+    # Determinar mensaje según medio de pago
+    if turno.medio_pago in ['EFECTIVO', 'TRANSFERENCIA']:
+        return True, "💰 Reembolso PENDIENTE de entrega en efectivo/transferencia."
+    else:
+        return True, "⏳ Reembolso marcado como PENDIENTE para gestión manual."
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -2295,9 +2360,6 @@ class ProveedorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
         instance.estado = 'INACTIVO'
         instance.save()
 
-
-
-# En usuarios/views.py
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -4211,92 +4273,75 @@ def eliminar_marca(request, pk):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
-# ================================
-# REOFERTA MASIVA - NUEVAS VISTAS
-# ================================
-@csrf_exempt
-def cancelar_turno_con_reoferta(request, turno_id):
-    """
-    Cancela un turno, procesa reembolso automático si corresponde e inicia reoferta.
-    """
-    print(f"🔥🔥🔥 CANCELACIÓN CON REOFERTA LLAMADA - Turno: {turno_id}")
-    
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
-    
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def cancelar_turno_unificado(request, turno_id):
+    """✅ CORREGIDA: Orden correcto de operaciones para cancelación"""
     try:
         turno = Turno.objects.get(id=turno_id)
         
-        if turno.estado == 'CANCELADO':
-             return JsonResponse({'error': 'El turno ya está cancelado'}, status=400)
-
-        print(f"📅 Turno: {turno.fecha} {turno.hora} - Estado: {turno.estado}")
-
-        # PROCESAR REEMBOLSO AUTOMÁTICO
-        print("💳 Verificando reembolso automático...")
-        reembolso_ok, mensaje_reembolso = procesar_reembolso_si_corresponde(turno)
-        print(f"💰 Resultado Reembolso: {mensaje_reembolso}")
-
+        # 1. Validar que no esté ya cancelado
+        if turno.estado == 'CANCELADO': 
+            return Response({'error': 'Ya cancelado'}, status=400)
+        
+        # 2. Verificar que el turno pueda ser cancelado
+        puede_cancelar, _, msg = turno.puede_ser_cancelado()
+        if not puede_cancelar:
+            return Response({'error': f'No se puede cancelar: {msg}'}, status=400)
+        
+        # 3. Capturar motivos (sin guardar aún)
+        turno.motivo_cancelacion = request.data.get('motivo_cancelacion', 'Cancelado por el cliente')
+        turno.obs_cancelacion = request.data.get('obs_cancelacion', '')
+        
+        _, mensaje_reembolso = procesar_reembolso_si_corresponde(turno)
+        
+        # 5. ✅ Ahora cambiar el estado a CANCELADO
         turno.estado = 'CANCELADO'
-        turno.oferta_activa = False 
+        
+        # 6. Guardar todos los cambios del turno
         turno.save()
         
-        print("✅ Turno marcado como CANCELADO")
-
-        # 4. BUSCAR INTERESADOS
-        print("🔎 Buscando interesados en lista de espera...")
-        interesados = turno.obtener_interesados() 
-        cantidad_interesados = interesados.count()
-        print(f"👥 Interesados encontrados: {cantidad_interesados}")
-
-        # 5. DECISIÓN: REOFERTA O DISPONIBLE
-        if cantidad_interesados > 0:
-            print(f"🚀 Iniciando reoferta masiva para {cantidad_interesados} personas...")
-            
-            # Activar modo reoferta
+        # 7. ✅ Lógica de Reoferta Masiva (WhatsApp)
+        interesados = turno.obtener_interesados()
+        if interesados.exists():
             turno.oferta_activa = True
-            turno.fecha_expiracion_oferta = timezone.now() + timedelta(hours=1)
-            turno.save()
-
-            # Importamos aquí para evitar ciclos
-            from .tasks import procesar_reoferta_masiva
-            
-            # Disparar tarea Celery
-            procesar_reoferta_masiva.delay(turno_id)
-            
-            return JsonResponse({
-                'status': 'ok',
-                'message': f'Turno cancelado. {mensaje_reembolso} Se inició la reoferta para {cantidad_interesados} clientes.',
-                'reoferta_iniciada': True,
-                'interesados': cantidad_interesados,
-                'reembolso_info': mensaje_reembolso
-            })
-        else:
-            print("ℹ️ No hay interesados. El turno pasa a DISPONIBLE directo.")
-            turno.estado = 'DISPONIBLE' # Ojo: Chequear si tu sistema permite volver a 'DISPONIBLE' o si borrás el turno.
-            turno.cliente = None        # Desvinculamos al cliente original
-            turno.monto_seña = 0        # Limpiamos seña
-            turno.monto_total = 0       # Limpiamos total
-            turno.mp_payment_id = None  # Limpiamos ID de pago
-            turno.oferta_activa = False
             turno.save()
             
-            return JsonResponse({
-                'status': 'ok', 
-                'message': f'Turno cancelado y liberado. {mensaje_reembolso} Queda disponible en la agenda.',
-                'reoferta_iniciada': False,
-                'interesados': 0,
-                'reembolso_info': mensaje_reembolso
-            })
-
+            try:
+                from .tasks import procesar_reoferta_masiva
+                procesar_reoferta_masiva.delay(turno.id)
+                print(f"✅ Reoferta masiva disparada para turno {turno.id}")
+            except Exception as e:
+                print(f"⚠️ Error disparando reoferta: {e}")
+        
+        try:
+            Auditoria.objects.create(
+                usuario=request.user,
+                modelo_afectado='Turno',
+                objeto_id=turno.id,
+                accion='EDITAR',
+                detalles={
+                    'antes': {'estado': 'ACTIVO'},
+                    'despues': {'estado': 'CANCELADO', 'reembolso': turno.reembolso_estado}
+                },
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+        except:
+            pass
+        
+        return Response({
+            'status': 'ok', 
+            'message': f'Turno cancelado. {mensaje_reembolso}',
+            'reembolso_estado': turno.reembolso_estado,
+            'reembolsado': turno.reembolsado
+        })
+        
     except Turno.DoesNotExist:
-        return JsonResponse({'error': 'Turno no encontrado'}, status=404)
+        return Response({'error': 'Turno no encontrado'}, status=404)
     except Exception as e:
-        print(f"💥 ERROR FATAL: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return JsonResponse({'error': str(e)}, status=500)
-
+        print(f"❌ Error en cancelar_turno_unificado: {str(e)}")
+        return Response({'error': f'Error interno: {str(e)}'}, status=500)
+    
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def obtener_info_oferta(request, turno_id, token):
@@ -4406,65 +4451,39 @@ def get_client_ip(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def cancelar_mi_turno(request, turno_id):
-    """
-    Permite al cliente cancelar SU turno.
-    Si corresponde reembolso, avisa en el backend y notifica amablemente al cliente.
-    """
+def completar_reembolso_manual(request, turno_id):
+    """Marca un reembolso como completado manualmente (para efectivo/transferencia)"""
     try:
         turno = Turno.objects.get(id=turno_id)
-
-        # 1. Seguridad: Que el turno sea suyo
-        if turno.cliente != request.user:
-            return Response({'error': 'No tienes permiso para cancelar este turno.'}, status=403)
-
-        # 2. Validar estado
-        if turno.estado == 'CANCELADO':
-             return Response({'error': 'El turno ya está cancelado.'}, status=400)
-
-        # 3. Regla de las 3 horas (Bloqueo estricto para el cliente)
-        ahora = timezone.now()
-        fecha_turno = timezone.make_aware(datetime.combine(turno.fecha, turno.hora))
-        tiempo_restante = fecha_turno - ahora
-
-        if tiempo_restante < timedelta(hours=3):
-             return Response({
-                 'error': 'Ya no puedes cancelar online (faltan menos de 3hs). Por favor llama al local.'
-             }, status=400)
-
-        # 4. PROCESAR REEMBOLSO (Usamos la nueva lógica manual)
-        reembolso_corresponde, mensaje_tecnico = procesar_reembolso_si_corresponde(turno)
         
-        # Definimos el mensaje para el cliente
-        mensaje_cliente = "Turno cancelado correctamente."
-        if reembolso_corresponde:
-            mensaje_cliente += " Nos pondremos en contacto a la brevedad para gestionar tu reintegro."
-        else:
-            mensaje_cliente += " (No corresponde reintegro por política de cancelación o falta de pago)."
-
-        # 5. Cancelar y Activar Reoferta
-        turno.estado = 'CANCELADO'
-        turno.oferta_activa = True
-        turno.fecha_expiracion_oferta = timezone.now() + timedelta(hours=1)
+        if turno.reembolso_estado != 'PENDIENTE':
+            return Response({'error': 'El reembolso no está pendiente'}, status=400)
+        
+        turno.reembolso_estado = 'COMPLETADO'
+        turno.reembolsado = True
         turno.save()
-
-        # 6. Disparar Reoferta (Si corresponde)
-        interesados = turno.obtener_interesados()
-        if interesados.exists():
-            from .tasks import procesar_reoferta_masiva
-            procesar_reoferta_masiva.delay(turno.id)
-
+        
+        # Registrar en auditoría
+        Auditoria.objects.create(
+            usuario=request.user,
+            modelo_afectado='Turno',
+            objeto_id=turno.id,
+            accion='EDITAR',
+            detalles={'reembolso': 'COMPLETADO_MANUAL'},
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
         return Response({
             'status': 'ok',
-            'message': mensaje_cliente, # ✅ Mensaje suave para el frontend
-            'debug_info': mensaje_tecnico # (Opcional) Por si quieres verlo en la consola del navegador
+            'message': '✅ Reembolso marcado como completado',
+            'turno_id': turno.id
         })
-
+        
     except Turno.DoesNotExist:
         return Response({'error': 'Turno no encontrado'}, status=404)
     except Exception as e:
         return Response({'error': str(e)}, status=500)
-    
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated]) # ✅ Solo logueados
 def aceptar_oferta_turno(request, turno_id, token):
@@ -5083,3 +5102,20 @@ def debug_auditoria(request):
         'status': '✅ Debug funcionando',
         'nota': f'Hay {total} registros en la tabla auditoría'
     })
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def gestionar_configuracion(request):
+    # Usamos el método get_solo() que ya tenés en el modelo
+    config = ConfiguracionSistema.get_solo()
+    
+    if request.method == 'GET':
+        serializer = ConfiguracionSistemaSerializer(config)
+        return Response(serializer.data)
+    
+    # Si es POST, actualizamos solo los campos que mande el Admin
+    serializer = ConfiguracionSistemaSerializer(config, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=400)

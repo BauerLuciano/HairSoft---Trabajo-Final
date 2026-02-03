@@ -74,53 +74,32 @@ class TurnoSerializer(serializers.ModelSerializer):
     cliente = UsuarioSerializer(read_only=True)
     peluquero = UsuarioSerializer(read_only=True)
     servicios = ServicioSerializer(many=True, read_only=True)
-
-    # 2. CAMPOS PLANOS (Helpers para el Listado Vue)
     cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True)
     cliente_apellido = serializers.CharField(source='cliente.apellido', read_only=True)
     peluquero_nombre = serializers.CharField(source='peluquero.nombre', read_only=True)
-
-    # 3. CAMPOS DE ESCRITURA (Write-Only)
-    cliente_id = serializers.PrimaryKeyRelatedField(
-        queryset=Usuario.objects.all(), source='cliente', write_only=True, required=False, allow_null=True
-    )
-    peluquero_id = serializers.PrimaryKeyRelatedField(
-        queryset=Usuario.objects.all(), source='peluquero', write_only=True
-    )
-    servicios_ids = serializers.PrimaryKeyRelatedField(
-        queryset=Servicio.objects.all(), source='servicios', many=True, write_only=True
-    )
-
-    # Campo calculado legacy
     precio_total = serializers.SerializerMethodField()
 
     class Meta:
         model = Turno
         fields = [
-            'id', 
-            'fecha', 
-            'hora', 
-            'estado', 
-            'canal', 
-            'tipo_pago', 
-            'medio_pago',              
-            'monto_total', 
-            'monto_seña',
-            'duracion_total',
-            'precio_total',
-            'oferta_activa',
-            'reembolsado',
-            'mp_payment_id',
-            'cliente', 'cliente_nombre', 'cliente_apellido',
-            'peluquero', 'peluquero_nombre',
-            'servicios',
-            'cliente_id', 'peluquero_id', 'servicios_ids'
+            'id', 'fecha', 'hora', 'estado', 'canal', 'tipo_pago', 'medio_pago',               
+            'monto_total', 'monto_seña', 'duracion_total', 'precio_total',
+            'oferta_activa', 'reembolsado', 
+            'reembolso_estado',  # ✅ CAMPO CLAVE PARA LA GESTIÓN MANUAL
+            'mp_payment_id', 'mp_refund_id', 'nro_transaccion', 'motivo_cancelacion', 
+            'obs_cancelacion', 'cliente', 'cliente_nombre', 'cliente_apellido',
+            'peluquero', 'peluquero_nombre', 'servicios'
         ]
 
     def get_precio_total(self, obj):
+        """
+        Calcula el precio total basándose en el monto guardado 
+        o la suma de los servicios vinculados.
+        """
         if obj.monto_total and obj.monto_total > 0:
             return obj.monto_total
         return sum(s.precio for s in obj.servicios.all())
+    
 # ----------------------------------------------------------------------
 # CATEGORIAS DE PRODUCTOS
 # ----------------------------------------------------------------------
@@ -1033,4 +1012,9 @@ class LiquidacionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Liquidacion
+        fields = '__all__'
+
+class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConfiguracionSistema
         fields = '__all__'

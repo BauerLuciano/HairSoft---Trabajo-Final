@@ -259,30 +259,31 @@
           </div>
           <div style="text-align: left; font-size: 11px; color: #334155; line-height: 1.6;">
             <p style="margin: 0; font-weight: bold; color: #0f172a; text-transform: uppercase; font-size: 11px;">
-              Razón Social: {{ dashboardData.empresa?.razon_social || 'Los Últimos Serán Los Primeros' }}
+              {{ dashboardData.empresa?.razon_social || 'Los Últimos Serán Los Primeros' }}
             </p>
             <p style="margin: 0;">
-              <strong>CUIT:</strong> {{ (dashboardData.empresa?.cuil_cuit && dashboardData.empresa?.cuil_cuit !== '00-00000000-0' && dashboardData.empresa?.cuil_cuit !== '0') ? dashboardData.empresa.cuil_cuit : '27-23456789-3' }}
+              <strong>CUIT:</strong> {{ (dashboardData.empresa?.cuil_cuit && dashboardData.empresa?.cuil_cuit !== '0') ? dashboardData.empresa.cuil_cuit : '27-23456789-3' }}
             </p>
             <p style="margin: 0;">
-              <strong>Dirección:</strong> {{ (dashboardData.empresa?.direccion && dashboardData.empresa?.direccion !== 'Calle Falsa 123') ? dashboardData.empresa.direccion : 'Avenida Libertador 600, San Vicente - Misiones' }}
+              <strong>Dirección:</strong> {{ dashboardData.empresa?.direccion || 'Avenida Libertador 600, San Vicente - Misiones' }}
             </p>
             <p style="margin: 0;">
-              <strong>Teléfono:</strong> {{ (dashboardData.empresa?.telefono && dashboardData.empresa?.telefono !== '(3755) 12-3456') ? dashboardData.empresa.telefono : '3755 67-2716' }}
+              <strong>Teléfono:</strong> {{ dashboardData.empresa?.telefono || '3755 67-2716' }}
+            </p>
+            <p style="margin: 0;">
+              <strong>Email:</strong> {{ dashboardData.empresa?.email || 'contacto@hairsoft.com' }}
             </p>
           </div>
         </div>
 
         <div style="text-align: right;">
           <h2 style="margin: 0 0 10px 0; font-size: 16px; color: #1e293b; text-transform: uppercase;">Reporte de Gestión</h2>
-          
           <div style="margin-bottom: 10px;">
             <p style="margin: 0; font-size: 10px; color: #64748b; text-transform: uppercase;">Período Analizado</p>
             <p style="margin: 2px 0 0; font-size: 14px; font-weight: bold; color: #0f172a;">
               {{ getPeriodDisplay }}
             </p>
           </div>
-
           <p style="margin: 0; font-size: 10px; color: #94a3b8;">
             Emisor: <strong>{{ dashboardData.usuario_emisor }}</strong>
           </p>
@@ -290,7 +291,6 @@
             Fecha: {{ new Date().toLocaleDateString('es-AR') }}
           </p>
         </div>
-
       </div>
 
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 30px;">
@@ -376,7 +376,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import axios from '@/utils/axiosConfig'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
@@ -385,7 +385,6 @@ const logoUrl = '/logo_barberia.jpg'
 const selectedPeriod = ref('semana')
 const loading = ref(true)
 const error = ref(null)
-const hoveredPoint = ref(null)
 const dashboardContent = ref(null)
 const customDateRange = ref(false)
 const dateFrom = ref('')
@@ -394,58 +393,67 @@ const tooltip = ref({ visible: false, x: 0, y: 0, value: 0, date: '', index: 0 }
 
 // Fecha local
 const getLocalToday = () => {
-  const d = new Date()
-  const offset = d.getTimezoneOffset()
-  const dLocal = new Date(d.getTime() - (offset*60*1000))
-  return dLocal.toISOString().split('T')[0]
+  const d = new Date()
+  const offset = d.getTimezoneOffset()
+  const dLocal = new Date(d.getTime() - (offset*60*1000))
+  return dLocal.toISOString().split('T')[0]
 }
 const today = getLocalToday()
 
 const periods = [
-  { value: 'hoy', label: 'Hoy', icon: 'fas fa-clock' },
-  { value: 'semana', label: '7 Días', icon: 'fas fa-calendar-week' },
-  { value: 'mes', label: 'Este Mes', icon: 'fas fa-calendar-alt' },
+  { value: 'hoy', label: 'Hoy', icon: 'fas fa-clock' },
+  { value: 'semana', label: '7 Días', icon: 'fas fa-calendar-week' },
+  { value: 'mes', label: 'Este Mes', icon: 'fas fa-calendar-alt' },
 ]
 
 const dashboardData = ref({
-  ingresosTotales: 0,
-  serviciosRealizados: 0,
-  productosVendidos: 0,
-  ventasPorDia: [],
-  labelsDias: [],
-  serviciosTop: [],
-  productosTop: [],
-  usuario_emisor: '',
-  empresa: null
+  ingresosTotales: 0,
+  serviciosRealizados: 0,
+  productosVendidos: 0,
+  ventasPorDia: [],
+  labelsDias: [],
+  serviciosTop: [],
+  productosTop: [],
+  usuario_emisor: '',
+  empresa: null
 })
 
 const getPeriodDisplay = computed(() => {
-  if (customDateRange.value && dateFrom.value && dateTo.value) {
-    return `${formatDate(dateFrom.value)} al ${formatDate(dateTo.value)}`
-  }
-  const period = periods.find(p => p.value === selectedPeriod.value)
-  return period ? period.label : 'Período'
+  if (customDateRange.value && dateFrom.value && dateTo.value) {
+    return `${formatDate(dateFrom.value)} al ${formatDate(dateTo.value)}`
+  }
+  const period = periods.find(p => p.value === selectedPeriod.value)
+  return period ? period.label : 'Período'
 })
 
 const chartWidth = 900
 const chartHeight = 320
 const padding = 60
 
+// ✅ FUNCIÓN REFORZADA PARA ASEGURAR DATOS DE EMPRESA Y DASHBOARD
 const fetchDashboardData = async () => {
-  loading.value = true
-  error.value = null
-  try {
-    let params = customDateRange.value && dateFrom.value && dateTo.value 
-      ? { date_from: dateFrom.value, date_to: dateTo.value }
-      : { period: selectedPeriod.value };
-    
-    const res = await axios.get('/api/dashboard/', { params })
-    dashboardData.value = { ...dashboardData.value, ...res.data }
-  } catch (err) {
-    error.value = "Error al conectar con el servidor."
-  } finally {
-    loading.value = false
-  }
+  loading.value = true
+  error.value = null
+  try {
+    let params = customDateRange.value && dateFrom.value && dateTo.value 
+      ? { date_from: dateFrom.value, date_to: dateTo.value }
+      : { period: selectedPeriod.value };
+    
+    // Llamada principal al dashboard
+    const res = await axios.get('/api/dashboard/', { params })
+    
+    // Si la API del dashboard no trae la empresa, la pedimos por separado
+    if (!res.data.empresa) {
+        const resConfig = await axios.get('/api/configuracion/')
+        res.data.empresa = resConfig.data
+    }
+    
+    dashboardData.value = { ...dashboardData.value, ...res.data }
+  } catch (err) {
+    error.value = "Error al conectar con el servidor."
+  } finally {
+    loading.value = false
+  }
 }
 
 const selectPeriod = (p) => { customDateRange.value = false; selectedPeriod.value = p; fetchDashboardData() }
@@ -464,78 +472,81 @@ const getYPosition = (v) => chartHeight - padding - ((v / getMaxValue()) * (char
 const getXPositionPercent = (i) => (getXPosition(i) / chartWidth) * 100
 
 const getLinePath = () => {
-  if (!dashboardData.value.ventasPorDia.length) return ''
-  return dashboardData.value.ventasPorDia.reduce((path, val, i) => {
-    const x = getXPosition(i), y = getYPosition(val)
-    return i === 0 ? `M ${x} ${y}` : `${path} Q ${(getXPosition(i-1)+x)/2} ${getYPosition(dashboardData.value.ventasPorDia[i-1])}, ${x} ${y}`
-  }, '')
+  if (!dashboardData.value.ventasPorDia.length) return ''
+  return dashboardData.value.ventasPorDia.reduce((path, val, i) => {
+    const x = getXPosition(i), y = getYPosition(val)
+    return i === 0 ? `M ${x} ${y}` : `${path} Q ${(getXPosition(i-1)+x)/2} ${getYPosition(dashboardData.value.ventasPorDia[i-1])}, ${x} ${y}`
+  }, '')
 }
 
 const getAreaPath = () => {
-  if (!dashboardData.value.ventasPorDia.length) return ''
-  return `${getLinePath()} L ${getXPosition(dashboardData.value.ventasPorDia.length-1)} ${chartHeight-padding} L ${getXPosition(0)} ${chartHeight-padding} Z`
+  if (!dashboardData.value.ventasPorDia.length) return ''
+  return `${getLinePath()} L ${getXPosition(dashboardData.value.ventasPorDia.length-1)} ${chartHeight-padding} L ${getXPosition(0)} ${chartHeight-padding} Z`
 }
 
 const getPiePath = (start, end) => {
-  const s = (start / 100) * 360 - 90, e = (end / 100) * 360 - 90
-  const rad = Math.PI / 180, r = 80, cx = 100, cy = 100
-  const x1 = cx + r * Math.cos(s * rad), y1 = cy + r * Math.sin(s * rad)
-  const x2 = cx + r * Math.cos(e * rad), y2 = cy + r * Math.sin(e * rad)
-  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${end - start > 180 ? 1 : 0} 1 ${x2} ${y2} Z`
+  const s = (start / 100) * 360 - 90, e = (end / 100) * 360 - 90
+  const rad = Math.PI / 180, r = 80, cx = 100, cy = 100
+  const x1 = cx + r * Math.cos(s * rad), y1 = cy + r * Math.sin(s * rad)
+  const x2 = cx + r * Math.cos(e * rad), y2 = cy + r * Math.sin(e * rad)
+  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${end - start > 180 ? 1 : 0} 1 ${x2} ${y2} Z`
 }
 
 const getServicePercentage = () => {
-  const t = dashboardData.value.serviciosRealizados + dashboardData.value.productosVendidos
-  return t === 0 ? 50 : (dashboardData.value.serviciosRealizados / t) * 100
+  const t = dashboardData.value.serviciosRealizados + dashboardData.value.productosVendidos
+  return t === 0 ? 50 : (dashboardData.value.serviciosRealizados / t) * 100
 }
 const getProductPercentage = () => 100 - getServicePercentage()
 const getTotalTransactions = () => dashboardData.value.serviciosRealizados + dashboardData.value.productosVendidos
 
 const shouldShowLabel = (i) => {
-  const t = dashboardData.value.labelsDias.length
-  return t <= 7 || (t <= 15 ? i % 2 === 0 : t <= 25 ? i % 3 === 0 : i % 5 === 0) || i === t - 1
+  const t = dashboardData.value.labelsDias.length
+  return t <= 7 || (t <= 15 ? i % 2 === 0 : t <= 25 ? i % 3 === 0 : i % 5 === 0) || i === t - 1
 }
 const shouldShowLabelPDF = (i) => {
-  const t = dashboardData.value.labelsDias.length
-  return t <= 7 || (t <= 15 ? i % 3 === 0 : t <= 31 ? i % 6 === 0 : i % 8 === 0) || i === t - 1
+  const t = dashboardData.value.labelsDias.length
+  return t <= 7 || (t <= 15 ? i % 3 === 0 : t <= 31 ? i % 6 === 0 : i % 8 === 0) || i === t - 1
 }
 
 const showTooltip = (i, v, e) => {
-  const rect = e.target.getBoundingClientRect(), container = e.target.closest('.trading-chart-container').getBoundingClientRect()
-  tooltip.value = { visible: true, x: rect.left - container.left, y: rect.top - container.top - 90, value: v, date: dashboardData.value.labelsDias[i] }
+  const rect = e.target.getBoundingClientRect(), container = e.target.closest('.trading-chart-container').getBoundingClientRect()
+  tooltip.value = { visible: true, x: rect.left - container.left, y: rect.top - container.top - 90, value: v, date: dashboardData.value.labelsDias[i] }
 }
 const hideTooltip = () => tooltip.value.visible = false
 const getRankClass = (i) => i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''
 const getPercentage = (v, arr) => (v / Math.max(...arr.map(x => x.cantidad), 1)) * 100
 
-// GENERACIÓN PDF CON PAGINACIÓN AL PIE
+// ✅ GENERACIÓN PDF CORREGIDA PARA ACTUALIZAR DATOS DE EMPRESA
 const generatePDF = async () => {
-  loading.value = true
-  const el = document.getElementById('print-template')
-  el.style.display = 'block'
-  
-  await new Promise(r => setTimeout(r, 600)) // Espera renderizado
-  
-  const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
-  el.style.display = 'none'
-  
-  const pdf = new jsPDF('p', 'mm', 'a4')
-  const pdfWidth = pdf.internal.pageSize.getWidth()
-  const pdfHeight = pdf.internal.pageSize.getHeight()
-  
-  const imgProps = pdf.getImageProperties(canvas.toDataURL('image/jpeg', 0.95))
-  const imgHeight = (imgProps.height * pdfWidth) / imgProps.width
-  
-  pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pdfWidth, imgHeight)
-  
-  // PAGINACIÓN AL PIE (Punto 1)
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(10);
-  pdf.setTextColor(150);
-  pdf.text('Página 1 de 1', pdfWidth - 20, pdfHeight - 10, { align: 'right' });
+  loading.value = true
+  
+  // Refrescar configuración antes de generar el reporte
+  await fetchDashboardData();
+  
+  const el = document.getElementById('print-template')
+  el.style.display = 'block'
+  
+  await new Promise(r => setTimeout(r, 600)) 
+  
+  const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+  el.style.display = 'none'
+  
+  const pdf = new jsPDF('p', 'mm', 'a4')
+  const pdfWidth = pdf.internal.pageSize.getWidth()
+  const pdfHeight = pdf.internal.pageSize.getHeight()
+  
+  const imgProps = pdf.getImageProperties(canvas.toDataURL('image/jpeg', 0.95))
+  const imgHeight = (imgProps.height * pdfWidth) / imgProps.width
+  
+  pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pdfWidth, imgHeight)
+  
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+  pdf.setTextColor(150);
+  pdf.text('Página 1 de 1', pdfWidth - 20, pdfHeight - 10, { align: 'right' });
 
-  pdf.save(`Reporte_HAIRSOFT_${selectedPeriod.value}.pdf`)
-  loading.value = false
+  pdf.save(`Reporte_HAIRSOFT_${selectedPeriod.value}.pdf`)
+  loading.value = false
 }
 
 onMounted(() => fetchDashboardData())

@@ -83,6 +83,9 @@ const GestionPedidosWeb = () => import('@/views/pedidos/GestionPedidosWeb.vue')
 const ListadoAuditoria = () => import('@/views/auditoria/ListadoAuditoria.vue')
 const LiquidacionSueldos = () => import('@/views/admin/LiquidacionSueldos.vue')
 
+// ✅ NUEVO: Configuración del Sistema
+const ConfiguracionEmpresa = () => import('@/views/admin/ConfiguracionEmpresa.vue')
+
 const routes = [
   { path: '/', redirect: '/web/home' },
   { path: '/login', name: 'Login', component: Login, meta: { hideNavbar: true } },
@@ -147,6 +150,8 @@ const routes = [
   { path: '/pedidos-web-admin', name: 'GestionPedidosWeb', component: GestionPedidosWeb, meta: { requiresAuth: true, role: 'ADMIN', layout: 'admin' } },
   { path: '/auditoria', name: 'ListadoAuditoria', component: ListadoAuditoria, meta: { requiresAuth: true, role: 'ADMIN' }},
   { path: '/admin/liquidacion', name: 'LiquidacionSueldos', component: LiquidacionSueldos, meta: { requiresAuth: true, role: 'ADMIN' } },
+  // ✅ NUEVA RUTA AGREGADA
+  { path: '/configuracion', name: 'ConfiguracionEmpresa', component: ConfiguracionEmpresa, meta: { requiresAuth: true, role: 'ADMIN' } },
 ]
 
 const router = createRouter({

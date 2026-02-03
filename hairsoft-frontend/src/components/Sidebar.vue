@@ -102,6 +102,8 @@ const menuData = {
       { name: 'Roles', path: '/roles', icon: 'ri-shield-user-line', roles: ['ADMINISTRADOR'] },
       { name: 'Liquidación Sueldos', path: '/admin/liquidacion', icon: 'ri-money-dollar-circle-line', roles: ['ADMINISTRADOR'] }, 
       { name: 'Auditoría', path: '/auditoria', icon: 'ri-file-history-line', roles: ['ADMINISTRADOR'] },
+      // ✅ ITEM AGREGADO AL FINAL DE LA SECCIÓN ADMINISTRACIÓN
+      { name: 'Ajustes Local', path: '/configuracion', icon: 'ri-settings-4-line', roles: ['ADMINISTRADOR'] },
     ]
   }
 };
@@ -124,7 +126,6 @@ const toggleSection = (section) => {
 </script>
 
 <style scoped>
-/* LOS ESTILOS QUEDARON EXACTAMENTE IGUAL A TU ARCHIVO ORIGINAL */
 .sidebar {
   width: 290px;
   height: 100vh;

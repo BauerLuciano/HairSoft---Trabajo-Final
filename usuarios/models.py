@@ -7,9 +7,8 @@ from django.core.exceptions import ValidationError
 from django.core.mail import get_connection, EmailMessage
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
-import uuid
-import secrets, time, threading
 from django.core.signing import Signer
+import secrets, time, threading, uuid, pytz
 
 # ===============================
 # MANAGER PERSONALIZADO PARA USUARIO
@@ -469,34 +468,26 @@ class CotizacionProveedor(models.Model):
         score_tiempo = 100 / float(self.dias_entrega)
         return (score_precio * 0.7) + (score_tiempo * 0.3)
 
-
-# ===============================
-# TURNOS - ACTUALIZADO CON REOFERTA
-# ===============================
 class Turno(models.Model):
-    CANAL_CHOICES = [
-        ('WEB', 'Web'),
-        ('PRESENCIAL', 'Presencial'),
-    ]
-    
+    CANAL_CHOICES = [('WEB', 'Web'), ('PRESENCIAL', 'Presencial')]
     ESTADO_CHOICES = [
-        ('RESERVADO', 'Reservado'),
-        ('COMPLETADO', 'Completado'),
-        ('CANCELADO', 'Cancelado'),
+        ('RESERVADO', 'Reservado'), 
+        ('COMPLETADO', 'Completado'), 
+        ('CANCELADO', 'Cancelado'), 
+        ('DISPONIBLE', 'Disponible')
     ]
-
-    TIPO_PAGO_CHOICES = [
-        ('SENA_50', 'Seña 50%'),
-        ('TOTAL', 'Pago Total'),
-        ('PENDIENTE', 'Pendiente de Pago'),
-    ]
-    
+    TIPO_PAGO_CHOICES = [('SENA_50', 'Seña 50%'), ('TOTAL', 'Pago Total'), ('PENDIENTE', 'Pendiente de Pago')]
     MEDIO_PAGO_CHOICES = [
-        ('EFECTIVO', 'Efectivo'),
-        ('MERCADO_PAGO', 'Mercado Pago (Web) '),
-        ('TRANSFERENCIA', 'Transferencia'),
-        ('TARJETA', 'Tarjeta de Crédito/Débito'),
-        ('PENDIENTE', 'Pendiente'),
+        ('EFECTIVO', 'Efectivo'), 
+        ('MERCADO_PAGO', 'Mercado Pago'), 
+        ('TRANSFERENCIA', 'Transferencia'), 
+        ('TARJETA', 'Tarjeta'), 
+        ('PENDIENTE', 'Pendiente')
+    ]
+    REEMBOLSO_ESTADO_CHOICES = [
+        ('NO_APLICA', 'No Aplica'), 
+        ('PENDIENTE', 'Pendiente de Devolución'), 
+        ('COMPLETADO', 'Devuelto al Cliente')
     ]
 
     fecha = models.DateField()
@@ -507,208 +498,125 @@ class Turno(models.Model):
     medio_pago = models.CharField(max_length=20, choices=MEDIO_PAGO_CHOICES, default='PENDIENTE')
     monto_seña = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     monto_total = models.DecimalField(max_digits=8, decimal_places=2, default=0)
-    duracion_total = models.IntegerField(default=0, help_text="Duración total en minutos")
-    reembolsado = models.BooleanField(default=False)
-    mp_payment_id = models.CharField(max_length=50, blank=True, null=True)
+    duracion_total = models.IntegerField(default=0)
     
-    cliente = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="turnos_cliente")
-    peluquero = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="turnos_peluquero")
-    servicios = models.ManyToManyField(Servicio, db_table="turnos_servicios")
+    # TRAZABILIDAD FINANCIERA
+    reembolsado = models.BooleanField(default=False)
+    reembolso_estado = models.CharField(max_length=20, choices=REEMBOLSO_ESTADO_CHOICES, default='NO_APLICA')
+    mp_payment_id = models.CharField(max_length=50, blank=True, null=True)
+    mp_refund_id = models.CharField(max_length=100, blank=True, null=True)
+    nro_transaccion = models.CharField(max_length=100, blank=True, null=True)
+    
+    # MOTIVOS DE CANCELACIÓN
+    motivo_cancelacion = models.CharField(max_length=100, blank=True, null=True)
+    obs_cancelacion = models.TextField(blank=True, null=True)
 
+    cliente = models.ForeignKey('Usuario', on_delete=models.SET_NULL, null=True, blank=True, related_name="turnos_cliente")
+    peluquero = models.ForeignKey('Usuario', on_delete=models.CASCADE, related_name="turnos_peluquero")
+    servicios = models.ManyToManyField('Servicio', db_table="turnos_servicios")
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True)
-
-    # NUEVOS CAMPOS PARA REOFERTA MASIVA
     oferta_activa = models.BooleanField(default=False)
     fecha_expiracion_oferta = models.DateTimeField(null=True, blank=True)
     token_reoferta = models.CharField(max_length=100, blank=True, null=True)
-    cliente_asignado_reoferta = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="turnos_asignados_reoferta")
-
-    # 💰 MONTO DE COMISIÓN "CONGELADO"
+    cliente_asignado_reoferta = models.ForeignKey('Usuario', on_delete=models.SET_NULL, null=True, blank=True, related_name="turnos_asignados_reoferta")
     monto_comision = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-
-    def __str__(self):
-        return f"{self.fecha} {self.hora} - {self.cliente.nombre} ({self.estado})"
-
-    def puede_ser_modificado(self):
-        ahora = timezone.now()
-        fecha_turno_naive = datetime.combine(self.fecha, self.hora)
-        fecha_turno = timezone.make_aware(fecha_turno_naive)
-        tres_horas_antes = fecha_turno - timedelta(hours=3)
-        return (self.estado in ['RESERVADO', 'CONFIRMADO'] and ahora < tres_horas_antes)
-
-    def puede_ser_cancelado(self):
-        if self.estado in ['COMPLETADO', 'CANCELADO']:
-            return False, False, "No se puede cancelar un turno completado o ya cancelado"
-        
-        ahora = timezone.now()
-        fecha_turno_naive = datetime.combine(self.fecha, self.hora)
-        fecha_turno = timezone.make_aware(fecha_turno_naive)
-
-        if ahora >= fecha_turno:
-            return False, False, "No se puede cancelar un turno que ya pasó"
-        
-        tiempo_restante = fecha_turno - ahora
-        puede_cancelar = True
-        hay_reembolso = tiempo_restante >= timedelta(hours=3)
-        
-        mensaje = "Puede cancelar el turno"
-        if hay_reembolso:
-            mensaje += " con reembolso de seña"
-        else:
-            mensaje += " sin reembolso (menos de 3 horas de anticipación)"
-        
-        return puede_cancelar, hay_reembolso, mensaje
     
+    def __str__(self):
+        nombre_cli = self.cliente.nombre if self.cliente else "Disponible"
+        return f"{self.fecha} {self.hora} - {nombre_cli}"
+    
+    def puede_ser_cancelado(self):
+        """ ✅ LÓGICA DE TIEMPO AJUSTADA A ARGENTINA - CORREGIDA """
+        if self.estado in ['COMPLETADO', 'CANCELADO']:
+            return False, False, "El turno ya no está activo."
+        
+        # ✅ Usar timezone.now() y convertirlo a zona horaria de Argentina
+        import pytz
+        from django.utils import timezone
+        from datetime import datetime
+        
+        tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
+        ahora_utc = timezone.now()  # Esto devuelve UTC aware
+        
+        # Convertir UTC a hora de Argentina
+        ahora_arg = ahora_utc.astimezone(tz_arg)
+        
+        # Convertir la fecha/hora del turno a la misma zona
+        fecha_turno_naive = datetime.combine(self.fecha, self.hora)
+        fecha_turno_arg = tz_arg.localize(fecha_turno_naive)
+        
+        # Calcular diferencia
+        diferencia = fecha_turno_arg - ahora_arg
+        horas_restantes = diferencia.total_seconds() / 3600
+        
+        # Obtener margen de configuración (Dinámico desde la base de datos)
+        from usuarios.models import ConfiguracionSistema
+        config = ConfiguracionSistema.get_solo()
+        margen = config.margen_horas_cancelacion or 3
+        
+        hay_reembolso = horas_restantes >= margen
+        if hay_reembolso:
+            msg = f"Reembolso habilitado (faltan {round(horas_restantes, 1)}hs)"
+        else:
+            msg = f"Fuera de término para reembolso (faltan {round(horas_restantes, 1)}hs)"
+        
+        # ✅ IMPORTANTE: Solo el reembolso depende del tiempo, la cancelación siempre es posible
+        puede_cancelar = True if self.estado in ['RESERVADO', 'CONFIRMADO'] else False
+        
+        return puede_cancelar, hay_reembolso, msg
+
     def calcular_duracion_total(self):
         return sum(servicio.duracion for servicio in self.servicios.all())
     
     def necesita_pago_mp(self):
         return self.medio_pago == 'MERCADO_PAGO'
 
-    # --- MÉTODOS DE REOFERTA ---
     def puede_reofertar(self):
         if self.estado != 'CANCELADO': return False
+        tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
         fecha_turno_naive = datetime.combine(self.fecha, self.hora)
-        fecha_turno = timezone.make_aware(fecha_turno_naive)
-        tiempo_restante = fecha_turno - timezone.now()
+        fecha_turno = tz_arg.localize(fecha_turno_naive)
+        tiempo_restante = fecha_turno - timezone.localtime(timezone.now(), tz_arg)
         return tiempo_restante > timedelta(minutes=5) and not self.oferta_activa
-    
+
     def obtener_interesados(self):
-        print(f"🔍🔍🔍 BUSCANDO INTERESADOS PARA TURNO {self.id}:")
         from django.apps import apps
         InteresTurnoLiberado = apps.get_model('usuarios', 'InteresTurnoLiberado')
-        
-        interesados = InteresTurnoLiberado.objects.filter(
-            fecha_deseada=self.fecha,
-            hora_deseada=self.hora,
-            peluquero=self.peluquero,
-            estado_oferta='pendiente'
-        ).order_by('fecha_registro')
-        return interesados
-        
-    def iniciar_reoferta(self):
-        from .tasks import procesar_reoferta_masiva
-        if self.puede_reofertar():
-            self.oferta_activa = True
-            fecha_turno_naive = datetime.combine(self.fecha, self.hora)
-            fecha_turno = timezone.make_aware(fecha_turno_naive)
-            self.fecha_expiracion_oferta = fecha_turno - timedelta(minutes=5)
-            self.token_reoferta = secrets.token_urlsafe(32)
-            self.save()
-            procesar_reoferta_masiva.delay(self.id)
-            return True
-        return False
+        return InteresTurnoLiberado.objects.filter(fecha_deseada=self.fecha, hora_deseada=self.hora, peluquero=self.peluquero, estado_oferta='pendiente').order_by('fecha_registro')
 
-    # --- MÉTODOS DE CÁLCULO DE COMISIÓN ---
     def calcular_comision_peluquero(self):
-        """Calcula la suma de comisiones de todos los servicios del turno."""
         total_comision = 0
         for s in self.servicios.all():
-            # Usamos getattr por seguridad si la migración no impactó aún
             porcentaje = getattr(s, 'porcentaje_comision', 0)
             if porcentaje > 0:
-                ganancia = float(s.precio) * (float(porcentaje) / 100)
-                total_comision += ganancia
+                total_comision += float(s.precio) * (float(porcentaje) / 100)
         return round(total_comision, 2)
 
     def save(self, *args, **kwargs):
         crear_venta = False
-        calcular_pago = False
-
         if self.pk:
             try:
                 old = Turno.objects.get(pk=self.pk)
-                if old.estado != 'COMPLETADO' and self.estado == 'COMPLETADO':
-                    crear_venta = True
-                    calcular_pago = True
-            except Turno.DoesNotExist:
-                pass
-
+                if old.estado != 'COMPLETADO' and self.estado == 'COMPLETADO': crear_venta = True
+            except: pass
         super().save(*args, **kwargs)
-
-        # Calculamos pago DESPUÉS de guardar (M2M services necesitan ID)
-        if calcular_pago:
+        if self.estado == 'COMPLETADO':
             self.monto_comision = self.calcular_comision_peluquero()
-            # Update directo para evitar recursión
             Turno.objects.filter(pk=self.pk).update(monto_comision=self.monto_comision)
-
-        if crear_venta:
-            self.crear_venta_turno()
+        if crear_venta: self.crear_venta_turno()
 
     @transaction.atomic
     def crear_venta_turno(self):
-        # Evitamos importaciones circulares
         from django.apps import apps
-        from django.db import IntegrityError # Importante para manejar el error si ocurre
-        
         MetodoPago = apps.get_model('usuarios', 'MetodoPago')
         Venta = apps.get_model('usuarios', 'Venta')
         DetalleVenta = apps.get_model('usuarios', 'DetalleVenta')
-
         total_servicios = sum(servicio.precio for servicio in self.servicios.all())
-        
-        # 1. Definir el Nombre Real y el Tipo ANTES de buscar
-        # Esto soluciona el error: buscamos exactamente por lo que vamos a guardar
-        mp_str = str(self.medio_pago).upper()
-        
-        nombre_real = 'Efectivo'
-        tipo_real = 'EFECTIVO'
-
-        if 'MERCADO' in mp_str or 'MP' in mp_str:
-            nombre_real = 'Mercado Pago'
-            tipo_real = 'MERCADO_PAGO'
-        elif 'TARJETA' in mp_str:
-            nombre_real = 'Tarjeta'
-            tipo_real = 'TARJETA'
-        elif 'TRANSFERENCIA' in mp_str:
-            nombre_real = 'Transferencia'
-            tipo_real = 'TRANSFERENCIA'
-        
-        # 2. Buscar o Crear BLINDADO
-        try:
-            # Buscamos por el nombre bonito ('Mercado Pago'), no por el código ('MERCADO_PAGO')
-            medio_pago_obj, created = MetodoPago.objects.get_or_create(
-                nombre__iexact=nombre_real, 
-                defaults={
-                    'nombre': nombre_real,
-                    'tipo': tipo_real,
-                    'activo': True
-                }
-            )
-        except IntegrityError:
-            # Si justo hubo una condición de carrera o falló el unique, lo traemos directo
-            medio_pago_obj = MetodoPago.objects.filter(nombre__iexact=nombre_real).first()
-            
-            # Si aun así falla (caso extremo), usamos Efectivo por defecto para no romper el turno
-            if not medio_pago_obj:
-                medio_pago_obj, _ = MetodoPago.objects.get_or_create(
-                    nombre='Efectivo', defaults={'tipo': 'EFECTIVO'}
-                )
-
-        # 3. Crear la Venta
-        venta = Venta.objects.create(
-            cliente=self.cliente,
-            usuario=self.peluquero, # O el usuario logueado si se pasara, pero usamos peluquero como fallback
-            total=total_servicios,
-            tipo='TURNO',
-            medio_pago=medio_pago_obj
-        )
-        
-        # 4. Crear Detalles
-        for servicio in self.servicios.all():
-            DetalleVenta.objects.create(
-                venta=venta,
-                servicio=servicio,
-                turno=self,
-                cantidad=1,
-                precio_unitario=servicio.precio,
-                subtotal=servicio.precio
-            )
-            
-        # Actualizar total final de la venta
-        venta.total = venta.detalles.aggregate(total=models.Sum('subtotal'))['total'] or 0
-        venta.save()
+        medio_obj, _ = MetodoPago.objects.get_or_create(nombre__iexact='Efectivo', defaults={'nombre': 'Efectivo', 'tipo': 'EFECTIVO', 'activo': True})
+        venta = Venta.objects.create(cliente=self.cliente, usuario=self.peluquero, total=total_servicios, tipo='TURNO', medio_pago=medio_obj)
+        for s in self.servicios.all():
+            DetalleVenta.objects.create(venta=venta, servicio=s, turno=self, cantidad=1, precio_unitario=s.precio, subtotal=s.precio)
 
     class Meta:
         db_table = "turnos"
@@ -1417,21 +1325,15 @@ class Liquidacion(models.Model):
         return f"Pago a {self.empleado} - ${self.total_pagado} ({self.fecha_pago.date()})"
 
 # para reportes!
-
 class ConfiguracionSistema(models.Model):
-    # Datos Fijos de la Empresa (CORREGIDOS)
     razon_social = models.CharField(max_length=255, default="Los Últimos Serán Los Primeros")
     cuil_cuit = models.CharField(max_length=20, default="27-23456789-3") 
     inicio_actividad = models.DateField(null=True, blank=True)
-    # Dirección completa con ciudad
     direccion = models.CharField(max_length=255, default="Avenida Libertador 600, San Vicente - Misiones")
-    # Teléfono real
     telefono = models.CharField(max_length=50, default="3755-72716")
     email = models.EmailField(default="contacto@hairsoft.com")
-
-    # Parámetros del Sistema
-    margen_horas_cancelacion = models.PositiveIntegerField(default=24)
-    politica_senia = models.TextField(default="Política de señas: ...")
+    margen_horas_cancelacion = models.PositiveIntegerField(default=3) # ✅ Cambiado a 3 por defecto
+    politica_senia = models.TextField(default="Política de señas: Reembolso total si cancelas con tiempo.")
 
     class Meta:
         verbose_name = "Configuración del Sistema"

@@ -289,7 +289,7 @@ import ModificarVenta from './ModificarVenta.vue'
 import { 
   Plus, Trash2, Edit3, Eye, FileText, Loader, Package, PackageX,
   ChevronLeft, ChevronRight, RefreshCw, AlertTriangle, CheckCircle,
-  CreditCard, Banknote, Smartphone, ArrowRightLeft, HelpCircle
+  CreditCard, Banknote, Smartphone, ArrowRightLeft, HelpCircle, DollarSign
 } from 'lucide-vue-next'
 
 const logoUrl = '/logo_barberia.jpg'
@@ -308,80 +308,80 @@ const ventaRecienCreada = ref(null)
 // Variables para el Reporte
 const loadingPdf = ref(false)
 const usuarioEmisor = ref('')
+
+// ✅ AHORA INICIA VACÍO E INCLUYE EL CAMPO EMAIL
 const empresaData = ref({
-    razon_social: "Los Últimos Serán Los Primeros",
-    cuil_cuit: "27-23456789-3",
-    direccion: "Avenida Libertador 600, San Vicente - Misiones",
-    telefono: "3755 67-2716"
+    razon_social: "",
+    cuil_cuit: "",
+    direccion: "",
+    telefono: "",
+    email: "" 
 })
 
+// ✅ CARGA LA CONFIGURACIÓN REAL DESDE EL BACKEND
+const cargarConfiguracionEmpresa = async () => {
+    try {
+        const res = await axios.get('/api/configuracion/');
+        if (res.data) {
+            empresaData.value = {
+                razon_social: res.data.razon_social,
+                cuil_cuit: res.data.cuil_cuit,
+                direccion: res.data.direccion,
+                telefono: res.data.telefono,
+                email: res.data.email // ✅ COMENTARIO CORREGIDO
+            };
+        }
+    } catch (e) {
+        console.error("Error cargando configuración de empresa:", e);
+    }
+}
+
 // =========================================================================
-// 🕵️‍♂️ FUNCIÓN DE DETECCIÓN DE USUARIO (VERSIÓN INTELIGENTE)
+// 🕵️‍♂️ FUNCIÓN DE DETECCIÓN DE USUARIO (VERSIÓN INTELIGENTE) - INTACTA
 // =========================================================================
 const obtenerUsuarioLogueado = () => {
   try {
     let n = '';
     let a = '';
 
-    // 1. BÚSQUEDA DIRECTA (Prioridad Alta)
     if (localStorage.getItem('user_nombre')) n = localStorage.getItem('user_nombre');
     if (localStorage.getItem('user_apellido')) a = localStorage.getItem('user_apellido');
 
-    // 2. BÚSQUEDA PROFUNDA EN JSON (Si falta algún dato)
     if (!n || !a) {
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             const val = localStorage.getItem(key);
-            
-            // Si parece un JSON y la clave suena a usuario/auth
             if (val && val.startsWith('{') && (key.includes('user') || key.includes('auth') || key.includes('session'))) {
                 try {
                     const obj = JSON.parse(val);
-                    
-                    // Buscar Nombre
                     if (!n) n = obj.nombre || obj.first_name || obj.name || obj.username || '';
-                    
-                    // Buscar Apellido (Español e Inglés)
                     if (!a) a = obj.apellido || obj.last_name || obj.surname || '';
-                    
-                    // Si encontramos ambos, cortamos el bucle
                     if (n && a) break;
                 } catch (e) {}
             }
         }
     }
 
-    // 3. INTELIGENCIA DE TEXTO (CORRECCIÓN AUTOMÁTICA)
-    // Si tenemos nombre "Lionel Messi" pero el apellido está vacío, lo separamos.
     if (n && !a && n.trim().includes(' ')) {
-        const partes = n.trim().split(/\s+/); // Divide por espacios
+        const partes = n.trim().split(/\s+/);
         if (partes.length >= 2) {
-            // Asumimos: Primera palabra = Nombre, Resto = Apellido
             n = partes[0]; 
             a = partes.slice(1).join(' ');
         }
     }
 
-    // Limpiar "null" o "undefined" que a veces quedan como texto
     n = (n || '').replace(/null|undefined/gi, '').trim();
     a = (a || '').replace(/null|undefined/gi, '').trim();
 
-    // 4. SETEAR RESULTADO
     if (n || a) {
-        // Capitalizar primera letra (Estética)
         const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
         const nCap = n ? capitalize(n) : '';
         const aCap = a ? capitalize(a) : '';
-        
         usuarioEmisor.value = `${nCap} ${aCap}`.trim();
     } else {
         usuarioEmisor.value = 'Administrador';
     }
-
-    console.log("👤 Usuario detectado para impresión:", usuarioEmisor.value);
-
   } catch (error) {
-    console.error('Error recuperando usuario:', error);
     usuarioEmisor.value = 'Administrador';
   }
 }
@@ -396,12 +396,6 @@ const cargarVentas = async () => {
     } else {
       ventas.value = []
     }
-    
-    // Si la API devuelve info de empresa, la tomamos
-    if (res.data.empresa) {
-      empresaData.value = { ...empresaData.value, ...res.data.empresa }
-    }
-
   } catch (err) {
     console.error('❌ Error cargando ventas:', err)
   } finally {
@@ -412,6 +406,7 @@ const cargarVentas = async () => {
 onMounted(() => {
   obtenerUsuarioLogueado() 
   cargarVentas()
+  cargarConfiguracionEmpresa()
 })
 
 const ventasFiltradas = computed(() => {
@@ -441,7 +436,6 @@ const ventasPaginadas = computed(() => {
 })
 const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
-const ventasAnuladas = computed(() => ventasFiltradas.value.filter(v => v.anulada).length)
 
 const editarVenta = (venta) => { if (venta.anulada) return; ventaEditando.value = venta; mostrarEditar.value = true }
 const verDetallesVenta = (id) => router.push({ name: 'DetalleVenta', params: { id } })
@@ -449,7 +443,6 @@ const verDetallesVenta = (id) => router.push({ name: 'DetalleVenta', params: { i
 const anularVenta = async (venta) => {
   const res = await Swal.fire({ title: '¿Anular venta?', text: "Esta acción no se puede deshacer", icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#3085d6', confirmButtonText: 'Sí, anular' })
   if (!res.isConfirmed) return
-  
   try {
     await axios.post(`/api/ventas/${venta.id}/anular/`)
     await cargarVentas()
@@ -460,29 +453,22 @@ const anularVenta = async (venta) => {
 const generarComprobantePDF = (venta) => {
   generandoPDF.value = venta.id
   const baseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
-  
-  // Refrescar usuario por seguridad
   obtenerUsuarioLogueado();
-  
-  // Obtener nombre o fallback
   const quienImprime = usuarioEmisor.value || 'Caja Principal';
-  
-  // Codificar URL
   const quienImprimeEncoded = encodeURIComponent(quienImprime);
-
   setTimeout(() => {
-      // Abrir PDF enviando el nombre completo
       window.open(`${baseUrl}/api/ventas/${venta.id}/comprobante-pdf/?impreso_por=${quienImprimeEncoded}`, '_blank')
       generandoPDF.value = null
   }, 500)
 }
 
 // =========================================================================
-// GENERACIÓN DE REPORTE LISTADO (JS PDF)
+// GENERACIÓN DE REPORTE LISTADO (JS PDF) - CON EMAIL AGREGADO
 // =========================================================================
 const generarReporteListado = async () => {
     loadingPdf.value = true;
     try {
+        await cargarConfiguracionEmpresa();
         obtenerUsuarioLogueado();
         await nextTick();
         
@@ -494,21 +480,20 @@ const generarReporteListado = async () => {
         const marginRight = 10;
         let yPos = 15;
         
-        // Header
         doc.setFont("helvetica", "bold");
         doc.setFontSize(16);
         doc.setTextColor(15, 23, 42);
         doc.text("REPORTE DE VENTAS", pageWidth / 2, yPos, { align: 'center' });
         yPos += 10;
         
-        // Info empresa
         doc.setFontSize(9);
-        doc.text(empresaData.value.razon_social, marginLeft, yPos);
+        doc.text(empresaData.value.razon_social || "HairSoft", marginLeft, yPos);
         doc.text(`CUIT: ${empresaData.value.cuil_cuit}`, marginLeft, yPos + 4);
         doc.text(`Dirección: ${empresaData.value.direccion}`, marginLeft, yPos + 8);
         doc.text(`Teléfono: ${empresaData.value.telefono}`, marginLeft, yPos + 12);
+        // ✅ DIBUJO DE EMAIL AGREGADO
+        doc.text(`Email: ${empresaData.value.email || 'N/A'}`, marginLeft, yPos + 16);
         
-        // Info reporte
         const infoX = pageWidth - marginRight - 60;
         const nombreEmisor = usuarioEmisor.value || 'Administrador';
         
@@ -516,9 +501,9 @@ const generarReporteListado = async () => {
         doc.text(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, infoX, yPos + 4);
         doc.text(`Total Ventas: ${ventasFiltradas.value.length}`, infoX, yPos + 8);
         
-        yPos += 20;
+        // ✅ AJUSTADO yPos PARA DAR ESPACIO AL EMAIL
+        yPos += 25;
         
-        // Tabla Header
         doc.setFillColor(15, 23, 42);
         doc.rect(marginLeft, yPos, pageWidth - marginLeft - marginRight, 8, 'F');
         doc.setFontSize(10);
@@ -531,19 +516,16 @@ const generarReporteListado = async () => {
         
         yPos += 15;
         
-        // Tabla Body
         const itemsPerPage = 20;
         const totalItems = ventasFiltradas.value.length;
-        const totalPages = Math.ceil(totalItems / itemsPerPage);
+        const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
         
         for (let pageNum = 0; pageNum < totalPages; pageNum++) {
             if (pageNum > 0) {
                 doc.addPage();
                 yPos = 20;
             }
-            
             const pageItems = ventasFiltradas.value.slice(pageNum * itemsPerPage, (pageNum + 1) * itemsPerPage);
-            
             doc.setFontSize(9);
             doc.setTextColor(0, 0, 0);
             doc.setFont("helvetica", "normal");
@@ -554,35 +536,24 @@ const generarReporteListado = async () => {
                     doc.setFillColor(245, 247, 250);
                     doc.rect(marginLeft, rowY - 6, pageWidth - marginLeft - marginRight, 8, 'F');
                 }
-                
                 const fecha = venta.fecha ? new Date(venta.fecha).toLocaleDateString('es-AR') : '-';
                 doc.text(fecha, marginLeft + 2, rowY);
-                
                 const cliente = venta.cliente_nombre ? venta.cliente_nombre.substring(0, 25) : 'Consumidor Final';
                 doc.text(cliente, marginLeft + 30, rowY);
-                
                 doc.text(venta.tipo || '-', marginLeft + 80, rowY);
-                
                 const pago = venta.medio_pago_nombre ? venta.medio_pago_nombre.substring(0, 15) : '-';
                 doc.text(pago, marginLeft + 105, rowY);
-                
                 doc.setFont("helvetica", "bold");
                 doc.text(`$${formatPrecio(venta.total)}`, pageWidth - marginRight - 2, rowY, { align: 'right' });
                 doc.setFont("helvetica", "normal");
             });
-            
-            yPos += (pageItems.length * 8) + 10;
-            
-            // Footer Paginación
             doc.setFontSize(8);
             doc.setTextColor(100, 100, 100);
             doc.text(`Página ${pageNum + 1} de ${totalPages}`, pageWidth - marginRight - 2, pageHeight - 10, { align: 'right' });
         }
-        
         doc.save(`Listado_Ventas_${new Date().toISOString().slice(0,10)}.pdf`);
-        
     } catch (error) {
-        console.error("Error generando PDF:", error);
+        console.error("Error PDF:", error);
         Swal.fire("Error", "No se pudo generar el reporte.", "error");
     } finally {
         loadingPdf.value = false;
@@ -599,7 +570,6 @@ const procesarVentaRegistrada = async (venta) => {
 const ventaActualizada = async () => { await cargarVentas(); cerrarModalEditar() }
 const limpiarFiltros = () => { filtros.value = { busqueda: '', fechaDesde: '', fechaHasta: '', metodoPago: '', tipo: '', estado: '' }; pagina.value = 1 }
 
-// UTILS
 const formatFechaDia = (f) => f ? new Date(f).toLocaleDateString('es-AR', {day: '2-digit', month: '2-digit', year: 'numeric'}) : '-'
 const formatFechaHora = (f) => f ? new Date(f).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : ''
 const formatPrecio = (p) => p ? parseFloat(p).toLocaleString('es-AR', { minimumFractionDigits: 2 }) : '0.00'

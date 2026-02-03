@@ -33,12 +33,24 @@
               <input v-model="config.razon_social" type="text" class="filter-input" placeholder="Nombre legal" />
             </div>
             <div class="filter-group">
-              <label>CUIL / CUIT</label>
-              <input v-model="config.cuil_cuit" type="text" class="filter-input" placeholder="00-00000000-0" />
+              <label>CUIL / CUIT (XX-XXXXXXXX-X)</label>
+              <input 
+                v-model="config.cuil_cuit" 
+                type="text" 
+                class="filter-input" 
+                placeholder="XX-XXXXXXXX-X" 
+                maxlength="13" 
+              />
             </div>
             <div class="filter-group">
-              <label>Teléfono</label>
-              <input v-model="config.telefono" type="text" class="filter-input" placeholder="3755-xxxxxx" />
+              <label>Teléfono (Máx 15 dígitos)</label>
+              <input 
+                v-model="config.telefono" 
+                type="text" 
+                class="filter-input" 
+                placeholder="3755xxxxxx" 
+                maxlength="15" 
+              />
             </div>
             <div class="filter-group" style="grid-column: span 2;">
               <label>Dirección Comercial</label>
@@ -53,8 +65,6 @@
 
         <div class="usuarios-count">
           <p><Clock :size="20" /> Reglas de Negocio y Mensajes al Cliente</p>
-          <div class="alertas-container">
-          </div>
         </div>
 
         <div class="filters-container">
@@ -62,7 +72,7 @@
             <div class="filter-group">
               <label>Margen de Cancelación para Reembolso (En Horas)</label>
               <div style="display: flex; align-items: center; gap: 15px;">
-                <input v-model.number="config.margen_horas_cancelacion" type="number" class="filter-input" style="width: 120px;" />
+                <input v-model.number="config.margen_horas_cancelacion" type="number" class="filter-input" style="width: 120px;" min="1" />
                 <span class="badge-estado estado-info">Horas de anticipación requeridas</span>
               </div>
             </div>
@@ -120,7 +130,39 @@ const obtenerConfig = async () => {
   }
 }
 
+// ✅ FUNCIÓN DE VALIDACIÓN SOLICITADA
+const validarFormulario = () => {
+  const cuitRegex = /^\d{2}-\d{8}-\d{1}$/;
+  
+  if (!config.value.razon_social.trim()) return "La Razón Social es obligatoria.";
+  
+  if (!cuitRegex.test(config.value.cuil_cuit)) {
+    return "El CUIT debe tener el formato exacto XX-XXXXXXXX-X (11 números y guiones).";
+  }
+
+  if (config.value.telefono.length > 15) {
+    return "El teléfono no puede superar los 15 dígitos.";
+  }
+
+  if (!config.value.email.includes('@')) {
+    return "El email debe ser válido y contener un '@'.";
+  }
+
+  return null; // OK
+}
+
 const guardarCambios = async () => {
+  const errorMsg = validarFormulario();
+  if (errorMsg) {
+    return Swal.fire({
+      icon: 'warning',
+      title: 'Validación',
+      text: errorMsg,
+      background: '#0f172a',
+      color: '#f8fafc'
+    });
+  }
+
   guardando.value = true
   try {
     await axios.post('/api/configuracion/', config.value)
