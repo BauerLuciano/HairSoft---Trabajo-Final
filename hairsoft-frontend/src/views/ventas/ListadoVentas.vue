@@ -89,8 +89,7 @@
               <th>Cliente</th>
               <th>Usuario</th>
               <th>Total</th>
-              <th>Método Pago</th>
-              <th>Tipo</th>
+              <th>Método Pago / Trazabilidad</th> <th>Tipo</th>
               <th>Estado</th>
               <th style="width: 60px; text-align: center;">Comprobante</th>
               <th>Acciones</th>
@@ -117,6 +116,18 @@
                         <component :is="getMedioPagoInfo(venta).icono" :size="12" />
                         {{ venta.medio_pago_nombre || '–' }}
                     </span>
+
+                    <div v-if="venta.entidad_pago || venta.codigo_transaccion" class="trazabilidad-info">
+                        <div v-if="venta.entidad_pago && venta.entidad_pago !== 'MERCADOPAGO'" class="info-row">
+                            <span class="label-info">Vía:</span> 
+                            <strong class="valor-info">{{ venta.entidad_pago }}</strong>
+                        </div>
+                        
+                        <div v-if="venta.codigo_transaccion" class="info-row">
+                            <span class="label-info">Ref:</span>
+                            <span class="codigo-transaccion">{{ venta.codigo_transaccion }}</span>
+                        </div>
+                    </div>
                 </div>
               </td>
 
@@ -328,7 +339,7 @@ const cargarConfiguracionEmpresa = async () => {
                 cuil_cuit: res.data.cuil_cuit,
                 direccion: res.data.direccion,
                 telefono: res.data.telefono,
-                email: res.data.email // ✅ COMENTARIO CORREGIDO
+                email: res.data.email 
             };
         }
     } catch (e) {
@@ -336,9 +347,6 @@ const cargarConfiguracionEmpresa = async () => {
     }
 }
 
-// =========================================================================
-// 🕵️‍♂️ FUNCIÓN DE DETECCIÓN DE USUARIO (VERSIÓN INTELIGENTE) - INTACTA
-// =========================================================================
 const obtenerUsuarioLogueado = () => {
   try {
     let n = '';
@@ -429,6 +437,8 @@ const ventasFiltradas = computed(() => {
   })
 })
 
+const ventasAnuladas = computed(() => ventas.value.filter(v => v.anulada).length)
+
 const totalPaginas = computed(() => Math.max(1, Math.ceil(ventasFiltradas.value.length / itemsPorPagina)))
 const ventasPaginadas = computed(() => {
   const inicio = (pagina.value - 1) * itemsPorPagina
@@ -462,9 +472,6 @@ const generarComprobantePDF = (venta) => {
   }, 500)
 }
 
-// =========================================================================
-// GENERACIÓN DE REPORTE LISTADO (JS PDF) - CON EMAIL AGREGADO
-// =========================================================================
 const generarReporteListado = async () => {
     loadingPdf.value = true;
     try {
@@ -491,7 +498,6 @@ const generarReporteListado = async () => {
         doc.text(`CUIT: ${empresaData.value.cuil_cuit}`, marginLeft, yPos + 4);
         doc.text(`Dirección: ${empresaData.value.direccion}`, marginLeft, yPos + 8);
         doc.text(`Teléfono: ${empresaData.value.telefono}`, marginLeft, yPos + 12);
-        // ✅ DIBUJO DE EMAIL AGREGADO
         doc.text(`Email: ${empresaData.value.email || 'N/A'}`, marginLeft, yPos + 16);
         
         const infoX = pageWidth - marginRight - 60;
@@ -501,7 +507,6 @@ const generarReporteListado = async () => {
         doc.text(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, infoX, yPos + 4);
         doc.text(`Total Ventas: ${ventasFiltradas.value.length}`, infoX, yPos + 8);
         
-        // ✅ AJUSTADO yPos PARA DAR ESPACIO AL EMAIL
         yPos += 25;
         
         doc.setFillColor(15, 23, 42);
@@ -682,6 +687,65 @@ const getClaseEstadoVenta = (anulada) => anulada ? 'estado-anulada' : 'estado-ac
 
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); z-index: 1000; display: flex; justify-content: center; align-items: center; }
 .modal-content { background: var(--bg-secondary); padding: 0; border-radius: 16px; border: 1px solid var(--border-color); max-height: 90vh; overflow-y: auto; }
+
+/* --- ESTILOS DE TRAZABILIDAD (Copiá esto en tu style scoped) --- */
+
+/* Contenedor principal para alinear el badge y la info debajo */
+.badge-pago-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px; /* Espacio entre el badge de color y los datos */
+}
+
+/* Contenedor de los datos extra (Banco y Código) */
+.trazabilidad-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem; /* Letra chica (aprox 12px) */
+  
+  /* Un detalle visual: línea sutil a la izquierda para conectarlo con el pago */
+  border-left: 2px solid #e2e8f0; 
+  padding-left: 8px; 
+  margin-left: 2px;
+}
+
+/* Filas individuales (Vía... / Ref...) */
+.info-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.2;
+}
+
+/* Las etiquetas "VÍA:" y "REF:" */
+.label-info {
+  font-size: 0.65rem; /* Más chiquito (aprox 10px) */
+  text-transform: uppercase;
+  font-weight: 800; /* Bien negrita */
+  color: #94a3b8;   /* Gris claro para que no compita */
+  letter-spacing: 0.5px;
+  min-width: 24px;  /* Para que se alineen verticalmente */
+}
+
+/* El nombre del Banco o Billetera */
+.valor-info {
+  font-weight: 600;
+  color: #475569; /* Gris azulado oscuro */
+}
+
+/* El Código de Transacción (Estilo "Ticket") */
+.codigo-transaccion {
+  font-family: 'Courier New', Courier, monospace; /* Fuente monoespaciada para números */
+  background-color: #f8fafc;
+  color: #334155;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
 
 @media (max-width: 768px) {
   .list-footer { flex-direction: column; align-items: flex-start; }

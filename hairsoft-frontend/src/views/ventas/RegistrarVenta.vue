@@ -1,7 +1,6 @@
 <template>
   <div class="venta-page">
     <div class="venta-wrapper">
-      <!-- HEADER -->
       <div class="page-header">
         <div class="header-content">
           <div class="header-title">
@@ -27,11 +26,8 @@
         </div>
       </div>
 
-      <!-- CONTENIDO PRINCIPAL -->
       <div class="content-grid">
-        <!-- COLUMNA IZQUIERDA: PRODUCTOS -->
         <div class="productos-section">
-          <!-- BÚSQUEDA Y FILTROS -->
           <div class="search-card">
             <div class="search-header">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -69,7 +65,6 @@
             </div>
           </div>
 
-          <!-- LISTA DE PRODUCTOS -->
           <div class="productos-card">
             <div class="productos-header">
               <div class="header-info">
@@ -152,9 +147,7 @@
           </div>
         </div>
 
-        <!-- COLUMNA DERECHA: CARRITO Y PAGO -->
         <div class="carrito-section">
-          <!-- CARRITO -->
           <div class="carrito-card">
             <div class="carrito-header">
               <div class="header-info">
@@ -212,7 +205,6 @@
             </div>
           </div>
 
-          <!-- RESUMEN Y PAGO -->
           <div class="pago-card" v-if="carrito.length > 0">
             <div class="pago-header">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -243,9 +235,44 @@
               </select>
             </div>
 
+            <div v-if="esMedioPagoConRecargo" class="datos-extra-pago slide-in">
+              
+              <div class="form-group" v-if="esTransferencia">
+                <label>Billetera / Banco de Origen</label>
+                <select v-model="datosVenta.entidad_pago" class="input-select">
+                  <option value="" disabled selected>Seleccione entidad...</option>
+                  <option value="UALA">Ualá</option>
+                  <option value="BRUBANK">Brubank</option>
+                  <option value="LEMON">Lemon Cash</option>
+                  <option value="NARANJAX">Naranja X</option>
+                  <option value="MODO">MODO</option>
+                  <option value="GALICIA">Galicia</option>
+                  <option value="BBVA">BBVA</option>
+                  <option value="MACRO">Macro</option>
+                  <option value="OTRO">Otro</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>
+                  {{ esMercadoPago ? 'ID Transacción Mercado Pago *' : 'Código de Comprobante *' }}
+                </label>
+                <input 
+                  type="text" 
+                  v-model="datosVenta.codigo_transaccion" 
+                  class="input-search"
+                  :placeholder="esMercadoPago ? 'Ej: #145025893768' : 'Ej: A123B456789'"
+                  :maxlength="maxCodigoLength"
+                />
+                <small class="helper-text" style="color: #6b7280; font-size: 0.8rem; margin-top: 4px; display: block;">
+                  {{ esMercadoPago ? 'Ingrese el ID de operación (Máx 14).' : 'Copie el código del comprobante bancario.' }}
+                </small>
+              </div>
+            </div>
+
             <button 
               @click="registrarVenta" 
-              :disabled="!datosVenta.medio_pago || procesandoVenta || carrito.length === 0" 
+              :disabled="!formularioValido || procesandoVenta || carrito.length === 0" 
               class="btn-confirmar"
               :class="{ 'btn-procesando': procesandoVenta }"
             >
@@ -264,7 +291,6 @@
         </div>
       </div>
 
-      <!-- NOTIFICACIÓN TOAST -->
       <transition name="toast">
         <div v-if="mensaje" class="toast-notification" :class="mensajeTipo">
           <div class="toast-icon">
@@ -310,7 +336,7 @@ export default {
         return {
             productos: [],
             categorias: [],
-            metodosPago: [], 
+            metodosPago: [],
             filtroNombre: '',
             filtroCategoria: '',
             cantidades: {},
@@ -318,6 +344,8 @@ export default {
             procesandoVenta: false,
             datosVenta: {
                 medio_pago: null,
+                entidad_pago: '',
+                codigo_transaccion: '',
                 usuario: 1 
             },
             mensaje: '',
@@ -335,35 +363,57 @@ export default {
         },
         total() {
             return this.carrito.reduce((acc, item) => acc + item.subtotal, 0)
+        },
+        
+        // 🔥 HELPERS COMPUTADOS PARA LA LÓGICA DE PAGO
+        metodoPagoSeleccionado() {
+            if (!this.datosVenta.medio_pago) return null;
+            return this.metodosPago.find(mp => mp.id === this.datosVenta.medio_pago);
+        },
+        esMercadoPago() {
+            return this.metodoPagoSeleccionado?.tipo === 'MERCADOPAGO';
+        },
+        esTransferencia() {
+            return this.metodoPagoSeleccionado?.tipo === 'TRANSFERENCIA';
+        },
+        esMedioPagoConRecargo() {
+            return this.esMercadoPago || this.esTransferencia;
+        },
+        maxCodigoLength() {
+            return this.esMercadoPago ? 14 : 25;
+        },
+        
+        formularioValido() {
+            if (this.carrito.length === 0) return false;
+            if (!this.datosVenta.medio_pago) return false;
+            
+            // Validación de código de transacción si aplica
+            if (this.esMedioPagoConRecargo && !this.datosVenta.codigo_transaccion) {
+                return false;
+            }
+            return true;
+        }
+    },
+    
+    watch: {
+        // Limpiar campos si cambian de medio de pago
+        'datosVenta.medio_pago'(newVal) {
+            this.datosVenta.entidad_pago = '';
+            this.datosVenta.codigo_transaccion = '';
         }
     },
     
     methods: {
         navegarAListado() {
             console.log("🚀 Iniciando navegación al listado de ventas");
-            
             if (this.$route.path === '/ventas') {
-                console.log("⚠️ Ya estamos en /ventas, recargando...");
                 window.location.reload();
                 return;
             }
-            
-            this.$router.push('/ventas')
-                .then(() => {
-                    console.log("✅ Vue Router: Navegación exitosa");
-                    
-                    setTimeout(() => {
-                        if (this.$route.path !== '/ventas') {
-                            console.log("⏰ Timeout: Forzando navegación directa");
-                            window.location.href = '/ventas';
-                        }
-                    }, 500);
-                })
-                .catch((error) => {
-                    console.error("❌ Vue Router error:", error);
-                    console.log("🔄 Usando navegación directa como fallback");
-                    window.location.href = '/ventas';
-                });
+            this.$router.push('/ventas').catch(err => {
+                console.error("Router err", err);
+                window.location.href = '/ventas';
+            });
         },
 
         volverAlListado() {
@@ -453,11 +503,9 @@ export default {
         
         puedeAgregarAlCarrito(producto) {
             if (producto.stock === 0) return false;
-            
             const cantidad = this.cantidades[producto.id] || 1;
             const stockDisponible = producto.stock;
             const cantidadEnCarrito = this.cantidadEnCarrito(producto.id);
-            
             return cantidad >= 1 && (cantidad + cantidadEnCarrito) <= stockDisponible;
         },
         
@@ -476,17 +524,17 @@ export default {
         },
 
         validarCantidad(producto) {
-          let cantidad = this.cantidades[producto.id] || 0;
-          const stockTotal = producto.stock;
-          const cantidadEnCarrito = this.cantidadEnCarrito(producto.id);
-          
-          if (cantidad < 1) {
-              this.cantidades[producto.id] = 1;
-          } else if (cantidad + cantidadEnCarrito > stockTotal) {
-            cantidad = stockTotal - cantidadEnCarrito;
-            this.cantidades[producto.id] = Math.max(1, cantidad);
-            this.mostrarMensaje('Cantidad ajustada para no exceder el stock total', 'warning');
-          }
+            let cantidad = this.cantidades[producto.id] || 0;
+            const stockTotal = producto.stock;
+            const cantidadEnCarrito = this.cantidadEnCarrito(producto.id);
+            
+            if (cantidad < 1) {
+                this.cantidades[producto.id] = 1;
+            } else if (cantidad + cantidadEnCarrito > stockTotal) {
+                cantidad = stockTotal - cantidadEnCarrito;
+                this.cantidades[producto.id] = Math.max(1, cantidad);
+                this.mostrarMensaje('Cantidad ajustada para no exceder el stock total', 'warning');
+            }
         },
         
         filtrarProductos() {}, 
@@ -516,10 +564,25 @@ export default {
 
         async cargarMetodosPago() {
             try {
+                // 1. Cargar desde API para obtener los IDs reales
                 const res = await axios.get(`${API_BASE_URL}/usuarios/api/metodos-pago/`); 
-                this.metodosPago = Array.isArray(res.data) ? res.data.filter(mp => mp.activo !== false) : [];
+                if (Array.isArray(res.data)) {
+                    // 🔥 AQUÍ ESTÁ EL ARREGLO:
+                    // Filtramos explícitamente para QUE NO PASE LA TARJETA
+                    // Solo aceptamos Efectivo, MP o Transferencia.
+                    const permitidos = ['EFECTIVO', 'MERCADOPAGO', 'TRANSFERENCIA'];
+                    
+                    this.metodosPago = res.data.filter(mp => 
+                        mp.activo !== false && 
+                        (permitidos.includes(mp.tipo) || permitidos.includes(mp.nombre.toUpperCase())) &&
+                        !mp.nombre.toUpperCase().includes('TARJETA') 
+                    );
+                }
+                
+                // 2. Seleccionar EFECTIVO por defecto si existe
                 if (this.metodosPago.length > 0) {
-                    this.datosVenta.medio_pago = this.metodosPago[0].id;
+                    const efectivo = this.metodosPago.find(m => m.tipo === 'EFECTIVO');
+                    this.datosVenta.medio_pago = efectivo ? efectivo.id : this.metodosPago[0].id;
                 }
             } catch (err) { 
                 console.error("❌ Error al cargar métodos de pago:", err);
@@ -623,7 +686,7 @@ export default {
                 if (response.status === 201) {
                     await this.procesarVentaExitosa(response.data); 
                 } else {
-                     throw new Error(`Respuesta inesperada del servidor: ${response.status}`);
+                      throw new Error(`Respuesta inesperada del servidor: ${response.status}`);
                 }
             } catch (err) {
                 this.manejarErrorVenta(err);
@@ -641,6 +704,11 @@ export default {
             this.mostrarMensaje('Debe seleccionar un método de pago', 'warning');
             return false;
           }
+          // Validación extra de código
+          if (this.esMedioPagoConRecargo && !this.datosVenta.codigo_transaccion) {
+             this.mostrarMensaje('Falta el código de transacción', 'warning');
+             return false;
+          }
           return true;
         },
 
@@ -654,18 +722,32 @@ export default {
                 turno: null 
             }));
             
+            // Lógica entidad (Si es MP, la entidad es MERCADOPAGO)
+            let entidadFinal = null;
+            if (this.esMercadoPago) {
+                entidadFinal = 'MERCADOPAGO';
+            } else if (this.esTransferencia) {
+                entidadFinal = this.datosVenta.entidad_pago;
+            }
+
             return { 
                 total: parseFloat(this.total),
                 tipo: 'PRODUCTO', 
+                
+                // MANDAMOS EL ID REAL QUE VIENE DE LA API
                 medio_pago: parseInt(this.datosVenta.medio_pago),
+                
                 detalles,
                 cliente: null,
-                usuario: this.datosVenta.usuario 
+                usuario: this.datosVenta.usuario,
+                
+                // Nuevos campos
+                entidad_pago: entidadFinal,
+                codigo_transaccion: this.esMedioPagoConRecargo ? this.datosVenta.codigo_transaccion : null
             };
         },
 
         abrirComprobante(ventaId) {
-            console.log("📄 Abriendo comprobante...");
             const pdfUrl = `${API_BASE_URL}/usuarios/api/ventas/${ventaId}/comprobante-pdf/`;
             window.open(pdfUrl, '_blank');
         },
@@ -698,16 +780,19 @@ export default {
 
         limpiarFormulario() {
             this.carrito = [];
-            this.datosVenta.medio_pago = this.metodosPago[0]?.id || null;
+            // Volver a seleccionar el por defecto
+            if (this.metodosPago.length > 0) {
+                const efectivo = this.metodosPago.find(m => m.tipo === 'EFECTIVO');
+                this.datosVenta.medio_pago = efectivo ? efectivo.id : this.metodosPago[0].id;
+            }
+            this.datosVenta.codigo_transaccion = '';
+            this.datosVenta.entidad_pago = '';
             this.filtroNombre = '';
             this.filtroCategoria = '';
         }
     },
     
     mounted() {
-        console.log("Componente montado. Router disponible:", this.$router);
-        console.log("Router inyectado:", this.router);
-        
         this.cargarProductos();
         this.cargarCategorias();
         this.cargarMetodosPago();

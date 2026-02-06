@@ -1,7 +1,6 @@
 <template>
   <div class="venta-page">
     <div class="venta-wrapper">
-      <!-- HEADER -->
       <div class="page-header">
         <div class="header-content">
           <div class="header-title">
@@ -32,11 +31,8 @@
         </div>
       </div>
 
-      <!-- CONTENIDO PRINCIPAL -->
       <div class="content-grid">
-        <!-- COLUMNA IZQUIERDA: PRODUCTOS -->
         <div class="productos-section">
-          <!-- BÚSQUEDA Y FILTROS -->
           <div class="search-card">
             <div class="search-header">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -73,7 +69,6 @@
             </div>
           </div>
 
-          <!-- LISTA DE PRODUCTOS -->
           <div class="productos-card">
             <div class="productos-header">
               <div class="header-info">
@@ -155,9 +150,7 @@
           </div>
         </div>
 
-        <!-- COLUMNA DERECHA: CARRITO Y PAGO -->
         <div class="carrito-section">
-          <!-- CARRITO -->
           <div class="carrito-card">
             <div class="carrito-header">
               <div class="header-info">
@@ -215,7 +208,6 @@
             </div>
           </div>
 
-          <!-- RESUMEN Y PAGO -->
           <div class="pago-card">
             <div class="pago-header">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -246,6 +238,42 @@
               </select>
             </div>
 
+            <div v-if="esMedioPagoConRecargo" class="datos-extra-pago slide-in">
+              
+              <div class="form-group" v-if="esTransferencia">
+                <label>Billetera / Banco de Origen</label>
+                <select v-model="datosVenta.entidad_pago" class="input-select">
+                  <option value="" disabled selected>Seleccione entidad...</option>
+                  <option value="UALA">Ualá</option>
+                  <option value="BRUBANK">Brubank</option>
+                  <option value="LEMON">Lemon Cash</option>
+                  <option value="NARANJAX">Naranja X</option>
+                  <option value="MODO">MODO</option>
+                  <option value="SANTANDER">Santander</option>
+                  <option value="GALICIA">Galicia</option>
+                  <option value="BBVA">BBVA</option>
+                  <option value="MACRO">Macro</option>
+                  <option value="OTRO">Otro</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>
+                  {{ esMercadoPago ? 'ID Transacción Mercado Pago *' : 'Código de Comprobante *' }}
+                </label>
+                <input 
+                  type="text" 
+                  v-model="datosVenta.codigo_transaccion" 
+                  class="input-search"
+                  :placeholder="esMercadoPago ? 'Ej: #145025893768' : 'Ej: A123B456789'"
+                  :maxlength="maxCodigoLength"
+                />
+                <small class="helper-text" style="color: #6b7280; font-size: 0.8rem; margin-top: 4px; display: block;">
+                  {{ esMercadoPago ? 'Ingrese el ID de operación (Máx 14).' : 'Copie el código del comprobante bancario.' }}
+                </small>
+              </div>
+            </div>
+
             <button 
               @click="validarYActualizarVenta" 
               :disabled="!formularioValido || procesando" 
@@ -267,7 +295,6 @@
         </div>
       </div>
 
-      <!-- NOTIFICACIÓN TOAST -->
       <transition name="toast">
         <div v-if="mensaje" class="toast-notification" :class="error ? 'error' : 'success'">
           <div class="toast-icon">
@@ -292,10 +319,14 @@
 </template>
 
 <script>
-import axios from 'axios'
+import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2'
 
-const API_BASE_URL = 'http://localhost:8000'
+// URLs relativas usando la base de axiosConfig
+const API_URL_PRODUCTOS = '/usuarios/api/productos/'
+const API_URL_METODOS = '/usuarios/api/metodos-pago/'
+const API_URL_CATEGORIAS = '/usuarios/api/categorias/productos/'
+const API_URL_VENTAS = '/usuarios/api/ventas/'
 
 export default {
   name: 'ModificarVenta',
@@ -319,7 +350,9 @@ export default {
       error: false,
       ventaOriginal: null,
       datosVenta: {
-        medio_pago: null
+        medio_pago: null,
+        entidad_pago: '',
+        codigo_transaccion: ''
       }
     }
   },
@@ -345,14 +378,65 @@ export default {
     total() {
       return this.carrito.reduce((acc, item) => acc + item.subtotal, 0);
     },
+
+    // 🔥 HELPERS COMPUTADOS PARA LA LÓGICA DE PAGO
+    metodoPagoSeleccionado() {
+        if (!this.datosVenta.medio_pago) return null;
+        return this.metodosPago.find(mp => mp.id === this.datosVenta.medio_pago);
+    },
+    esMercadoPago() {
+        return this.metodoPagoSeleccionado?.tipo === 'MERCADOPAGO' || 
+               this.metodoPagoSeleccionado?.nombre.toUpperCase().includes('MERCADO');
+    },
+    esTransferencia() {
+        // 🔥 CORRECCIÓN: Si es Mercado Pago, NO es Transferencia
+        if (this.esMercadoPago) return false;
+        
+        return this.metodoPagoSeleccionado?.tipo === 'TRANSFERENCIA' ||
+               this.metodoPagoSeleccionado?.nombre.toUpperCase().includes('TRANSFERENCIA');
+    },
+    esMedioPagoConRecargo() {
+        return this.esMercadoPago || this.esTransferencia;
+    },
+    maxCodigoLength() {
+        return this.esMercadoPago ? 14 : 25;
+    },
     
     formularioValido() {
-      return this.carrito.length > 0 && this.datosVenta.medio_pago;
+      if (this.carrito.length === 0) return false;
+      if (!this.datosVenta.medio_pago) return false;
+
+      // Validación de código de transacción si aplica
+      if (this.esMedioPagoConRecargo && !this.datosVenta.codigo_transaccion) {
+         return false;
+      }
+      return true;
     },
     
     horasDesdeVenta() {
       if (!this.ventaOriginal?.fecha) return 0;
       return (new Date() - new Date(this.ventaOriginal.fecha)) / (1000 * 60 * 60);
+    }
+  },
+  
+  watch: {
+    // 🔥 LIMPIAR CAMPOS AL CAMBIAR MEDIO DE PAGO
+    'datosVenta.medio_pago'(newVal) {
+        // Si estamos cargando la venta original, no limpiamos nada
+        if (this.ventaOriginal && this.ventaOriginal.medio_pago === newVal) {
+             this.datosVenta.entidad_pago = this.ventaOriginal.entidad_pago || '';
+             this.datosVenta.codigo_transaccion = this.ventaOriginal.codigo_transaccion || '';
+             return;
+        }
+
+        // Si cambia a Efectivo, limpiar todo
+        if (!this.esMedioPagoConRecargo) {
+            this.datosVenta.entidad_pago = '';
+            this.datosVenta.codigo_transaccion = '';
+        } else if (this.esMercadoPago) {
+            // Si es MP, limpiar entidad (ya no se pide)
+            this.datosVenta.entidad_pago = ''; 
+        }
     }
   },
   
@@ -373,10 +457,7 @@ export default {
     
     puedeAgregarAlCarrito(producto) {
       if (producto.stock === 0) return false;
-      
       const cantidad = this.cantidadesTemp[producto.id] || 1;
-      
-      // Simplemente validar que la cantidad sea válida y haya stock
       return cantidad >= 1 && cantidad <= producto.stock;
     },
     
@@ -403,18 +484,30 @@ export default {
       try {
         console.log(`📥 Cargando venta #${this.ventaId}...`);
         
-        // Primero cargar productos, categorías y métodos de pago
+        // Primero cargar datos maestros
         await this.cargarDatosAdicionales();
         
-        // Luego cargar la venta
-        const response = await axios.get(`${API_BASE_URL}/usuarios/api/ventas/${this.ventaId}/editar/`);
-        const ventaData = response.data;
+        // Usamos ?q=ID para traer el detalle completo (igual que en DetalleVenta)
+        const response = await axios.get(`${API_URL_VENTAS}?q=${this.ventaId}`);
+        const resultados = response.data.results || response.data;
+        let ventaData = null;
+        
+        if (Array.isArray(resultados) && resultados.length > 0) {
+            ventaData = resultados.find(v => v.id == this.ventaId) || resultados[0];
+        } else {
+             // Fallback directo
+             const resDirecto = await axios.get(`${API_URL_VENTAS}${this.ventaId}/`);
+             ventaData = resDirecto.data;
+        }
         
         console.log('📦 Datos de venta recibidos:', ventaData);
-        console.log('📦 Productos disponibles:', this.productosDisponibles);
         
         this.ventaOriginal = { ...ventaData };
         this.datosVenta.medio_pago = ventaData.medio_pago;
+
+        // 🔥 PRE-CARGAR DATOS DE TRAZABILIDAD 🔥
+        this.datosVenta.entidad_pago = ventaData.entidad_pago || '';
+        this.datosVenta.codigo_transaccion = ventaData.codigo_transaccion || '';
         
         // Limpiar carrito antes de cargar
         this.carrito = [];
@@ -422,15 +515,10 @@ export default {
         // Cargar productos al carrito
         if (ventaData.detalles && ventaData.detalles.length > 0) {
           ventaData.detalles.forEach(detalle => {
-            console.log('🔍 Buscando producto ID:', detalle.producto);
-            
             // Buscar el producto en la lista de productos disponibles
             const productoActual = this.productosDisponibles.find(p => p.id === detalle.producto);
             
-            console.log('✅ Producto encontrado:', productoActual);
-            
             if (productoActual) {
-              // Si encontramos el producto, usarlo CON TODOS SUS DATOS
               this.carrito.push({
                 producto: {
                   id: productoActual.id,
@@ -443,8 +531,7 @@ export default {
                 subtotal: detalle.cantidad * parseFloat(productoActual.precio)
               });
             } else {
-              // Si no lo encontramos, usar el nombre del detalle
-              console.warn('⚠️ Producto no encontrado, usando datos del detalle');
+              // Fallback si no está en la lista (ej: producto desactivado)
               this.carrito.push({
                 producto: {
                   id: detalle.producto,
@@ -458,8 +545,6 @@ export default {
               });
             }
           });
-          
-          console.log('🛒 Carrito final cargado:', this.carrito);
         }
         
         // Inicializar cantidades temporales
@@ -473,10 +558,13 @@ export default {
         
       } catch (error) {
         console.error('❌ Error cargando datos de venta:', error);
+        
+        const msgError = error.response?.data?.error || error.message || 'Error desconocido';
+        
         Swal.fire({
           icon: 'error',
           title: 'Error al Cargar',
-          text: 'No se pudieron cargar los datos de la venta',
+          text: `No se pudieron cargar los datos: ${msgError}`,
           confirmButtonText: 'Entendido'
         });
       }
@@ -487,9 +575,9 @@ export default {
         console.log('📥 Cargando productos, métodos de pago y categorías...');
         
         const [productosResponse, metodosPagoResponse, categoriasResponse] = await Promise.all([
-          axios.get(`${API_BASE_URL}/usuarios/api/productos/`),
-          axios.get(`${API_BASE_URL}/usuarios/api/metodos-pago/`),
-          axios.get(`${API_BASE_URL}/usuarios/api/categorias/productos/`)
+          axios.get(API_URL_PRODUCTOS),
+          axios.get(API_URL_METODOS),
+          axios.get(API_URL_CATEGORIAS)
         ]);
         
         this.productosDisponibles = (productosResponse.data || []).map(prod => ({
@@ -501,21 +589,23 @@ export default {
           estado: prod.estado
         }));
         
-        this.metodosPago = metodosPagoResponse.data || [];
-        this.categorias = categoriasResponse.data || [];
+        // 🔥 FILTRO ANTI-TARJETAS 🔥
+        if (Array.isArray(metodosPagoResponse.data)) {
+            const permitidos = ['EFECTIVO', 'MERCADOPAGO', 'TRANSFERENCIA'];
+            this.metodosPago = metodosPagoResponse.data.filter(mp => 
+                mp.activo !== false && 
+                (permitidos.includes(mp.tipo) || permitidos.includes(mp.nombre.toUpperCase())) &&
+                !mp.nombre.toUpperCase().includes('TARJETA') 
+            );
+        } else {
+            this.metodosPago = [];
+        }
         
-        console.log('✅ Productos cargados:', this.productosDisponibles.length);
-        console.log('✅ Métodos de pago cargados:', this.metodosPago.length);
-        console.log('✅ Categorías cargadas:', this.categorias.length);
+        this.categorias = categoriasResponse.data || [];
         
       } catch (error) {
         console.error('❌ Error cargando datos adicionales:', error);
-        Swal.fire({
-          icon: 'error',
-          title: 'Error al Cargar',
-          text: 'No se pudieron cargar los productos y categorías',
-          confirmButtonText: 'Entendido'
-        });
+        throw error;
       }
     },
 
@@ -535,7 +625,6 @@ export default {
       const productoExistente = this.carrito.find(item => item.producto.id === producto.id);
       
       if (productoExistente) {
-        // Si ya existe, sumar la cantidad
         const nuevaCantidadTotal = productoExistente.cantidad + cantidad;
         
         if (nuevaCantidadTotal > producto.stock) {
@@ -547,7 +636,6 @@ export default {
         productoExistente.subtotal = productoExistente.cantidad * producto.precio;
         this.mostrarMensaje(`✅ Se agregaron ${cantidad} más de "${producto.nombre}"`);
       } else {
-        // Si no existe, agregarlo nuevo
         if (cantidad > producto.stock) {
           this.mostrarMensaje(`❌ Stock insuficiente. Solo hay ${producto.stock} disponibles`, true);
           return;
@@ -588,33 +676,24 @@ export default {
 
     async validarYActualizarVenta() {
       if (this.ventaOriginal?.anulada) {
-        Swal.fire({
-          icon: 'error',
-          title: 'Venta Anulada',
-          text: 'No se puede modificar una venta anulada',
-          confirmButtonText: 'Entendido'
-        });
+        Swal.fire('Error', 'No se puede modificar una venta anulada', 'error');
         return;
       }
 
       if (this.carrito.length === 0) {
-        Swal.fire({
-          icon: 'error',
-          title: 'Carrito Vacío',
-          text: 'Debe agregar al menos un producto',
-          confirmButtonText: 'Entendido'
-        });
+        Swal.fire('Atención', 'Debe agregar al menos un producto', 'warning');
         return;
       }
       
       if (!this.datosVenta.medio_pago) {
-        Swal.fire({
-          icon: 'error',
-          title: 'Método de Pago',
-          text: 'Debe seleccionar un método de pago',
-          confirmButtonText: 'Entendido'
-        });
+        Swal.fire('Atención', 'Debe seleccionar un método de pago', 'warning');
         return;
+      }
+
+      // Validación extra
+      if (this.esMedioPagoConRecargo && !this.datosVenta.codigo_transaccion) {
+          Swal.fire('Atención', 'Falta el código de transacción', 'warning');
+          return;
       }
 
       if (this.horasDesdeVenta > 24) {
@@ -683,6 +762,14 @@ export default {
         subtotal: parseFloat(item.subtotal)
       }));
       
+      // Lógica entidad
+      let entidadFinal = null;
+      if (this.esMercadoPago) {
+          entidadFinal = 'MERCADOPAGO';
+      } else if (this.esTransferencia) {
+          entidadFinal = this.datosVenta.entidad_pago;
+      }
+      
       const payload = { 
         total: parseFloat(this.total),
         tipo: 'PRODUCTO', 
@@ -690,12 +777,16 @@ export default {
         detalles,
         cliente: null,
         motivo_modificacion: motivo,
-        usuario_modificacion: 'usuario_actual'
+        usuario_modificacion: 'usuario_actual',
+        
+        // 🔥 CAMPOS NUEVOS
+        entidad_pago: entidadFinal,
+        codigo_transaccion: this.esMedioPagoConRecargo ? this.datosVenta.codigo_transaccion : null
       };
 
       try {
         const response = await axios.put(
-          `${API_BASE_URL}/usuarios/api/ventas/${this.ventaId}/actualizar/`, 
+          `${API_URL_VENTAS}${this.ventaId}/actualizar/`, 
           payload
         );
         
@@ -714,20 +805,14 @@ export default {
             this.$emit('venta-actualizada');
           }, 1500);
         } else {
-          Swal.close();
-          Swal.fire({
-            icon: 'error',
-            title: 'Error',
-            text: response.data.error || 'Error desconocido',
-            confirmButtonText: 'Entendido'
-          });
+          throw new Error(response.data.error || 'Error en respuesta del servidor');
         }
         
       } catch (error) {
         console.error('❌ Error actualizando venta:', error);
         Swal.close();
         
-        const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Error al actualizar la venta';
+        const errorMsg = error.response?.data?.error || error.message || 'Error al actualizar la venta';
         Swal.fire({
           icon: 'error',
           title: 'Error al Actualizar',

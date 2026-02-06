@@ -1,7 +1,6 @@
 <template>
   <div class="list-container">
     <div class="list-card">
-      <!-- Header con título y botones -->
       <div class="list-header">
         <div class="header-content">
           <h1>Detalle de Venta</h1>
@@ -24,7 +23,6 @@
         </div>
       </div>
 
-      <!-- Estados de carga y error -->
       <div v-if="cargando" class="loading-state">
         <div class="loading-spinner"></div>
         <p>Cargando detalle de venta...</p>
@@ -43,9 +41,7 @@
         </button>
       </div>
 
-      <!-- Contenido principal cuando hay datos -->
       <div v-else-if="venta" class="detalle-contenido">
-        <!-- Tarjeta de información principal -->
         <div class="detalle-card">
           <div class="detalle-header-card">
             <div class="titulo-venta">
@@ -60,7 +56,6 @@
             </div>
           </div>
 
-          <!-- Información en grid -->
           <div class="grid-info">
             <div class="info-item">
               <label>Cliente</label>
@@ -84,6 +79,10 @@
                 <span class="badge-pago" :class="getClaseTipoPago(venta.medio_pago_tipo)">
                   {{ venta.medio_pago_nombre || 'Efectivo' }}
                 </span>
+                
+                <small v-if="venta.entidad_pago" class="extra-pago-info">
+                   ({{ venta.entidad_pago }})
+                </small>
               </div>
             </div>
 
@@ -96,6 +95,13 @@
               </div>
             </div>
 
+            <div v-if="venta.codigo_transaccion" class="info-item">
+              <label>Transacción ID</label>
+              <div class="info-value transaccion-id">
+                {{ venta.codigo_transaccion }}
+              </div>
+            </div>
+
             <div class="info-item">
               <label>Total Venta</label>
               <div class="info-value total-monto">
@@ -105,7 +111,6 @@
             </div>
           </div>
 
-          <!-- Tabla de productos/servicios -->
           <div class="tabla-detalle-container">
             <h3>Productos/Servicios</h3>
             <div class="table-container">
@@ -150,7 +155,6 @@
             </div>
           </div>
 
-          <!-- Notas adicionales -->
           <div v-if="venta.notas || venta.anulada" class="notas-container">
             <div v-if="venta.notas" class="nota">
               <MessageSquare :size="16" />
@@ -168,7 +172,6 @@
           </div>
         </div>
 
-        <!-- Botones de acción -->
         <div class="acciones-detalle">
           <button 
             @click="anularVenta" 
@@ -188,7 +191,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
+import axios from '@/utils/axiosConfig' // 🔥 CORREGIDO: Usar instancia configurada con Token
 import Swal from 'sweetalert2'
 import { 
   FileText, Loader, ChevronLeft, RefreshCw, AlertTriangle,
@@ -199,6 +202,9 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+// Usamos URL relativa porque axiosConfig ya tiene la BASE_URL si está bien configurado, 
+// o usamos la variable local si axiosConfig no la tiene.
+// Para asegurar, mantenemos la variable pero usada con la instancia importada.
 const API_BASE = 'http://127.0.0.1:8000'
 
 const ventaId = route.params.id
@@ -214,14 +220,29 @@ const obtenerVenta = async () => {
   
   try {
     console.log(`🔄 Cargando detalle de venta #${ventaId}...`)
-    const res = await axios.get(`${API_BASE}/usuarios/api/ventas/${ventaId}/`)
     
-    if (res.data) {
-      venta.value = res.data
-      console.log('✅ Detalle de venta cargado:', venta.value)
+    // 🔥 TRUCO: Usamos el endpoint de búsqueda (?q=ID) en lugar del detalle directo.
+    // Esto fuerza al backend a usar el Serializer de Listado (que sabemos que trae los detalles completos)
+    // en lugar del Serializer de Detalle (que a veces viene vacío o con IDs).
+    const res = await axios.get(`${API_BASE}/usuarios/api/ventas/?q=${ventaId}`)
+    
+    // Manejar respuesta paginada o lista directa
+    const resultados = res.data.results || res.data;
+    
+    if (Array.isArray(resultados) && resultados.length > 0) {
+      // Buscamos la venta exacta por si la búsqueda trajo coincidencias parciales
+      const ventaEncontrada = resultados.find(v => v.id == ventaId) || resultados[0];
+      venta.value = ventaEncontrada
+      console.log('✅ Detalle de venta cargado (vía listado):', venta.value)
     } else {
-      error.value = 'Venta no encontrada'
-      console.log('📭 No se encontró la venta')
+      // Fallback: Si no funciona la búsqueda, intentamos ID directo
+      console.warn('⚠️ No encontrada en listado, intentando ID directo...');
+      const resDirecto = await axios.get(`${API_BASE}/usuarios/api/ventas/${ventaId}/`);
+      if (resDirecto.data) {
+          venta.value = resDirecto.data;
+      } else {
+          throw new Error('Venta no encontrada');
+      }
     }
   } catch (err) {
     console.error('❌ Error cargando detalle de venta:', err.response || err)
@@ -238,7 +259,7 @@ const obtenerVenta = async () => {
   }
 }
 
-// Funciones de utilidad (iguales a las del listado)
+// Funciones de utilidad
 const formatearFecha = (fecha) => {
   if (!fecha) return '–'
   try {
@@ -259,15 +280,17 @@ const formatearFecha = (fecha) => {
 }
 
 const formatPrecio = (precio) => {
-  if (!precio) return '0.00'
+  if (precio === undefined || precio === null) return '0.00'
   return parseFloat(precio).toFixed(2)
 }
 
 const getClaseTipoPago = (tipoPago) => {
+  if (!tipoPago) return 'default'
   const tipos = {
     'EFECTIVO': 'efectivo',
     'TARJETA': 'tarjeta',
     'TRANSFERENCIA': 'transferencia',
+    'MERCADOPAGO': 'transferencia' // MP usa estilo similar a transferencia o propio
   }
   return tipos[tipoPago] || 'default'
 }

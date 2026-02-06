@@ -115,6 +115,7 @@ const routes = [
   { path: '/usuarios/modificar/:id', name: 'ModificarUsuario', component: ModificarUsuario, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/turnos', name: 'ListadoTurnos', component: ListadoTurnos, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/turnos/crear-presencial', name: 'RegistrarTurnoPresencial', component: RegistrarTurnoPresencial, meta: { requiresAuth: true, role: 'ADMIN' } },
+  // ✅ RUTA DE EDICIÓN DE TURNOS - YA EXISTE
   { path: '/turnos/modificar/:id', name: 'ModificarTurno', component: ModificarTurno, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/aceptar-oferta/:turno_id/:token', name: 'AceptarOferta', component: AceptarOferta, meta: { public: true} },
   { path: '/servicios', name: 'ListadoServicios', component: ListadoServicios, meta: { requiresAuth: true, role: 'ADMIN' } },

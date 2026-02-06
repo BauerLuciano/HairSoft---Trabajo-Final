@@ -136,7 +136,7 @@ class Servicio(models.Model):
     nombre = models.CharField(max_length=100)
     precio = models.DecimalField(max_digits=8, decimal_places=2)
     duracion = models.PositiveIntegerField(help_text="Duración en minutos", default=20)
-    categoria = models.ForeignKey(CategoriaServicio, on_delete=models.CASCADE, null=True, blank=True)
+    categoria = models.ForeignKey('CategoriaServicio', on_delete=models.CASCADE, null=True, blank=True)
     descripcion = models.TextField(blank=True, null=True) 
     activo = models.BooleanField(default=True) 
 
@@ -481,7 +481,6 @@ class Turno(models.Model):
         ('EFECTIVO', 'Efectivo'), 
         ('MERCADO_PAGO', 'Mercado Pago'), 
         ('TRANSFERENCIA', 'Transferencia'), 
-        ('TARJETA', 'Tarjeta'), 
         ('PENDIENTE', 'Pendiente')
     ]
     REEMBOLSO_ESTADO_CHOICES = [
@@ -503,9 +502,15 @@ class Turno(models.Model):
     # TRAZABILIDAD FINANCIERA
     reembolsado = models.BooleanField(default=False)
     reembolso_estado = models.CharField(max_length=20, choices=REEMBOLSO_ESTADO_CHOICES, default='NO_APLICA')
+    
+    # Integración automática (Web)
     mp_payment_id = models.CharField(max_length=50, blank=True, null=True)
     mp_refund_id = models.CharField(max_length=100, blank=True, null=True)
+    
+    # Trazabilidad Manual (Transferencias presenciales / otros)
     nro_transaccion = models.CharField(max_length=100, blank=True, null=True)
+    entidad_pago = models.CharField(max_length=50, blank=True, null=True, verbose_name="Billetera/Banco Origen")
+    codigo_transaccion = models.CharField(max_length=100, blank=True, null=True, verbose_name="Cód. Comprobante Manual")
     
     # MOTIVOS DE CANCELACIÓN
     motivo_cancelacion = models.CharField(max_length=100, blank=True, null=True)
@@ -527,30 +532,19 @@ class Turno(models.Model):
         return f"{self.fecha} {self.hora} - {nombre_cli}"
     
     def puede_ser_cancelado(self):
-        """ ✅ LÓGICA DE TIEMPO AJUSTADA A ARGENTINA - CORREGIDA """
         if self.estado in ['COMPLETADO', 'CANCELADO']:
             return False, False, "El turno ya no está activo."
         
-        # ✅ Usar timezone.now() y convertirlo a zona horaria de Argentina
-        import pytz
-        from django.utils import timezone
-        from datetime import datetime
-        
         tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
-        ahora_utc = timezone.now()  # Esto devuelve UTC aware
-        
-        # Convertir UTC a hora de Argentina
+        ahora_utc = timezone.now()
         ahora_arg = ahora_utc.astimezone(tz_arg)
         
-        # Convertir la fecha/hora del turno a la misma zona
         fecha_turno_naive = datetime.combine(self.fecha, self.hora)
         fecha_turno_arg = tz_arg.localize(fecha_turno_naive)
         
-        # Calcular diferencia
         diferencia = fecha_turno_arg - ahora_arg
         horas_restantes = diferencia.total_seconds() / 3600
         
-        # Obtener margen de configuración (Dinámico desde la base de datos)
         from usuarios.models import ConfiguracionSistema
         config = ConfiguracionSistema.get_solo()
         margen = config.margen_horas_cancelacion or 3
@@ -561,10 +555,65 @@ class Turno(models.Model):
         else:
             msg = f"Fuera de término para reembolso (faltan {round(horas_restantes, 1)}hs)"
         
-        # ✅ IMPORTANTE: Solo el reembolso depende del tiempo, la cancelación siempre es posible
-        puede_cancelar = True if self.estado in ['RESERVADO', 'CONFIRMADO'] else False
+        puede_cancelar = True if self.estado in ['RESERVADO', 'DISPONIBLE'] else False
         
         return puede_cancelar, hay_reembolso, msg
+
+    def puede_ser_modificado(self):
+        if self.estado not in ['RESERVADO', 'DISPONIBLE']:
+            return False, f"No se puede modificar un turno en estado {self.estado}"
+        
+        tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
+        ahora_utc = timezone.now()
+        ahora_arg = ahora_utc.astimezone(tz_arg)
+        
+        fecha_turno_naive = datetime.combine(self.fecha, self.hora)
+        fecha_turno_arg = tz_arg.localize(fecha_turno_naive)
+        
+        diferencia = fecha_turno_arg - ahora_arg
+        horas_restantes = diferencia.total_seconds() / 3600
+        
+        if horas_restantes < 3:
+            return False, f"No se puede modificar con menos de 3 horas de anticipación (faltan {round(horas_restantes, 1)}hs)"
+        
+        return True, "OK"
+    
+    def usuario_puede_modificar(self, usuario):
+        if usuario.is_superuser:
+            return True
+        
+        grupos_usuario = usuario.groups.values_list('name', flat=True)
+        
+        if 'Administrador' in grupos_usuario:
+            return True
+        
+        if 'Recepcionista' in grupos_usuario:
+            return True
+        
+        if 'Peluquero' in grupos_usuario:
+            return usuario.id == self.peluquero.id
+        
+        return False
+    
+    def verificar_disponibilidad(self, fecha, hora, peluquero_id, excluir_turno_id=None):
+        from .models import Turno
+        
+        if isinstance(fecha, str):
+            fecha = datetime.strptime(fecha, "%Y-%m-%d").date()
+        if isinstance(hora, str):
+            hora = datetime.strptime(hora, "%H:%M").time()
+        
+        turnos_solapados = Turno.objects.filter(
+            fecha=fecha,
+            hora=hora,
+            peluquero_id=peluquero_id,
+            estado__in=['RESERVADO', 'DISPONIBLE']
+        )
+        
+        if excluir_turno_id:
+            turnos_solapados = turnos_solapados.exclude(id=excluir_turno_id)
+        
+        return not turnos_solapados.exists()
 
     def calcular_duracion_total(self):
         return sum(servicio.duracion for servicio in self.servicios.all())
@@ -574,6 +623,10 @@ class Turno(models.Model):
 
     def puede_reofertar(self):
         if self.estado != 'CANCELADO': return False
+        import pytz
+        from datetime import datetime, timedelta
+        from django.utils import timezone
+        
         tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
         fecha_turno_naive = datetime.combine(self.fecha, self.hora)
         fecha_turno = tz_arg.localize(fecha_turno_naive)
@@ -612,9 +665,24 @@ class Turno(models.Model):
         MetodoPago = apps.get_model('usuarios', 'MetodoPago')
         Venta = apps.get_model('usuarios', 'Venta')
         DetalleVenta = apps.get_model('usuarios', 'DetalleVenta')
+        
         total_servicios = sum(servicio.precio for servicio in self.servicios.all())
         medio_obj, _ = MetodoPago.objects.get_or_create(nombre__iexact='Efectivo', defaults={'nombre': 'Efectivo', 'tipo': 'EFECTIVO', 'activo': True})
-        venta = Venta.objects.create(cliente=self.cliente, usuario=self.peluquero, total=total_servicios, tipo='TURNO', medio_pago=medio_obj)
+        
+        if self.medio_pago == 'MERCADO_PAGO':
+             mp_obj = MetodoPago.objects.filter(tipo='MERCADOPAGO').first()
+             if mp_obj:
+                 medio_obj = mp_obj
+
+        venta = Venta.objects.create(
+            cliente=self.cliente, 
+            usuario=self.peluquero, 
+            total=total_servicios, 
+            tipo='TURNO', 
+            medio_pago=medio_obj,
+            entidad_pago=self.entidad_pago,
+            codigo_transaccion=self.codigo_transaccion or self.mp_payment_id
+        )
         for s in self.servicios.all():
             DetalleVenta.objects.create(venta=venta, servicio=s, turno=self, cantidad=1, precio_unitario=s.precio, subtotal=s.precio)
 
@@ -711,14 +779,16 @@ class InteresTurnoLiberado(models.Model):
         self.estado_oferta = 'enviada'
         self.fecha_envio_oferta = timezone.now()
         self.save()
+
 # ===============================
-# MÉTODOS DE PAGO (NUEVO MODELO)
+# MÉTODOS DE PAGO (CORREGIDO)
 # ===============================
 class MetodoPago(models.Model):
     TIPO_CHOICES = [
         ('EFECTIVO', 'Efectivo'),
-        ('TARJETA', 'Tarjeta'), 
-        ('TRANSFERENCIA', 'Transferencia/QR'), 
+        # ('TARJETA', 'Tarjeta'),  <-- Eliminada para evitar complejidad
+        ('TRANSFERENCIA', 'Transferencia'), # Para transferencias manuales
+        ('MERCADOPAGO', 'Mercado Pago'),    # Para integración Web/QR
     ]
     
     nombre = models.CharField(max_length=50, unique=True)
@@ -764,7 +834,8 @@ class Venta(models.Model):
         choices=TIPO_VENTA_CHOICES,
         default='PRODUCTO'
     )
-    # ✅ CORRECCIÓN CLAVE: ForeignKey al nuevo modelo MetodoPago
+    
+    # ✅ MEDIO DE PAGO (Relación con el modelo MetodoPago)
     medio_pago = models.ForeignKey(
         'MetodoPago',
         on_delete=models.PROTECT,
@@ -772,6 +843,22 @@ class Venta(models.Model):
         blank=True,
         help_text="Método de pago utilizado para esta transacción."
     )
+
+    # ✅ TRAZABILIDAD DE PAGOS (NUEVOS CAMPOS AGREGADOS)
+    entidad_pago = models.CharField(
+        max_length=50, 
+        null=True, 
+        blank=True, 
+        verbose_name="Billetera/Banco Origen"
+    )
+    codigo_transaccion = models.CharField(
+        max_length=100, 
+        null=True, 
+        blank=True, 
+        verbose_name="Código de Comprobante Manual"
+    )
+    nro_transaccion = models.CharField(max_length=100, null=True, blank=True) # Mantenemos por compatibilidad con código viejo
+    mp_payment_id = models.CharField(max_length=50, null=True, blank=True)    # Mantenemos por compatibilidad con código viejo
 
     def __str__(self):
         return f"Venta {self.id} - {self.tipo} ({self.fecha.strftime('%d/%m/%Y %H:%M')})"
@@ -834,7 +921,6 @@ class DetalleVenta(models.Model):
         db_table = "detalle_ventas"
         verbose_name = "Detalle de Venta"
         verbose_name_plural = "Detalles de Ventas"
-
 # ===============================
 # PEDIDOS
 # ===============================
@@ -1095,9 +1181,6 @@ class ConfiguracionReoferta(models.Model):
         if not config:
             config = cls.objects.create()
         return config
-
-# Pedidos del cliente via web!
-from django.db import models
 
 class PedidoWeb(models.Model):
     # Opciones de Estado del Pedido

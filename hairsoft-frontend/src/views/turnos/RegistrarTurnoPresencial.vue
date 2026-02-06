@@ -46,7 +46,7 @@
                 <div class="avatar-mini"><User :size="14" /></div>
                 <div class="sugerencia-info">
                   <strong>{{ getNombreCompletoCliente(c) }}</strong>
-                  <small>  - DNI: {{ c.dni || '---' }}</small>
+                  <small> - DNI: {{ c.dni || '---' }}</small>
                 </div>
               </li>
             </ul>
@@ -108,7 +108,6 @@
           </div>
         </div>
 
-        <!-- 🔥 PROFESIONALES CON CARDS EN VEZ DE SELECT -->
         <div v-if="form.servicios_ids.length > 0" class="card-modern slide-in">
           <div class="card-header">
             <div class="card-icon"><UserCheck :size="20" /></div>
@@ -180,7 +179,6 @@
           </div>
         </div>
 
-        <!-- 🔥 HORARIOS CON MEJOR ESTILO PARA OCUPADOS -->
         <div v-if="form.fecha" class="card-modern slide-in">
           <div class="card-header">
             <div class="card-icon"><Clock :size="20" /></div>
@@ -222,7 +220,7 @@
         <div v-if="form.hora" class="card-modern slide-in">
           <div class="card-header">
             <div class="card-icon"><Receipt :size="20" /></div>
-            <h3>Confirmación</h3>
+            <h3>Confirmación y Pago</h3>
           </div>
 
           <div class="resumen-grid">
@@ -244,7 +242,7 @@
               <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'TOTAL' }">
                 <input type="radio" v-model="form.tipo_pago" value="TOTAL" class="hidden-radio">
                 <div class="radio-content">
-                  <span>Total</span>
+                  <span>Pago Total</span>
                   <strong>${{ calcularTotal() }}</strong>
                 </div>
               </label>
@@ -253,17 +251,61 @@
 
           <div class="pago-detalles">
             <div class="input-group">
-              <label class="label-modern">Método de Pago</label>
+              <label class="label-modern">Medio de Pago</label>
               <select v-model="form.medio_pago" class="select-modern">
                 <option value="EFECTIVO">💵 Efectivo</option>
-                <option value="TARJETA">💳 Tarjeta</option>
-                <option value="TRANSFERENCIA">🔵 Mercado Pago / Transferencia</option>
+                <!-- 🔥 CORRECCIÓN: 'MERCADO_PAGO' con guión bajo -->
+                <option value="MERCADO_PAGO">🔵 Mercado Pago (QR/Link)</option>
+                <option value="TRANSFERENCIA">🏦 Transferencia Bancaria</option>
               </select>
             </div>
             
-            <div v-if="form.medio_pago !== 'EFECTIVO'" class="input-group">
-              <label class="label-modern">Nro. Comprobante (Opcional)</label>
-              <input type="text" v-model="form.comprobante_id" class="input-modern" placeholder="Ej: 12345678" />
+            <div v-if="form.medio_pago !== 'EFECTIVO'" class="datos-transferencia-container slide-in">
+              
+              <!-- Solo mostrar select de entidad para TRANSFERENCIA -->
+              <div class="input-group" v-if="form.medio_pago === 'TRANSFERENCIA'">
+                <label class="label-modern">Billetera / Banco de Origen</label>
+                <select v-model="form.entidad_pago" class="select-modern">
+                  <option value="" disabled selected>Seleccione entidad...</option>
+                  <!-- 🔥 CORRECCIÓN: 'MERCADO_PAGO' con guión bajo -->
+                  <option value="MERCADO_PAGO">Mercado Pago (Envío dinero)</option>
+                  <option value="UALA">Ualá</option>
+                  <option value="CUENTADNI">Cuenta DNI</option>
+                  <option value="BRUBANK">Brubank</option>
+                  <option value="LEMON">Lemon Cash</option>
+                  <option value="NARANJAX">Naranja X</option>
+                  <option value="MODO">MODO</option>
+                  <option value="SANTANDER">Santander</option>
+                  <option value="GALICIA">Galicia</option>
+                  <option value="BBVA">BBVA</option>
+                  <option value="MACRO">Macro</option>
+                  <option value="OTRO">Otro</option>
+                </select>
+              </div>
+
+              <!-- Campo de código de transacción -->
+              <div class="input-group">
+                <label class="label-modern">
+                  {{ form.medio_pago === 'MERCADO_PAGO' ? 'ID Transacción Mercado Pago *' : 'Código de Comprobante *' }}
+                </label>
+                
+                <input 
+                  type="text" 
+                  v-model="form.codigo_transaccion" 
+                  class="input-modern" 
+                  :placeholder="form.medio_pago === 'MERCADO_PAGO' ? 'Ej: #145025893768' : 'Ej: A123B456789'"
+                  :maxlength="maxCodigoLength"
+                  :class="{ 'input-error': errorValidacion && !form.codigo_transaccion }"
+                />
+                
+                <small class="helper-text">
+                  <Info :size="12" /> 
+                  {{ form.medio_pago === 'MERCADO_PAGO' ? 'ID de operación MP (Ej: #123...). Máx 14.' : 'Código del comprobante bancario. Máx 25.' }}
+                </small>
+                <div v-if="errorValidacion && !form.codigo_transaccion" class="msg-error small">
+                  El código es obligatorio.
+                </div>
+              </div>
             </div>
           </div>
 
@@ -348,7 +390,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue' 
 import { useRouter } from 'vue-router'
 import { 
   Calendar, ArrowLeft, Users, Search, X, Plus, User, IdCard,
@@ -368,7 +410,8 @@ const form = ref({
   servicios_ids: [],
   tipo_pago: "SENA_50",
   medio_pago: "EFECTIVO",
-  comprobante_id: "",
+  entidad_pago: "", 
+  codigo_transaccion: "", 
   fecha: "",
   hora: ""
 })
@@ -386,9 +429,30 @@ const mensaje = ref("")
 const mensajeTipo = ref("success")
 const procesando = ref(false)
 const cargandoHorarios = ref(false)
+const errorValidacion = ref(false) 
 
 const intervaloMinutos = 20
 const STORAGE_KEY = 'turno_presencial_context'
+
+// 🔥 CORRECCIÓN: Observador para limpiar campos con valor correcto
+watch(() => form.value.medio_pago, (newVal) => {
+  if (newVal === 'EFECTIVO') {
+    form.value.entidad_pago = ""
+    form.value.codigo_transaccion = ""
+    errorValidacion.value = false
+  }
+  // 🔥 CORRECCIÓN: 'MERCADO_PAGO' con guión bajo
+  if (newVal === 'MERCADO_PAGO') {
+    form.value.entidad_pago = "" 
+  }
+})
+
+// 🔥 CORRECCIÓN: PROPIEDAD COMPUTADA PARA EL LARGO DEL CÓDIGO
+const maxCodigoLength = computed(() => {
+  // Si es Mercado Pago, max 14 (13 dígitos + el opcional '#')
+  // Si es otra transferencia, max 25 por las dudas
+  return form.value.medio_pago === 'MERCADO_PAGO' ? 14 : 25
+})
 
 const serviciosFiltrados = computed(() => {
   if (categoriasSeleccionadas.value.length === 0) return []
@@ -428,7 +492,6 @@ const horariosGenerados = computed(() => {
   return horariosBase
 })
 
-// ✅ FUNCIÓN CORREGIDA: Ahora libera los horarios cancelados
 const cargarHorariosOcupados = async (fecha) => {
   if (!form.value.peluquero || form.value.peluquero === form.value.cliente) return
   
@@ -438,7 +501,6 @@ const cargarHorariosOcupados = async (fecha) => {
   
   try {
     const token = localStorage.getItem('token')
-    // Intentamos filtrar por estado desde la API
     const url = `${API_URL}/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
     
     const res = await fetch(url, {
@@ -453,7 +515,6 @@ const cargarHorariosOcupados = async (fecha) => {
     const ocupadosSet = new Set()
     
     resultados.forEach(turno => {
-      // 🔥 FILTRO CRÍTICO: Si el turno está CANCELADO o DISPONIBLE, NO debe bloquear el horario
       if (['CANCELADO', 'DISPONIBLE'].includes(turno.estado)) return
 
       if (turno.fecha !== fecha) return
@@ -473,7 +534,6 @@ const cargarHorariosOcupados = async (fecha) => {
       
       const finMin = inicioMin + duracion
       
-      // Bloqueamos los slots que ocupa este turno activo
       for (let i = inicioMin; i < finMin; i += 20) {
         const hh = Math.floor(i / 60).toString().padStart(2, '0')
         const mm = (i % 60).toString().padStart(2, '0')
@@ -515,9 +575,10 @@ const guardarContexto = () => {
     peluquero: form.value.peluquero,
     tipo_pago: form.value.tipo_pago,
     medio_pago: form.value.medio_pago,
+    entidad_pago: form.value.entidad_pago,
+    codigo_transaccion: form.value.codigo_transaccion,
     fecha: form.value.fecha,
     hora: form.value.hora,
-    comprobante_id: form.value.comprobante_id,
     timestamp: Date.now()
   }
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(contexto))
@@ -530,7 +591,9 @@ const cargarContexto = () => {
       const contexto = JSON.parse(contextoStr)
       if (contexto.tipo_pago) form.value.tipo_pago = contexto.tipo_pago
       if (contexto.medio_pago) form.value.medio_pago = contexto.medio_pago
-      if (contexto.comprobante_id) form.value.comprobante_id = contexto.comprobante_id
+      if (contexto.entidad_pago) form.value.entidad_pago = contexto.entidad_pago
+      if (contexto.codigo_transaccion) form.value.codigo_transaccion = contexto.codigo_transaccion
+      
       if (contexto.peluquero && form.value.cliente !== contexto.peluquero) {
         form.value.peluquero = contexto.peluquero
       }
@@ -688,7 +751,17 @@ const calcularTotal = () => {
 
 const calcularSena = () => (calcularTotal() / 2).toFixed(2)
 
+// 🔥 CORRECCIÓN COMPLETA: Función crearTurno con todos los campos correctos
 const crearTurno = async () => {
+  // ✅ VALIDACIÓN DE CÓDIGO DE TRANSACCIÓN
+  if (form.value.medio_pago !== 'EFECTIVO' && !form.value.codigo_transaccion) {
+    errorValidacion.value = true
+    mensaje.value = "Falta el código de transacción"
+    mensajeTipo.value = "error"
+    return
+  }
+  
+  errorValidacion.value = false
   procesando.value = true
   mensaje.value = ""
   
@@ -699,6 +772,16 @@ const crearTurno = async () => {
 
   const totalCalculado = parseFloat(calcularTotal())
   const esPagoSena = form.value.tipo_pago.includes('SENA')
+
+  // 🔥 CORRECCIÓN: Lógica para determinar entidad_pago
+  let entidadFinal = null;
+  // Para Mercado Pago, forzamos 'MERCADO_PAGO' como entidad
+  if (form.value.medio_pago === 'MERCADO_PAGO') {
+    entidadFinal = 'MERCADO_PAGO';
+  } else if (form.value.medio_pago === 'TRANSFERENCIA') {
+    entidadFinal = form.value.entidad_pago; // Usamos el select
+  }
+  // Para EFECTIVO, entidadFinal se mantiene null
 
   const payload = {
     peluquero_id: form.value.peluquero,
@@ -712,30 +795,63 @@ const crearTurno = async () => {
     monto_total: totalCalculado,
     monto_seña: esPagoSena ? parseFloat(calcularSena()) : totalCalculado,
     duracion_total: duracion,
-    mp_payment_id: form.value.medio_pago !== 'EFECTIVO' ? form.value.comprobante_id : null
+    // ✅ CAMPOS PARA TRAZABILIDAD
+    entidad_pago: entidadFinal,
+    // Para Mercado Pago, usamos mp_payment_id
+    mp_payment_id: form.value.medio_pago === 'MERCADO_PAGO' ? form.value.codigo_transaccion : null,
+    // Para transferencias, usamos codigo_transaccion
+    codigo_transaccion: form.value.medio_pago === 'TRANSFERENCIA' ? form.value.codigo_transaccion : null
   }
+
+  // 🔥 DEBUG CRÍTICO: Ver qué estamos enviando
+  console.log('=== DEBUG PAYLOAD TURNO PRESENCIAL ===');
+  console.log('Payload completo:', JSON.stringify(payload, null, 2));
+  console.log('medio_pago:', form.value.medio_pago);
+  console.log('codigo_transaccion:', form.value.codigo_transaccion);
+  console.log('entidad_pago (final):', entidadFinal);
+  console.log('mp_payment_id:', payload.mp_payment_id);
+  console.log('====================================');
 
   try {
     const token = localStorage.getItem('token')
     const res = await fetch(`${API_URL}/turnos/crear/`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": token ? `Token ${token}` : '' },
+      headers: { 
+        "Content-Type": "application/json", 
+        "Authorization": token ? `Token ${token}` : '' 
+      },
       body: JSON.stringify(payload)
     })
+    
     const data = await res.json()
+    
+    // 🔥 DEBUG: Ver qué responde el servidor
+    console.log('=== DEBUG RESPUESTA SERVIDOR ===');
+    console.log('Status:', res.status);
+    console.log('Respuesta:', data);
+    console.log('==============================');
+    
     if (res.ok && (data.status === 'ok' || res.status === 201)) {
       mensaje.value = "¡Turno Reservado con Éxito!"
       mensajeTipo.value = "success"
       limpiarContexto()
       setTimeout(() => router.push('/turnos'), 2000)
     } else {
-      mensaje.value = data.message || JSON.stringify(data) || "Error al crear turno"
+      // Mostrar errores específicos del backend
+      let errorMsg = "Error al crear turno"
+      if (data.message) errorMsg = data.message
+      if (data.errors) {
+        errorMsg = Object.entries(data.errors)
+          .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`)
+          .join('; ')
+      }
+      mensaje.value = errorMsg
       mensajeTipo.value = "error"
     }
   } catch (e) {
-    mensaje.value = "Error de conexión"
+    mensaje.value = "Error de conexión: " + e.message
     mensajeTipo.value = "error"
-    console.error(e)
+    console.error('Error completo:', e)
   } finally {
     procesando.value = false
   }

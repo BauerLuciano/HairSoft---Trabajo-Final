@@ -497,25 +497,41 @@ const cambiarMes = (dir) => {
   currentDate.value = newDate
 }
 
-// Métodos de datos (AJUSTADOS PARA MODIFICAR)
 const cargarDatosTurno = async () => {
   try {
     cargando.value = true
     
-    // ✅ CORREGIDO: Rutas sin /usuarios/
+    // ✅ CORREGIDO: Usar ruta correcta
     const [turnoRes, catRes, servRes, pelRes] = await Promise.all([
-      fetch(`${API_URL}/turnos/${turnoId}/`),
-      fetch(`${API_URL}/categorias/servicios/`),
-      fetch(`${API_URL}/servicios/`),
-      fetch(`${API_URL}/peluqueros/`)
+      fetch(`http://localhost:8000/api/turnos/${turnoId}/`),
+      fetch(`http://localhost:8000/api/categorias/servicios/`),
+      fetch(`http://localhost:8000/api/servicios/`),
+      fetch(`http://localhost:8000/api/peluqueros/`)
     ])
 
-    // Verificar si el turno existe
     if (!turnoRes.ok) {
       throw new Error("Turno no encontrado")
     }
     
     const turno = await turnoRes.json()
+    
+    // ✅ VERIFICAR SI EL TURNO PUEDE SER MODIFICADO
+    if (!turno.puede_ser_modificado) {
+      error.value = turno.mensaje_modificacion || "Este turno no puede ser modificado"
+      
+      Swal.fire({
+        icon: 'warning',
+        title: 'Turno no editable',
+        text: turno.mensaje_modificacion || "Este turno no puede ser modificado",
+        confirmButtonText: 'Volver al listado'
+      }).then(() => {
+        router.push('/turnos')
+      })
+      
+      cargando.value = false
+      return
+    }
+    
     categorias.value = await catRes.json()
     servicios.value = await servRes.json()
     peluqueros.value = await pelRes.json()
@@ -523,17 +539,17 @@ const cargarDatosTurno = async () => {
     console.log("📦 Turno cargado:", turno)
     turnoData.value = turno
     
-    // Asignar datos del turno al formulario
+    // ✅ Asignar datos del turno al formulario
     form.value.cliente = turno.cliente_id
     form.value.clienteNombre = `${turno.cliente_nombre} ${turno.cliente_apellido}`.trim()
     form.value.clienteDni = turno.cliente_dni || ""
     
     form.value.peluquero = turno.peluquero_id
     
-    // Servicios y categorías
+    // ✅ Servicios y categorías
     form.value.servicios_ids = turno.servicios.map(s => s.id)
     
-    // Obtener categorías de los servicios
+    // ✅ Obtener categorías de los servicios
     const categoriasDelTurno = new Set()
     turno.servicios.forEach(servicio => {
       const serv = servicios.value.find(s => s.id === servicio.id)
@@ -544,15 +560,21 @@ const cargarDatosTurno = async () => {
     })
     categoriasSeleccionadas.value = Array.from(categoriasDelTurno)
     
-    // Fecha y hora
+    // ✅ Fecha y hora
     form.value.fecha = turno.fecha
     form.value.hora = turno.hora
     
-    // Pago
+    // ✅ Pago
     form.value.tipo_pago = turno.tipo_pago
     form.value.medio_pago = turno.medio_pago || "EFECTIVO"
     
-    // Si hay fecha, cargar horarios ocupados
+    // ✅ Campos de trazabilidad financiera
+    form.value.entidad_pago = turno.entidad_pago || ""
+    form.value.codigo_transaccion = turno.codigo_transaccion || ""
+    form.value.nro_transaccion = turno.nro_transaccion || ""
+    form.value.comprobante_id = turno.mp_payment_id || ""
+    
+    // ✅ Si hay fecha, cargar horarios ocupados
     if (form.value.fecha && form.value.peluquero) {
       await cargarHorariosOcupados(form.value.fecha)
     }
@@ -561,7 +583,6 @@ const cargarDatosTurno = async () => {
     console.error("❌ Error cargando turno:", err)
     error.value = "No se pudo cargar el turno. Verifica que exista."
     
-    // Mostrar error con SweetAlert
     Swal.fire({
       icon: 'error',
       title: 'Error',
@@ -720,7 +741,6 @@ const seleccionarClienteModal = (c) => {
   }
 }
 
-// Método principal para modificar
 const modificarTurno = async () => {
   procesando.value = true
   mensaje.value = ""
@@ -730,25 +750,37 @@ const modificarTurno = async () => {
     return acc + (s ? parseInt(s.duracion) : 0)
   }, 0)
 
+  // ✅ CORREGIDO: Payload simplificado y correcto
   const payload = {
-    peluquero_id: form.value.peluquero,
-    cliente_id: form.value.cliente,
-    servicios_ids: form.value.servicios_ids,
     fecha: form.value.fecha,
     hora: form.value.hora,
-    canal: 'PRESENCIAL',
+    peluquero_id: form.value.peluquero,
+    servicios_ids: form.value.servicios_ids,
     tipo_pago: form.value.tipo_pago,
     medio_pago: form.value.medio_pago,
-    monto_total: parseFloat(calcularTotal()),
-    monto_seña: form.value.tipo_pago === 'SENA_50' ? parseFloat(calcularSena()) : 0,
-    duracion_total: duracion,
-    mp_payment_id: form.value.medio_pago !== 'EFECTIVO' ? form.value.comprobante_id : null
+    // ✅ Estos campos son calculados por el backend, no necesarios aquí
+    // monto_total: parseFloat(calcularTotal()),
+    // monto_seña: form.value.tipo_pago === 'SENA_50' ? parseFloat(calcularSena()) : 0,
+    // duracion_total: duracion,
+  }
+
+  // ✅ Agregar campos opcionales solo si tienen valor
+  if (form.value.entidad_pago) {
+    payload.entidad_pago = form.value.entidad_pago
+  }
+  
+  if (form.value.codigo_transaccion) {
+    payload.codigo_transaccion = form.value.codigo_transaccion
+  }
+  
+  if (form.value.nro_transaccion) {
+    payload.nro_transaccion = form.value.nro_transaccion
   }
 
   try {
     const token = localStorage.getItem('token')
-    // ✅ CORREGIDO: Ruta sin /usuarios/
-    const res = await fetch(`${API_URL}/turnos/${turnoId}/modificar/`, {
+    // ✅ CORREGIDO: Ruta correcta
+    const res = await fetch(`http://localhost:8000/api/turnos/${turnoId}/modificar/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -762,20 +794,45 @@ const modificarTurno = async () => {
     if (res.ok && data.status === 'ok') {
       mensaje.value = "¡Turno Actualizado con Éxito!"
       mensajeTipo.value = "success"
+      
       await Swal.fire({
         icon: 'success',
         title: 'Turno Actualizado',
-        text: 'El turno se actualizó correctamente',
+        html: `
+          <div style="text-align: left; margin: 15px 0;">
+            <p><strong>Turno ID:</strong> ${data.turno_id}</p>
+            <p><strong>Fecha:</strong> ${data.nueva_fecha}</p>
+            <p><strong>Hora:</strong> ${data.nueva_hora}</p>
+            <p><strong>Peluquero:</strong> ${data.nuevo_peluquero_nombre}</p>
+            <p><strong>Total:</strong> $${data.nuevo_monto_total}</p>
+            <p><strong>Seña:</strong> $${data.nuevo_monto_seña}</p>
+          </div>
+        `,
         confirmButtonText: 'Aceptar'
       })
+      
       router.push('/turnos')
     } else {
       mensaje.value = data.message || "Error al actualizar turno"
       mensajeTipo.value = "error"
+      
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: data.message || 'Error al actualizar el turno',
+        confirmButtonText: 'Entendido'
+      })
     }
   } catch (e) {
     mensaje.value = "Error de conexión con el servidor"
     mensajeTipo.value = "error"
+    
+    Swal.fire({
+      icon: 'error',
+      title: 'Error de Conexión',
+      text: 'No se pudo conectar con el servidor. Verifica tu conexión.',
+      confirmButtonText: 'Entendido'
+    })
   } finally {
     procesando.value = false
   }

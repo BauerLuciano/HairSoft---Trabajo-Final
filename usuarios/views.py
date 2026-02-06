@@ -532,26 +532,40 @@ def crear_servicio(request):
         nombre = data.get('nombre', '').strip()
         precio = data.get('precio')
         duracion = data.get('duracion', 20)
+        
+        # Validación robusta de categoría
         categoria_id = data.get('categoria')
+        if categoria_id == "": 
+            categoria_id = None
+        
+        # Validar campos obligatorios
+        if not nombre or precio is None:
+            return JsonResponse({'status': 'error', 'message': 'Faltan campos obligatorios'}, status=400)
+
+        # Validar duplicados
+        if Servicio.objects.filter(nombre__iexact=nombre).exists():
+            return JsonResponse({'status': 'error', 'message': 'El servicio ya existe'}, status=400)
+
+        # Buscar instancia de categoría
+        categoria = None
+        if categoria_id:
+            categoria = CategoriaServicio.objects.filter(pk=categoria_id).first()
+
+        # Crear servicio
+        servicio = Servicio.objects.create(
+            nombre=nombre,
+            precio=precio,
+            duracion=duracion,
+            categoria=categoria,
+            # Agregar campos faltantes que podrían venir del form
+            descripcion=data.get('descripcion', ''),
+            porcentaje_comision=data.get('porcentaje_comision', 0)
+        )
+
+        return JsonResponse({'status': 'ok', 'id': servicio.id})
+
     except Exception as e:
-        return JsonResponse({'status': 'error', 'message': f'Datos inválidos: {str(e)}'}, status=400)
-
-    if not nombre or precio is None:
-        return JsonResponse({'status': 'error', 'message': 'Faltan campos obligatorios'}, status=400)
-
-    if Servicio.objects.filter(nombre__iexact=nombre).exists():
-        return JsonResponse({'status': 'error', 'message': 'El servicio ya existe'}, status=400)
-
-    categoria = CategoriaServicio.objects.filter(pk=categoria_id).first() if categoria_id else None
-
-    servicio = Servicio.objects.create(
-        nombre=nombre,
-        precio=precio,
-        duracion=duracion,
-        categoria=categoria
-    )
-
-    return JsonResponse({'status': 'ok', 'id': servicio.id})
+        return JsonResponse({'status': 'error', 'message': f'Error interno: {str(e)}'}, status=400)
 
 # 2. CAMBIAR ESTADO (Sirve para Activar y Desactivar)
 @api_view(['POST'])
@@ -589,7 +603,6 @@ def obtener_servicio(request, pk):
     except Servicio.DoesNotExist:
         return JsonResponse({'error': 'Servicio no encontrado'}, status=404)
 
-# ✅ ESTA ES LA DE GUARDAR ACTUALIZADA (POST)
 @csrf_exempt
 def editar_servicio(request, pk):
     if request.method != 'POST':
@@ -601,27 +614,27 @@ def editar_servicio(request, pk):
 
     try:
         data = json.loads(request.body)
-        # Capturamos datos
+        
         nombre = data.get('nombre', '').strip()
-        precio = data.get('precio')
-        duracion = data.get('duracion')
-        categoria_id = data.get('categoria')
-        descripcion = data.get('descripcion', '').strip()
-
+        
         # Validar nombre duplicado (excluyendo el actual)
         if nombre and Servicio.objects.filter(nombre__iexact=nombre).exclude(pk=pk).exists():
             return JsonResponse({'status': 'error', 'message': 'Ya existe un servicio con ese nombre'}, status=400)
 
-        # Actualizamos campos
+        # Actualizar campos simples
         if nombre: servicio.nombre = nombre
-        if precio is not None: servicio.precio = precio
-        if duracion is not None: servicio.duracion = duracion
-        
-        # Guardamos descripción y categoría
-        if hasattr(servicio, 'descripcion'):
-            servicio.descripcion = descripcion
-            
-        servicio.categoria = CategoriaServicio.objects.filter(pk=categoria_id).first() if categoria_id else None
+        if 'precio' in data: servicio.precio = data['precio']
+        if 'duracion' in data: servicio.duracion = data['duracion']
+        if 'descripcion' in data: servicio.descripcion = data['descripcion']
+        if 'porcentaje_comision' in data: servicio.porcentaje_comision = data['porcentaje_comision']
+
+        # Actualizar Categoría (Manejo robusto de ID)
+        if 'categoria' in data:
+            cat_id = data['categoria']
+            if cat_id in [None, ""]:
+                servicio.categoria = None
+            else:
+                servicio.categoria = CategoriaServicio.objects.filter(pk=cat_id).first()
         
         servicio.save()
 
@@ -772,7 +785,15 @@ def crear_turno(request):
     print(f"\n🚀 --- INICIO CREAR TURNO ---")
     try:
         data = request.data
-        print(f"📦 DATA RECIBIDA: {data}")
+        print(f"📦 DATA RECIBIDA COMPLETA: {data}")
+        
+        # 🔥 DEBUG EXTRA: Mostrar específicamente los campos de pago
+        print("=== DEBUG CAMPOS DE PAGO ===")
+        print(f"medio_pago: {data.get('medio_pago')}")
+        print(f"codigo_transaccion: {data.get('codigo_transaccion')}")
+        print(f"entidad_pago: {data.get('entidad_pago')}")
+        print(f"mp_payment_id: {data.get('mp_payment_id')}")
+        print("===========================")
 
         # ---------------------------------------------------------
         # 1. IDENTIFICACIÓN DEL CLIENTE Y CANAL
@@ -891,7 +912,20 @@ def crear_turno(request):
         tipo_pago = data.get('tipo_pago', 'SENA_50')
         medio_pago = data.get('medio_pago', 'EFECTIVO')
         monto_seña = monto_final * 0.5 if tipo_pago == 'SENA_50' else monto_final
+        
+        # 🔥 CORRECCIÓN CRÍTICA: Extraer todos los campos de trazabilidad
+        codigo_transaccion = data.get('codigo_transaccion')
+        entidad_pago = data.get('entidad_pago')
+        mp_payment_id = data.get('mp_payment_id')
+        
+        # 🔥 DEBUG: Ver qué recibimos exactamente
+        print("=== VALORES RECIBIDOS PARA TRAZABILIDAD ===")
+        print(f"codigo_transaccion: {codigo_transaccion}")
+        print(f"entidad_pago: {entidad_pago}")
+        print(f"mp_payment_id: {mp_payment_id}")
+        print("===========================================")
 
+        # Crear el turno con TODOS los campos
         turno = Turno.objects.create(
             cliente=cliente,
             peluquero=peluquero,
@@ -904,7 +938,11 @@ def crear_turno(request):
             monto_total=monto_final,
             duracion_total=duracion_total,
             estado='RESERVADO',
-            mp_payment_id=data.get('mp_payment_id')
+            # 🔥 AGREGAR TODOS LOS CAMPOS DE TRAZABILIDAD
+            codigo_transaccion=codigo_transaccion,
+            entidad_pago=entidad_pago,
+            mp_payment_id=mp_payment_id,
+            nro_transaccion=None  # Este se llenará después si es necesario
         )
         turno.servicios.set(servicios)
 
@@ -914,7 +952,7 @@ def crear_turno(request):
             promo_usada.save()
 
         # ---------------------------------------------------------
-        # 6. MERCADO PAGO
+        # 6. MERCADO PAGO (solo para WEB)
         # ---------------------------------------------------------
         mp_data = None
         procesar_pago = False
@@ -950,6 +988,14 @@ def crear_turno(request):
             except Exception as e:
                 print(f"💥 Error crítico MP: {e}")
 
+        # 🔥 DEBUG FINAL: Mostrar qué se guardó
+        print("=== TURNO GUARDADO EN BD ===")
+        print(f"ID: {turno.id}")
+        print(f"codigo_transaccion en BD: {turno.codigo_transaccion}")
+        print(f"entidad_pago en BD: {turno.entidad_pago}")
+        print(f"mp_payment_id en BD: {turno.mp_payment_id}")
+        print("============================")
+
         return Response({
             'status': 'ok',
             'turno_id': turno.id,
@@ -963,17 +1009,16 @@ def crear_turno(request):
         import traceback
         traceback.print_exc()
         return Response({'status': 'error', 'message': str(e)}, status=500)
-    
 
 
-@api_view(['GET']) # 🔥 CAMBIO CLAVE: Permite a Django leer el Token del peluquero
-@permission_classes([IsAuthenticated]) # 🔥 Protege la ruta
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def listado_turnos(request):
     if request.method != 'GET':
         return JsonResponse({'error': 'Método no permitido'}, status=405)
 
     try:
-        # 🧹 PASO 0: Saneamiento automático (Tu lógica original)
+        # 🧹 PASO 0: Saneamiento automático
         sanear_turnos_vencidos()
 
         # 1. IDENTIFICAMOS AL USUARIO POR SU TOKEN
@@ -985,7 +1030,7 @@ def listado_turnos(request):
 
         # 🛡️ EL FILTRO DE PRIVACIDAD (LAUTARO SOLO VE LAUTARO)
         if rol_nombre == 'PELUQUERO':
-            # Si el que pide es Peluquero, filtramos por su usuario y anulamos cualquier filtro externo
+            # Si el que pide es Peluquero, filtramos por su usuario
             turnos = turnos.filter(peluquero=user_autenticado)
         else:
             # Si es Admin o Recepcionista, puede usar el filtro de la URL
@@ -993,12 +1038,24 @@ def listado_turnos(request):
             if peluquero_id_query:
                 turnos = turnos.filter(peluquero__id=peluquero_id_query)
 
-        # 3. MANTENEMOS EL RESTO DE TUS FILTROS (Mantenidos al 100%)
+        # 3. MANTENEMOS EL RESTO DE FILTROS
         estado = request.GET.get('estado')
         canal = request.GET.get('canal')
         fecha_desde = request.GET.get('fecha_desde')
         fecha_hasta = request.GET.get('fecha_hasta')
         fecha_exacta = request.GET.get('fecha')
+        
+        # 🔥 NUEVO: Filtro para buscar turnos (cliente, peluquero, etc.)
+        busqueda = request.GET.get('q')
+        if busqueda:
+            turnos = turnos.filter(
+                Q(cliente__nombre__icontains=busqueda) |
+                Q(cliente__apellido__icontains=busqueda) |
+                Q(peluquero__nombre__icontains=busqueda) |
+                Q(peluquero__apellido__icontains=busqueda) |
+                Q(codigo_transaccion__icontains=busqueda) |
+                Q(mp_payment_id__icontains=busqueda)
+            )
 
         if estado:
             estado_map = {'RESERVADO': 'RESERVADO', 'CONFIRMADO': 'CONFIRMADO', 'CANCELADO': 'CANCELADO', 'COMPLETADO': 'COMPLETADO', 'PENDIENTE': 'RESERVADO'}
@@ -1033,7 +1090,7 @@ def listado_turnos(request):
         # 4. LÓGICA DE PERMISOS PARA BOTONES EN EL FRONT
         es_admin_o_recep = rol_nombre in ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC']
 
-        # 5. CONSTRUCCIÓN DE LA DATA (Tu formato original intacto)
+        # 5. CONSTRUCCIÓN DE LA DATA (CON TODOS LOS CAMPOS)
         data = []
         ahora = timezone.now()
 
@@ -1068,7 +1125,8 @@ def listado_turnos(request):
                 puede_cancelar = es_admin_o_recep
                 puede_completar = False
 
-            data.append({
+            # 🔥 CONSTRUIR EL OBJETO COMPLETO CON TODOS LOS CAMPOS
+            turno_data = {
                 'id': t.id,
                 'fecha': t.fecha.strftime("%Y-%m-%d"),
                 'fecha_turno': t.fecha.strftime("%Y-%m-%d"),
@@ -1093,14 +1151,39 @@ def listado_turnos(request):
                 'oferta_activa': getattr(t, 'oferta_activa', False),
                 'medio_pago': t.medio_pago or 'PENDIENTE',
                 'reembolsado': getattr(t, 'reembolsado', False),
-                'fecha_expiracion_oferta': t.fecha_expiracion_oferta.isoformat() if getattr(t, 'fecha_expiracion_oferta', None) else None
-            })
+                'reembolso_estado': getattr(t, 'reembolso_estado', None),  # 🔥 NUEVO
+                'motivo_cancelacion': getattr(t, 'motivo_cancelacion', None),  # 🔥 NUEVO
+                'obs_cancelacion': getattr(t, 'obs_cancelacion', None),  # 🔥 NUEVO
+                'fecha_expiracion_oferta': t.fecha_expiracion_oferta.isoformat() if getattr(t, 'fecha_expiracion_oferta', None) else None,
+                # 🔥 🔥 🔥 CAMPOS CRÍTICOS DE TRAZABILIDAD DE PAGO 🔥 🔥 🔥
+                'codigo_transaccion': getattr(t, 'codigo_transaccion', None),
+                'entidad_pago': getattr(t, 'entidad_pago', None),
+                'mp_payment_id': getattr(t, 'mp_payment_id', None),
+                'nro_transaccion': getattr(t, 'nro_transaccion', None)
+            }
+            
+            data.append(turno_data)
+
+        # 🔥 DEBUG: Mostrar el primer turno para verificar que trae todos los campos
+        if data and len(data) > 0:
+            print("=== DEBUG LISTADO TURNOS ===")
+            print(f"Total turnos: {len(data)}")
+            primer_turno = data[0]
+            print(f"Primer turno ID: {primer_turno.get('id')}")
+            print(f"codigo_transaccion: {primer_turno.get('codigo_transaccion')}")
+            print(f"entidad_pago: {primer_turno.get('entidad_pago')}")
+            print(f"mp_payment_id: {primer_turno.get('mp_payment_id')}")
+            print(f"nro_transaccion: {primer_turno.get('nro_transaccion')}")
+            print("============================")
 
         return JsonResponse(data, safe=False)
 
     except Exception as e:
         print(f"Error crítico en listado_turnos: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return JsonResponse({'error': str(e)}, status=500)
+    
 @csrf_exempt
 def verificar_disponibilidad(request):
     """
@@ -1289,22 +1372,27 @@ def obtener_turnos_con_reembolso_pendiente(request):
 @csrf_exempt
 def obtener_turno_por_id(request, turno_id):
     """
-    Obtiene el detalle de un turno específico por ID
+    Obtiene el detalle de un turno específico por ID - VERSIÓN CORREGIDA
     """
     if request.method != 'GET':
         return JsonResponse({'error': 'Método no permitido'}, status=405)
     
     try:
-        # Obtener el turno con todas las relaciones necesarias
         turno = Turno.objects\
             .select_related('cliente', 'peluquero')\
             .prefetch_related('servicios')\
             .get(id=turno_id)
         
-        # Calcular duración total
+        # Verificar permisos del usuario
+        if request.user.is_authenticated:
+            if not (turno.usuario_puede_modificar(request.user) or 
+                   request.user.is_superuser or
+                   'Administrador' in request.user.groups.values_list('name', flat=True) or
+                   'Recepcionista' in request.user.groups.values_list('name', flat=True)):
+                return JsonResponse({'error': 'No tiene permisos para ver este turno'}, status=403)
+        
         duracion_total = sum(servicio.duracion for servicio in turno.servicios.all())
         
-        # Serializar servicios
         servicios_list = []
         for servicio in turno.servicios.all():
             servicios_list.append({
@@ -1316,13 +1404,15 @@ def obtener_turno_por_id(request, turno_id):
                 'categoria': servicio.categoria.nombre if servicio.categoria else None
             })
         
-        # Datos del turno en formato JSON
+        # Verificar si puede ser modificado
+        puede_modificar, mensaje_modificacion = turno.puede_ser_modificado()
+        
         turno_data = {
             'id': turno.id,
-            'cliente_id': turno.cliente.id,
-            'cliente_nombre': turno.cliente.nombre,
-            'cliente_apellido': turno.cliente.apellido,
-            'cliente_dni': turno.cliente.dni,
+            'cliente_id': turno.cliente.id if turno.cliente else None,
+            'cliente_nombre': turno.cliente.nombre if turno.cliente else None,
+            'cliente_apellido': turno.cliente.apellido if turno.cliente else None,
+            'cliente_dni': turno.cliente.dni if turno.cliente else None,
             'peluquero_id': turno.peluquero.id,
             'peluquero_nombre': turno.peluquero.nombre,
             'peluquero_apellido': turno.peluquero.apellido,
@@ -1339,7 +1429,15 @@ def obtener_turno_por_id(request, turno_id):
             'servicios': servicios_list,
             'duracion_total': duracion_total,
             'oferta_activa': getattr(turno, 'oferta_activa', False),
-            'fecha_expiracion_oferta': turno.fecha_expiracion_oferta.isoformat() if getattr(turno, 'fecha_expiracion_oferta', None) else None
+            'fecha_expiracion_oferta': turno.fecha_expiracion_oferta.isoformat() if getattr(turno, 'fecha_expiracion_oferta', None) else None,
+            'puede_ser_modificado': puede_modificar,
+            'mensaje_modificacion': mensaje_modificacion,
+            'motivo_cancelacion': turno.motivo_cancelacion,
+            'obs_cancelacion': turno.obs_cancelacion,
+            'entidad_pago': turno.entidad_pago,
+            'codigo_transaccion': turno.codigo_transaccion,
+            'nro_transaccion': turno.nro_transaccion,
+            'mp_payment_id': turno.mp_payment_id
         }
         
         return JsonResponse(turno_data)
@@ -1492,118 +1590,207 @@ def actualizar_pago_turno(request, turno_id):
         }, status=500)
 
 @csrf_exempt
+@login_required
 def modificar_turno(request, turno_id):
-    if request.method != 'POST':
+    """
+    Modifica un turno existente con todas las validaciones - VERSIÓN CORREGIDA
+    """
+    if request.method not in ['POST', 'PUT', 'PATCH']:
         return JsonResponse({'error': 'Método no permitido'}, status=405)
 
     try:
-        data = json.loads(request.body)
-        turno = Turno.objects.get(pk=turno_id)
-        
-        # 1. VERIFICACIÓN DE PERMISOS
-        # Asumo que el método `puede_ser_modificado()` existe en tu modelo Turno.
-        if not turno.puede_ser_modificado():
+        # Verificar que hay datos
+        if not request.body:
             return JsonResponse({
                 'status': 'error',
-                'message': 'No se puede modificar el turno. Debe modificarse con al menos 3 horas de anticipación.'
+                'message': 'No se enviaron datos'
+            }, status=400)
+        
+        data = json.loads(request.body)
+        
+        # Obtener el turno
+        try:
+            turno = Turno.objects.get(pk=turno_id)
+        except Turno.DoesNotExist:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Turno no encontrado'
+            }, status=404)
+        
+        # 1. VERIFICAR PERMISOS DEL USUARIO
+        if not turno.usuario_puede_modificar(request.user):
+            return JsonResponse({
+                'status': 'error',
+                'message': 'No tiene permisos para modificar este turno'
+            }, status=403)
+
+        # 2. VERIFICAR SI EL TURNO PUEDE SER MODIFICADO
+        puede_modificar, mensaje_modificacion = turno.puede_ser_modificado()
+        if not puede_modificar:
+            return JsonResponse({
+                'status': 'error',
+                'message': mensaje_modificacion
             }, status=400)
 
-        # 2. PREPARACIÓN DE DATOS CANDIDATOS
-        
-        # Usamos los datos actuales como base y los actualizamos con los recibidos
-        nueva_fecha = data.get('fecha', turno.fecha)
-        nueva_hora = data.get('hora', turno.hora)
-        nuevo_peluquero_id = data.get('peluquero_id', turno.peluquero_id)
+        # 3. PREPARAR DATOS PARA MODIFICACIÓN
+        # Obtener valores actuales o nuevos
+        nueva_fecha = data.get('fecha')
+        nueva_hora = data.get('hora')
+        nuevo_peluquero_id = data.get('peluquero_id')
         nuevos_servicios_ids = data.get('servicios_ids')
-        nuevo_tipo_pago = data.get('tipo_pago', turno.tipo_pago)
-
-        # Convertir fecha y hora si son strings (vienen del frontend)
+        nuevo_tipo_pago = data.get('tipo_pago')
+        nuevo_medio_pago = data.get('medio_pago')
+        nueva_entidad_pago = data.get('entidad_pago')
+        nuevo_codigo_transaccion = data.get('codigo_transaccion')
+        nuevo_nro_transaccion = data.get('nro_transaccion')
+        
+        # Usar valores actuales si no se proporcionan nuevos
+        if nueva_fecha is None:
+            nueva_fecha = turno.fecha
+        if nueva_hora is None:
+            nueva_hora = turno.hora
+        if nuevo_peluquero_id is None:
+            nuevo_peluquero_id = turno.peluquero_id
+        if nuevo_tipo_pago is None:
+            nuevo_tipo_pago = turno.tipo_pago
+        if nuevo_medio_pago is None:
+            nuevo_medio_pago = turno.medio_pago
+        
+        # Convertir fecha y hora si son strings
         if isinstance(nueva_fecha, str):
             nueva_fecha = datetime.strptime(nueva_fecha, "%Y-%m-%d").date()
-        if isinstance(nueva_hora, str):
-            nueva_hora = datetime.strptime(nueva_hora, "%H:%M").time()
-            
-        # Obtener el objeto del nuevo peluquero
-        nuevo_peluquero = Usuario.objects.get(pk=nuevo_peluquero_id)
-
-        # 3. VALIDACIÓN DE DISPONIBILIDAD (EL PUNTO CRÍTICO CORREGIDO)
         
-        # Validar que la nueva combinación de Fecha/Hora/Peluquero esté disponible
-        # 🚨 CORRECCIÓN CLAVE: Excluir el turno actual (turno_id) del chequeo.
-        if Turno.objects.filter(
-            fecha=nueva_fecha, 
-            hora=nueva_hora, 
-            peluquero=nuevo_peluquero,
-            estado__in=['RESERVADO', 'CONFIRMADO'] # Solo chequeamos contra turnos activos
-        ).exclude(pk=turno_id).exists(): 
+        # Validar que la hora sea string
+        if isinstance(nueva_hora, str):
+            try:
+                # Validar formato de hora
+                nueva_hora = datetime.strptime(nueva_hora, "%H:%M").time()
+            except ValueError:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Formato de hora inválido. Use HH:MM'
+                }, status=400)
+        
+        # Obtener el objeto del nuevo peluquero
+        try:
+            nuevo_peluquero = Usuario.objects.get(pk=nuevo_peluquero_id)
+        except Usuario.DoesNotExist:
             return JsonResponse({
                 'status': 'error',
-                'message': 'El peluquero no está disponible en la nueva fecha y hora solicitada.'
+                'message': 'Peluquero no encontrado'
             }, status=400)
-            
-        # 4. APLICAR MODIFICACIONES EN EL OBJETO TURNO
 
-        # Actualizar campos básicos
-        turno.fecha = nueva_fecha
-        turno.hora = nueva_hora
-        turno.tipo_pago = nuevo_tipo_pago
-        turno.peluquero = nuevo_peluquero
+        # 4. VALIDAR DISPONIBILIDAD (SI CAMBIA FECHA/HORA/PELUQUERO)
+        # Solo validar si hay cambios en fecha, hora o peluquero
+        if (str(nueva_fecha) != str(turno.fecha) or 
+            str(nueva_hora) != str(turno.hora) or 
+            int(nuevo_peluquero_id) != int(turno.peluquero_id)):
+            
+            # Verificar disponibilidad del nuevo horario
+            if not turno.verificar_disponibilidad(
+                fecha=nueva_fecha,
+                hora=nueva_hora,
+                peluquero_id=nuevo_peluquero_id,
+                excluir_turno_id=turno_id
+            ):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'El peluquero no está disponible en la nueva fecha y hora solicitada.'
+                }, status=400)
         
-        # Actualizar servicios y recalcular montos si se proporcionaron nuevos IDs
-        if nuevos_servicios_ids is not None:
-            servicios = Servicio.objects.filter(pk__in=nuevos_servicios_ids)
-            if servicios.exists():
+        # 5. APLICAR MODIFICACIONES EN UNA TRANSACCIÓN
+        with transaction.atomic():
+            # Guardar valores originales para auditoría
+            valores_originales = {
+                'fecha': str(turno.fecha),
+                'hora': str(turno.hora),
+                'peluquero_id': turno.peluquero_id,
+                'monto_total': float(turno.monto_total),
+                'monto_seña': float(turno.monto_seña),
+                'tipo_pago': turno.tipo_pago,
+                'medio_pago': turno.medio_pago
+            }
+            
+            # Actualizar campos básicos
+            turno.fecha = nueva_fecha
+            turno.hora = nueva_hora
+            turno.peluquero = nuevo_peluquero
+            turno.tipo_pago = nuevo_tipo_pago
+            turno.medio_pago = nuevo_medio_pago
+            
+            # Actualizar campos opcionales de pago si se proporcionan
+            if nueva_entidad_pago is not None:
+                turno.entidad_pago = nueva_entidad_pago
+            if nuevo_codigo_transaccion is not None:
+                turno.codigo_transaccion = nuevo_codigo_transaccion
+            if nuevo_nro_transaccion is not None:
+                turno.nro_transaccion = nuevo_nro_transaccion
+            
+            # Actualizar servicios si se proporcionan
+            servicios_modificados = False
+            if nuevos_servicios_ids is not None:
+                # Validar que existan los servicios
+                servicios = Servicio.objects.filter(pk__in=nuevos_servicios_ids)
+                if servicios.count() != len(nuevos_servicios_ids):
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Algunos servicios no existen'
+                    }, status=400)
+                
+                # Actualizar servicios
                 turno.servicios.set(servicios)
+                servicios_modificados = True
                 
                 # Recalcular montos
                 monto_total = sum(float(servicio.precio) for servicio in servicios)
                 turno.monto_total = monto_total
                 
-                # Recalcular seña
-                if turno.tipo_pago == 'SENA_50':
+                # Recalcular seña según tipo de pago
+                if nuevo_tipo_pago == 'SENA_50':
                     turno.monto_seña = monto_total * 0.5
                 else:
-                    # Si cambia el tipo de pago, la seña puede ajustarse a 0
-                    turno.monto_seña = 0 
+                    turno.monto_seña = 0
             else:
-                return JsonResponse({
-                    'status': 'error',
-                    'message': 'No se encontraron los nuevos servicios especificados.'
-                }, status=400)
-        
-        # Si se cambia el tipo_pago pero no los servicios, recalcula la seña
-        elif 'tipo_pago' in data and data['tipo_pago'] == 'SENA_50':
-             turno.monto_seña = turno.monto_total * 0.5
+                # Si no se cambian servicios, pero sí el tipo de pago, recalcular seña
+                if nuevo_tipo_pago != turno.tipo_pago:
+                    if nuevo_tipo_pago == 'SENA_50':
+                        turno.monto_seña = turno.monto_total * 0.5
+                    else:
+                        turno.monto_seña = 0
+            
+            # Actualizar duración total
+            turno.duracion_total = turno.calcular_duracion_total()
+            
+            # Guardar cambios
+            turno.save()
 
-
-        # Guardar todos los cambios
-        turno.save()
-
-        # 5. RESPUESTA
+        # 6. RESPUESTA EXITOSA
         return JsonResponse({
             'status': 'ok',
             'message': 'Turno modificado exitosamente',
             'turno_id': turno.id,
             'nuevo_monto_total': float(turno.monto_total),
-            'nuevo_monto_seña': float(turno.monto_seña)
+            'nuevo_monto_seña': float(turno.monto_seña),
+            'nueva_fecha': turno.fecha.strftime("%Y-%m-%d"),
+            'nueva_hora': turno.hora.strftime("%H:%M"),
+            'nuevo_peluquero_id': turno.peluquero.id,
+            'nuevo_peluquero_nombre': f"{turno.peluquero.nombre} {turno.peluquero.apellido}",
+            'nuevo_estado': turno.estado,
+            'servicios_modificados': servicios_modificados,
+            'valores_originales': valores_originales
         })
 
-    except Turno.DoesNotExist:
+    except json.JSONDecodeError:
         return JsonResponse({
             'status': 'error',
-            'message': 'Turno no encontrado'
-        }, status=404)
-    except Usuario.DoesNotExist:
-        return JsonResponse({
-            'status': 'error',
-            'message': 'Peluquero o Cliente no encontrado'
+            'message': 'Error en el formato JSON de los datos'
         }, status=400)
     except Exception as e:
         print("Error al modificar turno:", e)
         return JsonResponse({
             'status': 'error',
-            'message': str(e)
-        }, status=400)
+            'message': f'Error interno del servidor: {str(e)}'
+        }, status=500)
     
 @api_view(['POST'])
 @csrf_exempt
@@ -1867,14 +2054,23 @@ def turnos_ocupados(request):
 # ================================
 # Listado  de  Categorías
 # ================================
-@csrf_exempt
+@api_view(['GET'])
+@permission_classes([AllowAny]) # O IsAuthenticated si preferís seguridad
 def listado_categorias_servicios(request):
-    if request.method != 'GET':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
-
-    categorias = CategoriaServicio.objects.all().order_by('nombre')
-    data = [{'id': c.id, 'nombre': c.nombre, 'descripcion': c.descripcion} for c in categorias]
-    return JsonResponse(data, safe=False)
+    try:
+        categorias = CategoriaServicio.objects.all().order_by('nombre')
+        # Construimos la data simple para el select
+        data = [
+            {
+                'id': c.id, 
+                'nombre': c.nombre, 
+                'descripcion': c.descripcion
+            } 
+            for c in categorias
+        ]
+        return Response(data)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
 
 
 class CategoriaProductoListAPIView(generics.ListAPIView):
@@ -2245,8 +2441,8 @@ def pago_pendiente(request):
 
 def procesar_reembolso_si_corresponde(turno):
     """
-    ✅ CORREGIDA: Gestiona la devolución de dinero sin modificar estado del turno
-    Solo actualiza campos de reembolso, no el estado del turno
+    ✅ VERSIÓN CORREGIDA: NUNCA marca automáticamente como COMPLETADO
+    Solo determina el tipo de reembolso pendiente
     """
     # 1. Si ya fue reembolsado, no hacer nada
     if turno.reembolso_estado == 'COMPLETADO':
@@ -2256,6 +2452,7 @@ def procesar_reembolso_si_corresponde(turno):
     puso_plata = (turno.monto_seña > 0 or turno.tipo_pago == 'TOTAL')
     if not puso_plata:
         turno.reembolso_estado = 'NO_APLICA'
+        turno.save()
         return False, "El turno no tiene pagos registrados."
     
     # 3. ✅ Usar la lógica de tiempo corregida del modelo
@@ -2263,43 +2460,27 @@ def procesar_reembolso_si_corresponde(turno):
     
     if not hay_reembolso:
         turno.reembolso_estado = 'NO_APLICA'
+        turno.save()
         return False, f"Fuera de término para reembolso: {msg_tiempo}"
     
-    # 4. ✅ SI HAY REEMBOLSO CORRESPONDIENTE:
-    reembolsado_exitoso = False
+    # 4. ✅ SI HAY REEMBOLSO CORRESPONDIENTE: SOLO determinar tipo, NO procesar
     
-    # Caso MercadoPago
+    # Caso MercadoPago - Solo determinar que es por MP
     if turno.medio_pago == 'MERCADO_PAGO' and turno.mp_payment_id:
-        try:
-            mp = MercadoPagoService()
-            monto = float(turno.monto_seña) if turno.tipo_pago == 'SENA_50' else float(turno.monto_total)
-            res = mp.devolver_pago(turno.mp_payment_id, amount=monto)
-            
-            if res.get('success'):
-                turno.reembolso_estado = 'COMPLETADO'
-                turno.reembolsado = True
-                turno.mp_refund_id = res.get('refund_id', '')
-                reembolsado_exitoso = True
-                return True, "✅ Reembolso automático procesado por Mercado Pago."
-            else:
-                # Si MP falla, queda como pendiente manual
-                turno.reembolso_estado = 'PENDIENTE'
-                return True, "El reembolso debe realizarse manualmente."
-                
-        except Exception as e:
-            print(f"❌ Error MercadoPago: {e}")
-            turno.reembolso_estado = 'PENDIENTE'
-            return True, f"⚠️ Error MP: {str(e)}. Reembolso manual requerido."
+        turno.reembolso_estado = 'PENDIENTE'
+        turno.save()
+        return True, "⚠️ Reembolso PENDIENTE via Mercado Pago (requiere procesamiento manual)"
     
-    # 5. ✅ CASO EFECTIVO / TRANSFERENCIA / FALLO MP
-    # Se marca como PENDIENTE para trazabilidad
+    # Caso EFECTIVO / TRANSFERENCIA
+    if turno.medio_pago in ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA']:
+        turno.reembolso_estado = 'PENDIENTE'
+        turno.save()
+        return True, f"💰 Reembolso PENDIENTE ({turno.medio_pago}) - Procesar manualmente"
+    
+    # Cualquier otro caso
     turno.reembolso_estado = 'PENDIENTE'
-    
-    # Determinar mensaje según medio de pago
-    if turno.medio_pago in ['EFECTIVO', 'TRANSFERENCIA']:
-        return True, "💰 Reembolso PENDIENTE de entrega en efectivo/transferencia."
-    else:
-        return True, "⏳ Reembolso marcado como PENDIENTE para gestión manual."
+    turno.save()
+    return True, "⏳ Reembolso marcado como PENDIENTE para gestión manual."
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -2387,7 +2568,6 @@ def obtener_usuario_por_id(request, user_id):
 # =================================
 # VENTAS
 # =================================
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def registrar_venta(request):
@@ -2410,6 +2590,10 @@ def registrar_venta(request):
             medio_pago_id = data.get('medio_pago') 
             items = data.get('detalles', [])
 
+            # 🔥 RECUPERAR DATOS DE TRAZABILIDAD DEL REQUEST 🔥
+            entidad_pago = data.get('entidad_pago')
+            codigo_transaccion = data.get('codigo_transaccion')
+
             if not items:
                 return Response({"error": "La venta debe tener al menos un detalle."}, status=400)
 
@@ -2428,7 +2612,10 @@ def registrar_venta(request):
                 usuario=usuario_vendedor,
                 tipo='PRODUCTO',
                 medio_pago=medio_pago,
-                total=0 
+                total=0,
+                # 🔥 GUARDAR LOS CAMPOS EN LA BASE DE DATOS 🔥
+                entidad_pago=entidad_pago,
+                codigo_transaccion=codigo_transaccion
             )
 
             total_acumulado = 0
@@ -2438,7 +2625,7 @@ def registrar_venta(request):
                 # Vue manda 'producto' (ID) dentro de cada detalle
                 producto_id = item.get('producto')
                 cantidad = int(item.get('cantidad', 1))
-                precio_enviado = float(item.get('precio_unitario', 0))
+                # precio_enviado = float(item.get('precio_unitario', 0))
 
                 if cantidad <= 0:
                     raise Exception(f"La cantidad debe ser mayor a 0.")
@@ -2457,7 +2644,7 @@ def registrar_venta(request):
                 producto.stock_actual -= cantidad
                 producto.save()
 
-                # Usamos el precio del producto en BD por seguridad, o el enviado si hay descuento manual
+                # Usamos el precio del producto en BD por seguridad
                 precio_unitario = producto.precio 
                 subtotal = precio_unitario * cantidad
 
@@ -2522,7 +2709,6 @@ class VentaViewSet(viewsets.ModelViewSet):
             return Response({"error": f"Error en serialización: {str(e)}"}, status=500)
 
 
-# En usuarios/views.py - Agregar después del VentaViewSet existente
 @csrf_exempt
 def obtener_venta_para_edicion(request, venta_id):
     """Obtiene una venta específica con todos los datos para edición"""
@@ -2572,12 +2758,16 @@ def obtener_venta_para_edicion(request, venta_id):
     
 @csrf_exempt
 def actualizar_venta(request, venta_id):
-    """Actualiza una venta existente con manejo correcto de stock"""
+    """Actualiza una venta existente con manejo correcto de stock y trazabilidad"""
     if request.method not in ['PUT', 'PATCH']:
         return JsonResponse({'error': 'Método no permitido'}, status=405)
     
     try:
         venta = Venta.objects.get(id=venta_id)
+        
+        if venta.anulada:
+            return JsonResponse({'error': 'No se puede modificar una venta anulada'}, status=400)
+
         data = json.loads(request.body)
         
         print(f"🔄 Actualizando venta {venta_id} con datos:", data)
@@ -2587,9 +2777,11 @@ def actualizar_venta(request, venta_id):
             detalles_anteriores = venta.detalles.all()
             for detalle in detalles_anteriores:
                 if detalle.producto:
-                    detalle.producto.stock_actual += detalle.cantidad
-                    detalle.producto.save()
-                    print(f"✅ Stock restaurado: {detalle.producto.nombre} +{detalle.cantidad} (Stock actual: {detalle.producto.stock_actual})")
+                    # Usamos select_for_update para bloquear el registro
+                    producto = Producto.objects.select_for_update().get(pk=detalle.producto.id)
+                    producto.stock_actual += detalle.cantidad
+                    producto.save()
+                    print(f"✅ Stock restaurado: {producto.nombre} +{detalle.cantidad}")
             
             # 2. ELIMINAR detalles antiguos
             detalles_anteriores.delete()
@@ -2602,7 +2794,7 @@ def actualizar_venta(request, venta_id):
                 cantidad = detalle_data.get('cantidad', 0)
                 
                 if producto_id and cantidad > 0:
-                    producto = Producto.objects.get(id=producto_id)
+                    producto = Producto.objects.select_for_update().get(id=producto_id)
                     if producto.stock_actual < cantidad:
                         return JsonResponse({
                             'error': f'Stock insuficiente para {producto.nombre}. Disponible: {producto.stock_actual}, Solicitado: {cantidad}'
@@ -2614,19 +2806,19 @@ def actualizar_venta(request, venta_id):
             
             for detalle_data in detalles_data:
                 producto_id = detalle_data.get('producto')
-                cantidad = detalle_data.get('cantidad', 0)
-                precio_unitario = detalle_data.get('precio_unitario', 0)
+                cantidad = int(detalle_data.get('cantidad', 0))
+                precio_unitario = float(detalle_data.get('precio_unitario', 0))
                 subtotal = cantidad * precio_unitario
                 total_venta += subtotal
                 
                 if producto_id and cantidad > 0:
-                    producto = Producto.objects.get(id=producto_id)
+                    producto = Producto.objects.select_for_update().get(id=producto_id)
                     # ACTUALIZAR STOCK - RESTAR la cantidad
                     producto.stock_actual -= cantidad
                     producto.save()
-                    print(f"📦 Stock actualizado: {producto.nombre} -{cantidad} (Nuevo stock: {producto.stock_actual})")
+                    print(f"📦 Stock actualizado: {producto.nombre} -{cantidad}")
                 
-                # Crear detalle
+                # Crear detalle (Nota: Ajustar campos según tu modelo DetalleVenta)
                 detalle = DetalleVenta(
                     venta=venta,
                     producto_id=producto_id,
@@ -2639,13 +2831,23 @@ def actualizar_venta(request, venta_id):
             # Guardar todos los detalles nuevos
             DetalleVenta.objects.bulk_create(nuevos_detalles)
             
-            # 5. ACTUALIZAR VENTA
+            # 5. ACTUALIZAR VENTA (Total, Medio Pago y TRAZABILIDAD)
             venta.total = total_venta
             venta.medio_pago_id = data.get('medio_pago')
+            
+            # 🔥 GUARDAR CAMBIOS DE TRAZABILIDAD 🔥
+            if 'entidad_pago' in data:
+                venta.entidad_pago = data.get('entidad_pago')
+            if 'codigo_transaccion' in data:
+                venta.codigo_transaccion = data.get('codigo_transaccion')
+
+            # Si hay un motivo de modificación, se podría guardar en un log o campo de observaciones
+            # if 'motivo_modificacion' in data: ...
+
             venta.save()
             
             print(f"✅ Venta {venta_id} actualizada exitosamente. Total: ${total_venta}")
-            print(f"💰 Medio de pago: {venta.medio_pago}")
+            print(f"💰 Medio: {venta.medio_pago}, Banco: {venta.entidad_pago}, Cód: {venta.codigo_transaccion}")
         
         return JsonResponse({
             'status': 'ok',
@@ -4276,45 +4478,31 @@ def eliminar_marca(request, pk):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def cancelar_turno_unificado(request, turno_id):
-    """✅ CORREGIDA: Orden correcto de operaciones para cancelación"""
+    """✅ VERSIÓN NUEVA - Usa TurnoService SIN Celery"""
     try:
-        turno = Turno.objects.get(id=turno_id)
+        print(f"🔄 CANCELANDO TURNO {turno_id} - VISTA NUEVA")
         
-        # 1. Validar que no esté ya cancelado
-        if turno.estado == 'CANCELADO': 
-            return Response({'error': 'Ya cancelado'}, status=400)
+        # Obtener datos del request
+        motivo = request.data.get('motivo_cancelacion', 'Cancelado por el cliente')
+        observacion = request.data.get('obs_cancelacion', '')
         
-        # 2. Verificar que el turno pueda ser cancelado
-        puede_cancelar, _, msg = turno.puede_ser_cancelado()
-        if not puede_cancelar:
-            return Response({'error': f'No se puede cancelar: {msg}'}, status=400)
+        # Llamar al NUEVO TurnoService
+        from usuarios.turno_service import TurnoService
         
-        # 3. Capturar motivos (sin guardar aún)
-        turno.motivo_cancelacion = request.data.get('motivo_cancelacion', 'Cancelado por el cliente')
-        turno.obs_cancelacion = request.data.get('obs_cancelacion', '')
+        success, message = TurnoService.procesar_cancelacion_automatica(
+            turno_id, 
+            usuario_cancelacion=request.user,
+            motivo=motivo,
+            observacion=observacion
+        )
         
-        _, mensaje_reembolso = procesar_reembolso_si_corresponde(turno)
+        if not success:
+            return Response({'error': message}, status=400)
         
-        # 5. ✅ Ahora cambiar el estado a CANCELADO
-        turno.estado = 'CANCELADO'
-        
-        # 6. Guardar todos los cambios del turno
-        turno.save()
-        
-        # 7. ✅ Lógica de Reoferta Masiva (WhatsApp)
-        interesados = turno.obtener_interesados()
-        if interesados.exists():
-            turno.oferta_activa = True
-            turno.save()
-            
-            try:
-                from .tasks import procesar_reoferta_masiva
-                procesar_reoferta_masiva.delay(turno.id)
-                print(f"✅ Reoferta masiva disparada para turno {turno.id}")
-            except Exception as e:
-                print(f"⚠️ Error disparando reoferta: {e}")
-        
+        # Auditoría
+        from usuarios.models import Auditoria, Turno
         try:
+            turno = Turno.objects.get(id=turno_id)
             Auditoria.objects.create(
                 usuario=request.user,
                 modelo_afectado='Turno',
@@ -4322,22 +4510,18 @@ def cancelar_turno_unificado(request, turno_id):
                 accion='EDITAR',
                 detalles={
                     'antes': {'estado': 'ACTIVO'},
-                    'despues': {'estado': 'CANCELADO', 'reembolso': turno.reembolso_estado}
+                    'despues': {'estado': 'CANCELADO'}
                 },
                 ip_address=request.META.get('REMOTE_ADDR')
             )
-        except:
-            pass
+        except Exception as e:
+            print(f"⚠️ Error en auditoría: {e}")
         
         return Response({
             'status': 'ok', 
-            'message': f'Turno cancelado. {mensaje_reembolso}',
-            'reembolso_estado': turno.reembolso_estado,
-            'reembolsado': turno.reembolsado
+            'message': message
         })
         
-    except Turno.DoesNotExist:
-        return Response({'error': 'Turno no encontrado'}, status=404)
     except Exception as e:
         print(f"❌ Error en cancelar_turno_unificado: {str(e)}")
         return Response({'error': f'Error interno: {str(e)}'}, status=500)
@@ -4485,77 +4669,56 @@ def completar_reembolso_manual(request, turno_id):
         return Response({'error': str(e)}, status=500)
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated]) # ✅ Solo logueados
+@permission_classes([IsAuthenticated])
 def aceptar_oferta_turno(request, turno_id, token):
-    """Procesa la aceptación, usa crédito anterior y genera link de pago si falta"""
-    from decimal import Decimal
-    from .models import Turno, InteresTurnoLiberado
-    from .mercadopago_service import MercadoPagoService
-    
+    """
+    🔥 VISTA DE CANJE BLINDADA (DEBUG MODE)
+    """
     try:
-        turno_nuevo = get_object_or_404(Turno, pk=turno_id)
-        interes = InteresTurnoLiberado.objects.filter(token_oferta=token).first()
+        from usuarios.turno_service import ReofertaAutomaticaService
+        from usuarios.models import Turno, InteresTurnoLiberado
         
-        if not interes or turno_nuevo.estado != 'CANCELADO':
-            return Response({'error': 'Oferta no disponible.'}, status=400)
+        cliente = request.user
+        logger.info(f"👉 INTENTO DE CANJE: Cliente {cliente.nombre} (ID {cliente.id})")
+        
+        # Buscar turno
+        try:
+            turno_liberado = Turno.objects.get(id=turno_id)
+        except Turno.DoesNotExist:
+            return Response({'error': 'Turno no encontrado'}, status=404)
+        
+        # Validar token
+        if str(turno_liberado.token_reoferta) != str(token):
+            logger.error(f"❌ Token inválido. Esperado: {turno_liberado.token_reoferta}, Recibido: {token}")
+            return Response({'error': 'Token inválido'}, status=400)
+        
+        # Buscar interés
+        interesado = InteresTurnoLiberado.objects.filter(
+            peluquero=turno_liberado.peluquero,
+            fecha_deseada=turno_liberado.fecha,
+            hora_deseada=turno_liberado.hora,
+            cliente=cliente,
+            oferta_aceptada=False 
+        ).first()
 
-        # 🛡️ SEGURIDAD: Solo el dueño de la oferta puede aceptarla
-        if interes.cliente != request.user:
-            return Response({'error': 'Esta oferta no te pertenece.'}, status=403)
-
-        with transaction.atomic():
-            # 1. Vincular servicios y aplicar descuento
-            turno_nuevo.servicios.clear()
-            turno_nuevo.servicios.add(interes.servicio)
-            interes.estado_oferta = 'aceptada'
-            interes.save()
-
-            precio_final = Decimal(str(interes.servicio.precio)) * (Decimal('1') - (Decimal(str(interes.descuento_aplicado)) / Decimal('100')))
-
-            # 2. Rescatar pago del turno anterior
-            turno_viejo = Turno.objects.filter(cliente=request.user, estado__in=['RESERVADO', 'CONFIRMADO']).exclude(pk=turno_nuevo.pk).order_by('-fecha').first()
-
-            res_pago = None
-            msg = "¡Oferta aceptada!"
-
-            if turno_viejo:
-                monto_anterior = Decimal(str(turno_viejo.monto_seña if turno_viejo.tipo_pago == 'SENA_50' else turno_viejo.monto_total))
-                
-                if monto_anterior >= precio_final:
-                    # CASO: Ya pagó todo
-                    turno_nuevo.monto_total = precio_final
-                    turno_nuevo.monto_seña = precio_final
-                    turno_nuevo.tipo_pago = 'TOTAL'
-                    turno_nuevo.estado = 'CONFIRMADO' # ✅ YA ESTÁ PAGO
-                    msg = f"¡Canje exitoso! Se usó tu pago anterior (${precio_final})."
-                else:
-                    # CASO: Debe diferencia
-                    falta = precio_final - monto_anterior
-                    turno_nuevo.monto_total = precio_final
-                    turno_nuevo.monto_seña = monto_anterior
-                    turno_nuevo.tipo_pago = 'SENA_50'
-                    turno_nuevo.estado = 'RESERVADO'
-                    
-                    mp = MercadoPagoService()
-                    pref = mp.crear_preferencia_seña({
-                        'turno_id': turno_nuevo.id, 'monto_pago': float(falta),
-                        'cliente_nombre': f"{request.user.nombre} {request.user.apellido}",
-                        'cliente_correo': request.user.correo, 'peluquero_nombre': turno_nuevo.peluquero.nombre, 'es_pago_total': False
-                    })
-                    res_pago = pref.get('init_point')
-
-                turno_viejo.estado = 'CANCELADO'
-                turno_viejo.reembolsado = True
-                turno_viejo.save()
-
-            turno_nuevo.cliente = request.user
-            turno_nuevo.canal = 'WEB'
-            turno_nuevo.save()
-
-            return Response({'success': True, 'message': msg, 'mp_init_point': res_pago, 'turno_id': turno_nuevo.id})
+        if not interesado:
+            logger.error(f"❌ No se encontró interés activo para Cliente {cliente.id}")
+            return Response({'error': 'No tenés una solicitud de espera válida'}, status=400)
+        
+        # Ejecutar canje
+        success, result = ReofertaAutomaticaService.ejecutar_canje(interesado, turno_liberado)
+        
+        if success:
+            logger.info(f"🎉 CANJE EXITOSO.")
+            return Response({'success': True, 'message': 'Turno canjeado con éxito'})
+        else:
+            logger.error(f"❌ Falló canje: {result}")
+            return Response({'error': result}, status=400)
+            
     except Exception as e:
-        return Response({'error': str(e)}, status=500)
-        
+        logger.error(f"❌ EXCEPCION: {str(e)}", exc_info=True)
+        return Response({'error': f'Error interno: {str(e)}'}, status=500)
+    
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def contar_interesados(request, turno_id):
@@ -5119,3 +5282,81 @@ def gestionar_configuracion(request):
         serializer.save()
         return Response(serializer.data)
     return Response(serializer.errors, status=400)
+
+
+def oferta_info_api(request, turno_id, token):
+    """API para que el frontend obtenga info de la oferta - REQUERIDA"""
+    try:
+        turno = get_object_or_404(Turno, id=turno_id)
+        
+        # Validar token
+        if not turno.token_reoferta or str(turno.token_reoferta) != token:
+            return JsonResponse({'error': 'Token inválido'}, status=400)
+        
+        # Obtener datos básicos
+        datos = {
+            'success': True,
+            'turno_id': turno_id,
+            'fecha': str(turno.fecha),
+            'hora': str(turno.hora),
+            'token': token,
+            'peluquero': {
+                'id': turno.peluquero.id,
+                'nombre': turno.peluquero.nombre,
+                'apellido': turno.peluquero.apellido
+            } if turno.peluquero else None,
+            'estado': turno.estado
+        }
+        
+        from usuarios.turno_service import ReofertaAutomaticaService
+        datos_detallados, error = ReofertaAutomaticaService.obtener_datos_oferta_previa(turno_id, token)
+        
+        if datos_detallados:
+            datos.update(datos_detallados)
+        
+        return JsonResponse(datos)
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])  # Permite acceso sin autenticación (usuario recibe link)
+def aceptar_oferta_turno(request, turno_id, token):
+    """✅ ENDPOINT CORREGIDO - Cliente acepta oferta por WhatsApp"""
+    try:
+        from usuarios.turno_service import ReofertaAutomaticaService
+        from usuarios.models import Turno, InteresTurnoLiberado
+        
+        turno = get_object_or_404(Turno, id=turno_id)
+        
+        # Validar token
+        if not turno.token_reoferta or str(turno.token_reoferta) != token:
+            return Response({'error': 'Token inválido'}, status=400)
+        
+        if turno.estado != 'CANCELADO':
+            return Response({'error': 'Este turno ya no está disponible'}, status=400)
+        
+        # Buscar interesado que debe aceptar
+        interesado = InteresTurnoLiberado.objects.filter(
+            turno_liberado=turno,
+            estado_oferta='enviada'
+        ).first()
+        
+        if not interesado:
+            return Response({'error': 'Oferta no encontrada o ya fue aceptada'}, status=400)
+        
+        # ✅ EJECUTAR CANJE SIN REEMBOLSO (el que acepta NO recibe reembolso)
+        success, message = ReofertaAutomaticaService.ejecutar_canje(interesado, turno)
+        
+        if not success:
+            return Response({'error': message}, status=400)
+        
+        return Response({
+            'success': True,
+            'message': '¡Felicidades! Turno reservado exitosamente',
+            'turno_id': turno_id,
+            'cliente': interesado.cliente.nombre
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)

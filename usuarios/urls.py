@@ -127,16 +127,25 @@ urlpatterns = [
     path('api/catalogo/', ProductoCatalogoView.as_view(), name='catalogo-publico'),
 
     # ================================
-    # 📅 TURNOS (Ajustado con Lógica Unificada)
+    # 📅 TURNOS - SISTEMA COMPLETO DE EDICIÓN
     # ================================
+    # ✅ Listado y creación
     path('api/turnos/', func_views.listar_turnos_general, name='listado_turnos'),
     path('api/turnos/crear/', func_views.crear_turno, name='crear_turno'),
-    path('api/turnos/<int:turno_id>/completar/', func_views.completar_turno, name='completar_turno'),
+    
+    # ✅ Edición/Modificación (LO QUE NECESITAS)
     path('api/turnos/<int:turno_id>/modificar/', func_views.modificar_turno, name='modificar_turno'),
+    path('api/turnos/<int:turno_id>/', func_views.obtener_turno_por_id, name='obtener_turno_por_id'),
+    
+    # ✅ Gestión de estado
+    path('api/turnos/<int:turno_id>/completar/', func_views.completar_turno, name='completar_turno'),
     path('api/turnos/<int:turno_id>/procesar-sena/', func_views.procesar_sena_turno, name='procesar_sena_turno'),
+    
+    # ✅ Verificación de disponibilidad
     path('api/turnos/verificar-horarios/', func_views.obtener_horarios_disponibles, name='verificar_horarios'),
     path('api/turnos/verificar-disponibilidad/', func_views.verificar_disponibilidad, name='verificar_disponibilidad'),
-    path('api/turnos/<int:turno_id>/', func_views.obtener_turno_por_id, name='obtener_turno_por_id'),
+    
+    # ✅ Turnos personales
     path('api/turnos/mis-turnos/', func_views.mis_turnos, name='mis_turnos'),
     
     # ✅ CANCELACIÓN UNIFICADA (Staff y Cliente usan la misma lógica con WhatsApp)
@@ -150,7 +159,7 @@ urlpatterns = [
     path('api/turnos/<int:turno_id>/cambiar-estado/<str:nuevo_estado>/', func_views.cambiar_estado_turno, name='cambiar_estado_turno'),
     path('api/turnos/<int:turno_id>/completar-pago/', func_views.completar_pago_turno, name='completar_pago_turno'),
 
-    # Registrar interés e interesados
+    # ✅ Registrar interés e interesados
     path('api/turnos/registrar-interes/', func_views.registrar_interes_turno, name='registrar_interes_turno'),
     path('api/turnos/<int:turno_id>/interesados/', contar_interesados, name='contar_interesados'),
     path('api/turnos/ocupados/', turnos_ocupados, name='turnos_ocupados'),
@@ -246,7 +255,7 @@ urlpatterns = [
     path('api/reoferta/forzar/<int:turno_id>/', func_views.forzar_reoferta, name='forzar-reoferta'),
     path('api/intereses-turnos/cliente/<int:cliente_id>/', func_views.listar_intereses_cliente, name='listar-intereses-cliente'),
     path('api/reoferta/respuesta/<int:interes_id>/', func_views.procesar_respuesta_oferta, name='procesar-respuesta-oferta'),
-    path('api/turnos/<int:turno_id>/oferta-info/<str:token>/', func_views.obtener_info_oferta, name='oferta_info'),
+    path('api/turnos/<int:turno_id>/oferta-info/<str:token>/', func_views.oferta_info_api, name='oferta_info_api'),
 
     # Cotizaciones y Dashboard
     path('api/cotizacion-externa/<str:token>/', gestionar_cotizacion_externa, name='cotizacion_externa'),
@@ -257,7 +266,7 @@ urlpatterns = [
     path('api/solicitudes-presupuesto/<int:pk>/', SolicitudPresupuestoViewSet.as_view({'get': 'retrieve'}), name='solicitudes-detail'),
     path('api/solicitudes-presupuesto/<int:pk>/generar-orden/', SolicitudPresupuestoViewSet.as_view({'post': 'generar_orden_compra'}), name='solicitudes-generar-orden'),
 
-        path('api/turnos/<int:turno_id>/completar-reembolso-manual/', 
+    path('api/turnos/<int:turno_id>/completar-reembolso-manual/', 
          func_views.completar_reembolso_manual, 
          name='completar_reembolso_manual'),
     
@@ -283,6 +292,6 @@ urlpatterns = [
     path('api/liquidaciones/registrar/', RegistrarPagoLiquidacionView.as_view(), name='registrar_pago'),
     path('api/liquidaciones/historial/', HistorialLiquidacionesView.as_view(), name='historial_pagos'),
 
-    #parametrizar la politica d eseña
+    # Parametrizar la política de seña
     path('api/configuracion/', func_views.gestionar_configuracion, name='configuracion_sistema'),
 ]

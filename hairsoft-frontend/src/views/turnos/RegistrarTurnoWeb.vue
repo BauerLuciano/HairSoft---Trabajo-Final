@@ -1957,6 +1957,7 @@ defineExpose({ form, usuario, serviciosFiltrados, toggleServicio, estaServicioSe
 
 .modal-content {
   background: white;
+  color: rgb(49, 49, 49);
   border-radius: 24px;
   padding: 32px;
   max-width: 550px;

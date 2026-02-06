@@ -88,7 +88,9 @@ class TurnoSerializer(serializers.ModelSerializer):
             'reembolso_estado',  # ✅ CAMPO CLAVE PARA LA GESTIÓN MANUAL
             'mp_payment_id', 'mp_refund_id', 'nro_transaccion', 'motivo_cancelacion', 
             'obs_cancelacion', 'cliente', 'cliente_nombre', 'cliente_apellido',
-            'peluquero', 'peluquero_nombre', 'servicios'
+            'peluquero', 'peluquero_nombre', 'servicios',
+            # ✅ AGREGAR ESTOS DOS CAMPOS AL FINAL:
+            'codigo_transaccion', 'entidad_pago'
         ]
 
     def get_precio_total(self, obj):
@@ -346,6 +348,7 @@ class VentaSerializer(serializers.ModelSerializer):
     ) 
     detalles = DetalleVentaSerializer(many=True)
     cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True)
+    cliente_apellido = serializers.CharField(source='cliente.apellido', read_only=True) # Agregué apellido por si las dudas
     usuario_nombre = serializers.CharField(source='usuario.nombre', read_only=True)
 
     usuario = serializers.PrimaryKeyRelatedField(
@@ -363,11 +366,16 @@ class VentaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Venta
+        # 🔥 AGREGAMOS LOS CAMPOS DE TRAZABILIDAD AQUÍ 🔥
         fields = [
-            'id', 'cliente', 'cliente_nombre',
+            'id', 'cliente', 'cliente_nombre', 'cliente_apellido',
             'usuario', 'usuario_nombre',
             'fecha', 'total', 'anulada', 'tipo', 
             'medio_pago', 'medio_pago_nombre', 'medio_pago_tipo',
+            'entidad_pago',       # Nuevo
+            'codigo_transaccion', # Nuevo
+            'nro_transaccion',    # Viejo (por compatibilidad)
+            'mp_payment_id',      # Viejo (por compatibilidad)
             'detalles'
         ]
 
@@ -389,7 +397,7 @@ class VentaSerializer(serializers.ModelSerializer):
                         'detalles': f"Stock insuficiente para {producto.nombre}. Disponible: {producto.stock_actual}, Solicitado: {detalle['cantidad']}."
                     })
         
-        # Crear venta
+        # Crear venta (validated_data ya incluye entidad_pago y codigo_transaccion si vienen en el request)
         venta = Venta.objects.create(**validated_data)
 
         # Crear detalles
@@ -416,7 +424,8 @@ class VentaSerializer(serializers.ModelSerializer):
 
         # Recalcular total desde los detalles
         from django.db.models import Sum
-        venta.total = venta.detalles.aggregate(total=Sum('subtotal'))['total'] or 0
+        total_real = venta.detalles.aggregate(total=Sum('subtotal'))['total'] or 0
+        venta.total = total_real
         venta.save()
 
         return venta

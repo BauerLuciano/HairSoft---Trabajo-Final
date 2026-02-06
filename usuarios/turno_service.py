@@ -1,109 +1,247 @@
-# usuarios/turno_service.py
 from django.utils import timezone
 from datetime import timedelta, datetime
 from django.db import transaction
+from decimal import Decimal
 import logging
+import uuid
 from .models import Turno
-from .mercadopago_service import MercadoPagoService
+from .tasks import procesar_reoferta_masiva  # Importar la tarea de Celery
 
 logger = logging.getLogger(__name__)
 
 class TurnoService:
     
     @staticmethod
-    def procesar_cancelacion_automatica(turno_id, usuario_cancelacion=None):
+    def procesar_cancelacion_automatica(turno_id, usuario_cancelacion=None, motivo="", observacion=""):
         """
-        Proceso completo de cancelación automática según las reglas de negocio
+        🔥 VERSIÓN FINAL CORREGIDA - Reembolso SIEMPRE PENDIENTE (nunca automático)
         """
+        print(f"🔄 CANCELANDO TURNO {turno_id} - REEMBOLSO SIEMPRE PENDIENTE")
+        
         try:
+            from django.db.models import Q
+            from .models import InteresTurnoLiberado
+            
+            print(f"\n🔥 INICIANDO CANCELACIÓN TURNO {turno_id}")
+            print(f"   Motivo: {motivo}")
+            print(f"   Observación: {observacion}")
+            
             with transaction.atomic():
-                turno = Turno.objects.select_related('cliente', 'peluquero').get(id=turno_id)
+                # 1. OBTENER Y CANCELAR TURNO
+                turno = Turno.objects.select_for_update().get(id=turno_id)
                 
-                # Verificar si el turno puede ser cancelado
                 if turno.estado == 'CANCELADO':
                     return False, "El turno ya está cancelado"
                 
-                # Calcular tiempo restante
+                # 2. ✅ USAR LA LÓGICA DE REEMBOLSO QUE YA TENÉS EN VIEWS.PY
+                # Pero primero verificar el tiempo
                 ahora = timezone.now()
-                fecha_turno = timezone.make_aware(
-                    datetime.combine(turno.fecha, turno.hora)
-                )
+                fecha_turno = timezone.make_aware(datetime.combine(turno.fecha, turno.hora))
                 tiempo_restante = fecha_turno - ahora
                 
-                # Verificar que no sea un turno pasado
                 if tiempo_restante.total_seconds() <= 0:
                     return False, "No se puede cancelar un turno que ya pasó"
                 
-                # Determinar si corresponde devolución (más de 3 horas)
-                corresponde_devolucion = tiempo_restante >= timedelta(hours=3)
+                # 3. ✅ DETERMINAR SI ES CANCELACIÓN DEL CLIENTE (no reoferta)
+                es_cancelacion_cliente = True  # Asumir que es el cliente
                 
-                # Procesar devolución si corresponde
-                devolucion_procesada = False
-                mensaje_devolucion = ""
+                # 4. ✅ GENERAR TOKEN SIEMPRE
+                turno.token_reoferta = str(uuid.uuid4())
+                print(f"🔑 TOKEN GENERADO EN SERVICE: {turno.token_reoferta}")
                 
-                if corresponde_devolucion and turno.monto_seña > 0:
-                    devolucion_procesada, mensaje_devolucion = TurnoService._procesar_devolucion_senia(turno)
-                
-                # Actualizar estado del turno
+                # 5. ✅ CANCELAR TURNO PERO DEJAR REEMBOLSO PENDIENTE
                 turno.estado = 'CANCELADO'
-                turno.fecha_modificacion = timezone.now()
-                turno.reembolsado = devolucion_procesada
+                turno.fecha_modificacion = ahora
+                turno.motivo_cancelacion = motivo or "Cancelado por el sistema"
+                turno.obs_cancelacion = observacion
+                
+                # ✅ CORRECCIÓN CRÍTICA: INICIALIZAR REEMBOLSO COMO "PENDIENTE" 
+                # La función procesar_reembolso_si_corresponde lo ajustará después
+                if es_cancelacion_cliente:
+                    # ✅ SIEMPRE empezar como PENDIENTE si el cliente pagó algo
+                    if turno.monto_seña > 0 or turno.tipo_pago == 'TOTAL':
+                        turno.reembolso_estado = 'PENDIENTE'
+                    else:
+                        turno.reembolso_estado = 'NO_APLICA'
+                else:
+                    # Si es por reoferta/aceptación de oferta, NO APLICA reembolso
+                    turno.reembolso_estado = 'NO_APLICA'
+                
+                # ✅ NO marcar como reembolsado automáticamente NUNCA
+                turno.reembolsado = False
+                
+                # 6. ✅ AHORA SÍ LLAMAR A TU FUNCIÓN DE REEMBOLSO
+                # Pero primero guardamos el turno para tener ID
                 turno.save()
                 
-                # Mensaje de resultado
-                mensaje = 'Turno cancelado exitosamente'
-                if corresponde_devolucion:
-                    if devolucion_procesada:
-                        mensaje += f'. {mensaje_devolucion}'
-                    else:
-                        mensaje += '. No se pudo procesar la devolución automáticamente.'
+                # Importar tu función desde views.py
+                from usuarios.views import procesar_reembolso_si_corresponde
+                
+                # Determinar si corresponde devolución usando la lógica del modelo
+                puede_cancelar, hay_reembolso, msg_tiempo = turno.puede_ser_cancelado()
+                
+                if hay_reembolso and es_cancelacion_cliente:
+                    # ✅ Llamar a tu función para que determine el estado del reembolso
+                    # PERO IMPORTANTE: Esta función NO debe marcar automáticamente como COMPLETADO
+                    procesado, mensaje_reembolso = procesar_reembolso_si_corresponde(turno)
+                    
+                    # ✅ CORRECCIÓN: Si la función lo marca como COMPLETADO, forzar a PENDIENTE
+                    if turno.reembolso_estado == 'COMPLETADO':
+                        print(f"⚠️  ATENCIÓN: La función marcó reembolso como COMPLETADO, forzando a PENDIENTE")
+                        turno.reembolso_estado = 'PENDIENTE'
+                        turno.reembolsado = False
+                        mensaje_reembolso = "Reembolso pendiente de procesar manualmente"
+                    
+                    # Guardar cambios del reembolso
+                    turno.save()
+                    print(f"💰 Estado reembolso después de procesar: {turno.reembolso_estado}")
                 else:
-                    mensaje += '. No corresponde reembolso por cancelación con menos de 3 horas de anticipación.'
+                    mensaje_reembolso = "No corresponde reembolso"
                 
-                logger.info(f"Turno {turno_id} cancelado. Reembolso: {devolucion_procesada}")
-                return True, mensaje
+                print(f"💾 Turno {turno_id} guardado. Reembolso: {turno.reembolso_estado}, Reembolsado: {turno.reembolsado}")
+            
+            # 7. 🔥 BUSCAR INTERESADOS (EXCLUIR AL CLIENTE QUE CANCELÓ)
+            print(f"🔍 Buscando interesados (excluyendo cliente que canceló)...")
+            
+            interesados = InteresTurnoLiberado.objects.filter(
+                peluquero=turno.peluquero,
+                fecha_deseada=turno.fecha,
+                hora_deseada=turno.hora
+            ).exclude(
+                Q(estado_oferta='aceptada') | 
+                Q(cliente=turno.cliente)  # ✅ EXCLUIR AL CLIENTE QUE CANCELÓ
+            ).order_by('fecha_registro')
+            
+            print(f"👥 Interesados encontrados (sin cliente que canceló): {interesados.count()}")
+            
+            # 8. 🔥 ENVIAR WHATSAPP A TODOS LOS INTERESADOS (excepto el que canceló)
+            whatsapp_enviados = 0
+            if interesados.exists():
+                print(f"📡 Enviando WhatsApps a nuevos interesados...")
                 
+                # Importar función de WhatsApp
+                from .tasks import enviar_whatsapp_oferta
+                base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
+                
+                for interesado in interesados:
+                    try:
+                        print(f"  → Procesando: {interesado.cliente.nombre} (Tel: {interesado.cliente.telefono})")
+                        
+                        # Generar link único con token
+                        link = f"{base_url}/aceptar-oferta/{turno.id}/{turno.token_reoferta}"
+                        mensaje = (
+                            f"¡TURNO DISPONIBLE! 🎁\n"
+                            f"Hola {interesado.cliente.nombre}, se liberó un lugar:\n\n"
+                            f"📅 {turno.fecha}\n"
+                            f"⏰ {turno.hora}\n\n"
+                            f"👇 Tocá el link para reservar con un 15% de descuento!:\n"
+                            f"{link}\n\n"
+                            f"Los Últimos Serán Los Primeros"
+                        )
+                        
+                        # Enviar WhatsApp si tiene teléfono
+                        if interesado.cliente.telefono:
+                            print(f"    📱 Enviando WhatsApp a {interesado.cliente.telefono}")
+                            resultado = enviar_whatsapp_oferta(interesado.cliente.telefono, mensaje)
+                            
+                            if resultado:
+                                print(f"    ✅ WhatsApp ENVIADO correctamente")
+                                whatsapp_enviados += 1
+                            else:
+                                print(f"    ❌ Error enviando WhatsApp")
+                        
+                        # Actualizar estado del interesado
+                        interesado.estado_oferta = 'enviada'
+                        interesado.turno_liberado = turno
+                        interesado.save(update_fields=['estado_oferta', 'turno_liberado'])
+                        
+                        print(f"    ✅ Estado actualizado a 'enviada'")
+                        
+                    except Exception as e:
+                        print(f"    ❌ Error con {interesado.cliente.nombre}: {e}")
+                        continue
+                
+                print(f"✅ {whatsapp_enviados} WhatsApps enviados exitosamente")
+            
+            # 9. ✅ MENSAJE FINAL - REEMBOLSO SIEMPRE PENDIENTE
+            mensaje = 'Turno cancelado exitosamente'
+            
+            if es_cancelacion_cliente:
+                if turno.reembolso_estado == 'PENDIENTE':
+                    mensaje += '. Reembolso pendiente de procesar manualmente.'
+                elif turno.reembolso_estado == 'NO_APLICA':
+                    mensaje += '. No corresponde reembolso.'
+                else:
+                    mensaje += f'. Estado reembolso: {turno.reembolso_estado}'
+            else:
+                mensaje += '. Cancelación por aceptación de oferta - no aplica reembolso.'
+            
+            if whatsapp_enviados > 0:
+                mensaje += f' Se notificó a {whatsapp_enviados} interesados.'
+            elif interesados.exists():
+                mensaje += ' Se encontraron interesados pero no se pudo enviar notificaciones.'
+            
+            return True, mensaje
+            
         except Turno.DoesNotExist:
             return False, "Turno no encontrado"
         except Exception as e:
-            logger.error(f"Error al cancelar turno {turno_id}: {str(e)}")
-            return False, f"Error al cancelar turno: {str(e)}"
+            import traceback
+            print(f"❌ ERROR FATAL: {e}")
+            print(traceback.format_exc())
+            return False, f"Error: {str(e)}"
     
+    @staticmethod
+    def _notificar_interesados_sincrono(turno_cancelado):
+        """
+        Notificación SÍNCRONA inmediata después del commit.
+        Actualiza estado de interesados sin enviar WhatsApp.
+        """
+        try:
+            from .models import InteresTurnoLiberado
+            
+            # Usar 'estado_oferta' en lugar de 'notificado'
+            interesados = InteresTurnoLiberado.objects.filter(
+                peluquero=turno_cancelado.peluquero,
+                fecha_deseada=turno_cancelado.fecha,
+                hora_deseada=turno_cancelado.hora,
+                estado_oferta='pendiente'
+            ).order_by('fecha_registro')[:5]
+            
+            for interesado in interesados:
+                # Solo actualizar estado, no enviar mensajes aquí
+                interesado.estado_oferta = 'preparando'
+                interesado.turno_liberado = turno_cancelado
+                interesado.save(update_fields=['estado_oferta', 'turno_liberado'])
+                
+            logger.info(f"📋 {len(interesados)} interesados marcados como 'preparando'")
+            return len(interesados)
+            
+        except Exception as e:
+            logger.error(f"❌ Error en notificación síncrona: {str(e)}")
+            return 0
+
     @staticmethod
     def _procesar_devolucion_senia(turno):
         """
-        Procesar devolución de la seña según el canal y medio de pago
+        ✅ VERSIÓN CORREGIDA: SOLO determina si corresponde reembolso, NO lo procesa automáticamente
         """
         try:
-            # Para pagos web con Mercado Pago
+            # ✅ CORRECCIÓN: NUNCA procesamos automáticamente, solo determinamos el tipo
             if turno.canal == 'WEB' and turno.medio_pago == 'MERCADO_PAGO':
-                # En un entorno real, aquí llamarías a la API de Mercado Pago para hacer el reembolso
-                # mp_service = MercadoPagoService()
-                # resultado = mp_service.devolver_pago(turno.id_pago_mercadopago, turno.monto_seña)
-                
-                # Por ahora, simulamos el proceso exitoso
-                logger.info(f"Simulando reembolso MP para turno {turno.id}, monto: {turno.monto_seña}")
-                return True, "Seña reembolsada via Mercado Pago"
-            
-            # Para pagos presenciales
+                logger.info(f"💰 Reembolso MP PENDIENTE para turno {turno.id}, monto: {turno.monto_seña}")
+                return False, "Reembolso pendiente de procesar via Mercado Pago"
             elif turno.canal == 'PRESENCIAL':
-                # Solo marcamos que corresponde devolución física
-                return True, "Cliente debe pasar a buscar el reembolso en efectivo"
-            
-            # Para otros casos
+                logger.info(f"💰 Reembolso en efectivo PENDIENTE para turno {turno.id}, monto: {turno.monto_seña}")
+                return False, "Cliente debe pasar a buscar el reembolso en efectivo (pendiente)"
             else:
                 return False, "No se pudo determinar el método de devolución"
-                
         except Exception as e:
-            logger.error(f"Error en devolución de seña para turno {turno.id}: {str(e)}")
+            logger.error(f"❌ Error en devolución de seña para turno {turno.id}: {str(e)}")
             return False, f"Error en proceso de devolución: {str(e)}"
     
     @staticmethod
     def verificar_anticipacion_cancelacion(turno):
-        """
-        Verificar si un turno puede ser cancelado con reembolso
-        Retorna: (puede_cancelar, hay_reembolso, tiempo_restante)
-        """
         try:
             ahora = timezone.now()
             fecha_turno = timezone.make_aware(
@@ -111,402 +249,255 @@ class TurnoService:
             )
             tiempo_restante = fecha_turno - ahora
             
-            # No puede cancelar turnos pasados
             puede_cancelar = tiempo_restante.total_seconds() > 0
             hay_reembolso = tiempo_restante >= timedelta(hours=3)
             
             return puede_cancelar, hay_reembolso, tiempo_restante
-            
         except Exception as e:
-            logger.error(f"Error verificando anticipación para turno {turno.id}: {str(e)}")
+            logger.error(f"❌ Error verificando anticipación para turno {turno.id}: {str(e)}")
             return False, False, timedelta(0)
-# En usuarios/turno_service.py - agregar estos métodos a la clase TurnoService
 
-@staticmethod
-def _notificar_interesados(turno_cancelado):
-    """
-    Notificar a clientes interesados en el horario liberado (FIFO)
-    """
-    try:
-        from .models import InteresTurnoLiberado
-        from django.core.mail import send_mail
-        from django.conf import settings
-        import logging
-        
-        logger = logging.getLogger(__name__)
-        
-        # Buscar interesados para el mismo peluquero, fecha, hora y servicios similares
-        interesados = InteresTurnoLiberado.objects.filter(
-            peluquero=turno_cancelado.peluquero,
-            fecha_deseada=turno_cancelado.fecha,
-            hora_deseada=turno_cancelado.hora,
-            notificado=False
-        ).order_by('fecha_registro')[:5]  # FIFO - primeros 5
-        
-        notificados = 0
-        for interesado in interesados:
-            # Calcular descuento del 15%
-            precio_original = interesado.servicio.precio
-            precio_con_descuento = precio_original * 0.85
+    @staticmethod
+    def registrar_interes_turno(cliente_id, servicio_id, peluquero_id, fecha_deseada, hora_deseada):
+        try:
+            from .models import InteresTurnoLiberado
             
-            # Enviar notificación (por ahora solo log)
-            logger.info(f"📧 NOTIFICACIÓN: Turno disponible para {interesado.cliente.nombre}")
-            logger.info(f"   📅 Fecha: {turno_cancelado.fecha} {turno_cancelado.hora}")
-            logger.info(f"   💇 Peluquero: {turno_cancelado.peluquero.nombre}")
-            logger.info(f"   💰 Precio original: ${precio_original}")
-            logger.info(f"   🔥 Precio con 15% descuento: ${precio_con_descuento}")
-            logger.info(f"   ⏰ Tiempo límite: 1 hora para confirmar")
+            interes_existente = InteresTurnoLiberado.objects.filter(
+                cliente_id=cliente_id,
+                servicio_id=servicio_id,
+                peluquero_id=peluquero_id,
+                fecha_deseada=fecha_deseada,
+                hora_deseada=hora_deseada,
+                estado_oferta='pendiente',
+                oferta_aceptada=False
+            ).exists()
             
-            # Marcar como notificado
-            interesado.notificado = True
-            interesado.fecha_notificacion = timezone.now()
-            interesado.save()
+            if interes_existente:
+                return False, "Ya estás registrado en la lista de espera para este horario"
             
-            notificados += 1
+            interes = InteresTurnoLiberado.objects.create(
+                cliente_id=cliente_id,
+                servicio_id=servicio_id,
+                peluquero_id=peluquero_id,
+                fecha_deseada=fecha_deseada,
+                hora_deseada=hora_deseada
+            )
             
-            # Aquí podrías integrar:
-            # - Envío de email (send_mail)
-            # - WhatsApp (con APIs como Twilio)
-            # - Notificación push
-            
-        logger.info(f"✅ Notificados {notificados} interesados para turno {turno_cancelado.id}")
-        return notificados > 0
-        
-    except Exception as e:
-        logger.error(f"❌ Error notificando interesados para turno {turno_cancelado.id}: {str(e)}")
-        return False
+            logger.info(f"✅ Interés registrado: {cliente_id} para {fecha_deseada} {hora_deseada}")
+            return True, "Te avisaremos si se libera este turno"
+        except Exception as e:
+            logger.error(f"❌ Error registrando interés: {str(e)}")
+            return False, f"Error al registrar interés: {str(e)}"
 
-@staticmethod
-def registrar_interes_turno(cliente_id, servicio_id, peluquero_id, fecha_deseada, hora_deseada):
-    """
-    Registrar interés de un cliente en un turno específico
-    """
-    try:
-        from .models import InteresTurnoLiberado, Usuario, Servicio
-        
-        # Verificar que no exista ya el mismo interés
-        interes_existente = InteresTurnoLiberado.objects.filter(
-            cliente_id=cliente_id,
-            servicio_id=servicio_id,
-            peluquero_id=peluquero_id,
-            fecha_deseada=fecha_deseada,
-            hora_deseada=hora_deseada,
-            notificado=False
-        ).exists()
-        
-        if interes_existente:
-            return False, "Ya estás registrado en la lista de espera para este horario"
-        
-        # Crear nuevo interés
-        interes = InteresTurnoLiberado.objects.create(
-            cliente_id=cliente_id,
-            servicio_id=servicio_id,
-            peluquero_id=peluquero_id,
-            fecha_deseada=fecha_deseada,
-            hora_deseada=hora_deseada
-        )
-        
-        logger.info(f"✅ Interés registrado: {cliente_id} para {fecha_deseada} {hora_deseada}")
-        return True, "Te avisaremos si se libera este turno"
-        
-    except Exception as e:
-        logger.error(f"❌ Error registrando interés: {str(e)}")
-        return False, f"Error al registrar interés: {str(e)}"
+    @staticmethod
+    def procesar_reoferta_automatica(turno_id):
+        try:
+            turno = Turno.objects.get(id=turno_id)
+            if turno.estado == 'CANCELADO': 
+                return ReofertaAutomaticaService.procesar_reoferta(turno)
+            return False
+        except Turno.DoesNotExist:
+            logger.error(f"❌ Turno {turno_id} no encontrado para reoferta")
+            return False
+
 
 class ReofertaAutomaticaService:
-    """
-    Servicio para manejar el proceso completo de reoferta automática
-    """
     
     @staticmethod
-    @transaction.atomic
     def procesar_reoferta(turno_cancelado):
-        """
-        Proceso principal de reoferta automática
-        """
         try:
-            from .models import InteresTurnoLiberado, ConfiguracionReoferta
+            from .models import InteresTurnoLiberado
             
             logger.info(f"🔄 Iniciando reoferta para turno {turno_cancelado.id}")
             
-            # Verificar configuración
-            config = ConfiguracionReoferta.get_configuracion()
-            if not config.activo:
-                logger.info("⏸️ Módulo de reoferta desactivado")
-                return False
+            # Asegurar token (backup por si se llama manual)
+            if not turno_cancelado.token_reoferta:
+                turno_cancelado.token_reoferta = str(uuid.uuid4())
+                turno_cancelado.save(update_fields=['token_reoferta'])
             
-            # Buscar interesados (FIFO)
-            interesados = ReofertaAutomaticaService._obtener_interesados_fifo(turno_cancelado)
+            interesados = InteresTurnoLiberado.objects.filter(
+                peluquero=turno_cancelado.peluquero,
+                fecha_deseada=turno_cancelado.fecha,
+                hora_deseada=turno_cancelado.hora,
+                estado_oferta='enviada' 
+            ).order_by('fecha_registro')[:1]
             
             if not interesados:
-                logger.info("ℹ️ No hay interesados para notificar")
                 return False
             
-            logger.info(f"📋 {len(interesados)} interesados encontrados para turno {turno_cancelado.id}")
+            interesado = interesados[0]
             
-            # Procesar notificaciones en orden FIFO
-            for interesado in interesados:
-                resultado = ReofertaAutomaticaService._notificar_cliente(
-                    interesado, turno_cancelado, config
-                )
-                
-                if resultado:
-                    logger.info(f"✅ Cliente {interesado.cliente.nombre} aceptó la oferta")
-                    return True
-                else:
-                    logger.info(f"⏭️ Cliente {interesado.cliente.nombre} no respondió, siguiente...")
+            # GENERAR LINK PARA EL FRONTEND
+            base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
+            link_oferta = f"{base_url}/aceptar-oferta/{turno_cancelado.id}/{turno_cancelado.token_reoferta}"
             
-            logger.info("❌ Ningún cliente aceptó la oferta")
-            return False
+            logger.info(f"🔗 LINK GENERADO PARA {interesado.cliente.nombre}: {link_oferta}")
+            
+            return True
             
         except Exception as e:
             logger.error(f"❌ Error en procesar_reoferta: {str(e)}")
             return False
-    
-    @staticmethod
-    def _obtener_interesados_fifo(turno_cancelado):
-        """
-        Obtiene clientes interesados en orden FIFO para el turno cancelado
-        """
-        from .models import InteresTurnoLiberado
-        
-        # Buscar interesados que coincidan con el peluquero, fecha y hora
-        interesados = InteresTurnoLiberado.objects.filter(
-            peluquero=turno_cancelado.peluquero,
-            fecha_deseada=turno_cancelado.fecha,
-            hora_deseada=turno_cancelado.hora,
-            oferta_enviada=False,  # No notificados previamente
-            oferta_aceptada=False  # No han aceptado previamente
-        ).order_by('fecha_registro', 'prioridad')[:5]  # FIFO - primeros 5
-        
-        return list(interesados)
-    
-    @staticmethod
-    def _notificar_cliente(interesado, turno_cancelado, config):
-        """
-        Notifica a un cliente específico y maneja su respuesta
-        """
-        from django.utils import timezone
-        from .models import InteresTurnoLiberado, Turno
-        
-        try:
-            # Calcular precio con descuento
-            precio_original = interesado.servicio.precio
-            descuento = config.descuento_por_defecto
-            precio_con_descuento = precio_original * (1 - descuento / 100)
-            
-            # Marcar como notificado
-            interesado.oferta_enviada = True
-            interesado.fecha_oferta_enviada = timezone.now()
-            interesado.descuento_aplicado = descuento
-            interesado.tiempo_limite_respuesta = config.tiempo_limite_respuesta
-            interesado.save()
-            
-            # Enviar notificación
-            notificacion_enviada = ReofertaAutomaticaService._enviar_notificacion(
-                interesado, turno_cancelado, precio_original, precio_con_descuento, config
-            )
-            
-            if notificacion_enviada:
-                # Simular espera de respuesta (en producción sería asíncrono)
-                # Por ahora, simulamos que el primer cliente siempre acepta
-                return ReofertaAutomaticaService._simular_respuesta_cliente(
-                    interesado, turno_cancelado
-                )
-            
-            return False
-            
-        except Exception as e:
-            logger.error(f"❌ Error notificando cliente {interesado.id}: {str(e)}")
-            return False
-    
-    @staticmethod
-    def _enviar_notificacion(interesado, turno_cancelado, precio_original, precio_con_descuento, config):
-        """
-        Envía la notificación al cliente (email, WhatsApp, etc.)
-        """
-        try:
-            cliente = interesado.cliente
-            peluquero = turno_cancelado.peluquero
-            
-            # Información para la notificación
-            info_turno = {
-                'fecha': turno_cancelado.fecha.strftime("%d/%m/%Y"),
-                'hora': turno_cancelado.hora.strftime("%H:%M"),
-                'peluquero': f"{peluquero.nombre} {peluquero.apellido}",
-                'servicio': interesado.servicio.nombre,
-                'precio_original': float(precio_original),
-                'precio_descuento': float(precio_con_descuento),
-                'descuento': float(interesado.descuento_aplicado),
-                'tiempo_limite': interesado.tiempo_limite_respuesta
-            }
-            
-            # Log de la notificación (en producción enviarías email/WhatsApp real)
-            logger.info(f"📧 NOTIFICACIÓN ENVIADA A: {cliente.nombre} ({cliente.correo})")
-            logger.info(f"   📅 Turno: {info_turno['fecha']} {info_turno['hora']}")
-            logger.info(f"   💇 Peluquero: {info_turno['peluquero']}")
-            logger.info(f"   ✂️ Servicio: {info_turno['servicio']}")
-            logger.info(f"   💰 Precio original: ${info_turno['precio_original']}")
-            logger.info(f"   🔥 Precio con {info_turno['descuento']}% descuento: ${info_turno['precio_descuento']}")
-            logger.info(f"   ⏰ Tiempo límite: {info_turno['tiempo_limite']} minutos")
-            
-            # Aquí integrarías:
-            if config.notificar_email:
-                ReofertaAutomaticaService._enviar_email(cliente, info_turno)
-            
-            if config.notificar_whatsapp:
-                ReofertaAutomaticaService._enviar_whatsapp(cliente, info_turno)
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Error enviando notificación: {str(e)}")
-            return False
-    
-    @staticmethod
-    def _enviar_email(cliente, info_turno):
-        """Integración con envío de email"""
-        try:
-            # Usar Django send_mail o tu servicio de email
-            from django.core.mail import send_mail
-            from django.conf import settings
-            
-            subject = f"¡Oferta especial! Turno disponible para {info_turno['fecha']} {info_turno['hora']}"
-            message = f"""
-            Hola {cliente.nombre},
-            
-            Tenemos una oferta especial para ti. Se ha liberado un turno:
-            
-            📅 Fecha: {info_turno['fecha']}
-            ⏰ Hora: {info_turno['hora']}
-            💇 Peluquero: {info_turno['peluquero']}
-            ✂️ Servicio: {info_turno['servicio']}
-            
-            💰 Precio regular: ${info_turno['precio_original']}
-            🔥 Precio con descuento: ${info_turno['precio_descuento']} ({info_turno['descuento']}% OFF)
-            
-            ⏰ Tienes {info_turno['tiempo_limite']} minutos para confirmar este turno.
-            
-            ¡No pierdas esta oportunidad!
-            
-            Saludos,
-            El equipo de HairSoft
-            """
-            
-            # Descomentar cuando configures email
-            # send_mail(
-            #     subject,
-            #     message,
-            #     settings.DEFAULT_FROM_EMAIL,
-            #     [cliente.correo],
-            #     fail_silently=False,
-            # )
-            
-            logger.info(f"📧 Email simulado para {cliente.correo}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Error enviando email: {str(e)}")
-            return False
-    
-    @staticmethod
-    def _enviar_whatsapp(cliente, info_turno):
-        """Integración con WhatsApp (usando Twilio u otro servicio)"""
-        try:
-            # Ejemplo con Twilio (descomentar cuando configures)
-            # from twilio.rest import Client
-            
-            mensaje = f"""
-¡Oferta especial! 🎉
 
-Se liberó un turno para {info_turno['fecha']} a las {info_turno['hora']} con {info_turno['peluquero']}.
-
-Servicio: {info_turno['servicio']}
-Precio regular: ${info_turno['precio_original']}
-🔥 OFERTA: ${info_turno['precio_descuento']} ({info_turno['descuento']}% OFF)
-
-Tienes {info_turno['tiempo_limite']} minutos para confirmar.
-
-Responde SI para aceptar.
-            """
-            
-            logger.info(f"📱 WhatsApp simulado para {cliente.telefono}")
-            logger.info(f"   Mensaje: {mensaje}")
-            
-            # Código real para Twilio:
-            # account_sid = 'your_account_sid'
-            # auth_token = 'your_auth_token'
-            # client = Client(account_sid, auth_token)
-            # 
-            # message = client.messages.create(
-            #     body=mensaje,
-            #     from_='whatsapp:+14155238886',
-            #     to=f'whatsapp:{cliente.telefono}'
-            # )
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Error enviando WhatsApp: {str(e)}")
-            return False
-    
     @staticmethod
-    def _simular_respuesta_cliente(interesado, turno_cancelado):
+    @transaction.atomic
+    def ejecutar_canje(interesado, turno_liberado):
         """
-        Simula la respuesta del cliente (en producción esto vendría de webhooks)
-        Por ahora, el primer cliente siempre acepta
+        🔥 LÓGICA DE CANJE BLINDADA (3 REGISTROS + PAGO CLONADO)
         """
-        from django.utils import timezone
         from .models import Turno
         
         try:
-            # Simular aceptación (en producción esto sería por webhook)
-            interesado.oferta_aceptada = True
-            interesado.fecha_respuesta = timezone.now()
-            interesado.save()
+            logger.info(f"🔄 EJECUTANDO CANJE PARA: {interesado.cliente.nombre}")
             
-            # Crear nuevo turno para el cliente
-            nuevo_turno = Turno.objects.create(
-                fecha=turno_cancelado.fecha,
-                hora=turno_cancelado.hora,
-                estado='RESERVADO',
-                canal='WEB',
-                tipo_pago='PENDIENTE',
-                medio_pago='PENDIENTE',
-                monto_seña=0,
-                monto_total=turno_cancelado.monto_total * (1 - interesado.descuento_aplicado / 100),
+            # 1. BUSCAR TURNO VIEJO (B)
+            turno_viejo = Turno.objects.filter(
                 cliente=interesado.cliente,
-                peluquero=turno_cancelado.peluquero
+                estado__in=['RESERVADO', 'CONFIRMADO'],
+                fecha__gte=timezone.now().date()
+            ).order_by('-fecha_creacion').first()
+
+            if not turno_viejo:
+                return False, "El cliente no tiene un turno activo para canjear."
+
+            # 2. CAPTURAR DATOS FINANCIEROS (CLONACIÓN)
+            mp_id_origen = turno_viejo.mp_payment_id
+            transaccion_origen = turno_viejo.nro_transaccion
+            medio_pago_origen = turno_viejo.medio_pago
+            
+            # Plata pagada
+            plata_pagada = turno_viejo.monto_seña or Decimal('0.00')
+            if turno_viejo.tipo_pago == 'TOTAL':
+                plata_pagada = turno_viejo.monto_total or Decimal('0.00')
+
+            logger.info(f"💰 Plata pagada en turno viejo: {plata_pagada}. Medio: {medio_pago_origen}")
+
+            # 3. CANCELAR TURNO VIEJO (B) - SIN DEVOLUCIÓN
+            # Usamos update() directo para evitar que signals interfieran aquí
+            Turno.objects.filter(id=turno_viejo.id).update(
+                estado='CANCELADO',
+                motivo_cancelacion='CANJE_AUTOMATICO',
+                obs_cancelacion=f"Canjeado por turno ID {turno_liberado.id}.",
+                reembolsado=True,
+                reembolso_estado='NO_APLICA', # CLAVE
+                fecha_modificacion=timezone.now()
+            )
+            logger.info(f"🚫 Turno Viejo ID {turno_viejo.id} CANCELADO (Registro 2 de 3)")
+
+            # 4. PRECIO NUEVO
+            precio_base = interesado.servicio.precio
+            descuento = Decimal('0.85')
+            precio_con_descuento = precio_base * descuento
+            
+            # 5. SALDO A FAVOR
+            saldo_a_favor = Decimal('0.00')
+            if plata_pagada > precio_con_descuento:
+                saldo_a_favor = plata_pagada - precio_con_descuento
+
+            # 6. TIPO DE PAGO NUEVO
+            if plata_pagada >= precio_con_descuento:
+                tipo_pago_nuevo = 'TOTAL'
+                monto_seña_nuevo = precio_con_descuento 
+                estado_nuevo = 'CONFIRMADO' 
+            else:
+                tipo_pago_nuevo = 'SENA_50'
+                monto_seña_nuevo = plata_pagada
+                estado_nuevo = 'RESERVADO'
+
+            # 7. CREAR TURNO NUEVO (C)
+            nuevo_turno = Turno.objects.create(
+                cliente=interesado.cliente,
+                peluquero=turno_liberado.peluquero,
+                fecha=turno_liberado.fecha,
+                hora=turno_liberado.hora,
+                canal='WEB',
+                estado=estado_nuevo,
+                
+                # CLONACIÓN EXPLÍCITA
+                mp_payment_id=mp_id_origen,
+                nro_transaccion=transaccion_origen,
+                medio_pago=medio_pago_origen,
+                
+                tipo_pago=tipo_pago_nuevo,
+                monto_seña=monto_seña_nuevo,
+                monto_total=precio_con_descuento,
+                
+                obs_cancelacion=f"Generado por Reoferta. Origen Turno {turno_viejo.id}. Saldo favor: ${saldo_a_favor}",
+                reembolso_estado='NO_APLICA',
+                reembolsado=False,
             )
             
-            # Copiar servicios del turno cancelado
-            nuevo_turno.servicios.set(turno_cancelado.servicios.all())
-            
-            logger.info(f"✅ Nuevo turno {nuevo_turno.id} creado para {interesado.cliente.nombre}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Error creando nuevo turno: {str(e)}")
-            return False
+            nuevo_turno.servicios.add(interesado.servicio)
+            interesado.oferta_aceptada = True
+            interesado.fecha_aceptacion = timezone.now()
+            interesado.save()
 
-# Integrar con el TurnoService existente
-class TurnoService:
-    # ... métodos existentes ...
-    
+            logger.info(f"✅ Turno Nuevo ID {nuevo_turno.id} CREADO. MP Clonado: {mp_id_origen}")
+            return True, "Canje exitoso"
+
+        except Exception as e:
+            logger.error(f"❌ Error en canje: {str(e)}")
+            return False, str(e)
+
     @staticmethod
-    def procesar_reoferta_automatica(turno_id):
-        """
-        Método público para procesar reoferta automática
-        """
+    def obtener_datos_oferta_previa(turno_liberado_id, token):
+        from .models import Turno, InteresTurnoLiberado
         try:
-            turno = Turno.objects.get(id=turno_id)
+            turno_liberado = Turno.objects.get(id=turno_liberado_id)
             
-            # Solo procesar turnos web cancelados
-            if turno.estado == 'CANCELADO' and turno.canal == 'WEB':
-                return ReofertaAutomaticaService.procesar_reoferta(turno)
+            # Validar token
+            if str(turno_liberado.token_reoferta) != str(token):
+                logger.error(f"❌ Mismatch Token. DB: {turno_liberado.token_reoferta}, URL: {token}")
+                return None, "Token inválido"
+
+            # CORREGIDO: Filtro por estado_oferta
+            interesado = InteresTurnoLiberado.objects.filter(
+                peluquero=turno_liberado.peluquero, 
+                fecha_deseada=turno_liberado.fecha,
+                hora_deseada=turno_liberado.hora, 
+                estado_oferta='enviada'
+            ).first()
             
-            return False
+            if not interesado:
+                # Intento con preparando por si acaso
+                interesado = InteresTurnoLiberado.objects.filter(
+                    peluquero=turno_liberado.peluquero, 
+                    fecha_deseada=turno_liberado.fecha,
+                    hora_deseada=turno_liberado.hora, 
+                    estado_oferta='preparando'
+                ).first()
             
-        except Turno.DoesNotExist:
-            logger.error(f"❌ Turno {turno_id} no encontrado para reoferta")
-            return False
+            if not interesado: 
+                return None, "Oferta no disponible"
+
+            precio_base = interesado.servicio.precio
+            precio_oferta = precio_base * Decimal('0.85')
+            
+            turno_anterior = Turno.objects.filter(
+                cliente=interesado.cliente, 
+                estado__in=['RESERVADO', 'CONFIRMADO']
+            ).order_by('-fecha_creacion').first()
+            
+            pagado_anterior = Decimal('0.00')
+            if turno_anterior:
+                 pagado_anterior = turno_anterior.monto_total if turno_anterior.tipo_pago == 'TOTAL' else turno_anterior.monto_seña
+            
+            saldo = max(Decimal('0.00'), pagado_anterior - precio_oferta)
+            monto_final = max(Decimal('0.00'), precio_oferta - pagado_anterior)
+
+            return {
+                "precio_original": float(precio_base),
+                "precio_final": float(precio_oferta),
+                "pagado_anterior": float(pagado_anterior),
+                "saldo_a_favor": float(saldo),
+                "monto_final_a_pagar": float(monto_final),
+                "servicio": interesado.servicio.nombre,
+                "profesional": f"{turno_liberado.peluquero.nombre} {turno_liberado.peluquero.apellido}",
+                "fecha": str(turno_liberado.fecha),
+                "hora": str(turno_liberado.hora),
+                "cliente_id": interesado.cliente.id,
+                "turno_liberado_id": turno_liberado_id,
+                "token": token
+            }, None
+        except Exception as e:
+            return None, str(e)
