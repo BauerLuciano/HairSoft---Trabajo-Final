@@ -2,388 +2,395 @@
   <div class="page-background">
     <div class="main-card-container">
       <div class="turno-container">
-        <div class="header-section">
-          <h2>
-            <Calendar class="header-icon" />
-            Registrar Turno (Presencial)
-          </h2>
-          <button @click="volverAlListado" class="btn-back">
-            <ArrowLeft :size="18" />
-            Volver
-          </button>
+        <!-- Estados de carga y error -->
+        <div v-if="cargandoDatos" class="loading-state">
+          <Loader2 class="spinner-icon" :size="48" />
+          <p>Cargando datos iniciales...</p>
         </div>
 
-        <div class="card-modern">
-          <div class="card-header">
-            <div class="card-icon"><Users :size="20" /></div>
-            <h3>Cliente</h3>
-          </div>
-          
-          <div class="input-group">
-            <div class="row-search">
-              <div class="search-wrapper">
-                <Search class="search-icon" :size="18" />
-                <input
-                  type="text"
-                  :value="form.cliente ? form.clienteNombre : busquedaCliente"
-                  @input="actualizarBusquedaCliente"
-                  :placeholder="form.cliente ? '' : 'Buscar por nombre o DNI...'"
-                  :class="['input-modern', { 'cliente-activo': form.cliente }]"
-                  :readonly="form.cliente !== null"
-                />
-                <button v-if="form.cliente" @click="limpiarCliente" class="btn-icon-clean">
-                  <X :size="16" />
-                </button>
-              </div>
-              
-              <button @click="irARegistrarCliente" class="btn-nuevo">
-                <Plus :size="18" /> Nuevo
-              </button>
-            </div>
-
-            <ul v-if="clientesSugeridos.length && !form.cliente" class="lista-sugerencias">
-              <li v-for="c in clientesSugeridos" :key="c.id" @click="seleccionarCliente(c)" class="item-sugerencia">
-                <div class="avatar-mini"><User :size="14" /></div>
-                <div class="sugerencia-info">
-                  <strong>{{ getNombreCompletoCliente(c) }}</strong>
-                  <small> - DNI: {{ c.dni || '---' }}</small>
-                </div>
-              </li>
-            </ul>
-            
-            <div v-if="errorCliente" class="msg-error">
-              <AlertCircle :size="14" /> {{ errorCliente }}
-            </div>
-          </div>
+        <div v-else-if="error" class="error-state">
+          <AlertCircle class="error-icon" :size="48" />
+          <h3>Error</h3>
+          <p>{{ error }}</p>
         </div>
 
-        <div v-if="form.cliente" class="card-modern slide-in">
-          <div class="card-header">
-            <div class="card-icon"><FolderOpen :size="20" /></div>
-            <h3>Categoría</h3>
-          </div>
-          <div class="grid-chips">
-            <button 
-              v-for="categoria in categorias" 
-              :key="categoria.id"
-              class="chip-modern"
-              :class="{ 'chip-active': categoriasSeleccionadas.includes(categoria.id) }"
-              @click="toggleCategoria(categoria.id)"
-            >
-              <Tag :size="14" /> {{ categoria.nombre }}
+        <div v-else class="form-content">
+          <div class="header-section">
+            <h2>
+              <Calendar class="header-icon" />
+              Registrar Turno (Presencial)
+            </h2>
+            <button @click="volverAlListado" class="btn-back">
+              <ArrowLeft :size="18" />
+              Volver
             </button>
           </div>
-        </div>
 
-        <div v-if="categoriasSeleccionadas.length > 0" class="card-modern slide-in">
-          <div class="card-header">
-            <div class="card-icon"><Scissors :size="20" /></div>
-            <h3>Servicios</h3>
-          </div>
-          
-          <div v-if="serviciosFiltrados.length === 0" class="no-resultados">
-            <Inbox class="no-resultados-icon" :size="48" />
-            <p>No hay servicios en esta categoría</p>
-          </div>
-          
-          <div v-else class="grid-servicios">
-            <div 
-              v-for="servicio in serviciosFiltrados" 
-              :key="servicio.id"
-              class="card-servicio"
-              :class="{ 'servicio-active': form.servicios_ids.includes(servicio.id) }"
-              @click="toggleServicio(servicio)"
-            >
-              <div class="servicio-check">
-                <Check v-if="form.servicios_ids.includes(servicio.id)" :size="16" />
-              </div>
-              <div class="servicio-content">
-                <span class="servicio-nombre">{{ servicio.nombre }}</span>
-                <div class="servicio-details">
-                  <span class="servicio-precio">${{ servicio.precio }}</span>
-                  <span class="servicio-duracion">{{ servicio.duracion }}m</span>
+          <div class="card-modern">
+            <div class="card-header">
+              <div class="card-icon"><Users :size="20" /></div>
+              <h3>Cliente</h3>
+            </div>
+            
+            <div class="input-group">
+              <div class="row-search">
+                <div class="search-wrapper">
+                  <Search class="search-icon" :size="18" />
+                  <input
+                    type="text"
+                    :value="form.cliente ? form.clienteNombre : busquedaCliente"
+                    @input="actualizarBusquedaCliente"
+                    :placeholder="form.cliente ? '' : 'Buscar por nombre o DNI...'"
+                    :class="['input-modern', { 'cliente-activo': form.cliente }]"
+                    :readonly="form.cliente !== null"
+                  />
+                  <button v-if="form.cliente" @click="limpiarCliente" class="btn-icon-clean">
+                    <X :size="16" />
+                  </button>
                 </div>
+                
+                <button @click="irARegistrarCliente" class="btn-nuevo">
+                  <Plus :size="18" /> Nuevo
+                </button>
+              </div>
+
+              <ul v-if="clientesSugeridos.length && !form.cliente" class="lista-sugerencias">
+                <li v-for="c in clientesSugeridos" :key="c.id" @click="seleccionarCliente(c)" class="item-sugerencia">
+                  <div class="avatar-mini"><User :size="14" /></div>
+                  <div class="sugerencia-info">
+                    <strong>{{ getNombreCompletoCliente(c) }}</strong>
+                    <small> - DNI: {{ c.dni || '---' }}</small>
+                  </div>
+                </li>
+              </ul>
+              
+              <div v-if="errorCliente" class="msg-error">
+                <AlertCircle :size="14" /> {{ errorCliente }}
               </div>
             </div>
           </div>
-        </div>
 
-        <div v-if="form.servicios_ids.length > 0" class="card-modern slide-in">
-          <div class="card-header">
-            <div class="card-icon"><UserCheck :size="20" /></div>
-            <h3>Profesional</h3>
-          </div>
-          
-          <div class="profesionales-grid">
-            <div 
-              v-for="p in peluqueros" 
-              :key="p.id"
-              class="profesional-card"
-              :class="{ 
-                'profesional-selected': form.peluquero === p.id,
-                'profesional-disabled': p.id === form.cliente
-              }"
-              @click="p.id !== form.cliente ? seleccionarPeluquero(p.id) : null"
-            >
-              <div class="profesional-avatar">
-                <User :size="24" />
-              </div>
-              <div class="profesional-info">
-                <div class="profesional-nombre">{{ p.nombre }} {{ p.apellido || '' }}</div>
-                <div v-if="p.id === form.cliente" class="profesional-badge-cliente">Es el cliente</div>
-                <div v-else-if="form.peluquero === p.id" class="profesional-badge-selected">✓ Seleccionado</div>
-              </div>
+          <div v-if="form.cliente" class="card-modern slide-in">
+            <div class="card-header">
+              <div class="card-icon"><FolderOpen :size="20" /></div>
+              <h3>Categoría</h3>
             </div>
-          </div>
-          
-          <div v-if="form.peluquero === form.cliente && form.cliente" class="msg-error mt-2">
-            <AlertCircle :size="14" /> No puedes seleccionar al mismo profesional como cliente.
-          </div>
-        </div>
-
-        <div v-if="form.peluquero && form.peluquero !== form.cliente" class="card-modern slide-in">
-          <div class="card-header">
-            <div class="card-icon"><CalendarDays :size="20" /></div>
-            <h3>Fecha</h3>
-          </div>
-          
-          <div class="calendar-wrapper">
-            <div class="calendar-header">
-              <button @click="cambiarMes(-1)" class="btn-nav-cal"><ChevronLeft :size="20" /></button>
-              <span class="mes-titulo">{{ nombreMesActual }} {{ currentYear }}</span>
-              <button @click="cambiarMes(1)" class="btn-nav-cal"><ChevronRight :size="20" /></button>
-            </div>
-
-            <div class="calendar-days-header">
-              <span v-for="d in ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']" :key="d">{{ d }}</span>
-            </div>
-
-            <div class="calendar-grid">
-              <div v-for="i in startingDayOfWeek" :key="'empty-'+i" class="day-empty"></div>
+            <div class="grid-chips">
               <button 
-                v-for="day in daysInMonth" 
-                :key="day"
-                class="day-btn"
-                :class="{
-                  'day-today': esHoy(day),
-                  'day-selected': esDiaSeleccionado(day),
-                  'day-disabled': !esDiaSeleccionable(day)
-                }"
-                :disabled="!esDiaSeleccionable(day)"
-                @click="seleccionarDiaCalendario(day)"
+                v-for="categoria in categorias" 
+                :key="categoria.id"
+                class="chip-modern"
+                :class="{ 'chip-active': categoriasSeleccionadas.includes(categoria.id) }"
+                @click="toggleCategoria(categoria.id)"
               >
-                {{ day }}
-                <span v-if="esHoy(day)" class="badge-today">HOY</span>
+                <Tag :size="14" /> {{ categoria.nombre }}
               </button>
             </div>
           </div>
-        </div>
 
-        <div v-if="form.fecha" class="card-modern slide-in">
-          <div class="card-header">
-            <div class="card-icon"><Clock :size="20" /></div>
-            <h3>Horarios Disponibles</h3>
-          </div>
-          
-          <div v-if="cargandoHorarios" class="loading-spinner">
-            <Loader2 class="spinner-icon" :size="32" />
-            <p>Calculando disponibilidad...</p>
-          </div>
-          
-          <div v-else-if="horariosGenerados.length === 0" class="no-resultados">
-            <Clock class="no-resultados-icon" :size="48" />
-            <p>Local Cerrado en esta fecha</p>
-          </div>
-          
-          <div v-else class="grid-horarios">
-            <div
-              v-for="hora in horariosGenerados"
-              :key="hora"
-              class="hora-card"
-              :class="{
-                'hora-selected': form.hora === hora,
-                'hora-disponible': esHorarioDisponible(hora),
-                'hora-ocupada': !esHorarioDisponible(hora)
-              }"
-              @click="esHorarioDisponible(hora) ? seleccionarHora(hora) : null"
-            >
-              <div class="hora-icono">
-                <Clock v-if="esHorarioDisponible(hora)" :size="16" />
-                <X v-else :size="18" />
-              </div>
-              <span class="hora-texto">{{ hora }}</span>
-              <span v-if="!esHorarioDisponible(hora)" class="etiqueta-ocupado">OCUPADO</span>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="form.hora" class="card-modern slide-in">
-          <div class="card-header">
-            <div class="card-icon"><Receipt :size="20" /></div>
-            <h3>Confirmación y Pago</h3>
-          </div>
-
-          <div class="resumen-grid">
-            <div class="resumen-item total">
-              <span>Total a Pagar:</span>
-              <strong>${{ calcularTotal() }}</strong>
-            </div>
-          </div>
-
-          <div class="pago-section">
-            <div class="pago-options">
-              <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'SENA_50' }">
-                <input type="radio" v-model="form.tipo_pago" value="SENA_50" class="hidden-radio">
-                <div class="radio-content">
-                  <span>Seña 50%</span>
-                  <strong>${{ calcularSena() }}</strong>
-                </div>
-              </label>
-              <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'TOTAL' }">
-                <input type="radio" v-model="form.tipo_pago" value="TOTAL" class="hidden-radio">
-                <div class="radio-content">
-                  <span>Pago Total</span>
-                  <strong>${{ calcularTotal() }}</strong>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          <div class="pago-detalles">
-            <div class="input-group">
-              <label class="label-modern">Medio de Pago</label>
-              <select v-model="form.medio_pago" class="select-modern">
-                <option value="EFECTIVO">💵 Efectivo</option>
-                <!-- 🔥 CORRECCIÓN: 'MERCADO_PAGO' con guión bajo -->
-                <option value="MERCADO_PAGO">🔵 Mercado Pago (QR/Link)</option>
-                <option value="TRANSFERENCIA">🏦 Transferencia Bancaria</option>
-              </select>
+          <div v-if="categoriasSeleccionadas.length > 0" class="card-modern slide-in">
+            <div class="card-header">
+              <div class="card-icon"><Scissors :size="20" /></div>
+              <h3>Servicios</h3>
             </div>
             
-            <div v-if="form.medio_pago !== 'EFECTIVO'" class="datos-transferencia-container slide-in">
-              
-              <!-- Solo mostrar select de entidad para TRANSFERENCIA -->
-              <div class="input-group" v-if="form.medio_pago === 'TRANSFERENCIA'">
-                <label class="label-modern">Billetera / Banco de Origen</label>
-                <select v-model="form.entidad_pago" class="select-modern">
-                  <option value="" disabled selected>Seleccione entidad...</option>
-                  <!-- 🔥 CORRECCIÓN: 'MERCADO_PAGO' con guión bajo -->
-                  <option value="MERCADO_PAGO">Mercado Pago (Envío dinero)</option>
-                  <option value="UALA">Ualá</option>
-                  <option value="CUENTADNI">Cuenta DNI</option>
-                  <option value="BRUBANK">Brubank</option>
-                  <option value="LEMON">Lemon Cash</option>
-                  <option value="NARANJAX">Naranja X</option>
-                  <option value="MODO">MODO</option>
-                  <option value="SANTANDER">Santander</option>
-                  <option value="GALICIA">Galicia</option>
-                  <option value="BBVA">BBVA</option>
-                  <option value="MACRO">Macro</option>
-                  <option value="OTRO">Otro</option>
+            <div v-if="serviciosFiltrados.length === 0" class="no-resultados">
+              <Inbox class="no-resultados-icon" :size="48" />
+              <p>No hay servicios en esta categoría</p>
+            </div>
+            
+            <div v-else class="grid-servicios">
+              <div 
+                v-for="servicio in serviciosFiltrados" 
+                :key="servicio.id"
+                class="card-servicio"
+                :class="{ 'servicio-active': form.servicios_ids.includes(servicio.id) }"
+                @click="toggleServicio(servicio)"
+              >
+                <div class="servicio-check">
+                  <Check v-if="form.servicios_ids.includes(servicio.id)" :size="16" />
+                </div>
+                <div class="servicio-content">
+                  <span class="servicio-nombre">{{ servicio.nombre }}</span>
+                  <div class="servicio-details">
+                    <span class="servicio-precio">${{ servicio.precio }}</span>
+                    <span class="servicio-duracion">{{ servicio.duracion }}m</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="form.servicios_ids.length > 0" class="card-modern slide-in">
+            <div class="card-header">
+              <div class="card-icon"><UserCheck :size="20" /></div>
+              <h3>Profesional</h3>
+            </div>
+            
+            <div class="profesionales-grid">
+              <div 
+                v-for="p in peluqueros" 
+                :key="p.id"
+                class="profesional-card"
+                :class="{ 
+                  'profesional-selected': form.peluquero === p.id,
+                  'profesional-disabled': p.id === form.cliente
+                }"
+                @click="p.id !== form.cliente ? seleccionarPeluquero(p.id) : null"
+              >
+                <div class="profesional-avatar">
+                  <User :size="24" />
+                </div>
+                <div class="profesional-info">
+                  <div class="profesional-nombre">{{ p.nombre }} {{ p.apellido || '' }}</div>
+                  <div v-if="p.id === form.cliente" class="profesional-badge-cliente">Es el cliente</div>
+                  <div v-else-if="form.peluquero === p.id" class="profesional-badge-selected">✓ Seleccionado</div>
+                </div>
+              </div>
+            </div>
+            
+            <div v-if="form.peluquero === form.cliente && form.cliente" class="msg-error mt-2">
+              <AlertCircle :size="14" /> No puedes seleccionar al mismo profesional como cliente.
+            </div>
+          </div>
+
+          <div v-if="form.peluquero && form.peluquero !== form.cliente" class="card-modern slide-in">
+            <div class="card-header">
+              <div class="card-icon"><CalendarDays :size="20" /></div>
+              <h3>Fecha</h3>
+            </div>
+            
+            <div class="calendar-wrapper">
+              <div class="calendar-header">
+                <button @click="cambiarMes(-1)" class="btn-nav-cal"><ChevronLeft :size="20" /></button>
+                <span class="mes-titulo">{{ nombreMesActual }} {{ currentYear }}</span>
+                <button @click="cambiarMes(1)" class="btn-nav-cal"><ChevronRight :size="20" /></button>
+              </div>
+
+              <div class="calendar-days-header">
+                <span v-for="d in ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']" :key="d">{{ d }}</span>
+              </div>
+
+              <div class="calendar-grid">
+                <div v-for="i in startingDayOfWeek" :key="'empty-'+i" class="day-empty"></div>
+                <button 
+                  v-for="day in daysInMonth" 
+                  :key="day"
+                  class="day-btn"
+                  :class="{
+                    'day-today': esHoy(day),
+                    'day-selected': esDiaSeleccionado(day),
+                    'day-disabled': !esDiaSeleccionable(day)
+                  }"
+                  :disabled="!esDiaSeleccionable(day)"
+                  @click="seleccionarDiaCalendario(day)"
+                >
+                  {{ day }}
+                  <span v-if="esHoy(day)" class="badge-today">HOY</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="form.fecha" class="card-modern slide-in">
+            <div class="card-header">
+              <div class="card-icon"><Clock :size="20" /></div>
+              <h3>Horarios Disponibles</h3>
+            </div>
+            
+            <div v-if="cargandoHorarios" class="loading-spinner">
+              <Loader2 class="spinner-icon" :size="32" />
+              <p>Calculando disponibilidad...</p>
+            </div>
+            
+            <div v-else-if="horariosGenerados.length === 0" class="no-resultados">
+              <Clock class="no-resultados-icon" :size="48" />
+              <p>Local Cerrado en esta fecha</p>
+            </div>
+            
+            <div v-else class="grid-horarios">
+              <div
+                v-for="hora in horariosGenerados"
+                :key="hora"
+                class="hora-card"
+                :class="{
+                  'hora-selected': form.hora === hora,
+                  'hora-disponible': esHorarioDisponibleCompleto(hora),
+                  'hora-ocupada': !esHorarioDisponibleCompleto(hora)
+                }"
+                @click="esHorarioDisponibleCompleto(hora) ? seleccionarHora(hora) : null"
+              >
+                <div class="hora-icono">
+                  <Clock v-if="esHorarioDisponibleCompleto(hora)" :size="16" />
+                  <X v-else :size="18" />
+                </div>
+                <span class="hora-texto">{{ hora }}</span>
+                <span v-if="!esHorarioDisponibleCompleto(hora)" class="etiqueta-ocupado">OCUPADO</span>
+              </div>
+            </div>
+          </div>
+          <div v-if="form.hora" class="card-modern slide-in">
+            <div class="card-header">
+              <div class="card-icon"><Receipt :size="20" /></div>
+              <h3>Confirmación y Pago</h3>
+            </div>
+
+            <div class="resumen-grid">
+              <div class="resumen-item total">
+                <span>Total a Pagar:</span>
+                <strong>${{ calcularTotal() }}</strong>
+              </div>
+            </div>
+
+            <div class="pago-section">
+              <div class="pago-options">
+                <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'SENA_50' }">
+                  <input type="radio" v-model="form.tipo_pago" value="SENA_50" class="hidden-radio">
+                  <div class="radio-content">
+                    <span>Seña 50%</span>
+                    <strong>${{ calcularSena() }}</strong>
+                  </div>
+                </label>
+                <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'TOTAL' }">
+                  <input type="radio" v-model="form.tipo_pago" value="TOTAL" class="hidden-radio">
+                  <div class="radio-content">
+                    <span>Pago Total</span>
+                    <strong>${{ calcularTotal() }}</strong>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div class="pago-detalles">
+              <div class="input-group">
+                <label class="label-modern">Medio de Pago</label>
+                <select v-model="form.medio_pago" class="select-modern">
+                  <option value="EFECTIVO">💵 Efectivo</option>
+                  <option value="MERCADO_PAGO">🔵 Mercado Pago (QR/Link)</option>
+                  <option value="TRANSFERENCIA">🏦 Transferencia Bancaria</option>
                 </select>
               </div>
+              
+              <div v-if="form.medio_pago !== 'EFECTIVO'" class="datos-transferencia-container slide-in">
+                
+                <div class="input-group" v-if="form.medio_pago === 'TRANSFERENCIA'">
+                  <label class="label-modern">Billetera / Banco de Origen</label>
+                  <select v-model="form.entidad_pago" class="select-modern">
+                    <option value="" disabled selected>Seleccione entidad...</option>
+                    <option value="UALA">Ualá</option>
+                    <option value="BRUBANK">Brubank</option>
+                    <option value="LEMON">Lemon Cash</option>
+                    <option value="NARANJAX">Naranja X</option>
+                    <option value="MODO">MODO</option>
+                    <option value="SANTANDER">Santander</option>
+                    <option value="GALICIA">Galicia</option>
+                    <option value="BBVA">BBVA</option>
+                    <option value="MACRO">Macro</option>
+                    <option value="OTRO">Otro</option>
+                  </select>
+                </div>
 
-              <!-- Campo de código de transacción -->
-              <div class="input-group">
-                <label class="label-modern">
-                  {{ form.medio_pago === 'MERCADO_PAGO' ? 'ID Transacción Mercado Pago *' : 'Código de Comprobante *' }}
-                </label>
-                
-                <input 
-                  type="text" 
-                  v-model="form.codigo_transaccion" 
-                  class="input-modern" 
-                  :placeholder="form.medio_pago === 'MERCADO_PAGO' ? 'Ej: #145025893768' : 'Ej: A123B456789'"
-                  :maxlength="maxCodigoLength"
-                  :class="{ 'input-error': errorValidacion && !form.codigo_transaccion }"
-                />
-                
-                <small class="helper-text">
-                  <Info :size="12" /> 
-                  {{ form.medio_pago === 'MERCADO_PAGO' ? 'ID de operación MP (Ej: #123...). Máx 14.' : 'Código del comprobante bancario. Máx 25.' }}
-                </small>
-                <div v-if="errorValidacion && !form.codigo_transaccion" class="msg-error small">
-                  El código es obligatorio.
+                <div class="input-group">
+                  <label class="label-modern">
+                    {{ form.medio_pago === 'MERCADO_PAGO' ? 'ID Transacción Mercado Pago *' : 'Código de Comprobante *' }}
+                  </label>
+                  
+                  <input 
+                    type="text" 
+                    v-model="form.codigo_transaccion" 
+                    class="input-modern" 
+                    :placeholder="form.medio_pago === 'MERCADO_PAGO' ? 'Ej: #145025893768' : 'Ej: A123B456789'"
+                    :maxlength="maxCodigoLength"
+                    :class="{ 'input-error': errorValidacion && !form.codigo_transaccion }"
+                  />
+                  
+                  <small class="helper-text">
+                    <Info :size="12" /> 
+                    {{ form.medio_pago === 'MERCADO_PAGO' ? 'ID de operación MP (Ej: #123...). Máx 14.' : 'Código del comprobante bancario. Máx 25.' }}
+                  </small>
+                  <div v-if="errorValidacion && !form.codigo_transaccion" class="msg-error small">
+                    El código es obligatorio.
+                  </div>
                 </div>
               </div>
             </div>
+
+            <button 
+              @click="crearTurno" 
+              class="btn-confirmar-premium"
+              :disabled="procesando"
+            >
+              <span v-if="!procesando">Confirmar Reserva</span>
+              <span v-else>Procesando...</span>
+            </button>
           </div>
 
-          <button 
-            @click="crearTurno" 
-            class="btn-confirmar-premium"
-            :disabled="procesando"
-          >
-            <span v-if="!procesando">Confirmar Reserva</span>
-            <span v-else>Procesando...</span>
-          </button>
+          <transition name="fade">
+            <div v-if="mensaje" class="toast-message" :class="mensajeTipo">
+              <component :is="mensajeTipo === 'success' ? CheckCircle : AlertCircle" :size="18" />
+              {{ mensaje }}
+            </div>
+          </transition>
+
+          <transition name="fade">
+            <div v-if="mostrarModalRegistro" class="modal-overlay">
+              <div class="modal-container">
+                <div class="modal-header">
+                  <h3>📝 Registrar Nuevo Cliente</h3>
+                  <button @click="cerrarModalRegistro" class="modal-close-btn">
+                    <X :size="20" />
+                  </button>
+                </div>
+                
+                <div class="modal-body">
+                  <div class="form-grid">
+                    <div class="input-group">
+                      <label class="label-modern">Nombre *</label>
+                      <input type="text" v-model="formNuevoCliente.nombre" class="input-modern" placeholder="Ej: Juan" :class="{ 'input-error': erroresCliente.nombre }" />
+                      <div v-if="erroresCliente.nombre" class="msg-error small">{{ erroresCliente.nombre }}</div>
+                    </div>
+                    <div class="input-group">
+                      <label class="label-modern">Apellido *</label>
+                      <input type="text" v-model="formNuevoCliente.apellido" class="input-modern" placeholder="Ej: Pérez" :class="{ 'input-error': erroresCliente.apellido }" />
+                      <div v-if="erroresCliente.apellido" class="msg-error small">{{ erroresCliente.apellido }}</div>
+                    </div>
+                    <div class="input-group">
+                      <label class="label-modern">DNI *</label>
+                      <input type="text" v-model="formNuevoCliente.dni" class="input-modern" placeholder="Ej: 12345678" :class="{ 'input-error': erroresCliente.dni }" />
+                      <div v-if="erroresCliente.dni" class="msg-error small">{{ erroresCliente.dni }}</div>
+                    </div>
+                    <div class="input-group">
+                      <label class="label-modern">Teléfono</label>
+                      <input type="text" v-model="formNuevoCliente.telefono" class="input-modern" placeholder="Ej: +541123456789" />
+                    </div>
+                    <div class="input-group">
+                      <label class="label-modern">Email *</label>
+                      <input type="email" v-model="formNuevoCliente.correo" class="input-modern" placeholder="Ej: cliente@email.com" :class="{ 'input-error': erroresCliente.correo }" />
+                      <div v-if="erroresCliente.correo" class="msg-error small">{{ erroresCliente.correo }}</div>
+                    </div>
+                    <div class="input-group">
+                      <label class="label-modern">Contraseña *</label>
+                      <input type="password" v-model="formNuevoCliente.contrasena" class="input-modern" placeholder="Mínimo 6 caracteres" :class="{ 'input-error': erroresCliente.contrasena }" />
+                      <div v-if="erroresCliente.contrasena" class="msg-error small">{{ erroresCliente.contrasena }}</div>
+                    </div>
+                  </div>
+                  
+                  <div v-if="errorCrearCliente" class="msg-error mt-3">
+                    <AlertCircle :size="14" /> {{ errorCrearCliente }}
+                  </div>
+                </div>
+                
+                <div class="modal-footer">
+                  <button @click="cerrarModalRegistro" class="btn-secondary">Cancelar</button>
+                  <button @click="crearClienteDesdeTurno" class="btn-primary" :disabled="creandoCliente">
+                    <span v-if="!creandoCliente">Registrar Cliente</span>
+                    <span v-else>Registrando...</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </transition>
         </div>
-
-        <transition name="fade">
-          <div v-if="mensaje" class="toast-message" :class="mensajeTipo">
-            <component :is="mensajeTipo === 'success' ? CheckCircle : AlertCircle" :size="18" />
-            {{ mensaje }}
-          </div>
-        </transition>
-
-        <transition name="fade">
-          <div v-if="mostrarModalRegistro" class="modal-overlay">
-            <div class="modal-container">
-              <div class="modal-header">
-                <h3>📝 Registrar Nuevo Cliente</h3>
-                <button @click="cerrarModalRegistro" class="modal-close-btn">
-                  <X :size="20" />
-                </button>
-              </div>
-              
-              <div class="modal-body">
-                <div class="form-grid">
-                  <div class="input-group">
-                    <label class="label-modern">Nombre *</label>
-                    <input type="text" v-model="formNuevoCliente.nombre" class="input-modern" placeholder="Ej: Juan" :class="{ 'input-error': erroresCliente.nombre }" />
-                    <div v-if="erroresCliente.nombre" class="msg-error small">{{ erroresCliente.nombre }}</div>
-                  </div>
-                  <div class="input-group">
-                    <label class="label-modern">Apellido *</label>
-                    <input type="text" v-model="formNuevoCliente.apellido" class="input-modern" placeholder="Ej: Pérez" :class="{ 'input-error': erroresCliente.apellido }" />
-                    <div v-if="erroresCliente.apellido" class="msg-error small">{{ erroresCliente.apellido }}</div>
-                  </div>
-                  <div class="input-group">
-                    <label class="label-modern">DNI *</label>
-                    <input type="text" v-model="formNuevoCliente.dni" class="input-modern" placeholder="Ej: 12345678" :class="{ 'input-error': erroresCliente.dni }" />
-                    <div v-if="erroresCliente.dni" class="msg-error small">{{ erroresCliente.dni }}</div>
-                  </div>
-                  <div class="input-group">
-                    <label class="label-modern">Teléfono</label>
-                    <input type="text" v-model="formNuevoCliente.telefono" class="input-modern" placeholder="Ej: +541123456789" />
-                  </div>
-                  <div class="input-group">
-                    <label class="label-modern">Email *</label>
-                    <input type="email" v-model="formNuevoCliente.correo" class="input-modern" placeholder="Ej: cliente@email.com" :class="{ 'input-error': erroresCliente.correo }" />
-                    <div v-if="erroresCliente.correo" class="msg-error small">{{ erroresCliente.correo }}</div>
-                  </div>
-                  <div class="input-group">
-                    <label class="label-modern">Contraseña *</label>
-                    <input type="password" v-model="formNuevoCliente.contrasena" class="input-modern" placeholder="Mínimo 6 caracteres" :class="{ 'input-error': erroresCliente.contrasena }" />
-                    <div v-if="erroresCliente.contrasena" class="msg-error small">{{ erroresCliente.contrasena }}</div>
-                  </div>
-                </div>
-                
-                <div v-if="errorCrearCliente" class="msg-error mt-3">
-                  <AlertCircle :size="14" /> {{ errorCrearCliente }}
-                </div>
-              </div>
-              
-              <div class="modal-footer">
-                <button @click="cerrarModalRegistro" class="btn-secondary">Cancelar</button>
-                <button @click="crearClienteDesdeTurno" class="btn-primary" :disabled="creandoCliente">
-                  <span v-if="!creandoCliente">Registrar Cliente</span>
-                  <span v-else>Registrando...</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </transition>
       </div>
     </div>
   </div>
@@ -398,9 +405,19 @@ import {
   CalendarDays, ChevronLeft, ChevronRight, Info, Loader2, Receipt, 
   CheckCircle2, Bell, Banknote, FileText, Inbox, CheckCircle, CreditCard, Wallet
 } from 'lucide-vue-next'
+import Swal from 'sweetalert2'
 
 const router = useRouter()
 const API_URL = "http://localhost:8000/api"
+
+// 🔥 FUNCIÓN PARA OBTENER HEADERS CON TOKEN
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token')
+  return {
+    "Content-Type": "application/json",
+    "Authorization": token ? `Token ${token}` : ''
+  }
+}
 
 const form = ref({
   canal: 'PRESENCIAL',
@@ -422,35 +439,42 @@ const peluqueros = ref([])
 const busquedaCliente = ref("")
 const clientesSugeridos = ref([])
 const categoriasSeleccionadas = ref([])
-const slotsOcupadosReales = ref([])
+const slotsOcupadosReales = ref([]) // 🔥 Ahora guarda TODOS los minutos ocupados
 const currentDate = ref(new Date())
 const errorCliente = ref("")
 const mensaje = ref("")
 const mensajeTipo = ref("success")
 const procesando = ref(false)
 const cargandoHorarios = ref(false)
-const errorValidacion = ref(false) 
+const errorValidacion = ref(false)
+const cargandoDatos = ref(true) // 🔥 NUEVO: estado de carga
 
 const intervaloMinutos = 20
 const STORAGE_KEY = 'turno_presencial_context'
 
-// 🔥 CORRECCIÓN: Observador para limpiar campos con valor correcto
+// 🔥 OBSERVADOR: Recalcular disponibilidad cuando cambian los servicios
+watch(() => form.value.servicios_ids, () => {
+  if (form.value.fecha && form.value.peluquero && form.value.hora) {
+    if (!esHorarioDisponibleCompleto(form.value.hora)) {
+      form.value.hora = ""
+    }
+  }
+}, { deep: true })
+
+// 🔥 Observador para limpiar campos con valor correcto
 watch(() => form.value.medio_pago, (newVal) => {
   if (newVal === 'EFECTIVO') {
     form.value.entidad_pago = ""
     form.value.codigo_transaccion = ""
     errorValidacion.value = false
   }
-  // 🔥 CORRECCIÓN: 'MERCADO_PAGO' con guión bajo
   if (newVal === 'MERCADO_PAGO') {
     form.value.entidad_pago = "" 
   }
 })
 
-// 🔥 CORRECCIÓN: PROPIEDAD COMPUTADA PARA EL LARGO DEL CÓDIGO
+// 🔥 PROPIEDAD COMPUTADA PARA EL LARGO DEL CÓDIGO
 const maxCodigoLength = computed(() => {
-  // Si es Mercado Pago, max 14 (13 dígitos + el opcional '#')
-  // Si es otra transferencia, max 25 por las dudas
   return form.value.medio_pago === 'MERCADO_PAGO' ? 14 : 25
 })
 
@@ -492,6 +516,7 @@ const horariosGenerados = computed(() => {
   return horariosBase
 })
 
+// 🔥 CORREGIDO: cargarHorariosOcupados - Ahora guarda TODOS los minutos ocupados
 const cargarHorariosOcupados = async (fecha) => {
   if (!form.value.peluquero || form.value.peluquero === form.value.cliente) return
   
@@ -500,11 +525,10 @@ const cargarHorariosOcupados = async (fecha) => {
   slotsOcupadosReales.value = [] 
   
   try {
-    const token = localStorage.getItem('token')
     const url = `${API_URL}/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
     
     const res = await fetch(url, {
-      headers: { "Authorization": token ? `Token ${token}` : '' }
+      headers: getAuthHeaders()
     })
     
     if (!res.ok) throw new Error(`Error API: ${res.status}`)
@@ -516,7 +540,6 @@ const cargarHorariosOcupados = async (fecha) => {
     
     resultados.forEach(turno => {
       if (['CANCELADO', 'DISPONIBLE'].includes(turno.estado)) return
-
       if (turno.fecha !== fecha) return
 
       const [h, m] = turno.hora.split(':').map(Number)
@@ -534,7 +557,8 @@ const cargarHorariosOcupados = async (fecha) => {
       
       const finMin = inicioMin + duracion
       
-      for (let i = inicioMin; i < finMin; i += 20) {
+      // 🔥 GUARDAR TODOS LOS MINUTOS OCUPADOS (no solo slots de 20 min)
+      for (let i = inicioMin; i < finMin; i++) {
         const hh = Math.floor(i / 60).toString().padStart(2, '0')
         const mm = (i % 60).toString().padStart(2, '0')
         ocupadosSet.add(`${hh}:${mm}`)
@@ -550,21 +574,67 @@ const cargarHorariosOcupados = async (fecha) => {
   }
 }
 
-const esHorarioDisponible = (hora) => {
+// 🔥 FUNCIÓN PARA UI: Verifica solo el slot inicial
+const esHorarioDisponibleUI = (hora) => {
   if (!form.value.fecha || !form.value.peluquero) return true
-  const horaSimple = hora.substring(0, 5)
-  if (slotsOcupadosReales.value.includes(horaSimple)) return false
+  
+  const [h, m] = hora.split(':').map(Number)
+  const horaString = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
+  
+  // Verificar si el slot inicial está ocupado
+  if (slotsOcupadosReales.value.some(slot => 
+      slot.startsWith(horaString.substring(0, 5)))) return false
 
   const hoy = new Date()
   const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
   
   if (form.value.fecha === hoyFormateado) {
-    const [h, m] = hora.split(':').map(Number)
-    const ahoraH = hoy.getHours()
-    const ahoraM = hoy.getMinutes()
-    if (h < ahoraH) return false
-    if (h === ahoraH && m < ahoraM) return false
+    if (h < hoy.getHours()) return false
+    if (h === hoy.getHours() && m < hoy.getMinutes()) return false
   }
+  return true
+}
+
+// 🔥 NUEVA FUNCIÓN: Verifica disponibilidad COMPLETA considerando duración
+const esHorarioDisponibleCompleto = (horaSeleccionada) => {
+  if (!form.value.fecha || !form.value.peluquero) return false
+  
+  // Calcular duración total de los servicios seleccionados
+  const duracionTotal = form.value.servicios_ids.reduce((acc, id) => {
+    const s = servicios.value.find(x => x.id === id)
+    return acc + (s ? parseInt(s.duracion) : 0)
+  }, 0)
+  
+  // Si no hay servicios seleccionados, duración mínima
+  if (duracionTotal === 0) return esHorarioDisponibleUI(horaSeleccionada)
+  
+  // Convertir hora seleccionada a minutos
+  const [h, m] = horaSeleccionada.split(':').map(Number)
+  const inicioMinutos = h * 60 + m
+  const finMinutos = inicioMinutos + duracionTotal
+  
+  // Verificar minuto por minuto si hay solapamiento
+  for (let i = inicioMinutos; i < finMinutos; i++) {
+    const horaSlot = Math.floor(i / 60).toString().padStart(2, '0')
+    const minutoSlot = (i % 60).toString().padStart(2, '0')
+    const slotActual = `${horaSlot}:${minutoSlot}`
+    
+    // Si este minuto está ocupado por otro turno, no está disponible
+    if (slotsOcupadosReales.value.some(slot => 
+        slot.startsWith(slotActual.substring(0, 5)))) {
+      return false
+    }
+  }
+  
+  // También verificar que no sea una hora pasada si es hoy
+  const hoy = new Date()
+  const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+  if (form.value.fecha === hoyFormateado) {
+    if (inicioMinutos < (hoy.getHours() * 60 + hoy.getMinutes())) {
+      return false
+    }
+  }
+  
   return true
 }
 
@@ -614,20 +684,50 @@ const cargarContexto = () => {
 
 const limpiarContexto = () => sessionStorage.removeItem(STORAGE_KEY)
 
+// 🔥 CORREGIDO: cargarDatosIniciales con headers de autenticación
 const cargarDatosIniciales = async () => {
   try {
-    const [resCat, resServ, resPel] = await Promise.all([
-      fetch(`${API_URL}/categorias/servicios/`),
-      fetch(`${API_URL}/servicios/`),
-      fetch(`${API_URL}/peluqueros/`)
+    cargandoDatos.value = true
+    
+    const headers = getAuthHeaders()
+
+    const [catRes, servRes, pelRes] = await Promise.all([
+      fetch(`${API_URL}/categorias/servicios/`, { headers }),
+      fetch(`${API_URL}/servicios/`, { headers }),
+      fetch(`${API_URL}/peluqueros/`, { headers })
     ])
-    if (!resCat.ok || !resServ.ok || !resPel.ok) throw new Error("Error cargando datos")
-    categorias.value = await resCat.json()
-    servicios.value = await resServ.json()
-    peluqueros.value = await resPel.json()
+    
+    // Verificar respuestas
+    if (!catRes.ok) throw new Error(`Error categorías: ${catRes.status}`)
+    if (!servRes.ok) throw new Error(`Error servicios: ${servRes.status}`)
+    if (!pelRes.ok) throw new Error(`Error peluqueros: ${pelRes.status}`)
+    
+    categorias.value = await catRes.json()
+    servicios.value = await servRes.json()
+    peluqueros.value = await pelRes.json()
+
+    console.log("✅ Datos cargados correctamente")
+    console.log("- Categorías:", categorias.value.length)
+    console.log("- Servicios:", servicios.value.length)
+    console.log("- Peluqueros:", peluqueros.value.length)
+
   } catch (error) {
-    mensaje.value = "Error cargando datos del servidor."
-    mensajeTipo.value = "error"
+    console.error("❌ Error en cargarDatosIniciales:", error)
+    
+    // Mostrar error específico
+    if (error.message.includes('401')) {
+      mensaje.value = "Error de autenticación. Por favor, vuelve a iniciar sesión."
+      mensajeTipo.value = "error"
+      setTimeout(() => {
+        localStorage.removeItem('token')
+        router.push('/login')
+      }, 2000)
+    } else {
+      mensaje.value = "Error cargando datos del servidor: " + error.message
+      mensajeTipo.value = "error"
+    }
+  } finally {
+    cargandoDatos.value = false
   }
 }
 
@@ -638,11 +738,16 @@ const actualizarBusquedaCliente = async (e) => {
     return
   }
   try {
-    const res = await fetch(`${API_URL}/clientes/?q=${busquedaCliente.value}`)
+    const res = await fetch(`${API_URL}/clientes/?q=${busquedaCliente.value}`, {
+      headers: getAuthHeaders()
+    })
     const data = await res.json()
     clientesSugeridos.value = data.results || data || []
     errorCliente.value = clientesSugeridos.value.length === 0 ? "No se encontraron clientes" : ""
-  } catch (e) { errorCliente.value = "Error" }
+  } catch (e) { 
+    errorCliente.value = "Error al buscar clientes" 
+    console.error("Error buscando clientes:", e)
+  }
 }
 
 const seleccionarCliente = (c) => {
@@ -738,8 +843,9 @@ const seleccionarDiaCalendario = (day) => {
   cargarHorariosOcupados(form.value.fecha)
 }
 
+// 🔥 CORREGIDO: seleccionarHora usa la verificación COMPLETA
 const seleccionarHora = (hora) => {
-  if (esHorarioDisponible(hora)) form.value.hora = hora
+  if (esHorarioDisponibleCompleto(hora)) form.value.hora = hora
 }
 
 const calcularTotal = () => {
@@ -751,19 +857,21 @@ const calcularTotal = () => {
 
 const calcularSena = () => (calcularTotal() / 2).toFixed(2)
 
-// 🔥 CORRECCIÓN COMPLETA: Función crearTurno con todos los campos correctos
+// 🔥 CORRECCIÓN COMPLETA: Función crearTurno
 const crearTurno = async () => {
-  // ✅ VALIDACIÓN DE CÓDIGO DE TRANSACCIÓN
   if (form.value.medio_pago !== 'EFECTIVO' && !form.value.codigo_transaccion) {
     errorValidacion.value = true
-    mensaje.value = "Falta el código de transacción"
-    mensajeTipo.value = "error"
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'Falta el código de transacción',
+      confirmButtonText: 'Entendido'
+    })
     return
   }
   
   errorValidacion.value = false
   procesando.value = true
-  mensaje.value = ""
   
   const duracion = form.value.servicios_ids.reduce((acc, id) => {
     const s = servicios.value.find(x => x.id === id)
@@ -773,15 +881,13 @@ const crearTurno = async () => {
   const totalCalculado = parseFloat(calcularTotal())
   const esPagoSena = form.value.tipo_pago.includes('SENA')
 
-  // 🔥 CORRECCIÓN: Lógica para determinar entidad_pago
+  // Lógica para determinar entidad_pago
   let entidadFinal = null;
-  // Para Mercado Pago, forzamos 'MERCADO_PAGO' como entidad
   if (form.value.medio_pago === 'MERCADO_PAGO') {
     entidadFinal = 'MERCADO_PAGO';
   } else if (form.value.medio_pago === 'TRANSFERENCIA') {
-    entidadFinal = form.value.entidad_pago; // Usamos el select
+    entidadFinal = form.value.entidad_pago;
   }
-  // Para EFECTIVO, entidadFinal se mantiene null
 
   const payload = {
     peluquero_id: form.value.peluquero,
@@ -795,49 +901,33 @@ const crearTurno = async () => {
     monto_total: totalCalculado,
     monto_seña: esPagoSena ? parseFloat(calcularSena()) : totalCalculado,
     duracion_total: duracion,
-    // ✅ CAMPOS PARA TRAZABILIDAD
     entidad_pago: entidadFinal,
-    // Para Mercado Pago, usamos mp_payment_id
     mp_payment_id: form.value.medio_pago === 'MERCADO_PAGO' ? form.value.codigo_transaccion : null,
-    // Para transferencias, usamos codigo_transaccion
     codigo_transaccion: form.value.medio_pago === 'TRANSFERENCIA' ? form.value.codigo_transaccion : null
   }
 
-  // 🔥 DEBUG CRÍTICO: Ver qué estamos enviando
-  console.log('=== DEBUG PAYLOAD TURNO PRESENCIAL ===');
-  console.log('Payload completo:', JSON.stringify(payload, null, 2));
-  console.log('medio_pago:', form.value.medio_pago);
-  console.log('codigo_transaccion:', form.value.codigo_transaccion);
-  console.log('entidad_pago (final):', entidadFinal);
-  console.log('mp_payment_id:', payload.mp_payment_id);
-  console.log('====================================');
-
   try {
-    const token = localStorage.getItem('token')
     const res = await fetch(`${API_URL}/turnos/crear/`, {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json", 
-        "Authorization": token ? `Token ${token}` : '' 
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(payload)
     })
     
     const data = await res.json()
     
-    // 🔥 DEBUG: Ver qué responde el servidor
-    console.log('=== DEBUG RESPUESTA SERVIDOR ===');
-    console.log('Status:', res.status);
-    console.log('Respuesta:', data);
-    console.log('==============================');
-    
     if (res.ok && (data.status === 'ok' || res.status === 201)) {
-      mensaje.value = "¡Turno Reservado con Éxito!"
-      mensajeTipo.value = "success"
+      await Swal.fire({
+        icon: 'success',
+        title: '¡Turno Reservado!',
+        text: 'El turno se ha creado exitosamente',
+        confirmButtonText: 'Aceptar',
+        timer: 2000,
+        timerProgressBar: true
+      })
+      
       limpiarContexto()
-      setTimeout(() => router.push('/turnos'), 2000)
+      router.push('/turnos')
     } else {
-      // Mostrar errores específicos del backend
       let errorMsg = "Error al crear turno"
       if (data.message) errorMsg = data.message
       if (data.errors) {
@@ -845,12 +935,20 @@ const crearTurno = async () => {
           .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`)
           .join('; ')
       }
-      mensaje.value = errorMsg
-      mensajeTipo.value = "error"
+      await Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: errorMsg,
+        confirmButtonText: 'Entendido'
+      })
     }
   } catch (e) {
-    mensaje.value = "Error de conexión: " + e.message
-    mensajeTipo.value = "error"
+    await Swal.fire({
+      icon: 'error',
+      title: 'Error de conexión',
+      text: e.message,
+      confirmButtonText: 'Entendido'
+    })
     console.error('Error completo:', e)
   } finally {
     procesando.value = false
@@ -862,13 +960,12 @@ const volverAlListado = () => {
   router.push('/turnos')
 }
 
+// No necesitas estas variables si no las usas
 const mostrarModalRegistro = ref(false)
 const creandoCliente = ref(false)
 const errorCrearCliente = ref("")
 const formNuevoCliente = ref({ nombre: "", apellido: "", dni: "", telefono: "", correo: "", contrasena: "" })
 const erroresCliente = ref({ nombre: "", apellido: "", dni: "", correo: "", contrasena: "" })
-const crearClienteDesdeTurno = async () => {} 
-const cerrarModalRegistro = () => { mostrarModalRegistro.value = false }
 
 onMounted(() => {
   const urlParams = new URLSearchParams(window.location.search)
@@ -884,6 +981,14 @@ onMounted(() => {
     cargarContexto()
     window.history.replaceState({}, '', window.location.pathname)
   }
+  
+  // Verificar token antes de cargar
+  const token = localStorage.getItem('token')
+  if (!token) {
+    router.push('/login')
+    return
+  }
+  
   cargarDatosIniciales()
 })
 

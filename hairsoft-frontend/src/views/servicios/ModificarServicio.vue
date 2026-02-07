@@ -134,7 +134,7 @@
           <div class="card-icon">
             <FileText :size="20" />
           </div>
-          <h3>Descripción</h3>
+          <h3>Descripción (Opcional)</h3>
         </div>
         <div class="input-group full-width">
           <textarea
@@ -219,11 +219,16 @@ const validarDuracion = () => {
 const cargarDatosIniciales = async () => {
   cargandoDatos.value = true
   try {
-    const resCat = await axios.get(`${API_BASE}/usuarios/api/categorias/servicios/`)
+    // ✅ CORRECCIÓN: URLs actualizadas sin "/usuarios/"
+    const [resCat, resServ] = await Promise.all([
+      axios.get(`${API_BASE}/api/categorias/servicios/`),
+      axios.get(`${API_BASE}/api/servicios/${servicioId}/`)
+    ])
+    
     categorias.value = resCat.data
-
-    const resServ = await axios.get(`${API_BASE}/usuarios/api/servicios/${servicioId}/`)
     const s = resServ.data
+    
+    console.log('Datos del servicio cargados:', s) // Para debug
     
     form.nombre = s.nombre
     form.precio = s.precio
@@ -233,8 +238,13 @@ const cargarDatosIniciales = async () => {
     form.descripcion = s.descripcion || ''
 
   } catch (err) {
-    console.error('Error cargando:', err)
-    Swal.fire('Error', 'No se pudo cargar el servicio.', 'error')
+    console.error('Error cargando datos:', err.response || err)
+    Swal.fire({
+      icon: 'error', 
+      title: 'Error', 
+      text: 'No se pudo cargar el servicio.',
+      confirmButtonColor: '#007bff'
+    })
     router.push('/servicios')
   } finally {
     cargandoDatos.value = false
@@ -243,24 +253,50 @@ const cargarDatosIniciales = async () => {
 
 const actualizarServicio = async () => {
   validarNombre(); validarPrecio(); validarDuracion();
-  if (errores.nombre || errores.precio) return
+  
+  if (errores.nombre || errores.precio) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Formulario incompleto',
+      text: 'Por favor corrige los errores antes de continuar.',
+      confirmButtonColor: '#007bff'
+    })
+    return
+  }
 
   cargandoGuardado.value = true
+  
+  const payload = {
+    nombre: form.nombre.trim(),
+    precio: form.precio,
+    porcentaje_comision: form.porcentaje_comision || 0,
+    duracion: form.duracion,
+    categoria: form.categoria || null,
+    descripcion: form.descripcion.trim() || ''
+  }
+
   try {
-    const payload = { ...form }
-    
-    // ✅ CORREGIDO: Usamos PUT en lugar de POST para actualizar
-    await axios.put(`${API_BASE}/usuarios/api/servicios/editar/${servicioId}/`, payload)
+    // ✅ CORRECCIÓN: URL actualizada y usando POST (no PUT)
+    await axios.post(`${API_BASE}/api/servicios/editar/${servicioId}/`, payload)
     
     Swal.fire({
-      icon: 'success', title: '¡Actualizado!',
+      icon: 'success', 
+      title: '¡Actualizado!',
       text: 'Servicio modificado con éxito',
-      showConfirmButton: false, timer: 1500
+      showConfirmButton: false, 
+      timer: 1500,
+      confirmButtonColor: '#007bff'
     })
+    
     setTimeout(() => router.push('/servicios'), 1500)
   } catch (err) {
-    console.error(err)
-    Swal.fire('Error', 'No se pudo guardar los cambios', 'error')
+    console.error('Error actualizando servicio:', err.response?.data || err)
+    Swal.fire({
+      icon: 'error', 
+      title: 'Error', 
+      text: err.response?.data?.message || 'No se pudo guardar los cambios',
+      confirmButtonColor: '#007bff'
+    })
   } finally {
     cargandoGuardado.value = false
   }
@@ -269,10 +305,14 @@ const actualizarServicio = async () => {
 const cancelar = () => router.push('/servicios')
 
 onMounted(() => cargarDatosIniciales())
+
+// Limitar descripción a 500 caracteres
+watch(() => form.descripcion, (nuevo) => {
+  if (nuevo.length > 500) form.descripcion = nuevo.substring(0, 500)
+})
 </script>
 
 <style scoped>
-/* ESTILOS EXACTOS TUYOS (SIN CAMBIOS) */
 .servicio-container { max-width: 1000px; margin: 0 auto; padding: 25px; background: #fff; border-radius: 16px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12); font-family: 'Segoe UI', sans-serif; }
 .header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #f1f3f4; }
 .header-section h2 { margin: 0; color: #1a1a1a; font-size: 1.8em; font-weight: 700; display: flex; align-items: center; gap: 12px; }

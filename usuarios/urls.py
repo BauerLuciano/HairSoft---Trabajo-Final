@@ -1,16 +1,17 @@
-from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
+# Importamos tus vistas basadas en funciones (donde escribimos el código nuevo)
 from . import views as func_views
 
+# Importamos las vistas basadas en clases (para lo que no hemos tocado)
 from .api_views import (
     AuditoriaViewSet,
     PedidoWebViewSet,
-    ServicioListAPIView,
-    ServicioCreateAPIView,
-    ServicioUpdateAPIView,
-    ServicioToggleEstadoView,
+    # ServicioListAPIView,  <-- YA NO USAMOS ESTAS PARA SERVICIOS
+    # ServicioCreateAPIView, <-- YA NO USAMOS ESTAS PARA SERVICIOS
+    # ServicioUpdateAPIView, <-- YA NO USAMOS ESTAS PARA SERVICIOS
+    # ServicioToggleEstadoView, <-- YA NO USAMOS ESTAS PARA SERVICIOS
     ProductoCatalogoView,
     ReporteLiquidacionView,
     ReporteLiquidacionPDFView,
@@ -104,15 +105,19 @@ urlpatterns = [
     path('api/peluqueros/', func_views.listado_peluqueros, name='listado_peluqueros'),
 
     # ================================
-    # ✂️ SERVICIOS
+    # ✂️ SERVICIOS (✅ CORREGIDO - AHORA USA func_views)
     # ================================
+    # 1. Listado de Categorías (Para el select)
     path('api/categorias/servicios/', func_views.listado_categorias_servicios, name='listado_categorias_servicios'),
-    path('api/servicios/', ServicioListAPIView.as_view(), name='listado_servicios'),
-    path('api/servicios/crear/', ServicioCreateAPIView.as_view(), name='crear_servicio'),
-    path('api/servicios/editar/<int:id>/', ServicioUpdateAPIView.as_view(), name='editar_servicio'),
-    path('api/servicios/<int:id>/', ServicioUpdateAPIView.as_view(), name='obtener_servicio'),
-    path('api/servicios/<int:id>/cambiar-estado/', ServicioToggleEstadoView.as_view(), name='cambiar_estado_servicio'),
+    
+    # 2. Servicios CRUD (Usamos tus funciones def, NO las clases viejas)
+    path('api/servicios/', func_views.listado_servicios, name='listado_servicios'),
+    path('api/servicios/crear/', func_views.crear_servicio, name='crear_servicio'),
+    path('api/servicios/editar/<int:pk>/', func_views.editar_servicio, name='editar_servicio'),
+    path('api/servicios/<int:pk>/', func_views.obtener_servicio, name='obtener_servicio'),
+    path('api/servicios/<int:pk>/cambiar-estado/', func_views.cambiar_estado_servicio, name='cambiar_estado_servicio'),
 
+    # 3. Categorías CRUD
     path('api/categorias/servicios/crear/', func_views.crear_categoria_servicio, name='crear_categoria_servicio'),
     path('api/categorias/servicios/editar/<int:pk>/', func_views.editar_categoria_servicio, name='editar_categoria_servicio'),
     path('api/categorias/servicios/eliminar/<int:pk>/', func_views.eliminar_categoria_servicio, name='eliminar_categoria_servicio'),
@@ -127,39 +132,26 @@ urlpatterns = [
     path('api/catalogo/', ProductoCatalogoView.as_view(), name='catalogo-publico'),
 
     # ================================
-    # 📅 TURNOS - SISTEMA COMPLETO DE EDICIÓN
+    # 📅 TURNOS
     # ================================
-    # ✅ Listado y creación
     path('api/turnos/', func_views.listar_turnos_general, name='listado_turnos'),
     path('api/turnos/crear/', func_views.crear_turno, name='crear_turno'),
-    
-    # ✅ Edición/Modificación (LO QUE NECESITAS)
     path('api/turnos/<int:turno_id>/modificar/', func_views.modificar_turno, name='modificar_turno'),
     path('api/turnos/<int:turno_id>/', func_views.obtener_turno_por_id, name='obtener_turno_por_id'),
-    
-    # ✅ Gestión de estado
     path('api/turnos/<int:turno_id>/completar/', func_views.completar_turno, name='completar_turno'),
     path('api/turnos/<int:turno_id>/procesar-sena/', func_views.procesar_sena_turno, name='procesar_sena_turno'),
-    
-    # ✅ Verificación de disponibilidad
     path('api/turnos/verificar-horarios/', func_views.obtener_horarios_disponibles, name='verificar_horarios'),
     path('api/turnos/verificar-disponibilidad/', func_views.verificar_disponibilidad, name='verificar_disponibilidad'),
-    
-    # ✅ Turnos personales
     path('api/turnos/mis-turnos/', func_views.mis_turnos, name='mis_turnos'),
     
-    # ✅ CANCELACIÓN UNIFICADA (Staff y Cliente usan la misma lógica con WhatsApp)
     path('api/turnos/cancelar-propio/<int:turno_id>/', func_views.cancelar_turno_unificado, name='cancelar_mi_turno'),
     path('api/turnos/<int:turno_id>/cancelar/', func_views.cancelar_turno_unificado, name='cancelar-turno'),
     path('api/turnos/<int:turno_id>/cancelar-con-reoferta/', func_views.cancelar_turno_unificado, name='cancelar_turno_con_reoferta'),
-
-    # ✅ GESTIÓN DE DINERO Y REEMBOLSOS
+    
     path('api/turnos/<int:turno_id>/actualizar-pago/', func_views.actualizar_pago_presencial, name='actualizar_pago_turno'),
     path('api/turnos/<int:turno_id>/completar-reembolso-manual/', func_views.completar_reembolso_manual, name='completar_reembolso_manual'),
     path('api/turnos/<int:turno_id>/cambiar-estado/<str:nuevo_estado>/', func_views.cambiar_estado_turno, name='cambiar_estado_turno'),
     path('api/turnos/<int:turno_id>/completar-pago/', func_views.completar_pago_turno, name='completar_pago_turno'),
-
-    # ✅ Registrar interés e interesados
     path('api/turnos/registrar-interes/', func_views.registrar_interes_turno, name='registrar_interes_turno'),
     path('api/turnos/<int:turno_id>/interesados/', contar_interesados, name='contar_interesados'),
     path('api/turnos/ocupados/', turnos_ocupados, name='turnos_ocupados'),
@@ -266,16 +258,11 @@ urlpatterns = [
     path('api/solicitudes-presupuesto/<int:pk>/', SolicitudPresupuestoViewSet.as_view({'get': 'retrieve'}), name='solicitudes-detail'),
     path('api/solicitudes-presupuesto/<int:pk>/generar-orden/', SolicitudPresupuestoViewSet.as_view({'post': 'generar_orden_compra'}), name='solicitudes-generar-orden'),
 
-    path('api/turnos/<int:turno_id>/completar-reembolso-manual/', 
-         func_views.completar_reembolso_manual, 
-         name='completar_reembolso_manual'),
-    
     path('api/turnos/reembolsos-pendientes/', 
          func_views.obtener_turnos_con_reembolso_pendiente, 
          name='reembolsos_pendientes'),
     
-    # ✅ URL para cancelación de turnos (cliente y staff)
-    path('api/turnos/<int:turno_id>/cancelar/', 
+    path('api/turnos/<int:turno_id>/cancelar-unificado/', 
          func_views.cancelar_turno_unificado, 
          name='cancelar-turno-unificado'),
 

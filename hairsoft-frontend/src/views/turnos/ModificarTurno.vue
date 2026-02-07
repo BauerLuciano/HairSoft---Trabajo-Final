@@ -1,7 +1,5 @@
 <template>
-  <!-- FONDO DEGRADADO -->
   <div class="page-background">
-    <!-- TARJETA BLANCA QUE ENVUELVE TODO -->
     <div class="main-card-container">
       <div class="turno-container">
         <div class="header-section">
@@ -30,9 +28,6 @@
         </div>
 
         <div v-else class="form-content">
-          <!-- ==================== -->
-          <!-- CLIENTE (SOLO LECTURA) -->
-          <!-- ==================== -->
           <div class="card-modern">
             <div class="card-header">
               <div class="card-icon"><Users :size="20" /></div>
@@ -59,9 +54,6 @@
             </div>
           </div>
 
-          <!-- ==================== -->
-          <!-- CATEGORÍA -->
-          <!-- ==================== -->
           <div class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon"><FolderOpen :size="20" /></div>
@@ -80,9 +72,6 @@
             </div>
           </div>
 
-          <!-- ==================== -->
-          <!-- SERVICIOS -->
-          <!-- ==================== -->
           <div v-if="categoriasSeleccionadas.length > 0" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon"><Scissors :size="20" /></div>
@@ -116,9 +105,6 @@
             </div>
           </div>
 
-          <!-- ==================== -->
-          <!-- PROFESIONAL -->
-          <!-- ==================== -->
           <div v-if="form.servicios_ids.length > 0" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon"><UserCheck :size="20" /></div>
@@ -140,9 +126,6 @@
             </div>
           </div>
 
-          <!-- ==================== -->
-          <!-- FECHA -->
-          <!-- ==================== -->
           <div v-if="form.peluquero && form.peluquero !== form.cliente" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon"><CalendarDays :size="20" /></div>
@@ -181,9 +164,6 @@
             </div>
           </div>
 
-          <!-- ==================== -->
-          <!-- HORARIOS DISPONIBLES -->
-          <!-- ==================== -->
           <div v-if="form.fecha" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon"><Clock :size="20" /></div>
@@ -207,20 +187,19 @@
                 class="hora-card"
                 :class="{
                   'hora-selected': form.hora === hora,
-                  'hora-disponible': esHorarioDisponible(hora),
-                  'hora-ocupada': !esHorarioDisponible(hora)
+                  'hora-disponible': esHorarioDisponibleUI(hora) && esHorarioDisponibleCompleto(hora),
+                  'hora-ocupada': !esHorarioDisponibleUI(hora) && !esHorarioDelTurnoActual(hora),
+                  'hora-actual': esHorarioDelTurnoActual(hora)
                 }"
-                @click="esHorarioDisponible(hora) ? seleccionarHora(hora) : null"
+                @click="esHorarioDisponibleCompleto(hora) ? seleccionarHora(hora) : null"
               >
                 <span class="hora-texto">{{ hora }}</span>
-                <span v-if="!esHorarioDisponible(hora)" class="etiqueta-ocupado">OCUPADO</span>
+                <span v-if="esHorarioDelTurnoActual(hora)" class="etiqueta-actual">ACTUAL</span>
+                <span v-else-if="!esHorarioDisponibleCompleto(hora)" class="etiqueta-ocupado">OCUPADO</span>
               </div>
             </div>
           </div>
 
-          <!-- ==================== -->
-          <!-- CONFIRMACIÓN -->
-          <!-- ==================== -->
           <div v-if="form.hora" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon"><Receipt :size="20" /></div>
@@ -258,14 +237,52 @@
                 <label class="label-modern">Método de Pago</label>
                 <select v-model="form.medio_pago" class="select-modern">
                   <option value="EFECTIVO">💵 Efectivo</option>
-                  <option value="TARJETA">💳 Tarjeta</option>
-                  <option value="TRANSFERENCIA">📱 Transferencia / MP</option>
+                  <option value="MERCADO_PAGO">🔵 Mercado Pago</option>
+                  <option value="TRANSFERENCIA">🏦 Transferencia Bancaria</option>
                 </select>
               </div>
               
-              <div v-if="form.medio_pago !== 'EFECTIVO'" class="input-group">
-                <label class="label-modern">Nro. Comprobante (Opcional)</label>
-                <input type="text" v-model="form.comprobante_id" class="input-modern" placeholder="Ej: 12345678" />
+              <div v-if="form.medio_pago !== 'EFECTIVO'" class="datos-transferencia-container slide-in">
+                
+                <div class="input-group" v-if="form.medio_pago === 'TRANSFERENCIA'">
+                  <label class="label-modern">Billetera / Banco de Origen</label>
+                  <select v-model="form.entidad_pago" class="select-modern">
+                    <option value="" disabled selected>Seleccione entidad...</option>
+                    <option value="UALA">Ualá</option>
+                    <option value="BRUBANK">Brubank</option>
+                    <option value="LEMON">Lemon Cash</option>
+                    <option value="NARANJAX">Naranja X</option>
+                    <option value="MODO">MODO</option>
+                    <option value="SANTANDER">Santander</option>
+                    <option value="GALICIA">Galicia</option>
+                    <option value="BBVA">BBVA</option>
+                    <option value="MACRO">Macro</option>
+                    <option value="OTRO">Otro</option>
+                  </select>
+                </div>
+
+                <div class="input-group">
+                  <label class="label-modern">
+                    {{ form.medio_pago === 'MERCADO_PAGO' ? 'ID Transacción Mercado Pago *' : 'Código de Comprobante *' }}
+                  </label>
+                  
+                  <input 
+                    type="text" 
+                    v-model="form.codigo_transaccion" 
+                    class="input-modern" 
+                    :placeholder="form.medio_pago === 'MERCADO_PAGO' ? 'Ej: #145025893768' : 'Ej: A123B456789'"
+                    :maxlength="maxCodigoLength"
+                    :class="{ 'input-error': errorValidacion && !form.codigo_transaccion }"
+                  />
+                  
+                  <small class="helper-text">
+                    <Info :size="12" /> 
+                    {{ form.medio_pago === 'MERCADO_PAGO' ? 'ID de operación MP (Ej: #123...). Máx 14.' : 'Código del comprobante bancario. Máx 25.' }}
+                  </small>
+                  <div v-if="errorValidacion && !form.codigo_transaccion" class="msg-error small">
+                    El código es obligatorio.
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -290,7 +307,6 @@
     </div>
   </div>
 
-  <!-- MODAL CAMBIAR CLIENTE -->
   <div v-if="mostrarModalCliente" class="modal-overlay" @click="cerrarModalCliente">
     <div class="modal-content" @click.stop>
       <div class="modal-header">
@@ -315,7 +331,7 @@
               <div class="avatar-mini"><User :size="14" /></div>
               <div class="sugerencia-info">
                 <strong>{{ getNombreCompletoCliente(c) }}</strong>
-                <small>  - DNI: {{ c.dni || '---' }}</small>
+                <small> - DNI: {{ c.dni || '---' }}</small>
               </div>
             </li>
           </ul>
@@ -330,54 +346,38 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { 
   Calendar, ArrowLeft, Users, Search, Edit3, Tag, Scissors, 
   Check, Clock, UserCheck, CalendarDays, ChevronLeft, ChevronRight, 
   Info, Loader2, Receipt, AlertCircle, CheckCircle, User, 
-  Plus, FolderOpen, Inbox, X
+  FolderOpen, Inbox
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 
 const route = useRoute()
 const router = useRouter()
 const turnoId = route.params.id
-
-// ✅ CORREGIDO: Ruta sin /usuarios/
 const API_URL = "http://localhost:8000/api"
 
-// Estados de carga
+// 🔥 FUNCIÓN PARA OBTENER HEADERS CON TOKEN
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token')
+  return {
+    "Content-Type": "application/json",
+    "Authorization": token ? `Token ${token}` : ''
+  }
+}
+
+// Estados
 const cargando = ref(true)
 const procesando = ref(false)
 const error = ref(null)
 const mensaje = ref("")
 const mensajeTipo = ref("success")
 const cargandoHorarios = ref(false)
-
-// Datos del turno
-const turnoData = ref({})
-
-// Modal cambiar cliente
-const mostrarModalCliente = ref(false)
-const busquedaClienteModal = ref("")
-const clientesSugeridosModal = ref([])
-const errorClienteModal = ref("")
-
-// Datos de formulario
-const form = ref({
-  canal: 'PRESENCIAL',
-  cliente: null,
-  clienteNombre: "",
-  clienteDni: "",
-  peluquero: "",
-  servicios_ids: [],
-  tipo_pago: "SENA_50",
-  medio_pago: "EFECTIVO",
-  comprobante_id: "",
-  fecha: "",
-  hora: ""
-})
+const errorValidacion = ref(false)
 
 // Datos maestros
 const categorias = ref([])
@@ -385,372 +385,370 @@ const servicios = ref([])
 const peluqueros = ref([])
 const categoriasSeleccionadas = ref([])
 const slotsOcupadosReales = ref([])
+const slotsTurnoActual = ref(new Set())
+const turnoOriginal = ref(null)
 const currentDate = ref(new Date())
 
-// Computed properties (EXACTAMENTE IGUAL AL REGISTRAR)
-const serviciosFiltrados = computed(() => {
-  if (categoriasSeleccionadas.value.length === 0) return []
-  const nombresCats = categorias.value
-    .filter(c => categoriasSeleccionadas.value.includes(c.id))
-    .map(c => c.nombre)
-  return servicios.value.filter(s => nombresCats.includes(s.categoria))
+// Modal Cliente
+const mostrarModalCliente = ref(false)
+const busquedaClienteModal = ref("")
+const clientesSugeridosModal = ref([])
+const errorClienteModal = ref("")
+
+// Formulario
+const form = ref({
+  canal: 'PRESENCIAL',
+  cliente: null,
+  clienteNombre: "",
+  peluquero: "",
+  servicios_ids: [],
+  tipo_pago: "SENA_50",
+  medio_pago: "EFECTIVO",
+  entidad_pago: "",
+  codigo_transaccion: "",
+  fecha: "",
+  hora: ""
 })
 
+// Observadores
+watch(() => form.value.medio_pago, (newVal) => {
+  if (cargando.value) return 
+  if (newVal === 'EFECTIVO') {
+    form.value.entidad_pago = ""
+    form.value.codigo_transaccion = ""
+    errorValidacion.value = false
+  } else if (newVal === 'MERCADO_PAGO') {
+    form.value.entidad_pago = "" 
+  }
+})
+
+// 🔥 Observador para servicios - recalcula disponibilidad
+watch(() => form.value.servicios_ids, () => {
+  if (form.value.fecha && form.value.peluquero && form.value.hora) {
+    // Si ya hay una hora seleccionada, verificar si sigue disponible
+    if (!esHorarioDisponibleCompleto(form.value.hora)) {
+      form.value.hora = "" // Resetear si ya no está disponible
+    }
+  }
+}, { deep: true })
+
+const maxCodigoLength = computed(() => form.value.medio_pago === 'MERCADO_PAGO' ? 14 : 25)
+
+// 🔥 CORRECCIÓN: Servicios filtrados - manejar categoría nula
+const serviciosFiltrados = computed(() => {
+  if (categoriasSeleccionadas.value.length === 0) return []
+  return servicios.value.filter(s => {
+    if (!s.categoria) return false
+    const catId = typeof s.categoria === 'object' ? s.categoria.id : s.categoria
+    return categoriasSeleccionadas.value.includes(catId)
+  })
+})
+
+const formularioValido = computed(() => {
+  const base = form.value.cliente && form.value.peluquero && 
+               form.value.servicios_ids.length > 0 && form.value.fecha && 
+               form.value.hora && form.value.tipo_pago && form.value.medio_pago
+  if (form.value.medio_pago !== 'EFECTIVO') return base && form.value.codigo_transaccion
+  return base
+})
+
+// Calendario y Horarios
 const currentYear = computed(() => currentDate.value.getFullYear())
 const currentMonth = computed(() => currentDate.value.getMonth())
-const nombreMesActual = computed(() => {
-  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-  return meses[currentMonth.value]
-})
-const daysInMonth = computed(() => {
-  return new Date(currentYear.value, currentMonth.value + 1, 0).getDate()
-})
-const startingDayOfWeek = computed(() => {
-  return new Date(currentYear.value, currentMonth.value, 1).getDay()
-})
+const nombreMesActual = computed(() => ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][currentMonth.value])
+const daysInMonth = computed(() => new Date(currentYear.value, currentMonth.value + 1, 0).getDate())
+const startingDayOfWeek = computed(() => new Date(currentYear.value, currentMonth.value, 1).getDay())
 
 const horariosGenerados = computed(() => {
   const horariosBase = []
-  const bloques = [
-    { inicio: 8, fin: 12 }, 
-    { inicio: 15, fin: 20 }
-  ]
-  const ahora = new Date()
-  const horaActual = ahora.getHours()
-  const minutoActual = ahora.getMinutes()
+  const bloques = [{ inicio: 8, fin: 12 }, { inicio: 15, fin: 20 }]
   const hoy = new Date()
   const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
-  
-  const fechaForm = form.value.fecha
-  const esHoy = fechaForm === hoyFormateado
+  const esHoy = form.value.fecha === hoyFormateado
+  const horaActual = hoy.getHours()
+  const minutoActual = hoy.getMinutes()
 
   bloques.forEach(b => {
     for (let h = b.inicio; h < b.fin; h++) {
       for (let m = 0; m < 60; m += 20) {
-        const horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
         if (esHoy) {
           if (h < horaActual) continue
           if (h === horaActual && m <= minutoActual) continue
         }
-        horariosBase.push(horaStr)
+        horariosBase.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
       }
     }
-    const cierreH = b.fin
-    const cierreStr = `${String(cierreH).padStart(2, '0')}:00`
-    let agregarCierre = true
-    if (esHoy) {
-       if (cierreH < horaActual) agregarCierre = false
-       if (cierreH === horaActual && 0 <= minutoActual) agregarCierre = false
-    }
-    if (agregarCierre) horariosBase.push(cierreStr)
+    if (!esHoy || (b.fin > horaActual)) horariosBase.push(`${String(b.fin).padStart(2, '0')}:00`)
   })
-
   return horariosBase
 })
 
-const formularioValido = computed(() => {
-  return (
-    form.value.cliente &&
-    form.value.peluquero &&
-    form.value.servicios_ids.length > 0 &&
-    form.value.fecha &&
-    form.value.hora &&
-    form.value.tipo_pago &&
-    form.value.medio_pago
-  )
-})
-
-// Métodos de calendario (EXACTAMENTE IGUAL AL REGISTRAR)
+// Funciones Calendario
 const esHoy = (day) => {
-  const today = new Date()
-  return day === today.getDate() && currentMonth.value === today.getMonth() && currentYear.value === today.getFullYear()
+  const t = new Date(); return day === t.getDate() && currentMonth.value === t.getMonth() && currentYear.value === t.getFullYear()
 }
-
 const esDiaSeleccionable = (day) => {
-  const date = new Date(currentYear.value, currentMonth.value, day)
-  const today = new Date()
-  today.setHours(0,0,0,0)
-  const diffTime = date - today
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  const isInRange = diffDays >= 0 && diffDays <= 7
-  const isSunday = date.getDay() === 0
-  return isInRange && !isSunday
+  const d = new Date(currentYear.value, currentMonth.value, day)
+  const t = new Date(); t.setHours(0,0,0,0)
+  const diffDays = Math.ceil((d - t) / (1000 * 60 * 60 * 24))
+  return (diffDays >= 0 && diffDays <= 60) && d.getDay() !== 0
 }
-
 const esDiaSeleccionado = (day) => {
   if (!form.value.fecha) return false
   const [y, m, d] = form.value.fecha.split('-').map(Number)
   return day === d && (currentMonth.value + 1) === m && currentYear.value === y
 }
-
 const seleccionarDiaCalendario = (day) => {
   if (!esDiaSeleccionable(day)) return
-  const mesStr = String(currentMonth.value + 1).padStart(2, '0')
-  const diaStr = String(day).padStart(2, '0')
-  form.value.fecha = `${currentYear.value}-${mesStr}-${diaStr}`
+  form.value.fecha = `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
   cargarHorariosOcupados(form.value.fecha)
 }
-
 const cambiarMes = (dir) => {
-  const newDate = new Date(currentDate.value)
-  newDate.setMonth(currentDate.value.getMonth() + dir)
-  currentDate.value = newDate
+  const d = new Date(currentDate.value); d.setMonth(currentDate.value.getMonth() + dir); currentDate.value = d
 }
 
+// Carga de Datos
 const cargarDatosTurno = async () => {
   try {
     cargando.value = true
     
-    // ✅ CORREGIDO: Usar ruta correcta
-    const [turnoRes, catRes, servRes, pelRes] = await Promise.all([
-      fetch(`http://localhost:8000/api/turnos/${turnoId}/`),
-      fetch(`http://localhost:8000/api/categorias/servicios/`),
-      fetch(`http://localhost:8000/api/servicios/`),
-      fetch(`http://localhost:8000/api/peluqueros/`)
-    ])
+    const headers = getAuthHeaders()
 
-    if (!turnoRes.ok) {
-      throw new Error("Turno no encontrado")
-    }
+    // Cargar Maestros con token
+    const [catRes, servRes, pelRes] = await Promise.all([
+      fetch(`${API_URL}/categorias/servicios/`, { headers }),
+      fetch(`${API_URL}/servicios/`, { headers }),
+      fetch(`${API_URL}/peluqueros/`, { headers })
+    ])
     
-    const turno = await turnoRes.json()
-    
-    // ✅ VERIFICAR SI EL TURNO PUEDE SER MODIFICADO
-    if (!turno.puede_ser_modificado) {
-      error.value = turno.mensaje_modificacion || "Este turno no puede ser modificado"
-      
-      Swal.fire({
-        icon: 'warning',
-        title: 'Turno no editable',
-        text: turno.mensaje_modificacion || "Este turno no puede ser modificado",
-        confirmButtonText: 'Volver al listado'
-      }).then(() => {
-        router.push('/turnos')
-      })
-      
-      cargando.value = false
-      return
-    }
+    if (!catRes.ok) throw new Error(`Error categorías: ${catRes.status}`)
+    if (!servRes.ok) throw new Error(`Error servicios: ${servRes.status}`)
+    if (!pelRes.ok) throw new Error(`Error peluqueros: ${pelRes.status}`)
     
     categorias.value = await catRes.json()
     servicios.value = await servRes.json()
     peluqueros.value = await pelRes.json()
+
+    // Cargar Turno
+    const turnoRes = await fetch(`${API_URL}/turnos/${turnoId}/`, { 
+      headers: getAuthHeaders() 
+    })
     
-    console.log("📦 Turno cargado:", turno)
-    turnoData.value = turno
+    if (!turnoRes.ok) {
+      if (turnoRes.status === 401 || turnoRes.status === 403) {
+        localStorage.removeItem('token')
+        router.push('/login')
+        return
+      }
+      throw new Error(`Error cargando turno: ${turnoRes.status}`)
+    }
     
-    // ✅ Asignar datos del turno al formulario
+    const turno = await turnoRes.json()
+    
+    // 🔥 Guardar datos originales del turno
+    turnoOriginal.value = {
+      fecha: turno.fecha,
+      peluquero_id: turno.peluquero_id,
+      hora: turno.hora,
+      duracion_total: turno.servicios.reduce((acc, s) => acc + (s.duracion || 20), 0)
+    }
+
+    // Asignar Valores
     form.value.cliente = turno.cliente_id
     form.value.clienteNombre = `${turno.cliente_nombre} ${turno.cliente_apellido}`.trim()
-    form.value.clienteDni = turno.cliente_dni || ""
-    
     form.value.peluquero = turno.peluquero_id
-    
-    // ✅ Servicios y categorías
     form.value.servicios_ids = turno.servicios.map(s => s.id)
     
-    // ✅ Obtener categorías de los servicios
-    const categoriasDelTurno = new Set()
-    turno.servicios.forEach(servicio => {
-      const serv = servicios.value.find(s => s.id === servicio.id)
-      if (serv) {
-        const categoria = categorias.value.find(c => c.nombre === serv.categoria)
-        if (categoria) categoriasDelTurno.add(categoria.id)
+    // 🔥 AUTO-SELECCIONAR CATEGORÍAS - CORREGIDO
+    const catsParaActivar = new Set()
+    turno.servicios.forEach(s => {
+      if (s.categoria) {
+        catsParaActivar.add(s.categoria)
+      } else {
+        const sm = servicios.value.find(master => master.id === s.id)
+        if (sm && sm.categoria) {
+          const catId = typeof sm.categoria === 'object' ? sm.categoria.id : sm.categoria
+          if (catId) catsParaActivar.add(catId)
+        }
       }
     })
-    categoriasSeleccionadas.value = Array.from(categoriasDelTurno)
-    
-    // ✅ Fecha y hora
+    categoriasSeleccionadas.value = Array.from(catsParaActivar)
+
     form.value.fecha = turno.fecha
     form.value.hora = turno.hora
-    
-    // ✅ Pago
     form.value.tipo_pago = turno.tipo_pago
-    form.value.medio_pago = turno.medio_pago || "EFECTIVO"
-    
-    // ✅ Campos de trazabilidad financiera
+    form.value.medio_pago = turno.medio_pago
     form.value.entidad_pago = turno.entidad_pago || ""
     form.value.codigo_transaccion = turno.codigo_transaccion || ""
-    form.value.nro_transaccion = turno.nro_transaccion || ""
-    form.value.comprobante_id = turno.mp_payment_id || ""
-    
-    // ✅ Si hay fecha, cargar horarios ocupados
+
     if (form.value.fecha && form.value.peluquero) {
       await cargarHorariosOcupados(form.value.fecha)
     }
-    
+
   } catch (err) {
-    console.error("❌ Error cargando turno:", err)
-    error.value = "No se pudo cargar el turno. Verifica que exista."
-    
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'No se pudo cargar el turno. Verifica que exista.',
-      confirmButtonText: 'Volver al listado'
-    }).then(() => {
-      router.push('/turnos')
-    })
+    error.value = "Error al cargar datos: " + err.message
+    console.error("Error en cargarDatosTurno:", err)
   } finally {
     cargando.value = false
   }
 }
 
-const cargarDatosIniciales = async () => {
-  await cargarDatosTurno()
-}
-
-const alCambiarPeluquero = () => {
-  resetFechas()
-}
-
-const resetFechas = () => {
-  form.value.fecha = ""
-  form.value.hora = ""
-  slotsOcupadosReales.value = []
-}
-
 const cargarHorariosOcupados = async (fecha) => {
-  form.value.hora = ""
+  form.value.hora = "" // Reset hora al cambiar fecha
   cargandoHorarios.value = true
-  slotsOcupadosReales.value = [] 
+  slotsOcupadosReales.value = []
+  slotsTurnoActual.value.clear()
   
   try {
-    // ✅ CORREGIDO: Ruta sin /usuarios/
-    const url = `${API_URL}/turnos/?fecha=${fecha}&peluquero_id=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
-    const res = await fetch(url)
-    const turnos = await res.json()
+    const res = await fetch(
+      `${API_URL}/turnos/?fecha=${fecha}&peluquero_id=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`, 
+      {
+        headers: getAuthHeaders()
+      }
+    )
     
+    if (!res.ok) throw new Error(`Error horarios: ${res.status}`)
+    
+    const turnos = await res.json()
     const ocupadosSet = new Set()
     
-    turnos.forEach(turno => {
-      if (turno.id === parseInt(turnoId)) return // Excluir el turno actual
-        
-      const [h, m] = turno.hora.split(':').map(Number)
-      const inicioMin = h * 60 + m
-      
-      let duracion = turno.duracion_total || 0
-      if (!duracion && turno.servicios) {
-          duracion = turno.servicios.reduce((acc, s) => acc + (s.duracion || 20), 0)
+    turnos.forEach(t => {
+      const [h, m] = t.hora.split(':').map(Number)
+      let dur = t.duracion_total || 20
+      if (t.servicios && !t.duracion_total) {
+          dur = t.servicios.reduce((acc, s) => acc + (s.duracion || 20), 0)
       }
-      if (!duracion) duracion = 20
       
-      const finMin = inicioMin + duracion
+      // 🔥 CALCULAR TODOS LOS MINUTOS OCUPADOS
+      const inicioMinutos = h * 60 + m
+      const finMinutos = inicioMinutos + dur
       
-      for (let i = inicioMin; i < finMin; i += 20) {
-          const hh = Math.floor(i / 60).toString().padStart(2, '0')
-          const mm = (i % 60).toString().padStart(2, '0')
-          ocupadosSet.add(`${hh}:${mm}`)
+      if (t.id === parseInt(turnoId)) {
+        // Es el turno actual, guardar sus minutos
+        for (let i = inicioMinutos; i < finMinutos; i++) {
+          const horaSlot = Math.floor(i / 60).toString().padStart(2, '0')
+          const minutoSlot = (i % 60).toString().padStart(2, '0')
+          slotsTurnoActual.value.add(`${horaSlot}:${minutoSlot}`)
+        }
+        return
+      }
+      
+      // Para otros turnos, agregar TODOS los minutos ocupados
+      for (let i = inicioMinutos; i < finMinutos; i++) {
+        const horaSlot = Math.floor(i / 60).toString().padStart(2, '0')
+        const minutoSlot = (i % 60).toString().padStart(2, '0')
+        ocupadosSet.add(`${horaSlot}:${minutoSlot}`)
       }
     })
     
     slotsOcupadosReales.value = Array.from(ocupadosSet)
-  } catch (e) {
-    console.error("Error cargando turnos:", e)
-  } finally {
-    cargandoHorarios.value = false
+  } catch (e) { 
+    console.error("Error en cargarHorariosOcupados:", e) 
+  } finally { 
+    cargandoHorarios.value = false 
   }
 }
 
-const esHorarioDisponible = (hora) => {
+// 🔥 Función para ver si un horario pertenece al turno actual
+const esHorarioDelTurnoActual = (hora) => {
+  if (!turnoOriginal.value) return false
+  if (form.value.fecha !== turnoOriginal.value.fecha) return false
+  if (form.value.peluquero !== turnoOriginal.value.peluquero_id) return false
+  
+  const [h, m] = hora.split(':').map(Number)
+  const horaString = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
+  
+  return slotsTurnoActual.value.has(horaString)
+}
+
+// 🔥 Función para UI (solo verifica slot inicial)
+const esHorarioDisponibleUI = (hora) => {
   if (!form.value.fecha || !form.value.peluquero) return true
-  const horaSimple = hora.substring(0, 5)
-  return !slotsOcupadosReales.value.includes(horaSimple)
-}
-
-const seleccionarHora = (hora) => {
-  if (esHorarioDisponible(hora)) {
-    form.value.hora = hora
-  }
-}
-
-const toggleCategoria = (id) => {
-  const index = categoriasSeleccionadas.value.indexOf(id)
-  if (index > -1) {
-    categoriasSeleccionadas.value.splice(index, 1)
-  } else {
-    categoriasSeleccionadas.value.push(id)
-  }
-  form.value.servicios_ids = []
-  form.value.peluquero = ""
-}
-
-const toggleServicio = (servicio) => {
-  const index = form.value.servicios_ids.indexOf(servicio.id)
-  if (index > -1) {
-    form.value.servicios_ids.splice(index, 1)
-  } else {
-    form.value.servicios_ids.push(servicio.id)
-  }
-  form.value.peluquero = ""
-  resetFechas()
-}
-
-const calcularTotal = () => {
-  return form.value.servicios_ids.reduce((total, id) => {
-    const s = servicios.value.find(x => x.id === id)
-    return total + (s ? parseFloat(s.precio) : 0)
-  }, 0).toFixed(2)
-}
-
-const calcularSena = () => {
-  return (calcularTotal() / 2).toFixed(2)
-}
-
-// Métodos para cambiar cliente
-const abrirModalCambiarCliente = () => {
-  mostrarModalCliente.value = true
-  busquedaClienteModal.value = ""
-  clientesSugeridosModal.value = []
-  errorClienteModal.value = ""
-}
-
-const cerrarModalCliente = () => {
-  mostrarModalCliente.value = false
-}
-
-const actualizarBusquedaClienteModal = async () => {
-  if (busquedaClienteModal.value.length < 1) {
-    clientesSugeridosModal.value = []
-    return
-  }
-  try {
-    // ✅ CORREGIDO: Ruta sin /usuarios/
-    const res = await fetch(`${API_URL}/clientes/?q=${busquedaClienteModal.value}`)
-    const data = await res.json()
-    clientesSugeridosModal.value = data.results || data || []
-    errorClienteModal.value = clientesSugeridosModal.value.length === 0 ? "No se encontraron clientes" : ""
-  } catch (e) {
-    errorClienteModal.value = "Error de conexión"
-  }
-}
-
-const getNombreCompletoCliente = (c) => {
-  return `${c.nombre || c.first_name || ''} ${c.apellido || c.last_name || ''}`.trim()
-}
-
-const seleccionarClienteModal = (c) => {
-  form.value.cliente = c.id
-  form.value.clienteNombre = getNombreCompletoCliente(c)
-  form.value.clienteDni = c.dni || ""
-  cerrarModalCliente()
+  if (esHorarioDelTurnoActual(hora)) return true
   
-  if (form.value.peluquero === c.id) {
-      form.value.peluquero = ""
-      resetFechas()
-  }
+  const [h, m] = hora.split(':').map(Number)
+  const horaString = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
+  
+  return !slotsOcupadosReales.value.some(slot => 
+    slot.startsWith(horaString.substring(0, 5)))
 }
 
-const modificarTurno = async () => {
-  procesando.value = true
-  mensaje.value = ""
+// 🔥 NUEVA FUNCIÓN: Verifica disponibilidad COMPLETA considerando duración
+const esHorarioDisponibleCompleto = (horaSeleccionada) => {
+  if (!form.value.fecha || !form.value.peluquero) return false
   
-  const duracion = form.value.servicios_ids.reduce((acc, id) => {
+  if (esHorarioDelTurnoActual(horaSeleccionada)) return true
+  
+  // Calcular duración total de los servicios seleccionados
+  const duracionTotal = form.value.servicios_ids.reduce((acc, id) => {
     const s = servicios.value.find(x => x.id === id)
     return acc + (s ? parseInt(s.duracion) : 0)
   }, 0)
+  
+  // Si no hay servicios seleccionados, duración mínima
+  if (duracionTotal === 0) return esHorarioDisponibleUI(horaSeleccionada)
+  
+  // Convertir hora seleccionada a minutos
+  const [h, m] = horaSeleccionada.split(':').map(Number)
+  const inicioMinutos = h * 60 + m
+  const finMinutos = inicioMinutos + duracionTotal
+  
+  // Verificar minuto por minuto si hay solapamiento
+  for (let i = inicioMinutos; i < finMinutos; i++) {
+    const horaSlot = Math.floor(i / 60).toString().padStart(2, '0')
+    const minutoSlot = (i % 60).toString().padStart(2, '0')
+    const slotActual = `${horaSlot}:${minutoSlot}`
+    
+    // Si este minuto está ocupado por otro turno, no está disponible
+    if (slotsOcupadosReales.value.some(slot => 
+        slot.startsWith(slotActual.substring(0, 5)))) {
+      return false
+    }
+  }
+  
+  return true
+}
 
-  // ✅ CORREGIDO: Payload simplificado y correcto
+const seleccionarHora = (hora) => { 
+  if (esHorarioDisponibleCompleto(hora)) form.value.hora = hora 
+}
+
+// UI Helpers
+const toggleCategoria = (id) => {
+  const idx = categoriasSeleccionadas.value.indexOf(id)
+  if (idx > -1) categoriasSeleccionadas.value.splice(idx, 1)
+  else categoriasSeleccionadas.value.push(id)
+  form.value.servicios_ids = []
+  form.value.peluquero = ""
+}
+const toggleServicio = (s) => {
+  const idx = form.value.servicios_ids.indexOf(s.id)
+  if (idx > -1) form.value.servicios_ids.splice(idx, 1)
+  else form.value.servicios_ids.push(s.id)
+  form.value.peluquero = ""
+  form.value.fecha = ""
+  form.value.hora = ""
+}
+const alCambiarPeluquero = () => { form.value.fecha = ""; form.value.hora = "" }
+
+const calcularTotal = () => form.value.servicios_ids.reduce((acc, id) => {
+  const s = servicios.value.find(x => x.id === id)
+  return acc + (s ? parseFloat(s.precio) : 0)
+}, 0).toFixed(2)
+const calcularSena = () => (calcularTotal() / 2).toFixed(2)
+
+const volverAlListado = () => router.push('/turnos')
+
+const modificarTurno = async () => {
+  if (form.value.medio_pago !== 'EFECTIVO' && !form.value.codigo_transaccion) {
+    errorValidacion.value = true; return
+  }
+  procesando.value = true
+  
+  let entidadFinal = null
+  if (form.value.medio_pago === 'MERCADO_PAGO') entidadFinal = 'MERCADO_PAGO'
+  else if (form.value.medio_pago === 'TRANSFERENCIA') entidadFinal = form.value.entidad_pago
+
   const payload = {
     fecha: form.value.fecha,
     hora: form.value.hora,
@@ -758,79 +756,32 @@ const modificarTurno = async () => {
     servicios_ids: form.value.servicios_ids,
     tipo_pago: form.value.tipo_pago,
     medio_pago: form.value.medio_pago,
-    // ✅ Estos campos son calculados por el backend, no necesarios aquí
-    // monto_total: parseFloat(calcularTotal()),
-    // monto_seña: form.value.tipo_pago === 'SENA_50' ? parseFloat(calcularSena()) : 0,
-    // duracion_total: duracion,
-  }
-
-  // ✅ Agregar campos opcionales solo si tienen valor
-  if (form.value.entidad_pago) {
-    payload.entidad_pago = form.value.entidad_pago
-  }
-  
-  if (form.value.codigo_transaccion) {
-    payload.codigo_transaccion = form.value.codigo_transaccion
-  }
-  
-  if (form.value.nro_transaccion) {
-    payload.nro_transaccion = form.value.nro_transaccion
+    entidad_pago: entidadFinal,
+    codigo_transaccion: form.value.medio_pago !== 'EFECTIVO' ? form.value.codigo_transaccion : null
   }
 
   try {
-    const token = localStorage.getItem('token')
-    // ✅ CORREGIDO: Ruta correcta
-    const res = await fetch(`http://localhost:8000/api/turnos/${turnoId}/modificar/`, {
+    const res = await fetch(`${API_URL}/turnos/${turnoId}/modificar/`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": token ? `Token ${token}` : ''
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(payload)
     })
     
     const data = await res.json()
-    
     if (res.ok && data.status === 'ok') {
-      mensaje.value = "¡Turno Actualizado con Éxito!"
-      mensajeTipo.value = "success"
-      
-      await Swal.fire({
-        icon: 'success',
-        title: 'Turno Actualizado',
-        html: `
-          <div style="text-align: left; margin: 15px 0;">
-            <p><strong>Turno ID:</strong> ${data.turno_id}</p>
-            <p><strong>Fecha:</strong> ${data.nueva_fecha}</p>
-            <p><strong>Hora:</strong> ${data.nueva_hora}</p>
-            <p><strong>Peluquero:</strong> ${data.nuevo_peluquero_nombre}</p>
-            <p><strong>Total:</strong> $${data.nuevo_monto_total}</p>
-            <p><strong>Seña:</strong> $${data.nuevo_monto_seña}</p>
-          </div>
-        `,
-        confirmButtonText: 'Aceptar'
-      })
-      
-      router.push('/turnos')
+      Swal.fire({ 
+        icon: 'success', 
+        title: 'Turno Actualizado', 
+        confirmButtonText: 'Aceptar' 
+      }).then(() => router.push('/turnos'))
     } else {
-      mensaje.value = data.message || "Error al actualizar turno"
-      mensajeTipo.value = "error"
-      
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: data.message || 'Error al actualizar el turno',
-        confirmButtonText: 'Entendido'
-      })
+      throw new Error(data.message || data.error || "Error al actualizar")
     }
   } catch (e) {
-    mensaje.value = "Error de conexión con el servidor"
-    mensajeTipo.value = "error"
-    
-    Swal.fire({
-      icon: 'error',
-      title: 'Error de Conexión',
-      text: 'No se pudo conectar con el servidor. Verifica tu conexión.',
+    Swal.fire({ 
+      icon: 'error', 
+      title: 'Error', 
+      text: e.message,
       confirmButtonText: 'Entendido'
     })
   } finally {
@@ -838,12 +789,46 @@ const modificarTurno = async () => {
   }
 }
 
-const volverAlListado = () => {
-  router.push('/turnos')
+// Modal Cliente
+const abrirModalCambiarCliente = () => { 
+  mostrarModalCliente.value = true; 
+  busquedaClienteModal.value = ""; 
+  clientesSugeridosModal.value = [] 
+}
+const cerrarModalCliente = () => mostrarModalCliente.value = false
+
+const actualizarBusquedaClienteModal = async () => {
+  if (busquedaClienteModal.value.length < 1) return
+  try {
+    const res = await fetch(
+      `${API_URL}/clientes/?q=${busquedaClienteModal.value}`, 
+      { 
+        headers: getAuthHeaders() 
+      }
+    )
+    
+    if (!res.ok) throw new Error(`Error clientes: ${res.status}`)
+    
+    const data = await res.json()
+    clientesSugeridosModal.value = data.results || data || []
+  } catch (e) {
+    console.error("Error buscando clientes:", e)
+    errorClienteModal.value = "Error al buscar clientes"
+  }
+}
+
+const seleccionarClienteModal = (c) => {
+  form.value.cliente = c.id
+  form.value.clienteNombre = `${c.nombre} ${c.apellido}`
+  cerrarModalCliente()
+}
+
+const getNombreCompletoCliente = (c) => {
+  return `${c.nombre || ''} ${c.apellido || ''}`.trim()
 }
 
 onMounted(() => {
-  cargarDatosIniciales()
+  cargarDatosTurno()
 })
 </script>
 
@@ -1703,6 +1688,34 @@ onMounted(() => {
   background: #5a6268;
   transform: translateY(-1px);
 }
+
+/* 🔥 NUEVOS ESTILOS PARA HORARIO ACTUAL */
+.hora-actual {
+  border-color: #3b82f6;
+  background: #dbeafe;
+  cursor: pointer;
+}
+
+.hora-actual .hora-texto {
+  color: #1e40af;
+}
+
+.etiqueta-actual {
+  display: block;
+  font-size: 0.7em;
+  color: #1e40af;
+  font-weight: 700;
+  margin-top: 4px;
+  background: #93c5fd;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* 🔥 Asegurar que los horarios actuales no se vean tachados */
+.hora-actual .hora-texto {
+  text-decoration: none !important;
+}
+
 
 /* Responsive */
 @media (max-width: 1024px) {

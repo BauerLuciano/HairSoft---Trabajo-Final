@@ -246,7 +246,7 @@ const form = reactive({
   id: null,
   nombre: '',
   precio: 0,
-  porcentaje_comision: 0, // ✅ Campo nuevo inicializado
+  porcentaje_comision: 0,
   duracion: 30,
   categoria: null,
   descripcion: ''
@@ -306,11 +306,19 @@ const formatPrecio = (precio) => {
 const cargarCategorias = async () => {
   cargandoCategorias.value = true
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/categorias/servicios/`)
+    // ✅ CORRECCIÓN CRÍTICA: URL CORREGIDA - REMOVER "/usuarios"
+    const res = await axios.get(`${API_BASE}/api/categorias/servicios/`)
+    console.log('Categorías cargadas exitosamente:', res.data)
     categorias.length = 0
     categorias.push(...res.data)
   } catch (err) {
-    console.error('Error cargando categorías:', err)
+    console.error('Error cargando categorías:', err.response || err)
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'No se pudieron cargar las categorías',
+      confirmButtonColor: '#007bff'
+    })
   } finally {
     cargandoCategorias.value = false
   }
@@ -321,7 +329,7 @@ watch(() => props.servicioEditar, (nuevo) => {
     form.id = nuevo.id
     form.nombre = nuevo.nombre
     form.precio = nuevo.precio
-    form.porcentaje_comision = nuevo.porcentaje_comision || 0 // ✅ Cargar valor existente
+    form.porcentaje_comision = nuevo.porcentaje_comision || 0
     form.duracion = nuevo.duracion || 30
     form.categoria = nuevo.categoria?.id || null
     form.descripcion = nuevo.descripcion || ''
@@ -337,7 +345,10 @@ const guardarServicio = async () => {
 
   if (errores.nombre || errores.precio || errores.duracion) {
     Swal.fire({
-      icon: 'warning', title: 'Formulario incompleto', text: 'Por favor corrige los errores.', confirmButtonColor: '#007bff'
+      icon: 'warning', 
+      title: 'Formulario incompleto', 
+      text: 'Por favor corrige los errores.', 
+      confirmButtonColor: '#007bff'
     })
     return
   }
@@ -347,7 +358,7 @@ const guardarServicio = async () => {
   const payload = {
     nombre: form.nombre.trim(),
     precio: form.precio,
-    porcentaje_comision: form.porcentaje_comision || 0, // ✅ Enviar al backend
+    porcentaje_comision: form.porcentaje_comision || 0,
     duracion: form.duracion,
     categoria: form.categoria || null,
     descripcion: form.descripcion.trim() || ''
@@ -355,11 +366,23 @@ const guardarServicio = async () => {
 
   try {
     if (form.id) {
-      await axios.post(`${API_BASE}/usuarios/api/servicios/editar/${form.id}/`, payload)
-      Swal.fire({ icon: 'success', title: 'Servicio actualizado', showConfirmButton: false, timer: 1500 })
+      // ✅ CORRECCIÓN: URL CORREGIDA - REMOVER "/usuarios"
+      await axios.post(`${API_BASE}/api/servicios/editar/${form.id}/`, payload)
+      Swal.fire({ 
+        icon: 'success', 
+        title: 'Servicio actualizado', 
+        showConfirmButton: false, 
+        timer: 1500 
+      })
     } else {
-      await axios.post(`${API_BASE}/usuarios/api/servicios/crear/`, payload)
-      Swal.fire({ icon: 'success', title: 'Servicio creado', showConfirmButton: false, timer: 1500 })
+      // ✅ CORRECCIÓN: URL CORREGIDA - REMOVER "/usuarios"
+      await axios.post(`${API_BASE}/api/servicios/crear/`, payload)
+      Swal.fire({ 
+        icon: 'success', 
+        title: 'Servicio creado', 
+        showConfirmButton: false, 
+        timer: 1500 
+      })
     }
     
     resetForm()
@@ -367,15 +390,27 @@ const guardarServicio = async () => {
     setTimeout(() => router.push('/servicios'), 1500)
 
   } catch (err) {
-    console.error('Error guardando servicio:', err)
-    Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo guardar el servicio.' })
+    console.error('Error guardando servicio:', err.response?.data || err)
+    Swal.fire({ 
+      icon: 'error', 
+      title: 'Error', 
+      text: err.response?.data?.message || 'No se pudo guardar el servicio.' 
+    })
   } finally {
     cargando.value = false
   }
 }
 
 const resetForm = () => {
-  Object.assign(form, { id: null, nombre: '', precio: 0, porcentaje_comision: 0, duracion: 30, categoria: null, descripcion: '' })
+  Object.assign(form, { 
+    id: null, 
+    nombre: '', 
+    precio: 0, 
+    porcentaje_comision: 0, 
+    duracion: 30, 
+    categoria: null, 
+    descripcion: '' 
+  })
   Object.assign(errores, { nombre: '', precio: '', duracion: '' })
 }
 
@@ -385,7 +420,6 @@ onMounted(() => cargarCategorias())
 </script>
 
 <style scoped>
-/* ESTILOS PERFECTAMENTE ALINEADOS (TUYOS ORIGINALES) */
 .servicio-container { max-width: 1000px; margin: 0 auto; padding: 25px; background: #fff; border-radius: 16px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
 .header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #f1f3f4; }
 .header-section h2 { margin: 0; color: #1a1a1a; font-size: 1.8em; font-weight: 700; display: flex; align-items: center; gap: 12px; }
