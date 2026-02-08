@@ -1,158 +1,402 @@
 <template>
-  <div class="list-container">
-    <div class="list-card">
-      <header class="list-header">
+<div class="list-container">
+    <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarEditar || mostrarRegistrarMarca }">
+      
+      <div class="list-header">
         <div class="header-content">
-          <h1>Ajustes del Local</h1>
-          <p>Gestión de identidad corporativa y políticas de reserva</p>
+          <h1>Gestión de productos</h1>
+          <p>Gestión de productos del sistema</p>
         </div>
-        <div class="header-buttons">
-          <button @click="guardarCambios" :disabled="guardando || cargando" class="register-button">
-            <Save v-if="!guardando" :size="20" />
-            <Loader2 v-else class="animate-spin" :size="20" />
-            <span>{{ guardando ? 'Guardando...' : 'Guardar Cambios' }}</span>
+        <div class="header-buttons" style="display: flex; gap: 12px;">
+          <button @click="mostrarRegistrar = true" class="register-button">
+            <Plus :size="18" />
+            Registrar Producto
+          </button>
+          <button @click="mostrarRegistrarMarca = true" class="register-button">
+            <Tag :size="18" />
+            Registrar Marca
           </button>
         </div>
-      </header>
+      </div>
+
+      <div class="filters-container">
+        <div class="filters-grid">
+          <div class="filter-group">
+            <label>Buscar</label>
+            <input v-model="filtros.busqueda" placeholder="Nombre o código..." class="filter-input"/>
+          </div>
+
+          <div class="filter-group">
+            <label>Categoría</label>
+            <select v-model="filtros.categoria" class="filter-input">
+              <option value="">Todas</option>
+              <option v-for="categoria in categorias" :key="categoria.id" :value="categoria.id">
+                {{ categoria.nombre }}
+              </option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>Marca</label>
+            <select v-model="filtros.marca" class="filter-input">
+              <option value="">Todas</option>
+              <option v-for="marca in marcas" :key="marca.id" :value="marca.id">
+                {{ marca.nombre }}
+              </option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>Estado</label>
+            <select v-model="filtros.estado" class="filter-input">
+              <option value="">Todos</option>
+              <option value="ACTIVO">Activos</option>
+              <option value="INACTIVO">Inactivos</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>Stock bajo</label>
+            <select v-model="filtros.stockBajo" class="filter-input">
+              <option value="">Todos</option>
+              <option value="si">Solo stock crítico</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>&nbsp;</label>
+            <button @click="limpiarFiltros" class="clear-filters-btn">
+              <Trash2 :size="16" />
+              Limpiar filtros
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div v-if="cargando" class="no-results">
         <Loader2 class="animate-spin no-results-icon" :size="48" />
         <p>Sincronizando con el servidor...</p>
       </div>
 
-      <div v-else class="fade-in">
-        
-        <div class="usuarios-count">
-          <p><Building2 :size="20" /> Información de Facturación y Comprobantes</p>
-        </div>
+      <div v-else>
+        <div class="table-container">
+          <table class="users-table">
+            <thead>
+              <tr>
+                <th style="width: 90px;">Código</th>
+                <th style="width: 160px;">Nombre</th>
+                <th style="width: 100px;">Categoría</th>
+                <th style="width: 100px;">Marca</th>
+                <th style="width: 90px;">Precio</th>
+                <th style="width: 110px;">Stock</th>
+                <th style="width: 90px;">Estado</th>
+                <th style="width: 150px;">Proveedores</th>
+                <th style="width: 90px;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="producto in productosPaginados" :key="producto.id" 
+                  :class="getRowClass(producto)">
+                <td><strong>{{ producto.codigo || '–' }}</strong></td>
+                <td class="nombre-cell">{{ producto.nombre || '–' }}</td>
+                <td>
+                  <span class="badge-estado estado-info">
+                    {{ getCategoriaNombre(producto) }}
+                  </span>
+                </td>
+                <td>
+                  <span class="badge-estado estado-secondary">
+                    {{ getMarcaNombre(producto) }}
+                  </span>
+                </td>
+                <td><strong>${{ producto.precio ? producto.precio.toLocaleString() : '0' }}</strong></td>
+                
+                <td>
+                  <span class="badge-estado" :class="getStockClass(producto)">
+                    {{ producto.stock_actual || 0 }} 
+                  </span>
+                </td>
 
-        <div class="filters-container">
-          <div class="filters-grid">
-            <div class="filter-group" style="grid-column: span 2;">
-              <label>Razón Social</label>
-              <input v-model="config.razon_social" type="text" class="filter-input" placeholder="Nombre legal" />
-            </div>
-            <div class="filter-group">
-              <label>CUIL / CUIT</label>
-              <input v-model="config.cuil_cuit" type="text" class="filter-input" placeholder="00-00000000-0" />
-            </div>
-            <div class="filter-group">
-              <label>Teléfono</label>
-              <input v-model="config.telefono" type="text" class="filter-input" placeholder="3755-xxxxxx" />
-            </div>
-            <div class="filter-group" style="grid-column: span 2;">
-              <label>Dirección Comercial</label>
-              <input v-model="config.direccion" type="text" class="filter-input" placeholder="Ubicación física del local" />
-            </div>
-            <div class="filter-group" style="grid-column: span 2;">
-              <label>Email de Contacto</label>
-              <input v-model="config.email" type="email" class="filter-input" placeholder="correo@ejemplo.com" />
-            </div>
+                <td>
+                  <span class="badge-estado" :class="getEstadoClass(producto.estado)">
+                    {{ producto.estado === 'ACTIVO' ? 'Activo' : 'Inactivo' }}
+                  </span>
+                </td>
+                <td>
+                  <div class="proveedores-lista">
+                    <div v-for="(proveedor, index) in getPrimerosProveedores(producto)" :key="proveedor.id" 
+                         class="proveedor-item">
+                      <span class="proveedor-nombre">{{ proveedor.nombre }}</span>
+                    </div>
+                    <div v-if="getProveedoresNombres(producto).length > 3" class="mas-proveedores">
+                      +{{ getProveedoresNombres(producto).length - 3 }} más...
+                    </div>
+                    <div v-else-if="getProveedoresNombres(producto).length === 0" class="sin-proveedores">
+                      Sin proveedor
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div class="action-buttons">
+                    <button @click="editarProducto(producto)" class="action-button edit" title="Editar producto">
+                      <Edit3 :size="14" />
+                    </button>
+                    <button @click="cambiarEstadoProducto(producto)" class="action-button" 
+                            :class="producto.estado === 'ACTIVO' ? 'delete' : 'success'" 
+                            :title="producto.estado === 'ACTIVO' ? 'Desactivar producto' : 'Activar producto'">
+                      <Power :size="14" v-if="producto.estado === 'ACTIVO'" />
+                      <CheckCircle :size="14" v-else />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div v-if="productosPaginados.length === 0" class="no-results">
+            <PackageX class="no-results-icon" :size="48" />
+            <p>No se encontraron productos</p>
+            <small>Intenta con otros términos de búsqueda</small>
           </div>
         </div>
 
         <div class="usuarios-count">
-          <p><Clock :size="20" /> Reglas de Negocio y Mensajes al Cliente</p>
+          <p>
+            <Package :size="16" />
+            Mostrando {{ productosPaginados.length }} de {{ productosFiltrados.length }} productos
+          </p>
           <div class="alertas-container">
+            <span v-if="productosStockBajo > 0" class="alerta-stock">
+              <AlertTriangle :size="14" />
+              {{ productosStockBajo }} con stock bajo
+            </span>
+            <span v-if="productosInactivos > 0" class="alerta-inactivo">
+              <PowerOff :size="14" />
+              {{ productosInactivos }} inactivos
+            </span>
           </div>
         </div>
 
-        <div class="filters-container">
-          <div class="filters-grid" style="grid-template-columns: 1fr;">
-            <div class="filter-group">
-              <label>Margen de Cancelación para Reembolso (En Horas)</label>
-              <div style="display: flex; align-items: center; gap: 15px;">
-                <input v-model.number="config.margen_horas_cancelacion" type="number" class="filter-input" style="width: 120px;" />
-                <span class="badge-estado estado-info">Horas de anticipación requeridas</span>
-              </div>
-            </div>
-            
-            <div class="filter-group">
-              <label>Texto Informativo de Política de Señas</label>
-              <textarea 
-                v-model="config.politica_senia" 
-                class="filter-input" 
-                style="height: 150px; resize: none; padding: 15px; line-height: 1.6;"
-                placeholder="Escribí aquí lo que el cliente leerá antes de pagar la seña..."
-              ></textarea>
-            </div>
-          </div>
+        <div class="pagination">
+          <button @click="paginaAnterior" :disabled="pagina === 1">
+            <ChevronLeft :size="16" />
+            Anterior
+          </button>
+          <span>Página {{ pagina }} de {{ totalPaginas }}</span>
+          <button @click="paginaSiguiente" :disabled="pagina === totalPaginas">
+            Siguiente
+            <ChevronRight :size="16" />
+          </button>
         </div>
-
       </div>
     </div>
-  </div>
+
+    <div v-if="mostrarRegistrar" class="modal-overlay" @click.self="cerrarModal">
+      <div class="modal-content">
+        <RegistrarProducto 
+          @producto-registrado="productoRegistrado"
+          @cancelar="cerrarModal"
+        />
+      </div>
+    </div>
+
+    <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
+      <div class="modal-content">
+        <ModificarProducto 
+          :producto-id="productoEditando?.id" 
+          @producto-actualizado="productoActualizado"
+          @cancelar="cerrarModalEditar"
+        />
+      </div>
+    </div>
+
+    <div v-if="mostrarRegistrarMarca" class="modal-overlay" @click.self="cerrarModalMarca">
+      <div class="modal-content">
+        <button class="modal-close" @click="cerrarModalMarca" title="Cerrar formulario">
+          <X :size="20" />
+        </button>
+        <RegistrarMarca 
+          @marca-registrada="marcaRegistrada"
+          @cancelar="cerrarModalMarca"
+        />
+      </div>
+    </div>
+</div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import axios from '../../utils/axiosConfig'
-import { Building2, Clock, Save, Loader2, Info } from 'lucide-vue-next'
+import { ref, computed, onMounted, watch } from 'vue'
+import axios from '@/utils/axiosConfig'
+import { useRoute } from 'vue-router'
 import Swal from 'sweetalert2'
+import RegistrarProducto from './RegistrarProducto.vue'
+import ModificarProducto from './ModificarProducto.vue'
+import RegistrarMarca from './RegistrarMarca.vue'
+import { 
+  Package, PackageX, Plus, Tag, Edit3, Power, CheckCircle, PowerOff,
+  ChevronLeft, ChevronRight, Trash2, X, AlertTriangle, Loader2
+} from 'lucide-vue-next'
 
-const config = ref({
-  razon_social: '',
-  cuil_cuit: '',
-  direccion: '',
-  telefono: '',
-  email: '',
-  margen_horas_cancelacion: 3,
-  politica_senia: ''
+const route = useRoute()
+
+const productos = ref([])
+const categorias = ref([])
+const proveedores = ref([])
+const marcas = ref([])
+
+const filtros = ref({ busqueda: '', categoria: '', stockBajo: '', marca: '', estado: '' })
+
+const pagina = ref(1)
+const itemsPorPagina = 8
+const mostrarRegistrar = ref(false)
+const mostrarEditar = ref(false)
+const mostrarRegistrarMarca = ref(false)
+const productoEditando = ref(null)
+const cargando = ref(true)
+
+// --- CARGA DE DATOS ---
+const cargarProductos = async () => {
+  try {
+    const res = await axios.get('/usuarios/api/productos/')
+    const data = Array.isArray(res.data) ? res.data : (res.data.results || []);
+    productos.value = data.sort((a, b) => b.id - a.id)
+  } catch (err) { 
+    console.error(err) 
+  }
+}
+
+const cargarAuxiliares = async () => {
+  try {
+    const [resC, resP, resM] = await Promise.all([
+      axios.get('/usuarios/api/categorias/productos/'),
+      axios.get('/usuarios/api/proveedores/'),
+      axios.get('/usuarios/api/marcas/')
+    ])
+    categorias.value = resC.data
+    proveedores.value = resP.data
+    marcas.value = resM.data
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+// --- LOGICA VISUAL ---
+const getCategoriaNombre = (p) => p.categoria_nombre || categorias.value.find(c => c.id === p.categoria)?.nombre || '–'
+const getMarcaNombre = (p) => p.marca_nombre || marcas.value.find(m => m.id === p.marca)?.nombre || '–'
+
+const getProveedoresNombres = (p) => {
+  if (!p.proveedores) return []
+  return p.proveedores.map(id => proveedores.value.find(pr => pr.id === id)?.nombre).filter(Boolean)
+}
+const getPrimerosProveedores = (p) => getProveedoresNombres(p).slice(0, 3).map((n, i) => ({ id: i, nombre: n }))
+
+const getEstadoClass = (e) => (e === 'ACTIVO' ? 'estado-success' : 'estado-danger')
+
+const getStockClass = (p) => {
+  const actual = p.stock_actual || 0
+  const minimo = p.stock_minimo || 5 
+  
+  if (actual === 0) return 'estado-danger'
+  if (actual <= minimo) return 'estado-warning'
+  return 'estado-success'
+}
+
+const getRowClass = (p) => {
+  if ((p.stock_actual || 0) <= (p.stock_minimo || 5)) return 'stock-bajo-row'
+  return ''
+}
+
+// --- FILTROS ---
+const productosFiltrados = computed(() => {
+  return productos.value.filter(p => {
+    const term = filtros.value.busqueda.toLowerCase()
+    const matchSearch = !term || p.nombre?.toLowerCase().includes(term) || p.codigo?.toLowerCase().includes(term)
+    const matchCat = !filtros.value.categoria || p.categoria == filtros.value.categoria
+    const matchMarca = !filtros.value.marca || p.marca == filtros.value.marca
+    const matchEstado = !filtros.value.estado || p.estado == filtros.value.estado
+    
+    const minimo = p.stock_minimo || 5
+    const matchStock = !filtros.value.stockBajo || p.stock_actual <= minimo
+    
+    return matchSearch && matchCat && matchStock && matchMarca && matchEstado
+  })
 })
 
-const cargando = ref(true)
-const guardando = ref(false)
+const productosStockBajo = computed(() => 
+  productosFiltrados.value.filter(p => p.stock_actual <= (p.stock_minimo || 5)).length
+)
+const productosInactivos = computed(() => productosFiltrados.value.filter(p => p.estado === 'INACTIVO').length)
 
-const obtenerConfig = async () => {
+const totalPaginas = computed(() => Math.max(1, Math.ceil(productosFiltrados.value.length / itemsPorPagina)))
+const productosPaginados = computed(() => {
+  const start = (pagina.value - 1) * itemsPorPagina
+  return productosFiltrados.value.slice(start, start + itemsPorPagina)
+})
+
+const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
+const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
+
+// --- ACCIONES ---
+const editarProducto = (p) => { productoEditando.value = p; mostrarEditar.value = true }
+const productoRegistrado = async () => { 
+  await cargarProductos(); 
+  cerrarModal(); 
+  pagina.value = 1 
+}
+const productoActualizado = async () => { 
+  await cargarProductos(); 
+  cerrarModalEditar() 
+}
+
+const cambiarEstadoProducto = async (producto) => {
+  const nuevo = producto.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO'
+  const res = await Swal.fire({ 
+    title: `¿Cambiar a ${nuevo}?`, 
+    icon: 'question', 
+    showCancelButton: true 
+  })
+  if (!res.isConfirmed) return
+  
   try {
-    const res = await axios.get('/api/configuracion/')
-    config.value = res.data
-  } catch (e) {
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'No se pudo cargar la configuración',
-      background: '#0f172a',
-      color: '#f8fafc'
-    })
-  } finally {
-    cargando.value = false
+    await axios.patch(`/usuarios/api/productos/${producto.id}/`, { estado: nuevo })
+    await cargarProductos()
+    Swal.fire('¡Listo!', 'Estado actualizado', 'success')
+  } catch (e) { 
+    Swal.fire('Error', 'No se pudo cambiar', 'error') 
   }
 }
 
-const guardarCambios = async () => {
-  guardando.value = true
-  try {
-    await axios.post('/api/configuracion/', config.value)
-    Swal.fire({
-      icon: 'success',
-      title: '¡Ajustes guardados!',
-      text: 'Los cambios se aplicarán en todos los reportes.',
-      timer: 2000,
-      showConfirmButton: false,
-      background: '#0f172a',
-      color: '#f8fafc'
-    })
-  } catch (e) {
-    Swal.fire({
-      icon: 'error',
-      title: 'Fallo al guardar',
-      background: '#0f172a',
-      color: '#f8fafc'
-    })
-  } finally {
-    guardando.value = false
-  }
+const limpiarFiltros = () => { 
+  filtros.value = { busqueda: '', categoria: '', stockBajo: '', marca: '', estado: '' } 
+}
+const cerrarModal = () => mostrarRegistrar.value = false
+const cerrarModalEditar = () => mostrarEditar.value = false
+const cerrarModalMarca = () => mostrarRegistrarMarca.value = false
+const marcaRegistrada = async () => { 
+  cerrarModalMarca(); 
+  await cargarAuxiliares() 
 }
 
-onMounted(obtenerConfig)
+watch(filtros, () => { pagina.value = 1 }, { deep: true })
+
+onMounted(async () => {
+  cargando.value = true
+  await cargarAuxiliares()
+  await cargarProductos()
+  cargando.value = false
+  
+  if (route.query.filtro === 'stock_bajo') {
+    filtros.value.stockBajo = 'si'
+  }
+})
 </script>
 
 <style scoped>
 /* ========================================
-   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE
+   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE - PRODUCTOS
    ======================================== */
 
+/* Tarjeta principal - CON VARIABLES */
 .list-container {
   padding: 32px;
   max-width: 1600px;
@@ -167,25 +411,81 @@ onMounted(obtenerConfig)
   border-radius: 24px;
   padding: 40px;
   width: 100%;
+  max-width: 1600px;
   box-shadow: var(--shadow-lg);
   position: relative;
   overflow: hidden;
+  transition: all 0.4s ease;
   border: 1px solid var(--border-color);
 }
 
+/* Borde superior azul acero */
 .list-card::before {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 4px;
   background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9);
+  border-radius: 24px 24px 0 0;
 }
 
+/* BADGES DE ESTADO - CON VARIABLES */
+.badge-estado {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.estado-warning {
+  background: var(--bg-tertiary);
+  color: #f59e0b;
+  border: 2px solid #f59e0b;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+}
+
+.estado-info {
+  background: var(--bg-tertiary);
+  color: #0ea5e9;
+  border: 2px solid #0ea5e9;
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.3);
+}
+
+.estado-success {
+  background: var(--bg-tertiary);
+  color: #10b981;
+  border: 2px solid #10b981;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+}
+
+.estado-danger {
+  background: var(--bg-tertiary);
+  color: var(--error-color);
+  border: 2px solid var(--error-color);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+.estado-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  border: 2px solid var(--text-tertiary);
+  box-shadow: 0 0 8px rgba(156, 163, 175, 0.2);
+}
+
+/* HEADER - CON VARIABLES */
 .list-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 35px;
+  flex-wrap: wrap;
+  gap: 20px;
   border-bottom: 2px solid var(--border-color);
   padding-bottom: 25px;
 }
@@ -205,8 +505,10 @@ onMounted(obtenerConfig)
   color: var(--text-secondary);
   font-weight: 500;
   margin-top: 8px;
+  letter-spacing: 0.5px;
 }
 
+/* Botón registrar */
 .register-button {
   background: linear-gradient(135deg, #0ea5e9, #0284c7);
   color: white;
@@ -217,29 +519,51 @@ onMounted(obtenerConfig)
   cursor: pointer;
   transition: all 0.3s ease;
   text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.95rem;
+  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35);
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
-  gap: 10px;
-  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35);
+  gap: 8px;
+}
+
+.register-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.register-button:hover::before {
+  left: 100%;
 }
 
 .register-button:hover:not(:disabled) {
   transform: translateY(-3px);
   box-shadow: 0 10px 30px rgba(14, 165, 233, 0.5);
+  background: linear-gradient(135deg, #0284c7, #0369a1);
 }
 
+/* FILTROS - CON VARIABLES */
 .filters-container {
   margin-bottom: 30px;
   background: var(--hover-bg);
-  padding: 30px;
+  padding: 24px;
   border-radius: 16px;
   border: 1px solid var(--border-color);
 }
 
 .filters-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 25px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 18px;
+  align-items: end;
 }
 
 .filter-group {
@@ -249,90 +573,533 @@ onMounted(obtenerConfig)
 
 .filter-group label {
   font-weight: 700;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   color: var(--text-secondary);
   text-transform: uppercase;
   font-size: 0.75rem;
   letter-spacing: 1px;
 }
 
-.filter-input {
-  padding: 14px;
+.filter-input, .filter-select {
+  padding: 12px 14px;
   border: 2px solid var(--border-color);
   border-radius: 10px;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-size: 1rem;
-  transition: all 0.3s;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  font-size: 0.95rem;
 }
 
-.filter-input:focus {
+.filter-input:focus, .filter-select:focus {
   outline: none;
   border-color: var(--accent-color);
   box-shadow: 0 0 0 4px var(--accent-light);
+  background: var(--bg-secondary);
 }
 
+.clear-filters-btn {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 12px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.clear-filters-btn:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* TABLA - CON VARIABLES */
+.table-container {
+  overflow-x: auto;
+  margin-bottom: 25px;
+  border-radius: 16px;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-primary);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-color);
+}
+
+.users-table th {
+  background: var(--accent-color);
+  color: white;
+  padding: 16px 12px;
+  text-align: left;
+  font-weight: 900;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.users-table tr {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.users-table td {
+  padding: 12px;
+  vertical-align: middle;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.users-table td strong {
+  color: var(--text-primary);
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.users-table tr:hover {
+  background: var(--hover-bg);
+  transition: all 0.2s ease;
+}
+
+/* MODIFICACIÓN AQUÍ: Hacer scrollable la celda de nombre */
+.nombre-cell {
+  max-width: 160px;
+  overflow-x: auto; /* Habilitar scroll horizontal */
+  white-space: nowrap; /* Mantener en una línea */
+  scrollbar-width: thin; /* Scrollbar fino para Firefox */
+}
+
+/* Estilo para el scrollbar en Webkit (Chrome, Edge, Safari) para que se vea bien */
+.nombre-cell::-webkit-scrollbar {
+  height: 4px;
+}
+.nombre-cell::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 4px;
+}
+.nombre-cell::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.stock-bajo-row {
+  background: rgba(245, 158, 11, 0.05);
+  border-left: 3px solid #f59e0b;
+}
+
+/* ESTILOS PARA LA LISTA DE PROVEEDORES EN LA TABLA */
+.proveedores-lista {
+  max-width: 150px;
+}
+
+.proveedor-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.proveedor-item:last-child {
+  border-bottom: none;
+}
+
+.proveedor-nombre {
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 8px;
+}
+
+.mas-proveedores {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  font-style: italic;
+  text-align: center;
+  padding: 4px 0;
+  background: var(--hover-bg);
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+.sin-proveedores {
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+  font-style: italic;
+  text-align: center;
+  padding: 6px 0;
+}
+
+/* BOTONES DE ACCIÓN - CON VARIABLES */
+.action-buttons { 
+  display: flex; 
+  gap: 6px; 
+}
+
+.action-button {
+  padding: 8px;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  width: 36px;
+  height: 36px;
+}
+
+.action-button.edit {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.action-button.edit:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.action-button.delete {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--error-color);
+  color: var(--error-color);
+}
+
+.action-button.delete:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+  border-color: var(--error-color);
+}
+
+.action-button.success {
+  background: var(--bg-tertiary);
+  border: 1px solid #10b981;
+  color: #10b981;
+}
+
+.action-button.success:hover {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+  border-color: #10b981;
+}
+
+/* CONTADOR Y MENSAJES - CON VARIABLES */
 .usuarios-count {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 40px 0 20px;
-  padding: 15px 25px;
-  background: var(--bg-primary);
+  margin: 25px 0;
+  padding: 18px;
+  background: var(--hover-bg);
   border-radius: 12px;
-  border-left: 5px solid var(--accent-color);
+  flex-wrap: wrap;
+  gap: 15px;
+  border: 1px solid var(--border-color);
 }
 
 .usuarios-count p {
-  color: #fff;
-  font-weight: 700;
+  color: var(--text-secondary);
+  font-weight: 600;
+  letter-spacing: 0.5px;
   margin: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 1.1rem;
+  gap: 8px;
 }
 
-.badge-estado {
+.alertas-container {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.alerta-stock {
+  background: var(--bg-tertiary);
+  color: #f59e0b;
+  border: 2px solid #f59e0b;
   padding: 8px 16px;
   border-radius: 20px;
-  font-size: 0.8rem;
   font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.estado-info {
-  background: rgba(14, 165, 233, 0.1);
-  color: #0ea5e9;
-  border: 2px solid #0ea5e9;
+.alerta-inactivo {
+  background: var(--bg-tertiary);
+  color: #ef4444;
+  border: 2px solid #ef4444;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
+/* ESTADOS DE CARGA - CON VARIABLES */
 .animate-spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 .no-results {
   text-align: center;
-  padding: 100px 0;
+  padding: 80px;
   color: var(--text-secondary);
 }
 
-.no-results-icon { margin-bottom: 20px; color: var(--accent-color); }
-
-.fade-in {
-  animation: fadeIn 0.4s ease-out;
+.no-results-icon {
+  margin-bottom: 15px;
+  opacity: 0.5;
+  color: var(--text-tertiary);
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
+.no-results p {
+  margin: 0 0 8px 0;
+  font-size: 1.1em;
+  color: var(--text-primary);
+}
+
+.no-results small {
+  font-size: 0.9em;
+  color: var(--text-tertiary);
+}
+
+/* PAGINACIÓN - CON VARIABLES */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  margin-top: 25px;
+}
+
+.pagination button {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 12px 24px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 800;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pagination button:hover:not(:disabled) {
+  background: var(--hover-bg);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.pagination button:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  transform: none;
+  border: 1px solid var(--border-color);
+  opacity: 0.5;
+}
+
+.pagination span {
+  color: var(--text-primary);
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  font-size: 0.95rem;
+}
+
+/* OVERLAY Y MODALES - CON VARIABLES */
+.overlay-activo {
+  opacity: 0.3;
+  filter: blur(5px);
+  pointer-events: none;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(12px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeInModal 0.3s ease;
+}
+
+@keyframes fadeInModal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  position: relative;
+  animation: slideUp 0.3s ease;
+  max-height: 85vh;
+  max-width: 90vw;
+  width: auto;
+  overflow-y: auto;
+  border-radius: 16px;
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-lg);
+  border: 2px solid var(--border-color);
+  padding: 0;
+  margin: 20px;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(40px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@media (max-width: 1200px) {
-  .filters-grid { grid-template-columns: repeat(2, 1fr); }
+/* SCROLLBAR PERSONALIZADO - CON VARIABLES */
+.modal-content::-webkit-scrollbar,
+.table-container::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
 }
 
+.modal-content::-webkit-scrollbar-track,
+.table-container::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+  border-radius: 6px;
+}
+
+.modal-content::-webkit-scrollbar-thumb,
+.table-container::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 6px;
+  border: 2px solid var(--bg-primary);
+}
+
+.modal-content::-webkit-scrollbar-thumb:hover,
+.table-container::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-color);
+}
+
+/* RESPONSIVE */
 @media (max-width: 768px) {
-  .filters-grid { grid-template-columns: 1fr; }
-  .list-header { flex-direction: column; gap: 20px; text-align: center; }
-  .list-card { padding: 20px; }
+  .list-card {
+    padding: 25px;
+    border-radius: 20px;
+  }
+  
+  .list-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .header-content h1 {
+    font-size: 1.6rem;
+  }
+  
+  .filters-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .modal-content {
+    max-width: 95vw;
+    margin: 12px;
+    border-radius: 12px;
+  }
+  
+  .users-table {
+    font-size: 0.85rem;
+  }
+  
+  .users-table th {
+    font-size: 0.7rem;
+    padding: 14px 10px;
+  }
+  
+  .action-buttons {
+    flex-direction: column;
+    gap: 6px;
+  }
+  
+  .usuarios-count {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .alertas-container {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .pagination {
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .list-card {
+    padding: 18px;
+    border-radius: 16px;
+  }
+  
+  .header-content h1 {
+    font-size: 1.4rem;
+  }
+  
+  .users-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  
+  .filter-input, .filter-select {
+    font-size: 0.9rem;
+  }
+  
+  .badge-estado {
+    font-size: 0.65rem;
+    padding: 5px 10px;
+  }
+  
+  .action-button {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .header-buttons {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .register-button {
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>

@@ -3,6 +3,7 @@
     <div class="main-card-container">
       <div class="turno-container">
         
+        <!-- HEADER -->
         <div class="header-section">
           <h2>
             <Calendar class="header-icon" />
@@ -15,18 +16,57 @@
         </div>
 
         <div>
+          <!-- 🔥 SECCIÓN DE DESCUENTO MEJORADA -->
           <transition name="slide">
-            <div v-if="descuentoAplicado > 0" class="card-modern cupon-alerta">
+            <div v-if="mostrarDescuento" class="card-modern cupon-alerta-mejorado">
               <div class="card-header">
-                <div class="card-icon">
+                <div class="card-icon" style="background: #10b981; color: white;">
                   <Gift :size="20" />
                 </div>
-                <h3>🎉 ¡Descuento Activado!</h3>
+                <h3>🎉 ¡DESCUENTO ACTIVADO!</h3>
+                <span class="badge-descuento">{{ mostrarDescuento.porcentaje }}% OFF</span>
               </div>
-              <p>Tenés un <strong>{{ descuentoAplicado }}% OFF</strong> por reactivación. {{ mensajePromo }}</p>
+              
+              <div class="detalle-descuento">
+                <div class="fila-descuento">
+                  <span>Total original:</span>
+                  <span class="tachado">${{ mostrarDescuento.totalOriginal.toFixed(2) }}</span>
+                </div>
+                <div class="fila-descuento">
+                  <span>Descuento ({{ mostrarDescuento.porcentaje }}%):</span>
+                  <span class="ahorro">- ${{ mostrarDescuento.ahorro.toFixed(2) }}</span>
+                </div>
+                <div class="fila-descuento total-final">
+                  <span><strong>TOTAL FINAL:</strong></span>
+                  <span class="total-final-numero">${{ mostrarDescuento.totalConDescuento.toFixed(2) }}</span>
+                </div>
+              </div>
+              
+              <div class="cupon-codigo">
+                <Tag :size="14" />
+                <strong>Código:</strong> {{ cuponCodigo }}
+                <small>(Válido hasta: {{ fechaVencimientoCupon }})</small>
+              </div>
             </div>
           </transition>
 
+          <!-- MENSAJE DE ERROR DE CUPÓN -->
+          <transition name="fade">
+            <div v-if="mensajeErrorCupon" class="card-modern cupon-error">
+              <div class="card-header">
+                <div class="card-icon" style="background: #ef4444; color: white;">
+                  <AlertCircle :size="20" />
+                </div>
+                <h3>❌ Error en Cupón</h3>
+              </div>
+              <p>{{ mensajeErrorCupon }}</p>
+              <button @click="mensajeErrorCupon = ''" class="btn-cerrar-error">
+                <X :size="16" /> Cerrar
+              </button>
+            </div>
+          </transition>
+
+          <!-- DATOS DEL CLIENTE -->
           <div class="card-modern">
             <div class="card-header">
               <div class="card-icon">
@@ -38,13 +78,14 @@
             <div class="cliente-info-card">
               <div class="cliente-datos">
                 <p><strong>Cliente:</strong> {{ usuario.nombre }} {{ usuario.apellido }}</p>
-                <p><strong>DNI:</strong> {{ usuario.dni || 'Cargando...' }}</p>
-                <p><strong>Teléfono:</strong> {{ usuario.telefono || 'Cargando...' }}</p>
+                <p><strong>DNI:</strong> {{ usuario.dni || 'No registrado' }}</p>
+                <p><strong>Teléfono:</strong> {{ usuario.telefono || 'No registrado' }}</p>
                 <p v-if="usuario.turnosCount > 0"><strong>Turnos reservados:</strong> {{ usuario.turnosCount }}</p>
               </div>
             </div>
           </div>
 
+          <!-- CATEGORÍAS DE SERVICIO -->
           <div class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
@@ -80,6 +121,7 @@
             </p>
           </div>
 
+          <!-- SERVICIOS -->
           <div v-if="categoriasSeleccionadas.length > 0" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
@@ -157,10 +199,14 @@
               </div>
               <p class="total-parcial">
                 Total parcial: <strong>${{ calcularTotal() }}</strong>
+                <span v-if="descuentoAplicado > 0" class="descuento-indicador">
+                  (-{{ descuentoAplicado }}% descuento aplicado)
+                </span>
               </p>
             </div>
           </div>
 
+          <!-- PELUQUERO -->
           <div v-if="form.servicios_ids.length > 0" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
@@ -202,6 +248,7 @@
             </p>
           </div>
 
+          <!-- FECHA -->
           <div v-if="form.peluquero" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
@@ -251,6 +298,7 @@
             </div>
           </div>
 
+          <!-- HORARIOS -->
           <div v-if="form.fecha" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
@@ -268,6 +316,7 @@
             </div>
             
             <div v-else class="grid-horarios-mejorado">
+              <!-- HORARIOS DISPONIBLES -->
               <div
                 v-for="hora in horariosDisponibles"
                 :key="hora"
@@ -289,6 +338,7 @@
                 </div>
               </div>
 
+              <!-- HORARIOS OCUPADOS -->
               <div
                 v-for="hora in horariosOcupadosParaMostrar"
                 :key="'ocupado-'+hora"
@@ -315,6 +365,7 @@
             </div>
           </div>
 
+          <!-- POLÍTICA DE RESERVA -->
           <div v-if="form.hora" class="politica-seccion-card slide-in">
             <div class="politica-header">
               <Info :size="18" class="politica-icon" />
@@ -345,6 +396,7 @@
             </div>
           </div>
 
+          <!-- OPCIONES DE PAGO -->
           <div v-if="form.hora" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
@@ -394,6 +446,7 @@
             </div>
           </div>
 
+          <!-- RESUMEN FINAL Y CONFIRMACIÓN -->
           <div v-if="formularioValido" class="card-modern slide-in resumen-final">
             <div class="card-header">
               <div class="card-icon">
@@ -418,6 +471,12 @@
               <div class="resumen-item">
                 <span><Clock :size="14" /> Duración total:</span>
                 <span>{{ calcularDuracionTotalServicios() }} minutos</span>
+              </div>
+              
+              <!-- 🔥 SECCIÓN DE DESCUENTO EN RESUMEN -->
+              <div v-if="descuentoAplicado > 0" class="resumen-item descuento-resumen">
+                <span><Gift :size="14" /> Descuento aplicado:</span>
+                <span class="descuento-positivo">- {{ descuentoAplicado }}%</span>
               </div>
               
               <div class="resumen-item total">
@@ -445,6 +504,7 @@
           </div>
         </div>
 
+        <!-- MODAL DE INTERÉS -->
         <div v-if="mostrarModalInteres" class="modal-overlay">
           <div class="modal-content">
             <div class="modal-header">
@@ -467,6 +527,7 @@
           </div>
         </div>
 
+        <!-- TOAST DE MENSAJES -->
         <transition name="fade">
           <div v-if="mensaje" class="toast-message" :class="mensajeTipo">{{ mensaje }}</div>
         </transition>
@@ -492,206 +553,379 @@ import {
 const router = useRouter()
 const route = useRoute()
 
-// ✅ CONFIGURACIÓN DINÁMICA DE LA BASE DE DATOS
+// 🔥 NUEVAS VARIABLES PARA CUPÓN
+const cuponCodigo = ref(null)
+const descuentoAplicado = ref(0)
+const mensajePromo = ref("")
+const fechaVencimientoCupon = ref("")
+const mensajeErrorCupon = ref("")
+const mostrarDescuento = computed(() => {
+  if (descuentoAplicado.value > 0) {
+    const totalOriginal = calcularTotalOriginal()
+    const ahorro = totalOriginal * (descuentoAplicado.value / 100)
+    return {
+      porcentaje: descuentoAplicado.value,
+      totalOriginal: totalOriginal,
+      ahorro: ahorro,
+      totalConDescuento: totalOriginal - ahorro
+    }
+  }
+  return null
+})
+
+// CONFIGURACIÓN DEL SISTEMA
 const configSist = ref({
   margen_horas_cancelacion: 3,
   politica_senia: 'Cargando política de reserva...'
-});
-
-const form = ref({
-  peluquero: "", servicios_ids: [], hora: "", fecha: "",
-  tipo_pago: "SENA_50", medio_pago: "MERCADO_PAGO", canal: "WEB", cliente: null
 })
 
-const usuario = ref({ id: null, nombre: '', apellido: '', dni: '', telefono: '', turnosCount: 0, isAuthenticated: false })
-const peluqueros = ref([]); const servicios = ref([]); const categorias = ref([]);
-const slotsOcupadosReales = ref([]); // 🔥 Ahora guarda TODOS los minutos ocupados
-const categoriasSeleccionadas = ref([]);
-const busquedaServicio = ref(""); const cargandoMercadoPago = ref(false);
-const cargandoHorarios = ref(false); const cargandoDatos = ref(true); 
-const mostrarModalInteres = ref(false);
-const horarioSeleccionadoInteres = ref(null); const registrandoInteres = ref(false);
-const currentDate = ref(new Date());
-const DIAS_RANGO = 7; const cuponCodigo = ref(null);
-const descuentoAplicado = ref(0); const mensajePromo = ref("");
-const horariosInteres = ref([]); const mensaje = ref(""); const mensajeTipo = ref("");
+// FORMULARIO
+const form = ref({
+  peluquero: "", 
+  servicios_ids: [], 
+  hora: "", 
+  fecha: "",
+  tipo_pago: "SENA_50", 
+  medio_pago: "MERCADO_PAGO", 
+  canal: "WEB", 
+  cliente: null,
+  cup_codigo: null  // 🔥 NUEVO: Campo para cupón
+})
 
-// 🔥 OBSERVADOR: Recalcular disponibilidad cuando cambian los servicios
+// DATOS
+const usuario = ref({ 
+  id: null, 
+  nombre: '', 
+  apellido: '', 
+  dni: '', 
+  telefono: '', 
+  turnosCount: 0, 
+  isAuthenticated: false 
+})
+const peluqueros = ref([])
+const servicios = ref([])
+const categorias = ref([])
+const slotsOcupadosReales = ref([])
+const categoriasSeleccionadas = ref([])
+const busquedaServicio = ref("")
+const cargandoMercadoPago = ref(false)
+const cargandoHorarios = ref(false)
+const cargandoDatos = ref(true)
+const mostrarModalInteres = ref(false)
+const horarioSeleccionadoInteres = ref(null)
+const registrandoInteres = ref(false)
+const currentDate = ref(new Date())
+const DIAS_RANGO = 7
+const horariosInteres = ref([])
+const mensaje = ref("")
+const mensajeTipo = ref("")
+
+// 🔥 NUEVA FUNCIÓN: VALIDAR CUPÓN CON BACKEND
+const validarCuponBackend = async (codigo) => {
+  if (!codigo) return
+  
+  try {
+    console.log(`🎟️ Validando cupón: ${codigo}`)
+    
+    const response = await api.get(`/api/promociones/validar/${codigo}/`)
+    
+    if (response.data.valido) {
+      // Aplicar descuento
+      descuentoAplicado.value = response.data.descuento
+      mensajePromo.value = response.data.mensaje
+      fechaVencimientoCupon.value = response.data.valido_hasta || ""
+      
+      // Mostrar mensaje de éxito
+      Swal.fire({
+        title: '¡Cupón Aplicado!',
+        text: response.data.mensaje,
+        icon: 'success',
+        timer: 3000,
+        showConfirmButton: false
+      })
+      
+      // Guardar código en el form para enviar al backend
+      form.value.cup_codigo = codigo
+      
+      return true
+    } else {
+      // Mostrar error
+      mensajeErrorCupon.value = response.data.mensaje
+      descuentoAplicado.value = 0
+      cuponCodigo.value = null
+      form.value.cup_codigo = null
+      
+      Swal.fire({
+        title: 'Cupón Inválido',
+        text: response.data.mensaje,
+        icon: 'error',
+        confirmButtonText: 'Entendido'
+      })
+      
+      return false
+    }
+  } catch (error) {
+    console.error('Error validando cupón:', error)
+    
+    mensajeErrorCupon.value = 'Error al validar el cupón. Intenta nuevamente.'
+    descuentoAplicado.value = 0
+    cuponCodigo.value = null
+    form.value.cup_codigo = null
+    
+    Swal.fire({
+      title: 'Error',
+      text: 'No se pudo validar el cupón. Intenta nuevamente.',
+      icon: 'error',
+      confirmButtonText: 'Entendido'
+    })
+    
+    return false
+  }
+}
+
+// 🔥 CORREGIR: onMounted para validar cupón automáticamente
+onMounted(async () => {
+  await cargarDatosIniciales()
+  
+  // Verificar si hay cupón en la URL
+  if (route.query.cup) {
+    cuponCodigo.value = route.query.cup
+    console.log(`🔍 Cupón detectado en URL: ${route.query.cup}`)
+    
+    // Validar automáticamente el cupón
+    await validarCuponBackend(route.query.cup)
+  }
+})
+
+// WATCHERS
 watch(() => form.value.servicios_ids, () => {
   if (form.value.fecha && form.value.peluquero && form.value.hora) {
-    // Si ya hay una hora seleccionada, verificar si sigue disponible
     if (!esHorarioDisponibleCompleto(form.value.hora)) {
-      form.value.hora = "" // Resetear si ya no está disponible
+      form.value.hora = ""
     }
   }
 }, { deep: true })
 
 watch([() => form.value.fecha, () => form.value.peluquero], ([nuevaFecha, nuevoPeluquero]) => {
-  if (nuevaFecha && nuevoPeluquero) cargarTurnosOcupados(nuevaFecha);
-});
+  if (nuevaFecha && nuevoPeluquero) cargarTurnosOcupados(nuevaFecha)
+})
 
+// FUNCIONES AUXILIARES
 const getListaServicios = () => {
   try {
-    if (Array.isArray(servicios.value)) return servicios.value;
-    if (servicios.value?.results) return servicios.value.results;
-    return [];
-  } catch (error) { return []; }
+    if (Array.isArray(servicios.value)) return servicios.value
+    if (servicios.value?.results) return servicios.value.results
+    return []
+  } catch (error) { 
+    return [] 
+  }
 }
 
 const serviciosFiltrados = computed(() => {
   try {
-    let lista = getListaServicios();
+    let lista = getListaServicios()
     if (categoriasSeleccionadas.value.length > 0) {
       lista = lista.filter(s => {
-        if (!s || !s.categoria) return false;
+        if (!s || !s.categoria) return false
         let catId = (typeof s.categoria === 'object' && s.categoria !== null) 
                     ? String(s.categoria.id || s.categoria) 
-                    : String(s.categoria);
-        return categoriasSeleccionadas.value.includes(catId);
-      });
+                    : String(s.categoria)
+        return categoriasSeleccionadas.value.includes(catId)
+      })
     }
     if (busquedaServicio.value.trim()) {
-      const term = busquedaServicio.value.toLowerCase().trim();
-      lista = lista.filter(s => s && s.nombre && s.nombre.toLowerCase().includes(term));
+      const term = busquedaServicio.value.toLowerCase().trim()
+      lista = lista.filter(s => s && s.nombre && s.nombre.toLowerCase().includes(term))
     }
-    return lista;
-  } catch (error) { return []; }
-});
+    return lista
+  } catch (error) { 
+    return [] 
+  }
+})
 
 const toggleCategoria = (id) => {
-  const cid = String(id);
-  const index = categoriasSeleccionadas.value.indexOf(cid);
-  if (index > -1) categoriasSeleccionadas.value.splice(index, 1);
-  else categoriasSeleccionadas.value.push(cid);
+  const cid = String(id)
+  const index = categoriasSeleccionadas.value.indexOf(cid)
+  if (index > -1) categoriasSeleccionadas.value.splice(index, 1)
+  else categoriasSeleccionadas.value.push(cid)
 }
 
 const toggleServicio = (servicio) => {
-  if (!servicio || !servicio.id) return;
-  const id = String(servicio.id);
-  const index = form.value.servicios_ids.indexOf(id);
-  if (index > -1) form.value.servicios_ids.splice(index, 1);
-  else form.value.servicios_ids.push(id);
-  if (form.value.hora) form.value.hora = "";
+  if (!servicio || !servicio.id) return
+  const id = String(servicio.id)
+  const index = form.value.servicios_ids.indexOf(id)
+  if (index > -1) form.value.servicios_ids.splice(index, 1)
+  else form.value.servicios_ids.push(id)
+  if (form.value.hora) form.value.hora = ""
 }
 
-const estaServicioSeleccionado = (servicio) => servicio?.id && form.value.servicios_ids.includes(String(servicio.id));
+const estaServicioSeleccionado = (servicio) => servicio?.id && form.value.servicios_ids.includes(String(servicio.id))
 
 const eliminarServicio = (servicioId) => {
-  form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== String(servicioId));
-  if (form.value.hora) form.value.hora = "";
+  form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== String(servicioId))
+  if (form.value.hora) form.value.hora = ""
 }
 
-const formularioValido = computed(() => form.value.peluquero && form.value.servicios_ids.length > 0 && form.value.fecha && form.value.hora);
+const formularioValido = computed(() => 
+  form.value.peluquero && 
+  form.value.servicios_ids.length > 0 && 
+  form.value.fecha && 
+  form.value.hora
+)
 
 const calcularTotalOriginal = () => {
   try {
-    const lista = getListaServicios();
+    const lista = getListaServicios()
     return form.value.servicios_ids.reduce((acc, id) => {
-      const s = lista.find(x => String(x.id) === String(id));
-      return acc + (parseFloat(s?.precio) || 0);
-    }, 0);
-  } catch (error) { return 0; }
+      const s = lista.find(x => String(x.id) === String(id))
+      return acc + (parseFloat(s?.precio) || 0)
+    }, 0)
+  } catch (error) { 
+    return 0 
+  }
 }
 
-const calcularTotal = () => calcularTotalOriginal().toFixed(2);
-const calcularTotalConDescuento = () => (calcularTotalOriginal() * (1 - (descuentoAplicado.value || 0) / 100)).toFixed(2);
+const calcularTotal = () => calcularTotalOriginal().toFixed(2)
+
+const calcularTotalConDescuento = () => {
+  const total = calcularTotalOriginal()
+  const descuento = total * (descuentoAplicado.value / 100)
+  return (total - descuento).toFixed(2)
+}
+
 const calcularDuracionTotalServicios = () => {
-  const lista = getListaServicios();
+  const lista = getListaServicios()
   return form.value.servicios_ids.reduce((total, id) => {
-    const s = lista.find(x => String(x.id) === String(id));
-    return total + parseInt(s?.duracion || s?.duracion_minutos || 20);
-  }, 0);
+    const s = lista.find(x => String(x.id) === String(id))
+    return total + parseInt(s?.duracion || s?.duracion_minutos || 20)
+  }, 0)
 }
-const calcularSena = () => (parseFloat(calcularTotalConDescuento()) * 0.5).toFixed(2);
-const montoAPagarAhora = () => (form.value.tipo_pago === 'SENA_50' ? calcularSena() : calcularTotalConDescuento());
 
-const getServicioNombre = (id) => getListaServicios().find(s => String(s.id) === String(id))?.nombre || 'Servicio';
+const calcularSena = () => {
+  const totalConDescuento = parseFloat(calcularTotalConDescuento())
+  return (totalConDescuento * 0.5).toFixed(2)
+}
+
+const montoAPagarAhora = () => {
+  return (form.value.tipo_pago === 'SENA_50' ? calcularSena() : calcularTotalConDescuento())
+}
+
+const getServicioNombre = (id) => getListaServicios().find(s => String(s.id) === String(id))?.nombre || 'Servicio'
+
 const getPeluqueroNombre = () => {
-  const lista = Array.isArray(peluqueros.value) ? peluqueros.value : (peluqueros.value?.results || []);
-  const p = lista.find(x => String(x.id) === String(form.value.peluquero));
-  return p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : '';
+  const lista = Array.isArray(peluqueros.value) ? peluqueros.value : (peluqueros.value?.results || [])
+  const p = lista.find(x => String(x.id) === String(form.value.peluquero))
+  return p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : ''
 }
-const getServiciosNombres = () => form.value.servicios_ids.map(id => getServicioNombre(id)).join(', ');
-const getNombreCompletoPeluquero = (p) => p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : '';
-const getInicialesPeluquero = (p) => (p?.nombre || 'P').charAt(0).toUpperCase();
-const formatoFechaLegible = (f) => f ? new Date(f + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '';
-const getCategoriaNombre = (cat) => (typeof cat === 'object' && cat !== null) ? (cat.nombre || 'General') : 'General';
 
-const nombreMesActual = computed(() => currentDate.value.toLocaleString('es-ES', { month: 'long' }).toUpperCase());
-const currentYear = computed(() => currentDate.value.getFullYear());
-const startingDayOfWeek = computed(() => new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), 1).getDay());
-const daysInMonth = computed(() => new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 0).getDate());
+const getServiciosNombres = () => form.value.servicios_ids.map(id => getServicioNombre(id)).join(', ')
+
+const getNombreCompletoPeluquero = (p) => p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : ''
+
+const getInicialesPeluquero = (p) => (p?.nombre || 'P').charAt(0).toUpperCase()
+
+const formatoFechaLegible = (f) => f ? new Date(f + 'T12:00:00').toLocaleDateString('es-ES', { 
+  weekday: 'long', 
+  year: 'numeric', 
+  month: 'long', 
+  day: 'numeric' 
+}) : ''
+
+const getCategoriaNombre = (cat) => (typeof cat === 'object' && cat !== null) ? (cat.nombre || 'General') : 'General'
+
+const nombreMesActual = computed(() => currentDate.value.toLocaleString('es-ES', { month: 'long' }).toUpperCase())
+
+const currentYear = computed(() => currentDate.value.getFullYear())
+
+const startingDayOfWeek = computed(() => new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), 1).getDay())
+
+const daysInMonth = computed(() => new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 0).getDate())
 
 const esHoy = (day) => {
-  const hoy = new Date();
-  return day === hoy.getDate() && currentDate.value.getMonth() === hoy.getMonth() && currentYear.value === hoy.getFullYear();
-};
-const esDiaSeleccionado = (day) => form.value.fecha && day === new Date(form.value.fecha + 'T12:00:00').getDate() && currentDate.value.getMonth() === new Date(form.value.fecha + 'T12:00:00').getMonth();
-const esDiaSeleccionable = (day) => {
-  const target = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), day);
-  target.setHours(0,0,0,0); const hoy = new Date(); hoy.setHours(0,0,0,0);
-  if (target < hoy || target.getDay() === 0) return false;
-  let tempDate = new Date(hoy); let count = 0;
-  while (tempDate <= target) { if (tempDate.getDay() !== 0) count++; tempDate.setDate(tempDate.getDate() + 1); }
-  return count <= DIAS_RANGO;
-};
-const seleccionarDiaCalendario = (day) => {
-  const month = String(currentDate.value.getMonth() + 1).padStart(2, '0');
-  form.value.fecha = `${currentYear.value}-${month}-${String(day).padStart(2, '0')}`;
-  form.value.hora = "";
-};
-const cambiarMes = (delta) => { const n = new Date(currentDate.value); n.setMonth(n.getMonth() + delta); currentDate.value = n; };
+  const hoy = new Date()
+  return day === hoy.getDate() && 
+         currentDate.value.getMonth() === hoy.getMonth() && 
+         currentYear.value === hoy.getFullYear()
+}
 
-// 🔥 FUNCIÓN PARA UI: Verifica solo el slot inicial
+const esDiaSeleccionado = (day) => form.value.fecha && 
+  day === new Date(form.value.fecha + 'T12:00:00').getDate() && 
+  currentDate.value.getMonth() === new Date(form.value.fecha + 'T12:00:00').getMonth()
+
+const esDiaSeleccionable = (day) => {
+  const target = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), day)
+  target.setHours(0,0,0,0)
+  const hoy = new Date()
+  hoy.setHours(0,0,0,0)
+  
+  if (target < hoy || target.getDay() === 0) return false
+  
+  let tempDate = new Date(hoy)
+  let count = 0
+  while (tempDate <= target) { 
+    if (tempDate.getDay() !== 0) count++
+    tempDate.setDate(tempDate.getDate() + 1)
+  }
+  
+  return count <= DIAS_RANGO
+}
+
+const seleccionarDiaCalendario = (day) => {
+  const month = String(currentDate.value.getMonth() + 1).padStart(2, '0')
+  form.value.fecha = `${currentYear.value}-${month}-${String(day).padStart(2, '0')}`
+  form.value.hora = ""
+}
+
+const cambiarMes = (delta) => { 
+  const n = new Date(currentDate.value)
+  n.setMonth(n.getMonth() + delta)
+  currentDate.value = n
+}
+
 const esHorarioDisponibleUI = (h) => {
-  if (!form.value.fecha || !form.value.peluquero) return true;
+  if (!form.value.fecha || !form.value.peluquero) return true
   
   const [hS, mS] = h.substring(0,5).split(':').map(Number)
   const horaString = `${hS.toString().padStart(2, '0')}:${mS.toString().padStart(2, '0')}`
   
-  // Verificar si el slot inicial está ocupado
   if (slotsOcupadosReales.value.some(slot => 
-      slot.startsWith(horaString.substring(0, 5)))) return false;
+      slot.startsWith(horaString.substring(0, 5)))) return false
   
-  const hoy = new Date(); 
-  const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  const hoy = new Date()
+  const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+  
   if (form.value.fecha === hoyF) {
-    return (hS * 60 + mS) > (hoy.getHours() * 60 + hoy.getMinutes() + 30);
+    return (hS * 60 + mS) > (hoy.getHours() * 60 + hoy.getMinutes() + 30)
   }
-  return true;
+  
+  return true
 }
 
-// 🔥 NUEVA FUNCIÓN: Verifica disponibilidad COMPLETA considerando duración
 const esHorarioDisponibleCompleto = (horaSeleccionada) => {
   if (!form.value.fecha || !form.value.peluquero) return false
   
-  // Calcular duración total de los servicios seleccionados
   const duracionTotal = calcularDuracionTotalServicios()
   
-  // Si no hay servicios seleccionados, duración mínima
   if (duracionTotal === 0) return esHorarioDisponibleUI(horaSeleccionada)
   
-  // Convertir hora seleccionada a minutos
   const [h, m] = horaSeleccionada.split(':').map(Number)
   const inicioMinutos = h * 60 + m
   const finMinutos = inicioMinutos + duracionTotal
   
-  // Verificar minuto por minuto si hay solapamiento
   for (let i = inicioMinutos; i < finMinutos; i++) {
     const horaSlot = Math.floor(i / 60).toString().padStart(2, '0')
     const minutoSlot = (i % 60).toString().padStart(2, '0')
     const slotActual = `${horaSlot}:${minutoSlot}`
     
-    // Si este minuto está ocupado por otro turno, no está disponible
     if (slotsOcupadosReales.value.some(slot => 
         slot.startsWith(slotActual.substring(0, 5)))) {
       return false
     }
   }
   
-  // También verificar que no sea una hora pasada si es hoy
   const hoy = new Date()
   const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+  
   if (form.value.fecha === hoyFormateado) {
     if (inicioMinutos < (hoy.getHours() * 60 + hoy.getMinutes() + 30)) {
       return false
@@ -701,184 +935,269 @@ const esHorarioDisponibleCompleto = (horaSeleccionada) => {
   return true
 }
 
-const horariosDisponibles = computed(() => ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00'].filter(h => esHorarioDisponibleCompleto(h)));
-const horariosOcupadosParaMostrar = computed(() => ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00'].filter(h => !esHorarioDisponibleCompleto(h)));
+const horariosDisponibles = computed(() => 
+  ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40',
+   '11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40',
+   '17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00']
+  .filter(h => esHorarioDisponibleCompleto(h))
+)
+
+const horariosOcupadosParaMostrar = computed(() => 
+  ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40',
+   '11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40',
+   '17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00']
+  .filter(h => !esHorarioDisponibleCompleto(h))
+)
 
 const seleccionarPeluquero = (id) => { 
-  form.value.peluquero = id; 
-  form.value.hora = ""; 
-  slotsOcupadosReales.value = []; 
+  form.value.peluquero = id
+  form.value.hora = ""
+  slotsOcupadosReales.value = []
 }
 
-// 🔥 CORREGIDO: seleccionarHora usa la verificación COMPLETA
 const seleccionarHora = (h) => { 
-  if (esHorarioDisponibleCompleto(h)) form.value.hora = h; 
+  if (esHorarioDisponibleCompleto(h)) form.value.hora = h
 }
 
 const cargarDatosIniciales = async () => {
-  cargandoDatos.value = true;
+  cargandoDatos.value = true
   try {
-    const userId = localStorage.getItem('user_id'); 
-    if (!userId) return router.push('/login');
+    const userId = localStorage.getItem('user_id')
+    if (!userId) return router.push('/login')
     
-    // ✅ PETICIÓN PARA OBTENER CONFIGURACIÓN ACTUALIZADA
     const [resU, p, s, c, resConfig] = await Promise.all([
-      api.get(`/api/usuarios/${userId}/`), 
-      api.get('/api/peluqueros/'), 
-      api.get('/api/servicios/'), 
+      api.get(`/api/usuarios/${userId}/`),
+      api.get('/api/peluqueros/'),
+      api.get('/api/servicios/'),
       api.get('/api/categorias/servicios/'),
-      api.get('/api/configuracion/') 
-    ]);
+      api.get('/api/configuracion/')
+    ])
     
-    usuario.value = { ...resU.data, isAuthenticated: true }; 
-    form.value.cliente = userId;
-    peluqueros.value = p.data?.results || p.data; 
-    servicios.value = s.data?.results || s.data; 
-    categorias.value = c.data?.results || c.data;
+    usuario.value = { ...resU.data, isAuthenticated: true }
+    form.value.cliente = userId
+    peluqueros.value = p.data?.results || p.data
+    servicios.value = s.data?.results || s.data
+    categorias.value = c.data?.results || c.data
     
     if (resConfig.data) {
-      configSist.value = resConfig.data;
+      configSist.value = resConfig.data
     }
-
-  } finally { 
-    cargandoDatos.value = false; 
+    
+  } catch (error) {
+    console.error('Error cargando datos iniciales:', error)
+    Swal.fire({
+      title: 'Error',
+      text: 'No se pudieron cargar los datos. Intenta recargar la página.',
+      icon: 'error'
+    })
+  } finally {
+    cargandoDatos.value = false
   }
 }
 
-// 🔥 CORREGIDO: cargarTurnosOcupados ahora guarda TODOS los minutos ocupados
 const cargarTurnosOcupados = async (f) => {
-  if (!form.value.peluquero || !f) return;
-  cargandoHorarios.value = true;
+  if (!form.value.peluquero || !f) return
+  cargandoHorarios.value = true
+  
   try {
-    const res = await api.get(`/api/turnos/?fecha=${f}&peluquero=${form.value.peluquero}`);
-    const turnosData = res.data?.results || res.data; 
-    const ocupadosSet = new Set();
+    const res = await api.get(`/api/turnos/?fecha=${f}&peluquero=${form.value.peluquero}`)
+    const turnosData = res.data?.results || res.data
+    const ocupadosSet = new Set()
     
     turnosData.forEach(turno => {
-      // ✅ FILTRO PARA LIBERAR HORARIOS CANCELADOS
-      if (turno.estado === 'CANCELADO' || turno.estado === 'DISPONIBLE') return;
-      if (turno.fecha !== f) return; 
-
-      if (!turno.hora) return; 
-      const [h, m] = turno.hora.split(':').map(Number); 
+      if (turno.estado === 'CANCELADO' || turno.estado === 'DISPONIBLE') return
+      if (turno.fecha !== f) return
+      if (!turno.hora) return
       
-      // Calcular duración del turno
-      let dur = turno.duracion_total || 0;
+      const [h, m] = turno.hora.split(':').map(Number)
+      let dur = turno.duracion_total || 0
+      
       if (!dur && turno.servicios) {
         if (Array.isArray(turno.servicios)) {
-          dur = turno.servicios.reduce((acc, s) => acc + (s.duracion || 20), 0);
+          dur = turno.servicios.reduce((acc, s) => acc + (s.duracion || 20), 0)
         } else {
-          dur = 20;
+          dur = 20
         }
       }
-      if (!dur) dur = 20;
       
-      const inicioMin = h * 60 + m;
-      const finMin = inicioMin + dur;
+      if (!dur) dur = 20
       
-      // 🔥 GUARDAR TODOS LOS MINUTOS OCUPADOS
+      const inicioMin = h * 60 + m
+      const finMin = inicioMin + dur
+      
       for (let i = inicioMin; i < finMin; i++) {
-        ocupadosSet.add(`${Math.floor(i/60).toString().padStart(2,'0')}:${(i%60).toString().padStart(2,'0')}`);
+        ocupadosSet.add(`${Math.floor(i/60).toString().padStart(2,'0')}:${(i%60).toString().padStart(2,'0')}`)
       }
-    });
+    })
     
-    slotsOcupadosReales.value = Array.from(ocupadosSet);
-  } finally { 
-    cargandoHorarios.value = false; 
+    slotsOcupadosReales.value = Array.from(ocupadosSet)
+    
+  } catch (error) {
+    console.error('Error cargando turnos ocupados:', error)
+  } finally {
+    cargandoHorarios.value = false
   }
 }
 
+// 🔥 CORREGIR: crearPagoMercadoPago para incluir cupón
 const crearPagoMercadoPago = async () => {
-  if (!formularioValido.value) return;
-  cargandoMercadoPago.value = true;
+  if (!formularioValido.value) {
+    Swal.fire({
+      title: 'Formulario Incompleto',
+      text: 'Por favor completa todos los campos requeridos.',
+      icon: 'warning'
+    })
+    return
+  }
+  
+  cargandoMercadoPago.value = true
+  
   try {
     const payload = {
-      peluquero_id: parseInt(form.value.peluquero), 
-      cliente_id: parseInt(usuario.value.id),      
-      servicios_ids: form.value.servicios_ids.map(id => parseInt(id)), 
+      peluquero_id: parseInt(form.value.peluquero),
+      cliente_id: parseInt(usuario.value.id),
+      servicios_ids: form.value.servicios_ids.map(id => parseInt(id)),
       fecha: form.value.fecha,
-      hora: form.value.hora, 
-      canal: 'WEB', 
-      tipo_pago: form.value.tipo_pago, 
+      hora: form.value.hora,
+      canal: 'WEB',
+      tipo_pago: form.value.tipo_pago,
       medio_pago: 'MERCADO_PAGO',
-      monto_total: parseFloat(calcularTotalConDescuento()), 
-      cup_codigo: cuponCodigo.value,
+      monto_total: parseFloat(calcularTotalConDescuento()),
+      cup_codigo: form.value.cup_codigo,  // 🔥 ENVIAR CUPÓN AL BACKEND
       duracion_total: calcularDuracionTotalServicios()
-    };
-    
-    const res = await api.post('/api/turnos/crear/', payload);
-    const mpUrl = res.data?.mp_data?.init_point || res.data?.init_point;
-    if (mpUrl) {
-      window.location.href = mpUrl;
-    } else { 
-      throw new Error('No se recibió la URL de Mercado Pago'); 
     }
+    
+    console.log('📤 Enviando payload con cupón:', payload.cup_codigo)
+    
+    const res = await api.post('/api/turnos/crear/', payload)
+    
+    if (res.data.status === 'ok') {
+      // 🔥 MOSTRAR INFORMACIÓN DE DESCUENTO APLICADO
+      if (res.data.descuento && res.data.descuento.aplicado) {
+        Swal.fire({
+          title: '¡Descuento Aplicado!',
+          html: `✅ Se aplicó un ${res.data.descuento.porcentaje}% de descuento<br>
+                 <strong>Total a pagar: $${res.data.descuento.monto_final.toFixed(2)}</strong>`,
+          icon: 'success',
+          timer: 4000,
+          showConfirmButton: false
+        })
+      }
+      
+      const mpUrl = res.data?.mp_data?.init_point
+      if (mpUrl) {
+        // Redirigir a Mercado Pago
+        window.location.href = mpUrl
+      } else {
+        Swal.fire({
+          title: 'Turno Creado',
+          text: 'Tu turno fue reservado exitosamente.',
+          icon: 'success'
+        }).then(() => {
+          router.push('/cliente/historial')
+        })
+      }
+    } else {
+      throw new Error(res.data.message || 'Error al crear el turno')
+    }
+    
   } catch (error) {
-    Swal.fire({ 
-      title: 'Error', 
-      text: error.response?.data?.message || 'Error al crear el turno.', 
-      icon: 'error' 
-    });
-  } finally { 
-    cargandoMercadoPago.value = false; 
+    console.error('Error creando turno:', error)
+    
+    let errorMsg = 'Error al crear el turno.'
+    if (error.response?.data?.message) {
+      errorMsg = error.response.data.message
+    }
+    
+    Swal.fire({
+      title: 'Error',
+      text: errorMsg,
+      icon: 'error',
+      confirmButtonText: 'Entendido'
+    })
+    
+  } finally {
+    cargandoMercadoPago.value = false
   }
 }
 
-const registrarInteresHorario = (h) => { 
-  horarioSeleccionadoInteres.value = h; 
-  mostrarModalInteres.value = true; 
-};
+const registrarInteresHorario = (h) => {
+  horarioSeleccionadoInteres.value = h
+  mostrarModalInteres.value = true
+}
 
-const cancelarRegistroInteres = () => { 
-  mostrarModalInteres.value = false; 
-};
+const cancelarRegistroInteres = () => {
+  mostrarModalInteres.value = false
+}
 
-const estaInteresRegistrado = (h) => horariosInteres.value.some(hi => hi.hora === h && hi.fecha === form.value.fecha);
+const estaInteresRegistrado = (h) => 
+  horariosInteres.value.some(hi => hi.hora === h && hi.fecha === form.value.fecha)
 
 const confirmarRegistroInteres = async () => {
-  registrandoInteres.value = true;
+  registrandoInteres.value = true
+  
   try {
     await api.post('/api/turnos/registrar-interes/', {
-      fecha: form.value.fecha, 
+      fecha: form.value.fecha,
       hora: horarioSeleccionadoInteres.value,
-      peluquero_id: form.value.peluquero, 
+      peluquero_id: form.value.peluquero,
       cliente_id: usuario.value.id,
-      servicios_ids: form.value.servicios_ids, 
+      servicios_ids: form.value.servicios_ids,
       interes_notificacion: true
-    });
-    Swal.fire({ 
-      title: '¡Interés registrado!', 
-      icon: 'success' 
-    }); 
-    mostrarModalInteres.value = false;
-  } finally { 
-    registrandoInteres.value = false; 
+    })
+    
+    Swal.fire({
+      title: '¡Interés registrado!',
+      text: 'Te avisaremos si este horario se libera.',
+      icon: 'success',
+      timer: 3000,
+      showConfirmButton: false
+    })
+    
+    mostrarModalInteres.value = false
+    
+  } catch (error) {
+    Swal.fire({
+      title: 'Error',
+      text: 'No se pudo registrar tu interés. Intenta nuevamente.',
+      icon: 'error'
+    })
+  } finally {
+    registrandoInteres.value = false
   }
 }
 
-const filtrarServicios = () => { 
-  nextTick(); 
-};
+const filtrarServicios = () => {
+  nextTick()
+}
 
-const volverAlListado = () => router.push('/cliente/historial');
+const volverAlListado = () => router.push('/cliente/historial')
 
-onMounted(async () => {
-  await cargarDatosIniciales();
-  if (route.query.cup) { 
-    cuponCodigo.value = route.query.cup; 
-    descuentoAplicado.value = 15; 
+// 🔥 NUEVA FUNCIÓN: Validar cupón manualmente
+const validarCuponManual = async () => {
+  if (!cuponCodigo.value) {
+    Swal.fire({
+      title: 'Código Vacío',
+      text: 'Por favor ingresa un código de cupón.',
+      icon: 'warning'
+    })
+    return
   }
-});
+  
+  await validarCuponBackend(cuponCodigo.value)
+}
 
-defineExpose({ 
-  form, 
-  usuario, 
-  serviciosFiltrados, 
-  toggleServicio, 
-  estaServicioSeleccionado, 
-  eliminarServicio, 
-  crearPagoMercadoPago 
-});
+// Exportar funciones para usar en template
+defineExpose({
+  form,
+  usuario,
+  serviciosFiltrados,
+  toggleServicio,
+  estaServicioSeleccionado,
+  eliminarServicio,
+  crearPagoMercadoPago,
+  validarCuponManual
+})
 </script>
 
 <style scoped>
@@ -2104,6 +2423,11 @@ defineExpose({
   animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
+.cupon-alerta-mejorado {
+  border-left: 4px solid #10b981;
+  animation: pulse 2s infinite;
+}
+
 .cupon-alerta .card-header h3 {
   color: #1f2937 !important;
 }
@@ -2116,6 +2440,16 @@ defineExpose({
 .cupon-alerta strong {
   color: #000000 !important;
   font-weight: 700;
+}
+.descuento-indicador {
+  color: #10b981;
+  font-weight: bold;
+  margin-left: 10px;
+}
+
+.descuento-positivo {
+  color: #10b981;
+  font-weight: bold;
 }
 
 @keyframes slideUp {

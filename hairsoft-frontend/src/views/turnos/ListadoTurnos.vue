@@ -78,6 +78,14 @@
                   {{ getEstadoTexto(turno.estado, turno.tipo_pago) }}
                 </span>
                 
+                <!-- 🔥 BADGE DE FIDELIZACIÓN - 15% DESCUENTO -->
+                <div v-if="turno.descuento_aplicado && turno.descuento_aplicado > 0" style="margin-top: 5px;">
+                  <span class="badge-fidelizacion">
+                    <i class="bi bi-gift me-1"></i>
+                    15% Fidelización
+                  </span>
+                </div>
+                
                 <!-- BADGES SOLO PARA CANCELADOS -->
                 <div v-if="turno.estado === 'CANCELADO'">
                   <!-- BADGE PARA MOTIVO DE CANCELACIÓN -->
@@ -145,6 +153,14 @@
                   </div>
                   <div v-else-if="turno.tipo_pago === 'TOTAL'" class="detalle-pago">
                     <span class="text-pagado">Pagado total</span>
+                  </div>
+                  
+                  <!-- 🔥 MOSTRAR DESCUENTO APLICADO -->
+                  <div v-if="turno.descuento_aplicado && turno.descuento_aplicado > 0" class="descuento-info">
+                    <span class="badge-descuento-fidelizacion">
+                      <i class="bi bi-percent me-1"></i>
+                      15% OFF aplicado
+                    </span>
                   </div>
                   
                   <!-- 🔥 CORREGIDO: INFORMACIÓN DE TRANSACCIÓN SIN DUPLICAR EL TIPO DE PAGO -->
@@ -271,7 +287,7 @@ import { useRouter } from 'vue-router'
 import axios from '../../utils/axiosConfig'
 import { 
   Plus, Trash2, Eye, CreditCard, ArrowRightLeft, Check, 
-  ArrowLeft, ArrowRight, Edit // 🔥 AGREGAR Edit
+  ArrowLeft, ArrowRight, Edit
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 
@@ -1147,6 +1163,31 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   font-size: 0.75rem;
   font-weight: 600;
   border: 1px solid #d1d5db;
+}
+
+.badge-fidelizacion {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.badge-descuento-fidelizacion {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
 }
 
 /* BADGE ORO PARA TIPO DE CANJE */

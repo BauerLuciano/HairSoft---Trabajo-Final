@@ -526,6 +526,8 @@ class Turno(models.Model):
     token_reoferta = models.CharField(max_length=100, blank=True, null=True)
     cliente_asignado_reoferta = models.ForeignKey('Usuario', on_delete=models.SET_NULL, null=True, blank=True, related_name="turnos_asignados_reoferta")
     monto_comision = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    monto_original = models.DecimalField(max_digits=8, decimal_places=2, default=0, verbose_name="Monto sin descuento")
+    descuento_aplicado = models.DecimalField(max_digits=8, decimal_places=2, default=0, verbose_name="Descuento aplicado")
     
     def __str__(self):
         nombre_cli = self.cliente.nombre if self.cliente else "Disponible"
@@ -1331,6 +1333,11 @@ class PromocionReactivacion(models.Model):
     
     # Guardamos en qué turno se usó para trazabilidad
     turno_canje = models.ForeignKey('Turno', on_delete=models.SET_NULL, null=True, blank=True, related_name='promo_usada')
+    
+    # 🔥 AGREGAR ESTOS CAMPOS PARA TRAZABILIDAD:
+    mp_payment_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="ID de transacción/pago")
+    mensaje_sid = models.CharField(max_length=100, blank=True, null=True, verbose_name="ID de mensaje Twilio")
+    canal_envio = models.CharField(max_length=20, blank=True, null=True, verbose_name="Canal de envío")
 
     def __str__(self):
         return f"Promo {self.cliente.nombre} - {self.codigo} ({self.estado})"

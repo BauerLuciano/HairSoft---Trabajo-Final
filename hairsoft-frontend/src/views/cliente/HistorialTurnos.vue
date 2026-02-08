@@ -107,7 +107,13 @@
               </div>
               <span class="precio-texto">Total del servicio</span>
             </div>
-
+            
+            <!-- 🔥 BADGE DE FIDELIZACIÓN - 15% DESCUENTO -->
+            <div v-if="turno.descuento_aplicado && turno.descuento_aplicado > 0" class="descuento-fidelizacion">
+              <i class="bi bi-gift me-1"></i>
+              <span>Con 15% OFF (fidelización)</span>
+            </div>
+            
             <div class="turno-acciones">
               <button 
                 v-if="turno.puede_cancelar && turno.estado !== 'CANCELADO'" 
@@ -1137,6 +1143,19 @@ watch(tabActiva, () => { pagina.value = 1 })
   margin: 40px 0;
   flex-wrap: wrap;
   gap: 20px;
+}
+
+.descuento-fidelizacion {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  font-weight: 600;
 }
 
 .paginacion-info {

@@ -14,11 +14,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-ip8)+yuz^y06zqgl-%w%05^vjroio(3@@4qo(tz_0ssvtpe@3(')
 DEBUG = 'RAILWAY_ENVIRONMENT' not in os.environ
 
-# Permitimos todo para desarrollo local sin dolores de cabeza
 ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1', '.ngrok-free.dev', '.loca.lt']
 
-# ✅ CORRECCIÓN CRÍTICA: URL DEL FRONTEND LOCAL
-# Esto asegura que al volver de Mercado Pago, el usuario caiga en tu Vue local
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
 
 # ================================
@@ -66,9 +63,6 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'hairsoft.urls'
 
-# ================================
-# TEMPLATES
-# ================================
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -109,9 +103,6 @@ else:
         }
     }
 
-# ================================
-# VALIDADORES DE CONTRASEÑA
-# ================================
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',},
@@ -191,9 +182,6 @@ CORS_ALLOW_METHODS = [
     'DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT',
 ]
 
-# ================================
-# AUTENTICACIÓN PERSONALIZADA
-# ================================
 AUTHENTICATION_BACKENDS = [
     'usuarios.auth_backends.EmailAuthBackend', 
     'django.contrib.auth.backends.ModelBackend', 
@@ -202,31 +190,14 @@ AUTHENTICATION_BACKENDS = [
 AUTH_USER_MODEL = 'usuarios.Usuario'
 
 # ================================
-# MERCADO PAGO - CONF TÚNEL SOLO PARA WEBHOOK
+# MERCADO PAGO
 # ================================
-# URL del túnel (Solo para recibir notificaciones del servidor de MP)
-TUNNEL_URL = "https://hairsoft-pago.loca.lt"
-
-# ================================
-# MERCADO PAGO - CONF TÚNEL SOLO PARA WEBHOOK
-# ================================
-# URL del túnel (Solo para recibir notificaciones del servidor de MP)
 TUNNEL_URL = "https://hairsoft-pago.loca.lt"
 
 MERCADO_PAGO = {
     'ACCESS_TOKEN': os.environ.get('MP_ACCESS_TOKEN', 'APP_USR-7404896415144376-102322-584184e7db9ca5b628be4d7e21763ae3-2943677918'),
     'PUBLIC_KEY': os.environ.get('MP_PUBLIC_KEY', 'APP_USR-4e145215-f26e-4c2d-8be7-a557300a9154'),
-    
-    # URL del Webhook (El túnel es necesario aquí)
     'WEBHOOK_URL': f"{TUNNEL_URL}/api/mercadopago/webhook/",
-    
-    # LAS BACK_URLS SE DEFINEN DINÁMICAMENTE EN EL SERVICIO USANDO FRONTEND_URL
-    # PERO DEJAMOS ESTO POR SI ACASO ALGUNA VISTA VIEJA LO USA
-    #'BACK_URLS': {
-    #    'success': f"{FRONTEND_URL}/cliente/historial",
-    #    'failure': f"{FRONTEND_URL}/reserva",
-    #    'pending': f"{FRONTEND_URL}/reserva"
-    #'AUTO_RETURN': 'approved',
     'BINARY_MODE': True,
     'SANDBOX': True
 }
@@ -247,7 +218,7 @@ REST_FRAMEWORK = {
 }
 
 # ================================
-# CELERY & REDIS (Configuración SIMPLIFICADA para Windows)
+# CELERY & REDIS
 # ================================
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 
@@ -256,16 +227,15 @@ CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = TIME_ZONE  # Usa la misma zona horaria que Django
+CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = True
 CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutos máximo por tarea
+CELERY_TASK_TIME_LIMIT = 30 * 60
 
-# 🔥 IMPORTANTE: Desactivar modo "ansioso" (síncrono) para que realmente use Workers
-CELERY_TASK_ALWAYS_EAGER = True  # ¡CRÍTICO! Debe ser False en producción
-CELERY_TASK_EAGER_PROPAGATES = True
+# 🔥 PARA PRODUCCIÓN/AUTOMATIZACIÓN CAMBIAR A False
+CELERY_TASK_ALWAYS_EAGER = DEBUG 
+CELERY_TASK_EAGER_PROPAGATES = DEBUG
 
-# Configuración de reintentos
 CELERY_TASK_ANNOTATIONS = {
     '*': {
         'retry': True,

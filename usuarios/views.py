@@ -779,28 +779,28 @@ def sanear_turnos_vencidos():
     except Exception as e:
         print(f"⚠️ Error en saneamiento automático: {e}")
 
+# ============================================================================
+# ✅ CREAR TURNO - FUNCIÓN COMPLETA CORREGIDA
+# ============================================================================
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def crear_turno(request):
     print(f"\n🚀 --- INICIO CREAR TURNO ---")
+    print(f"📦 DATA RECIBIDA: {request.data}")
+    
     try:
         data = request.data
-        print(f"📦 DATA RECIBIDA COMPLETA: {data}")
         
-        # 🔥 DEBUG EXTRA: Mostrar específicamente los campos de pago
-        print("=== DEBUG CAMPOS DE PAGO ===")
-        print(f"medio_pago: {data.get('medio_pago')}")
-        print(f"codigo_transaccion: {data.get('codigo_transaccion')}")
-        print(f"entidad_pago: {data.get('entidad_pago')}")
-        print(f"mp_payment_id: {data.get('mp_payment_id')}")
-        print("===========================")
-
+        # 🔥 DEBUG: Verificar si viene cupón
+        print(f"🎟️ CUPÓN EN DATA: {data.get('cup_codigo')}")
+        
         # ---------------------------------------------------------
         # 1. IDENTIFICACIÓN DEL CLIENTE Y CANAL
         # ---------------------------------------------------------
         cliente = None
-        canal = data.get('canal', 'WEB') 
+        canal = data.get('canal', 'WEB')
         
+        # Caso 1: Presencial (desde admin)
         if canal == 'PRESENCIAL':
             cliente_id = data.get('cliente_id') or data.get('cliente')
             if not cliente_id:
@@ -810,17 +810,22 @@ def crear_turno(request):
             except Usuario.DoesNotExist:
                 return Response({'status': 'error', 'message': "Cliente no encontrado"}, status=400)
         
+        # Caso 2: Web autenticado
         elif request.user.is_authenticated:
             cliente = request.user
         
-        if not cliente and data.get('cliente_id'):
-             cliente = Usuario.objects.filter(pk=data.get('cliente_id')).first()
-
+        # Caso 3: Por ID desde web
+        elif data.get('cliente_id'):
+            try:
+                cliente = Usuario.objects.get(pk=data.get('cliente_id'))
+            except Usuario.DoesNotExist:
+                return Response({'status': 'error', 'message': "Cliente no encontrado"}, status=400)
+        
         if not cliente:
             return Response({'status': 'error', 'message': "Debes iniciar sesión o indicar el cliente."}, status=401)
-
-        print(f"✅ Cliente: {cliente.nombre} {cliente.apellido} ({canal})")
-
+        
+        print(f"✅ Cliente identificado: {cliente.nombre} {cliente.apellido} (ID: {cliente.id})")
+        
         # ---------------------------------------------------------
         # 2. DATOS BÁSICOS
         # ---------------------------------------------------------
@@ -828,104 +833,134 @@ def crear_turno(request):
         servicios_ids = data.get('servicios_ids', [])
         fecha_str = data.get('fecha')
         hora_str = data.get('hora')
-
+        
         if not all([peluquero_id, fecha_str, hora_str, servicios_ids]):
             return Response({'status': 'error', 'message': "Faltan datos obligatorios."}, status=400)
-
-        if len(hora_str) > 5: hora_str = hora_str[:5]
-
+        
+        # Normalizar hora (HH:MM)
+        if len(hora_str) > 5:
+            hora_str = hora_str[:5]
+        
         try:
             fecha_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
             hora_obj = datetime.strptime(hora_str, "%H:%M").time()
         except ValueError as e:
             return Response({'status': 'error', 'message': f"Formato fecha/hora inválido: {e}"}, status=400)
-
+        
         peluquero = get_object_or_404(Usuario, pk=peluquero_id)
         servicios = Servicio.objects.filter(pk__in=servicios_ids)
         
         if not servicios.exists():
-             return Response({'status': 'error', 'message': "Servicios no válidos"}, status=400)
-
+            return Response({'status': 'error', 'message': "Servicios no válidos"}, status=400)
+        
         # ---------------------------------------------------------
-        # 3. VALIDACIÓN DE DISPONIBILIDAD (CORREGIDO)
+        # 3. VALIDACIÓN DE DISPONIBILIDAD
         # ---------------------------------------------------------
-        # Duración del nuevo turno
         duracion_total = sum(s.duracion for s in servicios) or 30
         inicio_nuevo = datetime.combine(fecha_obj, hora_obj)
         fin_nuevo = inicio_nuevo + timedelta(minutes=duracion_total)
-
+        
         # Buscar turnos SOLO de esa fecha y ese peluquero
         turnos_existentes = Turno.objects.filter(
             fecha=fecha_obj,
             peluquero=peluquero,
-            estado__in=['RESERVADO', 'COMPLETADO'] 
+            estado__in=['RESERVADO', 'COMPLETADO']
         ).exclude(estado='CANCELADO')
-
+        
         for t in turnos_existentes:
-            # 🛑 SEGURIDAD EXTRA: Si por error viene un turno de otro día, lo saltamos
             if t.fecha != fecha_obj:
                 continue
-
+            
             duracion_t = getattr(t, 'duracion_total', 0)
             if not duracion_t and t.servicios.exists():
-                 duracion_t = sum(s.duracion for s in t.servicios.all())
-            if not duracion_t: duracion_t = 30
+                duracion_t = sum(s.duracion for s in t.servicios.all())
+            if not duracion_t:
+                duracion_t = 30
             
-            # Usamos la fecha del turno REAL (t.fecha) no la forzada
             t_inicio = datetime.combine(t.fecha, t.hora)
             t_fin = t_inicio + timedelta(minutes=duracion_t)
-
-            # Colisión
+            
             if inicio_nuevo < t_fin and fin_nuevo > t_inicio:
                 return Response({
-                    'status': 'error', 
+                    'status': 'error',
                     'message': f'Horario ocupado. Se cruza con turno de {t.hora} a {t_fin.time()}.'
                 }, status=400)
-
+        
         # ---------------------------------------------------------
         # 4. LIMPIEZA ZOMBIES
         # ---------------------------------------------------------
         Turno.objects.filter(
             fecha=fecha_obj, hora=hora_obj, peluquero=peluquero, oferta_activa=True
         ).update(estado='CANCELADO', oferta_activa=False)
-
+        
         # ---------------------------------------------------------
-        # 5. CÁLCULOS Y CREACIÓN
+        # 5. 🔥 CÁLCULOS CON CUPÓN - VERSIÓN CORREGIDA
         # ---------------------------------------------------------
         monto_total_original = sum(float(s.precio) for s in servicios)
         monto_final = monto_total_original
+        descuento_aplicado = 0.0
+        cupon_usado = None
         
-        # Cupón
-        cup_codigo = data.get('cup_codigo')
-        promo_usada = None
+        # 🔥 CORRECCIÓN: Buscar cupón con múltiples nombres de parámetro
+        cup_codigo = data.get('cup_codigo') or data.get('cupon_codigo') or data.get('cupon')
+        
         if cup_codigo:
+            print(f"🎟️ PROCESANDO CUPÓN: {cup_codigo}")
+            
             try:
                 from .models import PromocionReactivacion
-                promo = PromocionReactivacion.objects.filter(codigo=cup_codigo).first()
-                if promo and promo.esta_vigente:
-                    descuento = monto_total_original * (float(promo.descuento_porcentaje) / 100)
-                    monto_final -= descuento
-                    promo_usada = promo
-            except: pass
-
-        # Pagos
+                
+                # Normalizar código
+                codigo_normalizado = str(cup_codigo).strip().upper()
+                
+                # Buscar cupón que pertenezca a este cliente y esté activo
+                cupon = PromocionReactivacion.objects.filter(
+                    codigo=codigo_normalizado,
+                    cliente=cliente,  # 🔥 IMPORTANTE: Verificar que sea del cliente
+                    estado='ACTIVA'
+                ).first()
+                
+                if cupon:
+                    # Validar que no esté vencido
+                    if cupon.fecha_vencimiento and cupon.fecha_vencimiento < timezone.now().date():
+                        print(f"❌ Cupón vencido: {cupon.codigo}")
+                    elif not cupon.esta_vigente:
+                        print(f"❌ Cupón no vigente: {cupon.codigo}")
+                    else:
+                        # 🔥 APLICAR DESCUENTO
+                        descuento_porcentaje = float(cupon.descuento_porcentaje)
+                        descuento_aplicado = monto_total_original * (descuento_porcentaje / 100)
+                        monto_final = monto_total_original - descuento_aplicado
+                        cupon_usado = cupon
+                        
+                        print(f"✅ DESCUENTO APLICADO: {descuento_porcentaje}%")
+                        print(f"💰 Monto original: ${monto_total_original:.2f}")
+                        print(f"💰 Descuento: ${descuento_aplicado:.2f}")
+                        print(f"💰 Monto final: ${monto_final:.2f}")
+                else:
+                    print(f"❌ Cupón no encontrado o no corresponde al cliente: {codigo_normalizado}")
+                    
+            except Exception as e:
+                print(f"⚠️ Error al procesar cupón: {str(e)}")
+                traceback.print_exc()
+        
+        # ---------------------------------------------------------
+        # 6. CALCULAR PAGO
+        # ---------------------------------------------------------
         tipo_pago = data.get('tipo_pago', 'SENA_50')
         medio_pago = data.get('medio_pago', 'EFECTIVO')
+        
+        # Calcular seña sobre el monto CON DESCUENTO
         monto_seña = monto_final * 0.5 if tipo_pago == 'SENA_50' else monto_final
         
-        # 🔥 CORRECCIÓN CRÍTICA: Extraer todos los campos de trazabilidad
+        # Campos de trazabilidad de pago
         codigo_transaccion = data.get('codigo_transaccion')
         entidad_pago = data.get('entidad_pago')
         mp_payment_id = data.get('mp_payment_id')
         
-        # 🔥 DEBUG: Ver qué recibimos exactamente
-        print("=== VALORES RECIBIDOS PARA TRAZABILIDAD ===")
-        print(f"codigo_transaccion: {codigo_transaccion}")
-        print(f"entidad_pago: {entidad_pago}")
-        print(f"mp_payment_id: {mp_payment_id}")
-        print("===========================================")
-
-        # Crear el turno con TODOS los campos
+        # ---------------------------------------------------------
+        # 7. CREAR TURNO CON TODOS LOS DATOS
+        # ---------------------------------------------------------
         turno = Turno.objects.create(
             cliente=cliente,
             peluquero=peluquero,
@@ -936,27 +971,36 @@ def crear_turno(request):
             medio_pago=medio_pago,
             monto_seña=monto_seña,
             monto_total=monto_final,
+            monto_original=monto_total_original,  # 🔥 NUEVO: Guardar monto original
+            descuento_aplicado=descuento_aplicado,  # 🔥 NUEVO: Guardar descuento
             duracion_total=duracion_total,
             estado='RESERVADO',
-            # 🔥 AGREGAR TODOS LOS CAMPOS DE TRAZABILIDAD
             codigo_transaccion=codigo_transaccion,
             entidad_pago=entidad_pago,
             mp_payment_id=mp_payment_id,
-            nro_transaccion=None  # Este se llenará después si es necesario
+            nro_transaccion=None
         )
         turno.servicios.set(servicios)
-
-        if promo_usada:
-            promo_usada.estado = 'USADA'
-            promo_usada.turno_canje = turno
-            promo_usada.save()
-
+        
         # ---------------------------------------------------------
-        # 6. MERCADO PAGO (solo para WEB)
+        # 8. 🔥 MARCAR CUPÓN COMO USADO
+        # ---------------------------------------------------------
+        if cupon_usado:
+            try:
+                cupon_usado.estado = 'USADA'
+                cupon_usado.turno_canje = turno
+                cupon_usado.fecha_uso = timezone.now()
+                cupon_usado.save()
+                print(f"✅ Cupón {cupon_usado.codigo} marcado como USADO")
+            except Exception as e:
+                print(f"⚠️ Error al marcar cupón como usado: {e}")
+        
+        # ---------------------------------------------------------
+        # 9. MERCADO PAGO (solo para WEB)
         # ---------------------------------------------------------
         mp_data = None
         procesar_pago = False
-
+        
         if canal == 'WEB' and medio_pago == 'MERCADO_PAGO':
             print("💳 Iniciando Checkout MercadoPago...")
             try:
@@ -979,37 +1023,43 @@ def crear_turno(request):
                     link = res_mp.get('init_point')
                     mp_data = {
                         'init_point': link,
-                        'preference_id': res_mp.get('preference_id')
+                        'preference_id': res_mp.get('preference_id'),
+                        'monto': float(monto_seña)
                     }
                     print(f"✅ Link MP generado: {link}")
                 else:
                     print(f"❌ Error MP: {res_mp.get('error')}")
-
+                    
             except Exception as e:
                 print(f"💥 Error crítico MP: {e}")
-
-        # 🔥 DEBUG FINAL: Mostrar qué se guardó
-        print("=== TURNO GUARDADO EN BD ===")
-        print(f"ID: {turno.id}")
-        print(f"codigo_transaccion en BD: {turno.codigo_transaccion}")
-        print(f"entidad_pago en BD: {turno.entidad_pago}")
-        print(f"mp_payment_id en BD: {turno.mp_payment_id}")
-        print("============================")
-
+                traceback.print_exc()
+        
+        # ---------------------------------------------------------
+        # 10. RESPUESTA FINAL
+        # ---------------------------------------------------------
+        print(f"✅ Turno creado exitosamente: ID {turno.id}")
+        
         return Response({
             'status': 'ok',
             'turno_id': turno.id,
             'message': 'Turno reservado con éxito.',
             'procesar_pago': procesar_pago,
-            'mp_data': mp_data
+            'mp_data': mp_data,
+            # 🔥 INFORMACIÓN DE DESCUENTO PARA EL FRONTEND
+            'descuento': {
+                'aplicado': bool(cupon_usado),
+                'porcentaje': cupon_usado.descuento_porcentaje if cupon_usado else 0,
+                'monto': float(descuento_aplicado),
+                'monto_original': float(monto_total_original),
+                'monto_final': float(monto_final),
+                'cupon_codigo': cupon_usado.codigo if cupon_usado else None
+            }
         }, status=201)
-
+        
     except Exception as e:
-        print(f"💥 ERROR FATAL: {str(e)}")
-        import traceback
+        print(f"💥 ERROR FATAL en crear_turno: {str(e)}")
         traceback.print_exc()
         return Response({'status': 'error', 'message': str(e)}, status=500)
-
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -4767,32 +4817,76 @@ class SolicitudPresupuestoViewSet(viewsets.ReadOnlyModelViewSet):
             "pedido_id": nuevo_pedido.id
         })
 
-#CUPON DEL PROCESO AUTOMATIZADO - CLIENTES INACTIVOSPSSS
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def validar_cupon(request, codigo):
-    """Valida si un cupón existe y está vigente"""
-    # Importación local para evitar errores circulares si los hubiera
-    from .models import PromocionReactivacion
-    from django.utils import timezone
-
+    """Valida si un cupón existe, está vigente y pertenece al cliente"""
     try:
-        promo = PromocionReactivacion.objects.get(codigo=codigo)
+        # Importaciones locales para evitar circulares
+        from .models import PromocionReactivacion
         
+        print(f"🎟️ Validando cupón: {codigo}")  # DEBUG
+        
+        # Normalizar código (mayúsculas, sin espacios)
+        codigo_normalizado = codigo.strip().upper()
+        
+        # Buscar cupón
+        try:
+            promo = PromocionReactivacion.objects.get(codigo=codigo_normalizado)
+        except PromocionReactivacion.DoesNotExist:
+            return Response({
+                'valido': False, 
+                'mensaje': '❌ Código de cupón inválido.'
+            }, status=404)
+        
+        # Validar vigencia
         if not promo.esta_vigente:
-            return Response({'valido': False, 'mensaje': 'Este cupón ya venció o fue usado.'})
+            if promo.estado == 'USADA':
+                mensaje = 'Este cupón ya fue utilizado.'
+            elif promo.estado == 'VENCIDA' or promo.fecha_vencimiento < timezone.now():
+                mensaje = 'Este cupón ha expirado.'
+            else:
+                mensaje = 'Cupón no disponible.'
             
+            return Response({
+                'valido': False, 
+                'mensaje': f'❌ {mensaje}'
+            })
+        
+        # 🔥 NUEVO: Obtener información del cliente si está autenticado
+        cliente_info = None
+        if request.user.is_authenticated:
+            # Verificar que el cupón sea para este cliente
+            if promo.cliente and promo.cliente.id != request.user.id:
+                return Response({
+                    'valido': False,
+                    'mensaje': '❌ Este cupón no está asignado a tu cuenta.'
+                })
+            
+            cliente_info = {
+                'id': request.user.id,
+                'nombre': request.user.nombre
+            }
+        
+        print(f"✅ Cupón válido: {promo.codigo} - {promo.descuento_porcentaje}%")  # DEBUG
+        
         return Response({
             'valido': True,
             'descuento': float(promo.descuento_porcentaje),
-            'mensaje': f'¡Genial! Tenés un {promo.descuento_porcentaje}% de descuento.',
-            'promo_id': promo.id
+            'mensaje': f'🎉 ¡Perfecto! Tenés un {promo.descuento_porcentaje}% de descuento.',
+            'promo_id': promo.id,
+            'codigo': promo.codigo,
+            'cliente': cliente_info,
+            'valido_hasta': promo.fecha_vencimiento.strftime('%d/%m/%Y') if promo.fecha_vencimiento else None
         })
         
-    except PromocionReactivacion.DoesNotExist:
-        return Response({'valido': False, 'mensaje': 'Código de cupón inválido.'}, status=404)
-
-
+    except Exception as e:
+        print(f"💥 Error en validar_cupon: {str(e)}")
+        return Response({
+            'valido': False, 
+            'mensaje': 'Error interno al validar el cupón.'
+        }, status=500)
+    
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 10
     page_size_query_param = 'page_size'
