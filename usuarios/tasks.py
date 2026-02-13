@@ -264,18 +264,17 @@ def notificar_turno_asignado(turno_id):
 # ==============================================================================
 @shared_task
 def procesar_reactivacion_clientes_inactivos():
-    """VERSIÓN CORREGIDA - Solo clientes con turnos previos y 60+ días sin visitar"""
-    logger.info("🎯 [FIDELIZACIÓN] Iniciando proceso optimizado...")
+    """VERSIÓN NGROK - Linkeable 100%"""
+    logger.info("🎯 [FIDELIZACIÓN] Iniciando proceso con Ngrok...")
     
     try:
         DIAS_INACTIVIDAD = 60
         DIAS_COOLDOWN = 90
         hoy = timezone.now()
         
-        # 🔥 CONSULTA OPTIMIZADA: Solo clientes con al menos UN turno en el pasado
+        # 1. Buscamos clientes
         from django.db.models import Exists, OuterRef
         
-        # Primero, clientes que tienen al menos un turno
         clientes_con_turnos = Usuario.objects.filter(
             rol__nombre__iexact='Cliente',
             telefono__isnull=False,
@@ -283,42 +282,33 @@ def procesar_reactivacion_clientes_inactivos():
             tiene_turnos=Exists(
                 Turno.objects.filter(
                     cliente=OuterRef('pk'),
-                    fecha__lt=hoy.date()  # Solo turnos pasados
+                    fecha__lt=hoy.date()
                 )
             )
         ).filter(tiene_turnos=True)
         
-        logger.info(f"📊 Clientes con al menos un turno en el pasado: {clientes_con_turnos.count()}")
-        
         if clientes_con_turnos.count() == 0:
-            logger.info("ℹ️ No hay clientes con turnos en el pasado. Terminando.")
+            logger.info("ℹ️ No hay clientes para procesar.")
             return "0 mensajes enviados"
         
-        # Identificar clientes inactivos
+        # 2. Filtrado de inactivos
         clientes_inactivos = []
-        
         for cliente in clientes_con_turnos:
             ultimo_turno = Turno.objects.filter(
                 cliente=cliente,
                 estado__in=['COMPLETADO', 'RESERVADO']
             ).order_by('-fecha', '-hora').first()
             
-            if not ultimo_turno:
-                continue
+            if not ultimo_turno: continue
             
             fecha_turno_naive = datetime.combine(ultimo_turno.fecha, ultimo_turno.hora)
             fecha_ultimo_turno = timezone.make_aware(fecha_turno_naive)
             dias_inactivo = (hoy - fecha_ultimo_turno).days
             
-            if dias_inactivo <= DIAS_INACTIVIDAD:
-                continue
+            if dias_inactivo <= DIAS_INACTIVIDAD: continue
             
             fecha_cooldown = hoy - timedelta(days=DIAS_COOLDOWN)
-            if PromocionReactivacion.objects.filter(
-                cliente=cliente,
-                fecha_creacion__gte=fecha_cooldown
-            ).exists():
-                logger.info(f"   ⏳ {cliente.nombre}: Ya recibió promoción reciente")
+            if PromocionReactivacion.objects.filter(cliente=cliente, fecha_creacion__gte=fecha_cooldown).exists():
                 continue
             
             clientes_inactivos.append({
@@ -327,109 +317,75 @@ def procesar_reactivacion_clientes_inactivos():
                 'ultima_visita': ultimo_turno.fecha
             })
         
-        logger.info(f"🎯 Clientes inactivos (60+ días): {len(clientes_inactivos)}")
-        
-        if len(clientes_inactivos) == 0:
-            logger.info("✅ No hay clientes que cumplan criterios")
-            return "0 mensajes enviados"
-        
-        # 🔥 LIMITAR ENVÍOS
+        # 3. Preparar Envíos
         limite_diario = 15
         clientes_a_enviar = clientes_inactivos[:limite_diario]
-        
-        if len(clientes_inactivos) > limite_diario:
-            logger.warning(f"⚠️  {len(clientes_inactivos)} inactivos, solo se enviará a {limite_diario}")
-        
-        # 🔥 PROCESAR ENVÍO
         enviados = 0
+        
+        # 🔥🔥🔥 ACÁ ESTÁ LA SOLUCIÓN 🔥🔥🔥
+        # Ponemos tu dirección de Ngrok explícitamente
+        base_url = 'https://brandi-palmar-pickily.ngrok-free.dev'
         
         for info_cliente in clientes_a_enviar:
             cliente = info_cliente['cliente']
             dias_inactivo = info_cliente['dias_inactivo']
             
-            logger.info(f"\n📨 Procesando: {cliente.nombre}")
-            logger.info(f"   📅 Última visita: {info_cliente['ultima_visita']} (hace {dias_inactivo} días)")
-            
             try:
-                # Generar código
                 codigo = f"VOLVE{secrets.token_hex(3).upper()}"
                 
                 # Formatear teléfono
                 telefono = str(cliente.telefono).strip()
                 if not telefono.startswith('+'):
-                    if telefono.startswith('0'):
-                        telefono = telefono[1:]
+                    if telefono.startswith('0'): telefono = telefono[1:]
                     telefono = f"+54{telefono}"
                 
-                # Construir link
-                frontend_url = settings.FRONTEND_URL
-                if not frontend_url.startswith('http'):
-                    frontend_url = f"https://{frontend_url}"
-                
-                link = f"{frontend_url}/turnos/crear-web?cup={codigo}"
+                # Link con Ngrok
+                link = f"{base_url}/turnos/crear-web?cup={codigo}"
                 
                 # Mensaje
                 mensaje = (
-                    f"*¡TE EXTRAÑAMOS EN LA PELUQUERÍA!* ✂️💈\n\n"
-                    f"Hola {cliente.nombre},\n\n"
-                    f"Notamos que hace *{dias_inactivo} días* que no nos visitás.\n\n"
-                    f"*🎁 TE REGALAMOS UN 15% DE DESCUENTO* en tu próximo turno.\n\n"
-                    f"👉 *CLICK PARA RESERVAR:*\n"
-                    f"{link}\n\n"
-                    f"📱 *Código:* {codigo}\n\n"
-                    f"⏰ *Válido por 7 días*\n"
-                    f"📍 *Peluquería: Los Últimos Serán Los Primeros*"
+                    f"✂️ *¡TE EXTRAÑAMOS!* 💈\n\n"
+                    f"Hola {cliente.nombre}, hace *{dias_inactivo} días* que no te vemos.\n\n"
+                    f"🎁 *TENÉS UN 15% OFF DE REGALO*\n"
+                    f"Reservá tu próximo turno tocando acá:\n\n"
+                    f"{link}\n\n" 
+                    f"🎫 Código: *{codigo}*\n"
+                    f"⏳ Vence en 7 días"
                 )
                 
-                # 🔥 ENVIAR MENSAJE
-                try:
-                    from twilio.rest import Client
-                    account_sid = settings.TWILIO_ACCOUNT_SID
-                    auth_token = settings.TWILIO_AUTH_TOKEN
-                    
-                    client = Client(account_sid, auth_token)
-                    
-                    message = client.messages.create(
-                        body=mensaje,
-                        from_=settings.TWILIO_WHATSAPP_NUMBER,
-                        to=f'whatsapp:{telefono}'
-                    )
-                    
-                    logger.info(f"   ✅ Enviado! SID: {message.sid}")
-                    
-                    # 🔥 CREAR PROMOCIÓN CON LOS CAMPOS CORRECTOS
-                    PromocionReactivacion.objects.create(
-                        cliente=cliente,
-                        codigo=codigo,
-                        descuento_porcentaje=15,
-                        fecha_vencimiento=hoy + timedelta(days=7),
-                        # 🔥 Si agregaste los campos al modelo:
-                        mensaje_sid=message.sid,  # ID del mensaje Twilio
-                        canal_envio='WHATSAPP'
-                    )
-                    
-                    enviados += 1
-                    
-                except Exception as e:
-                    error_msg = str(e)
-                    if "exceeded the 50 daily messages limit" in error_msg:
-                        logger.error(f"   🚨 LÍMITE DIARIO DE TWILIO ALCANZADO. Deteniendo.")
-                        break
-                    else:
-                        logger.error(f"   ❌ Error Twilio: {error_msg}")
+                # Enviar Twilio
+                from twilio.rest import Client
+                client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
                 
+                message = client.messages.create(
+                    body=mensaje,
+                    from_=settings.TWILIO_WHATSAPP_NUMBER,
+                    to=f'whatsapp:{telefono}'
+                )
+                
+                # Guardar Promo
+                PromocionReactivacion.objects.create(
+                    cliente=cliente,
+                    codigo=codigo,
+                    descuento_porcentaje=15,
+                    fecha_vencimiento=hoy + timedelta(days=7),
+                    mensaje_sid=message.sid,
+                    canal_envio='WHATSAPP'
+                )
+                
+                enviados += 1
+                logger.info(f"✅ Enviado a {cliente.nombre} con link Ngrok")
                 time.sleep(1)
                 
             except Exception as e:
-                logger.error(f"❌ Error general con {cliente.nombre}: {str(e)}")
+                logger.error(f"❌ Error enviando a {cliente.nombre}: {e}")
                 continue
         
-        logger.info(f"\n✅ Proceso completado: {enviados} mensajes enviados")
         return f"{enviados} mensajes enviados"
         
     except Exception as e:
-        logger.error(f"🚨 ERROR CRÍTICO: {str(e)}", exc_info=True)
-        return f"Error: {str(e)}"
+        logger.error(f"🚨 Error General: {e}")
+        return str(e)
     
 #PROBANDO
 @shared_task
@@ -619,3 +575,115 @@ def limpiar_tokens_expirados():
     except Exception as e:
         logger.error(f"❌ Error limpiando tokens: {e}")
         return "Error"
+
+@shared_task
+def procesar_alertas_stock_proveedores(producto_id):
+    from .models import Producto, SolicitudPresupuesto, Cotizacion
+    from django.core.mail import send_mail
+    from django.utils import timezone
+    from django.conf import settings
+    import secrets
+    import time
+
+    try:
+        producto = Producto.objects.get(id=producto_id)
+        logger.info(f"📦 [CELERY] Iniciando envío de emails para: {producto.nombre}")
+        
+        fecha_hoy = timezone.now().strftime("%d/%m/%Y")
+        
+        # Se crea UNA sola solicitud para agrupar las cotizaciones
+        solicitud = SolicitudPresupuesto.objects.create(
+            producto=producto,
+            cantidad_requerida=producto.lote_reposicion,
+            estado='PENDIENTE'
+        )
+
+        # Usamos tu link de Ngrok para que sea clickeable fuera de tu red
+        base_url = 'https://brandi-palmar-pickily.ngrok-free.dev'
+
+        for proveedor in producto.proveedores.all():
+            if not proveedor.email:
+                continue
+
+            cotizacion = Cotizacion.objects.create(
+                solicitud=solicitud,
+                proveedor=proveedor,
+                token=secrets.token_urlsafe(32)
+            )
+
+            link = f"{base_url}/proveedor/cotizar/{cotizacion.token}"
+            asunto = f"📦 Nueva Solicitud de Compra #{solicitud.id}"
+            
+            # --- TU HTML ORIGINAL (Con doble {{ }} en CSS para que Python no se confunda) ---
+            mensaje_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    .btn-hover:hover {{ background-color: #218838 !important; }}
+                </style>
+            </head>
+            <body style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 40px 0;">
+                <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
+                    <div style="background: linear-gradient(135deg, #007bff 0%, #6610f2 100%); padding: 40px 30px; text-align: center;">
+                        <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 0.5px;">SOLICITUD DE COMPRA</h1>
+                        <p style="color: rgba(255,255,255,0.8); margin: 10px 0 0; font-size: 14px; font-weight: 500;">
+                            Los Últimos Serán Los Primeros • {fecha_hoy}
+                        </p>
+                    </div>
+                    <div style="padding: 40px 30px;">
+                        <p style="font-size: 16px; color: #4a4a4a; line-height: 1.6; margin-bottom: 30px;">
+                            Hola!☺️ <strong>{proveedor.nombre}</strong>,<br>
+                            Estamos sin stock de este producto y necesitamos reponerlo con urgencia.
+                        </p>
+                        <div style="background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 12px; padding: 25px; margin-bottom: 30px; position: relative;">
+                            <div style="position: absolute; top: -10px; right: 20px; background-color: #dc3545; color: white; font-size: 10px; font-weight: bold; padding: 4px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">
+                                Stock Bajo
+                            </div>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr>
+                                    <td>
+                                        <p style="margin: 0; color: #888; font-size: 12px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">PRODUCTO</p>
+                                        <p style="margin: 5px 0 15px; color: #2d3436; font-size: 18px; font-weight: 700;">{producto.nombre}</p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <p style="margin: 0; color: #888; font-size: 12px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">CANTIDAD A COTIZAR</p>
+                                        <p style="margin: 5px 0 0; color: #2d3436; font-size: 22px; font-weight: 700; color: #007bff;">{solicitud.cantidad_requerida} u.</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div style="text-align: center; margin-bottom: 30px;">
+                            <a href="{link}" style="background-color: #28a745; color: #ffffff; padding: 18px 40px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 16px; display: inline-block;">
+                                Enviar Presupuesto
+                            </a>
+                        </div>
+                    </div>
+                    <div style="background-color: #f8f9fa; padding: 25px; text-align: center; border-top: 1px solid #e9ecef;">
+                        <p style="margin: 0; color: #adb5bd; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Los Últimos Serán Los Primeros</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            
+            mensaje_texto = f"Hola {proveedor.nombre}, necesitamos {solicitud.cantidad_requerida} de {producto.nombre}. Link: {link}"
+
+            try:
+                send_mail(
+                    subject=asunto,
+                    message=mensaje_texto,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[proveedor.email],
+                    html_message=mensaje_html,
+                    fail_silently=False
+                )
+                logger.info(f"✅ Email enviado a {proveedor.email}")
+                time.sleep(10) # Pausa para Mailtrap
+            except Exception as e:
+                logger.error(f"❌ Error enviando mail a {proveedor.email}: {e}")
+
+    except Producto.DoesNotExist:
+        logger.error("❌ Producto no encontrado")

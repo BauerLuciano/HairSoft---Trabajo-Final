@@ -8,7 +8,6 @@ app = Celery('hairsoft')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 app.autodiscover_tasks()
 
-# Configuración adicional para Redis y manejo de tareas
 app.conf.update(
     broker_connection_retry_on_startup=True,
     task_acks_late=True,
@@ -17,7 +16,6 @@ app.conf.update(
     worker_prefetch_multiplier=1,
 )
 
-# Tareas periódicas
 app.conf.beat_schedule = {
     'verificar-ofertas-expiradas': {
         'task': 'usuarios.tasks.verificar_ofertas_expiradas',
@@ -25,7 +23,6 @@ app.conf.beat_schedule = {
     },
     'reactivacion-clientes-inactivos': {
         'task': 'usuarios.tasks.procesar_reactivacion_clientes_inactivos',
-        # Configurado para correr todos los días a las 9 de la mañana
         'schedule': crontab(hour=9, minute=0), 
     },
     'reposicion-automatica-stock': {

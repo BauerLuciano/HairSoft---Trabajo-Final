@@ -78,6 +78,7 @@ class TurnoSerializer(serializers.ModelSerializer):
     cliente_apellido = serializers.CharField(source='cliente.apellido', read_only=True)
     peluquero_nombre = serializers.CharField(source='peluquero.nombre', read_only=True)
     precio_total = serializers.SerializerMethodField()
+    info_descuento = serializers.SerializerMethodField() # ✅ NUEVO CAMPO
 
     class Meta:
         model = Turno
@@ -90,7 +91,8 @@ class TurnoSerializer(serializers.ModelSerializer):
             'obs_cancelacion', 'cliente', 'cliente_nombre', 'cliente_apellido',
             'peluquero', 'peluquero_nombre', 'servicios',
             # ✅ AGREGAR ESTOS DOS CAMPOS AL FINAL:
-            'codigo_transaccion', 'entidad_pago'
+            'codigo_transaccion', 'entidad_pago',
+            'info_descuento' # ✅ NO OLVIDAR AGREGARLO AQUÍ TAMBIÉN
         ]
 
     def get_precio_total(self, obj):
@@ -101,7 +103,42 @@ class TurnoSerializer(serializers.ModelSerializer):
         if obj.monto_total and obj.monto_total > 0:
             return obj.monto_total
         return sum(s.precio for s in obj.servicios.all())
-    
+
+    def get_info_descuento(self, obj):
+        """
+        Determina si el turno tiene un descuento de FIDELIZACIÓN (Volvé).
+        SOLO devuelve datos si hay una PromocionReactivacion vinculada.
+        """
+        try:
+            promo = obj.promo_usada.first() 
+            
+            if promo:
+                return {
+                    'tipo': 'FIDELIZACION',
+                    'texto': 'Cliente Recuperado',
+                    'porcentaje': promo.descuento_porcentaje # O hardcodeado 15
+                }
+        except Exception:
+            pass
+
+        # 2. ⚠️ ELIMINAMOS O COMENTAMOS LA LÓGICA MATEMÁTICA
+        # Antes, calculabas si había un 15% de diferencia y asumías que era "Cliente Recuperado".
+        # Eso causaba que la Reoferta (que también tiene 15%) mostrara el cartel incorrecto.
+        
+        # precio_servicios = sum(s.precio for s in obj.servicios.all())
+        # if obj.monto_total and precio_servicios > 0:
+        #     if obj.monto_total < precio_servicios:
+        #         diferencia = precio_servicios - obj.monto_total
+        #         porcentaje_real = (diferencia / precio_servicios) * 100
+        #         if 14 <= porcentaje_real <= 16:
+        #             return {
+        #                 'tipo': 'FIDELIZACION',
+        #                 'texto': 'Cliente Recuperado',
+        #                 'porcentaje': 15
+        #             }
+        
+        # Si es Reoferta, no devolvemos nada aquí para que no salga el cartel de "Recuperado".
+        return None
 # ----------------------------------------------------------------------
 # CATEGORIAS DE PRODUCTOS
 # ----------------------------------------------------------------------
@@ -509,7 +546,7 @@ class MetodoPagoSerializer(serializers.ModelSerializer):
 # PEDIDOS
 # ----------------------------------------------------------------------
 class DetallePedidoSerializer(serializers.ModelSerializer):
-    producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
+    producto_nombre = serializers.ReadOnlyField(source='producto.nombre')
     producto_codigo = serializers.CharField(source='producto.codigo', read_only=True)
     producto_stock_actual = serializers.IntegerField(source='producto.stock_actual', read_only=True)
     porcentaje_recibido = serializers.SerializerMethodField()
@@ -537,11 +574,10 @@ class DetallePedidoSerializer(serializers.ModelSerializer):
 
 
 class PedidoSerializer(serializers.ModelSerializer):
-    proveedor_nombre = serializers.CharField(source='proveedor.nombre', read_only=True)
+    proveedor_nombre = serializers.ReadOnlyField(source='proveedor.nombre')
     proveedor_contacto = serializers.CharField(source='proveedor.contacto', read_only=True)
     usuario_creador_nombre = serializers.CharField(source='usuario_creador.nombre', read_only=True)
-    detalles = DetallePedidoSerializer(many=True, required=False)
-
+    detalles = DetallePedidoSerializer(many=True, read_only=True)
     # Campos calculados
     total_calculado = serializers.SerializerMethodField()
     puede_cancelar = serializers.SerializerMethodField()
@@ -860,17 +896,20 @@ class MarcaSerializer(serializers.ModelSerializer):
             'fecha_creacion',
         ]
 
-
-#Cotizacion proveedores
 class CotizacionExternaSerializer(serializers.ModelSerializer):
-    producto_nombre = serializers.CharField(source='solicitud.producto.nombre', read_only=True)
-    cantidad_requerida = serializers.IntegerField(source='solicitud.cantidad_requerida', read_only=True)
-    proveedor_nombre = serializers.CharField(source='proveedor.nombre', read_only=True)
+    # Usamos ReadOnlyField para entrar a las relaciones sin fallar
+    # cotizacion -> solicitud -> producto -> nombre
+    producto_nombre = serializers.ReadOnlyField(source='solicitud.producto.nombre')
+    cantidad_requerida = serializers.ReadOnlyField(source='solicitud.cantidad_requerida')
+    proveedor_nombre = serializers.ReadOnlyField(source='proveedor.nombre')
 
     class Meta:
         model = Cotizacion
-        fields = ['id', 'token', 'producto_nombre', 'cantidad_requerida', 'proveedor_nombre', 'precio_ofrecido', 'dias_entrega', 'comentarios']
-    
+        fields = [
+            'id', 'token', 'producto_nombre', 'cantidad_requerida', 
+            'proveedor_nombre', 'precio_ofrecido', 'dias_entrega', 
+            'comentarios', 'respondio'
+        ]
 # ==============================================================================
 # EVALUACIÓN DE PRESUPUESTOS (administrador)
 # ==============================================================================
@@ -895,7 +934,6 @@ class CotizacionDetalleSerializer(serializers.ModelSerializer):
 class SolicitudPresupuestoSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
     producto_stock = serializers.IntegerField(source='producto.stock_actual', read_only=True)
-    # Nested Serializer: Trae todas las cotizaciones de esta solicitud
     cotizaciones = CotizacionDetalleSerializer(many=True, read_only=True)
     
     mejor_opcion_id = serializers.SerializerMethodField()

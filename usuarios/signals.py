@@ -1,33 +1,40 @@
-# usuarios/signals.py (VERSIÓN CORREGIDA - SIN CELERY)
+# usuarios/signals.py (VERSIÓN CORREGIDA - CON CELERY FIDELIZACIÓN)
 from django.db.models.signals import pre_save, post_save, post_delete
 from django.dispatch import receiver
+from django.utils import timezone
 from decimal import Decimal
 from datetime import date, datetime, time
-import logging
-import uuid
+import logging, uuid
 
 from .models import (
     Turno, Producto, Auditoria, Usuario, Venta, Pedido, Rol,
     Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago,
-    InteresTurnoLiberado 
+    InteresTurnoLiberado, PromocionReactivacion
 )
 from .middleware import get_current_request_data
+from .tasks import procesar_reactivacion_clientes_inactivos # ✅ IMPORTANTE: Importar la task
 
 logger = logging.getLogger(__name__)
 
 # =========================================================
-# LÓGICA DE NEGOCIO: REOFERTA AUTOMÁTICA (Whatsapp) - DESACTIVADA
+# LÓGICA DE NEGOCIO: FIDELIZACIÓN AUTOMÁTICA
 # =========================================================
-
 @receiver(post_save, sender=Turno)
-def disparar_reoferta_por_cancelacion(sender, instance, created, **kwargs):
+def disparar_analisis_fidelizacion(sender, instance, **kwargs):
     """
-    🔥 VERSIÓN DESACTIVADA - Ya no usa Celery
-    Ahora el Service maneja TODO sincrónicamente
+    ✅ VERSIÓN ASÍNCRONA (RAPIDÍSIMA):
+    Como tienes Celery + Redis configurado, esto NO traba la pantalla.
+    
+    Lógica: Si se guarda/modifica un turno con fecha pasada (histórico),
+    le avisamos al Worker que revise si hay clientes para reactivar.
     """
-    # COMPLETAMENTE DESACTIVADO - El Service maneja todo
-    pass
-
+    try:
+        if instance.fecha and instance.fecha <= timezone.now().date():
+            logger.info(f"🔄 Turno histórico {instance.id} ({instance.fecha}) guardado. Disparando Worker...")
+            procesar_reactivacion_clientes_inactivos.delay()
+            
+    except Exception as e:
+        logger.error(f"❌ Error signal fidelización: {e}")
 # =========================================================
 # AUDITORÍA DE DATOS (NO TOCAR)
 # =========================================================

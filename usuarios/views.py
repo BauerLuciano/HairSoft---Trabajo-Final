@@ -1,9 +1,5 @@
-import json
-import re
-import requests
-import unicodedata
-import secrets
-import logging
+import json, re, requests, unicodedata, logging, secrets, traceback
+
 from datetime import datetime, timedelta, time
 from decimal import Decimal
 
@@ -922,7 +918,7 @@ def crear_turno(request):
                 
                 if cupon:
                     # Validar que no esté vencido
-                    if cupon.fecha_vencimiento and cupon.fecha_vencimiento < timezone.now().date():
+                    if cupon.fecha_vencimiento and cupon.fecha_vencimiento.date() < timezone.now().date():
                         print(f"❌ Cupón vencido: {cupon.codigo}")
                     elif not cupon.esta_vigente:
                         print(f"❌ Cupón no vigente: {cupon.codigo}")
@@ -3264,49 +3260,35 @@ def recibir_pedido(request, pedido_id):
             for detalle in pedido.detalles.all():
                 producto = detalle.producto
                 if producto:
-                    # 1. Sumar Stock
+                    # ✅ Sumamos la cantidad de la OFERTA (los 18) al stock actual
                     producto.stock_actual += detalle.cantidad
                     
-                    # 2. LÓGICA DE PRECIO (EL FRENO DE MANO) 🛑
+                    # Lógica de protección de precios (Freno de mano)
                     costo_nuevo = detalle.precio_unitario
-                    
                     if costo_nuevo and costo_nuevo > 0:
                         try:
-                            # Buscamos tu margen configurado (ej: 30%)
                             lista = ListaPrecioProveedor.objects.get(proveedor=pedido.proveedor, producto=producto)
                             margen = lista.margen_ganancia
-                            
-                            # Calculamos el precio nuevo teórico
                             precio_nuevo_calculado = costo_nuevo * (1 + (margen / 100))
-                            
-                            # PRECIO ACTUAL (El que tenés ahora, ej: 30.000)
                             precio_actual = producto.precio if producto.precio else 0
                             
-                            # LA REGLA DE ORO: Solo actualizamos si SUBE.
                             if precio_nuevo_calculado > precio_actual:
                                 producto.precio = precio_nuevo_calculado
-                                print(f"📈 SUBIÓ: {producto.nombre} pasa de ${precio_actual} a ${precio_nuevo_calculado}")
-                            else:
-                                # Si baja (26.000 < 30.000), NO HACEMOS NADA.
-                                print(f"🛡️ PROTEGIDO: El precio nuevo daba ${precio_nuevo_calculado}, pero nos quedamos con ${precio_actual}")
-                                
-                            # Actualizamos el costo base en la lista del proveedor para referencia futura
+                            
                             lista.precio_base = costo_nuevo
                             lista.save()
-
                         except ListaPrecioProveedor.DoesNotExist:
                             pass
-
                     producto.save()
             
             pedido.estado = 'ENTREGADO'
             pedido.fecha_recepcion = timezone.now()
             pedido.save()
 
-        return Response({'message': 'Pedido recibido. Stock actualizado. Precios protegidos contra bajas.'})
-
+        return Response({'message': 'Pedido recibido y stock actualizado con éxito.'})
     except Exception as e:
         return Response({'error': str(e)}, status=400)
+    
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def pedidos_pendientes_recepcion(request):
@@ -4713,43 +4695,60 @@ def contar_interesados(request, turno_id):
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 def gestionar_cotizacion_externa(request, token):
+    # --- DEBUG: Estos prints saldrán en tu terminal negra de Django ---
+    print(f"\n--- 🛰️ PETICIÓN RECIBIDA: {request.method} ---")
+    print(f"🔑 TOKEN: {token}")
+
+    # Buscamos la cotización
     cotizacion = get_object_or_404(Cotizacion, token=token)
+    
+    # Log para confirmar qué producto estamos manejando
+    try:
+        producto_nombre = cotizacion.solicitud.producto.nombre
+        print(f"📦 PRODUCTO: {producto_nombre} | ID: {cotizacion.id}")
+    except AttributeError:
+        print("⚠️ ERROR: Esta cotización no tiene una solicitud o producto asociado.")
 
     if request.method == 'GET':
         if cotizacion.respondio:
+            print("✅ ESTADO: Ya fue respondida anteriormente.")
             return Response({"ya_respondido": True})
         
+        # Serializamos los datos
         serializer = CotizacionExternaSerializer(cotizacion)
-        data = serializer.data
         
-        # Le mandamos al front cuánto pedimos originalmente
-        # para que aparezca en el input por defecto
-        if hasattr(cotizacion.solicitud, 'cantidad_requerida'):
-             data['cantidad_requerida'] = cotizacion.solicitud.cantidad_requerida
-             data['producto_nombre'] = cotizacion.solicitud.producto.nombre
-             data['proveedor_nombre'] = cotizacion.proveedor.nombre
-
-        return Response(data)
+        print(f"📤 ENVIANDO JSON AL FRONT: {serializer.data}")
+        return Response(serializer.data)
 
     if request.method == 'POST':
         if cotizacion.respondio:
-            return Response({"error": "Ya respondiste esta solicitud"}, status=400)
+            return Response({"error": "Esta cotización ya fue completada."}, status=400)
         
-        # 1. CAPTURAMOS LA CANTIDAD QUE ENVÍA EL PROVEEDOR
-        cantidad_real = request.data.get('cantidad')
-        if cantidad_real:
-            cotizacion.cantidad_ofertada = int(cantidad_real)
-        
-        # 2. Guardamos el resto
-        cotizacion.precio_ofrecido = request.data.get('precio_ofrecido')
-        cotizacion.dias_entrega = request.data.get('dias_entrega')
-        cotizacion.comentarios = request.data.get('comentarios', '')
-        
-        cotizacion.respondio = True
-        cotizacion.fecha_respuesta = timezone.now()
-        cotizacion.save()
-        
-        return Response({"mensaje": "Éxito"})
+        try:
+            # Capturamos y convertimos datos con seguridad
+            cantidad = request.data.get('cantidad', 0)
+            precio = request.data.get('precio_ofrecido', 0)
+            dias = request.data.get('dias_entrega', 0)
+            comentarios = request.data.get('comentarios', '')
+
+            print(f"💾 PROCESANDO POST: Cant={cantidad}, Precio={precio}, Días={dias}")
+
+            # Guardado en base de datos
+            cotizacion.cantidad_ofertada = int(cantidad)
+            cotizacion.precio_ofrecido = float(precio)
+            cotizacion.dias_entrega = int(dias)
+            cotizacion.comentarios = comentarios
+            
+            cotizacion.respondio = True
+            cotizacion.fecha_respuesta = timezone.now()
+            cotizacion.save()
+            
+            print(f"✅ COTIZACIÓN #{cotizacion.id} GUARDADA EXITOSAMENTE")
+            return Response({"mensaje": "Éxito", "status": "OK"}, status=200)
+            
+        except (ValueError, TypeError) as e:
+            print(f"❌ ERROR EN DATOS RECIBIDOS: {e}")
+            return Response({"error": "Los datos enviados no tienen el formato correcto"}, status=400)
 
 class SolicitudPresupuestoViewSet(viewsets.ReadOnlyModelViewSet):
     """
@@ -4759,63 +4758,81 @@ class SolicitudPresupuestoViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = SolicitudPresupuestoSerializer
     
     def get_queryset(self):
-        # Filtramos para no mostrar las que ya están archivadas hace mucho
+        # Filtramos para no mostrar las que ya están archivadas
         return SolicitudPresupuesto.objects.exclude(estado='CERRADA_ARCHIVADA')
 
     @action(detail=True, methods=['post'], url_path='generar-orden')
     @transaction.atomic
     def generar_orden_compra(self, request, pk=None):
         """
-        Acción: El Gerente elige una cotización ganadora -> Se crea el Pedido.
+        Acción: El Gerente elige una cotización ganadora -> Se crea el Pedido (Orden de Compra).
         """
         solicitud = self.get_object()
         cotizacion_id = request.data.get('cotizacion_id')
         
-        # 1. Validar que la cotización pertenece a esta solicitud
+        if not cotizacion_id:
+            return Response({"error": "Debe proporcionar el ID de la cotización ganadora."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. Validar que la cotización existe y fue respondida
         try:
-            cotizacion_ganadora = Cotizacion.objects.get(id=cotizacion_id, solicitud=solicitud)
+            cotizacion_ganadora = Cotizacion.objects.get(
+                id=cotizacion_id, 
+                solicitud=solicitud, 
+                respondio=True
+            )
         except Cotizacion.DoesNotExist:
-            return Response({"error": "Cotización no válida para esta solicitud"}, status=400)
+            return Response({"error": "Cotización no válida."}, status=status.HTTP_400_BAD_REQUEST)
 
         if solicitud.estado == 'CERRADA':
-             return Response({"error": "Esta solicitud ya fue cerrada."}, status=400)
+            return Response({"error": "Esta solicitud ya tiene un pedido generado."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 2. Crear el PEDIDO DE COMPRA automáticamente
-        # Asumimos que request.user es el gerente logueado
+        # 2. DETERMINAR LA CANTIDAD REAL DE LA OFERTA (Ej: 18 en lugar de 20)
+        # Usamos la cantidad que el proveedor puso en su formulario externo
+        cantidad_final = cotizacion_ganadora.cantidad_ofertada 
+
+        # 3. CÁLCULO DE FECHA ESPERADA
+        dias_entrega = cotizacion_ganadora.dias_entrega or 0
+        fecha_entrega_estimada = timezone.now().date() + timedelta(days=dias_entrega)
+
+        # 4. Crear el PEDIDO DE COMPRA
         nuevo_pedido = Pedido.objects.create(
             proveedor=cotizacion_ganadora.proveedor,
-            usuario_creador=request.user, 
-            estado='CONFIRMADO', # Nace confirmado porque viene de una licitación ganada
-            total=cotizacion_ganadora.precio_ofrecido,
-            observaciones=f"Autogenerado por Solicitud #{solicitud.id}. Entrega: {cotizacion_ganadora.dias_entrega} días."
+            usuario_creador=request.user if request.user.is_authenticated else None, 
+            estado='CONFIRMADO', 
+            total=cotizacion_ganadora.precio_ofrecido, # El total que el proveedor pidió por esos 18
+            fecha_esperada_recepcion=fecha_entrega_estimada,
+            observaciones=f"Generado desde Solicitud #{solicitud.id}. Oferta ganadora por {cantidad_final} unidades."
         )
 
-        # 3. Crear el detalle del pedido (el producto en cuestión)
-        # Calculamos precio unitario
-        precio_unitario = cotizacion_ganadora.precio_ofrecido / solicitud.cantidad_requerida
-        
+        # 5. CÁLCULO DEL PRECIO UNITARIO REAL
+        # Dividimos el total ofrecido por la cantidad realmente ofertada
+        try:
+            precio_unitario_real = cotizacion_ganadora.precio_ofrecido / cantidad_final
+        except (ZeroDivisionError, TypeError):
+            precio_unitario_real = 0
+
+        # 6. CREAR EL DETALLE (Acá es donde se graban los 18)
         DetallePedido.objects.create(
             pedido=nuevo_pedido,
             producto=solicitud.producto,
-            cantidad=solicitud.cantidad_requerida,
-            precio_unitario=precio_unitario,
-            cantidad_recibida=0,
-            precio_propuesto=cotizacion_ganadora.precio_ofrecido # Guardamos el total ofertado
+            cantidad=cantidad_final,  # ✅ AHORA SÍ: Graba la oferta real (18)
+            precio_unitario=precio_unitario_real,
+            cantidad_recibida=0
         )
 
-        # 4. Actualizar estados
+        # 7. Actualizar estados de la Licitación
         solicitud.estado = 'CERRADA'
         solicitud.pedido_generado = nuevo_pedido
         solicitud.save()
 
-        # Marcar cual ganó para estadísticas futuras
+        # Marcar la cotización como la ganadora
         cotizacion_ganadora.es_la_mejor = True
         cotizacion_ganadora.save()
 
         return Response({
-            "mensaje": f"¡Orden de Compra #{nuevo_pedido.id} generada con éxito!",
+            "mensaje": f"¡Orden de Compra #{nuevo_pedido.id} generada por {cantidad_final} unidades!",
             "pedido_id": nuevo_pedido.id
-        })
+        }, status=status.HTTP_201_CREATED)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])

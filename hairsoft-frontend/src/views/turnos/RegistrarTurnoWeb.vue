@@ -16,36 +16,28 @@
         </div>
 
         <div>
-          <!-- 🔥 SECCIÓN DE DESCUENTO MEJORADA -->
           <transition name="slide">
-            <div v-if="mostrarDescuento" class="card-modern cupon-alerta-mejorado">
-              <div class="card-header">
-                <div class="card-icon" style="background: #10b981; color: white;">
-                  <Gift :size="20" />
+            <div v-if="descuentoAplicado > 0" class="promo-banner">
+              <div class="promo-content">
+                <div class="promo-icon-wrapper">
+                  <Gift :size="24" />
                 </div>
-                <h3>🎉 ¡DESCUENTO ACTIVADO!</h3>
-                <span class="badge-descuento">{{ mostrarDescuento.porcentaje }}% OFF</span>
-              </div>
-              
-              <div class="detalle-descuento">
-                <div class="fila-descuento">
-                  <span>Total original:</span>
-                  <span class="tachado">${{ mostrarDescuento.totalOriginal.toFixed(2) }}</span>
-                </div>
-                <div class="fila-descuento">
-                  <span>Descuento ({{ mostrarDescuento.porcentaje }}%):</span>
-                  <span class="ahorro">- ${{ mostrarDescuento.ahorro.toFixed(2) }}</span>
-                </div>
-                <div class="fila-descuento total-final">
-                  <span><strong>TOTAL FINAL:</strong></span>
-                  <span class="total-final-numero">${{ mostrarDescuento.totalConDescuento.toFixed(2) }}</span>
+                <div class="promo-text">
+                  <h4 class="m-0">¡Descuento Activado!</h4>
+                  <p class="m-0">
+                    Tenés un <strong>{{ descuentoAplicado }}% OFF</strong> bonificado en este turno.
+                  </p>
                 </div>
               </div>
               
-              <div class="cupon-codigo">
-                <Tag :size="14" />
-                <strong>Código:</strong> {{ cuponCodigo }}
-                <small>(Válido hasta: {{ fechaVencimientoCupon }})</small>
+              <div class="promo-code-section">
+                <div class="code-pill">
+                  <Tag :size="14" />
+                  <span class="code-text">{{ cuponCodigo }}</span>
+                </div>
+                <small v-if="fechaVencimientoCupon" class="expiry-text">
+                  Vence: {{ fechaVencimientoCupon }}
+                </small>
               </div>
             </div>
           </transition>
@@ -553,15 +545,14 @@ import {
 const router = useRouter()
 const route = useRoute()
 
-// 🔥 NUEVAS VARIABLES PARA CUPÓN
 const cuponCodigo = ref(null)
 const descuentoAplicado = ref(0)
 const mensajePromo = ref("")
 const fechaVencimientoCupon = ref("")
 const mensajeErrorCupon = ref("")
 const mostrarDescuento = computed(() => {
-  if (descuentoAplicado.value > 0) {
-    const totalOriginal = calcularTotalOriginal()
+  const totalOriginal = calcularTotalOriginal()
+  if (descuentoAplicado.value > 0 && totalOriginal > 0) {
     const ahorro = totalOriginal * (descuentoAplicado.value / 100)
     return {
       porcentaje: descuentoAplicado.value,
@@ -922,7 +913,6 @@ const esHorarioDisponibleCompleto = (horaSeleccionada) => {
       return false
     }
   }
-  
   const hoy = new Date()
   const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
   
@@ -1312,6 +1302,18 @@ defineExpose({
   border-radius: 12px;
   padding: 20px;
   border: 1px solid rgba(33, 150, 243, 0.2);
+}
+
+
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.4s ease;
+}
+
+.slide-enter-from,
+.slide-leave-to {
+  opacity: 0;
+  transform: translateY(-20px);
 }
 
 .detalle-item {
@@ -2324,6 +2326,119 @@ defineExpose({
   font-weight: 700;
 }
 
+/* 🎟️ Banner de Promoción Moderno */
+.promo-banner {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); /* Verde fresco */
+  border: 1px solid #10b981;
+  border-left: 6px solid #059669; /* Borde grueso a la izquierda */
+  border-radius: 10px;
+  padding: 16px;
+  margin: 20px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+/* Parte Izquierda: Icono y Texto */
+.promo-content {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex: 1; /* Ocupa el espacio disponible */
+}
+
+.promo-icon-wrapper {
+  background-color: #059669;
+  color: white;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 6px rgba(5, 150, 105, 0.3);
+}
+
+.promo-text h4 {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #065f46;
+  margin-bottom: 4px;
+}
+
+.promo-text p {
+  font-size: 0.95rem;
+  color: #374151;
+  line-height: 1.3;
+  margin: 0;
+}
+
+/* Parte Derecha: Código del Cupón */
+.promo-code-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end; /* Alinear a la derecha */
+  justify-content: center;
+}
+
+.code-pill {
+  background-color: #ffffff;
+  color: #059669;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border: 2px dashed #34d399; /* Borde punteado estilo cupón */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.expiry-text {
+  margin-top: 5px;
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+/* Animación de entrada */
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); /* Rebote suave */
+}
+.slide-enter-from,
+.slide-leave-to {
+  opacity: 0;
+  transform: translateY(-20px) scale(0.95);
+}
+
+/* Responsive para celulares */
+@media (max-width: 576px) {
+  .promo-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .promo-code-section {
+    width: 100%;
+    align-items: flex-start; /* En celu alineamos a la izquierda */
+    border-top: 1px solid #a7f3d0;
+    padding-top: 10px;
+    margin-top: 5px;
+  }
+  
+  .code-pill {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 .btn-confirmar-premium {
   width: 100%;
   background: linear-gradient(135deg, #059669, #047857);
@@ -2424,8 +2539,33 @@ defineExpose({
 }
 
 .cupon-alerta-mejorado {
-  border-left: 4px solid #10b981;
-  animation: pulse 2s infinite;
+  background-color: #ffffff; /* Fondo blanco explícito */
+  border-left: 5px solid #10b981; /* Borde verde a la izquierda para destacar */
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  padding: 0; /* El padding lo manejan los hijos */
+  margin-top: 20px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  color: #374151; /* Texto gris oscuro (casi negro) para que SE VEA */
+}
+
+.cupon-alerta-mejorado .card-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #065f46; /* Verde oscuro para el título */
+  flex-grow: 1;
+}
+
+.badge-descuento {
+  background: #10b981;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
 }
 
 .cupon-alerta .card-header h3 {

@@ -9,7 +9,6 @@
         <button @click="irARegistrar" class="register-button"><Plus :size="18" /> Registrar Turno</button>
       </div>
 
-      <!-- Filtros -->
       <div class="filters-container">
         <div class="filters-grid">
           <div class="filter-group">
@@ -78,17 +77,21 @@
                   {{ getEstadoTexto(turno.estado, turno.tipo_pago) }}
                 </span>
                 
-                <!-- 🔥 BADGE DE FIDELIZACIÓN - 15% DESCUENTO -->
-                <div v-if="turno.descuento_aplicado && turno.descuento_aplicado > 0" style="margin-top: 5px;">
+                <div v-if="turno.info_descuento" style="margin-top: 5px;">
+                  <span class="badge-fidelizacion">
+                    <i class="fas fa-gift me-1"></i>
+                    {{ turno.info_descuento.texto }}
+                  </span>
+                </div>
+                
+                <div v-else-if="turno.descuento_aplicado && turno.descuento_aplicado > 0" style="margin-top: 5px;">
                   <span class="badge-fidelizacion">
                     <i class="bi bi-gift me-1"></i>
                     15% Fidelización
                   </span>
                 </div>
                 
-                <!-- BADGES SOLO PARA CANCELADOS -->
                 <div v-if="turno.estado === 'CANCELADO'">
-                  <!-- BADGE PARA MOTIVO DE CANCELACIÓN -->
                   <div v-if="turno.motivo_cancelacion" style="margin-top: 5px;">
                     <span class="badge-motivo-cancelacion">
                       <i class="bi bi-x-circle me-1"></i>
@@ -96,7 +99,6 @@
                     </span>
                   </div>
                   
-                  <!-- BADGE PARA REEMBOLSO NO APLICABLE (CANJES) -->
                   <div v-if="turno.reembolso_estado === 'NO_APLICA'" style="margin-top: 5px;">
                     <span class="badge-reembolso-no-aplica">
                       <i class="bi bi-arrow-left-right me-1"></i>
@@ -104,7 +106,6 @@
                     </span>
                   </div>
                   
-                  <!-- BADGE PARA REEMBOLSO PENDIENTE -->
                   <div v-if="turno.reembolso_estado === 'PENDIENTE'" style="margin-top: 5px;">
                     <span class="badge-reembolso-pendiente">
                       <i class="bi bi-cash-coin me-1"></i>
@@ -112,7 +113,6 @@
                     </span>
                   </div>
                   
-                  <!-- BADGE PARA REEMBOLSO COMPLETADO -->
                   <div v-if="turno.reembolso_estado === 'COMPLETADO'" style="margin-top: 5px;">
                     <span class="badge-reembolso-completado">
                       <i class="bi bi-check-circle me-1"></i>
@@ -121,7 +121,6 @@
                   </div>
                 </div>
                 
-                <!-- BADGE PARA TURNOS GENERADOS POR CANJE (NO CANCELADOS) -->
                 <div v-if="turno.estado !== 'CANCELADO' && esTurnoPorCanje(turno)" style="margin-top: 5px;">
                   <span class="badge-tipo-canje">
                     <i class="bi bi-arrow-repeat me-1"></i>
@@ -130,15 +129,12 @@
                 </div>
               </td>
               <td>
-                <!-- 🔥 CORREGIDO: COLUMNA DE PAGO SIN DUPLICADOS -->
                 <div class="pago-info">
-                  <!-- MEDIO DE PAGO PRINCIPAL -->
                   <div class="medio-pago-wrapper">
                     <span class="medio-pago-badge" :class="getMedioPagoClass(turno.medio_pago)">
                       {{ getMedioPagoTexto(turno.medio_pago) }}
                     </span>
                     
-                    <!-- BADGE PARA TRAZABILIDAD CLONADA (CANJES) -->
                     <span v-if="esTurnoPorCanje(turno) && turno.nro_transaccion" 
                           class="badge-clonado">
                       <i class="bi bi-link-45deg me-1"></i>
@@ -146,24 +142,21 @@
                     </span>
                   </div>
                   
-                  <!-- INFORMACIÓN DE PAGO (SEÑA/TOTAL) -->
                   <div v-if="turno.tipo_pago === 'SENA_50'" class="detalle-pago">
                     <div class="text-senia">Seña: ${{ formatPrecio(turno.monto_seña) }}</div>
                     <div class="text-falta">Falta: ${{ formatPrecio(calcularFaltaPagar(turno)) }}</div>
                   </div>
                   <div v-else-if="turno.tipo_pago === 'TOTAL'" class="detalle-pago">
-                    <span class="text-pagado">Pagado total</span>
+                    <span class="text-pagado">Pagado total: ${{ formatPrecio(turno.monto_total) }}</span>
                   </div>
                   
-                  <!-- 🔥 MOSTRAR DESCUENTO APLICADO -->
-                  <div v-if="turno.descuento_aplicado && turno.descuento_aplicado > 0" class="descuento-info">
+                  <div v-if="(turno.info_descuento) || (turno.descuento_aplicado && turno.descuento_aplicado > 0)" class="descuento-info">
                     <span class="badge-descuento-fidelizacion">
                       <i class="bi bi-percent me-1"></i>
                       15% OFF aplicado
                     </span>
                   </div>
                   
-                  <!-- 🔥 CORREGIDO: INFORMACIÓN DE TRANSACCIÓN SIN DUPLICAR EL TIPO DE PAGO -->
                   <div v-if="turno.codigo_transaccion || turno.mp_payment_id || turno.nro_transaccion" 
                        class="transaccion-info-mejorado">
                     <div class="transaccion-header">
@@ -175,7 +168,6 @@
                     </div>
                   </div>
 
-                  <!-- 🔥 MEJORADO: ENTIDAD DE PAGO CON ESTILOS ESPECÍFICOS -->
                   <div v-if="turno.entidad_pago" class="entidad-pago-info-mejorado">
                     <div class="entidad-header">
                       <i class="bi bi-building"></i>
@@ -186,7 +178,6 @@
                     </div>
                   </div>
 
-                  <!-- MOSTRAR DESCUENTO APLICADO EN CANJES -->
                   <div v-if="esTurnoConDescuento(turno)" class="descuento-info">
                     <span class="badge-descuento">
                       <i class="bi bi-percent me-1"></i>
@@ -194,7 +185,6 @@
                     </span>
                   </div>
 
-                  <!-- MOSTRAR SALDO A FAVOR EN CANJES -->
                   <div v-if="esTurnoPorCanje(turno) && extraerSaldoAFavor(turno) > 0" class="saldo-favor-info">
                     <span class="badge-saldo-favor">
                       <i class="bi bi-wallet2 me-1"></i>
@@ -205,7 +195,6 @@
               </td>
               <td>
                 <div class="action-buttons">
-                  <!-- 🔥 NUEVO: Botón Editar (solo para RESERVADO y CONFIRMADO) -->
                   <button v-if="puedeEditarTurno(turno)" 
                           @click="editarTurno(turno)" 
                           class="action-button edit" 
@@ -213,12 +202,10 @@
                     <Edit :size="14"/>
                   </button>
                   
-                  <!-- Botón Ver Detalle -->
                   <button @click="verDetalleTurno(turno)" class="action-button view" title="Ver Detalle">
                     <Eye :size="14"/>
                   </button>
                   
-                  <!-- Botón para marcar reembolso manual (SOLO CANCELADOS PENDIENTES) -->
                   <button v-if="turno.estado === 'CANCELADO' && turno.reembolso_estado === 'PENDIENTE'" 
                           @click="gestionarReembolsoManual(turno)" 
                           class="action-button reembolso" 
@@ -226,7 +213,6 @@
                     <ArrowRightLeft :size="14"/>
                   </button>
                   
-                  <!-- Botón para cobrar restante (de seña a total) -->
                   <button v-if="esEstadoActivo(turno.estado) && turno.tipo_pago === 'SENA_50'" 
                           @click="confirmarPagoTotal(turno)" 
                           class="action-button pagar" 
@@ -234,7 +220,6 @@
                     <CreditCard :size="14"/>
                   </button>
                   
-                  <!-- Botón para completar turno -->
                   <button v-if="mostrarBotonCompletar(turno)" 
                           @click="completarTurno(turno)" 
                           class="action-button complete" 
@@ -242,7 +227,6 @@
                     <Check :size="14"/>
                   </button>
                   
-                  <!-- Botón para cancelar turno -->
                   <button v-if="puedeCancelarTurno(turno)" 
                           @click="cancelarTurno(turno)" 
                           class="action-button delete" 
@@ -255,7 +239,6 @@
           </tbody>
         </table>
         
-        <!-- Mensaje cuando no hay resultados -->
         <div v-if="turnosFiltradosPaginados.length === 0" class="no-results">
           <div class="no-results-icon">
             <Eye :size="48" />
@@ -267,7 +250,6 @@
         </div>
       </div>
 
-      <!-- Paginación -->
       <div v-if="totalPaginas > 1" class="pagination">
         <button @click="paginaAnterior" :disabled="pagina === 1">
           <ArrowLeft :size="14"/> Anterior
@@ -1178,16 +1160,16 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 }
 
 .badge-descuento-fidelizacion {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 5px;
+    color: #ffffff; /* 🔥 Letra BLANCA */
+    background-color: #198754; /* 🔥 Fondo Verde Fuerte (Bootstrap Success) */
+    font-size: 0.75rem;
+    padding: 2px 8px; /* Un poquito más de padding a los costados */
+    border-radius: 4px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    margin-top: 4px;
+    box-shadow: 0 2px 4px rgba(25, 135, 84, 0.2); /* Sombrita suave */
 }
 
 /* BADGE ORO PARA TIPO DE CANJE */
@@ -1583,6 +1565,54 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 .users-table tr:hover {
   background: var(--hover-bg);
   transition: all 0.2s ease;
+}
+
+/* Badge de Fidelización (Violeta Fachero) */
+.badge-fidelizacion {
+    background-color: #6f42c1; /* Violeta Bootstrap */
+    color: white;
+    font-size: 0.75rem; /* Letra chiquita pero legible */
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    box-shadow: 0 2px 4px rgba(111, 66, 193, 0.2);
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px; /* Espacio entre ícono y texto */
+    animation: fadeIn 0.5s ease-in;
+}
+
+/* Badge de Descuento (Verde Éxito) */
+.badge-descuento-fidelizacion {
+    color: #198754; /* Verde oscuro */
+    background-color: #d1e7dd; /* Verde clarito fondo */
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    margin-top: 4px;
+}
+
+/* Animación suave para que aparezcan lindos */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Ajustes para la columna de pago */
+.pago-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.text-pagado {
+    font-weight: 600;
+    color: #0d6efd; /* Azul standard */
 }
 
 /* Información del cliente */

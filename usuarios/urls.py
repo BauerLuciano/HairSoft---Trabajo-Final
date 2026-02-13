@@ -64,9 +64,10 @@ venta_detail = VentaViewSet.as_view({
 })
 
 urlpatterns = [
-    # ==============================
-    # ✅ ÚNICA INCLUSIÓN DEL ROUTER
-    # ==============================
+    #Cotizaciones
+    path('api/cotizacion-externa/<str:token>/', func_views.gestionar_cotizacion_externa, name='cotizacion_externa'),
+
+    # ÚNICA INCLUSIÓN DEL ROUTER
     path('api/', include(router.urls)),
 
     path('api/debug/auditoria/', func_views.debug_auditoria, name='debug_auditoria'),
@@ -79,6 +80,7 @@ urlpatterns = [
     path('api/me/', func_views.me_api_view, name='me_api_view'),
     path('api/usuario_actual/', func_views.me_api_view, name='usuario_actual'),
     path('usuarios/api/me/', func_views.me_api_view, name='me_api_view_alias'),
+
 
     # ================================
     # Marcas
@@ -249,8 +251,7 @@ urlpatterns = [
     path('api/reoferta/respuesta/<int:interes_id>/', func_views.procesar_respuesta_oferta, name='procesar-respuesta-oferta'),
     path('api/turnos/<int:turno_id>/oferta-info/<str:token>/', func_views.oferta_info_api, name='oferta_info_api'),
 
-    # Cotizaciones y Dashboard
-    path('api/cotizacion-externa/<str:token>/', gestionar_cotizacion_externa, name='cotizacion_externa'),
+    #Dashboard
     path('api/dashboard/', func_views.dashboard_data, name='dashboard_data'),
 
     # Solicitudes Presupuesto
