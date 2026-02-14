@@ -10,6 +10,7 @@ from django.db.models import Max, Q, F
 from django.conf import settings
 
 from .models import (
+    ConfiguracionSistema,
     Turno, 
     InteresTurnoLiberado, 
     ConfiguracionReoferta, 
@@ -264,17 +265,28 @@ def notificar_turno_asignado(turno_id):
 # ==============================================================================
 @shared_task
 def procesar_reactivacion_clientes_inactivos():
-    """VERSIÓN NGROK - Linkeable 100%"""
-    logger.info("🎯 [FIDELIZACIÓN] Iniciando proceso con Ngrok...")
+    """VERSIÓN PARAMETRIZABLE - Lee desde la Base de Datos"""
+    
+    # 1. LEER CONFIGURACIÓN (Acá es donde ocurre la magia)
+    try:
+        config = ConfiguracionSistema.get_solo()
+        DIAS_INACTIVIDAD = config.dias_inactividad_clientes
+    except Exception:
+        DIAS_INACTIVIDAD = 60 # Fallback por si explota la DB
+        logger.warning("⚠️ No se pudo leer la configuración. Usando 60 por defecto.")
+
+    # --- EL CHIVATO GRITÓN ---
+    logger.info("="*50)
+    logger.info(f"📢 EL SISTEMA ESTÁ USANDO: {DIAS_INACTIVIDAD} DÍAS COMO LÍMITE")
+    logger.info("="*50)
     
     try:
-        DIAS_INACTIVIDAD = 60
         DIAS_COOLDOWN = 90
         hoy = timezone.now()
         
-        # 1. Buscamos clientes
         from django.db.models import Exists, OuterRef
         
+        # Buscamos clientes que tengan al menos un turno en su historia
         clientes_con_turnos = Usuario.objects.filter(
             rol__nombre__iexact='Cliente',
             telefono__isnull=False,
@@ -288,12 +300,12 @@ def procesar_reactivacion_clientes_inactivos():
         ).filter(tiene_turnos=True)
         
         if clientes_con_turnos.count() == 0:
-            logger.info("ℹ️ No hay clientes para procesar.")
-            return "0 mensajes enviados"
+            logger.info("ℹ️ No hay clientes con historial para procesar.")
+            return "0 procesados"
         
-        # 2. Filtrado de inactivos
         clientes_inactivos = []
         for cliente in clientes_con_turnos:
+            # Buscar EL ÚLTIMO turno real (Completado o Reservado)
             ultimo_turno = Turno.objects.filter(
                 cliente=cliente,
                 estado__in=['COMPLETADO', 'RESERVADO']
@@ -301,90 +313,88 @@ def procesar_reactivacion_clientes_inactivos():
             
             if not ultimo_turno: continue
             
+            # Calcular hace cuánto fue
             fecha_turno_naive = datetime.combine(ultimo_turno.fecha, ultimo_turno.hora)
             fecha_ultimo_turno = timezone.make_aware(fecha_turno_naive)
             dias_inactivo = (hoy - fecha_ultimo_turno).days
             
-            if dias_inactivo <= DIAS_INACTIVIDAD: continue
+            # --- DEBUG POR CLIENTE ---
+            # Esto te va a decir por qué acepta o rechaza a cada uno
             
+            # Condición Matemática
+            if dias_inactivo <= DIAS_INACTIVIDAD: 
+                logger.info(f"❌ {cliente.nombre}: Hace {dias_inactivo} días (Faltan {DIAS_INACTIVIDAD - dias_inactivo} para disparar)")
+                continue
+            
+            # Condición de Cooldown
             fecha_cooldown = hoy - timedelta(days=DIAS_COOLDOWN)
             if PromocionReactivacion.objects.filter(cliente=cliente, fecha_creacion__gte=fecha_cooldown).exists():
+                logger.info(f"🛡️ {cliente.nombre}: Hace {dias_inactivo} días (Cumple), PERO ya se le envió promo hace poco.")
                 continue
+            
+            # Si pasa, es candidato
+            logger.info(f"✅ {cliente.nombre}: Hace {dias_inactivo} días -> ¡SE LE ENVÍA!")
             
             clientes_inactivos.append({
                 'cliente': cliente,
-                'dias_inactivo': dias_inactivo,
-                'ultima_visita': ultimo_turno.fecha
+                'dias_inactivo': dias_inactivo
             })
         
-        # 3. Preparar Envíos
-        limite_diario = 15
-        clientes_a_enviar = clientes_inactivos[:limite_diario]
+        # 3. ENVIAR (Límite para no saturar Twilio en pruebas)
+        clientes_a_enviar = clientes_inactivos[:5] 
         enviados = 0
+        base_url = 'https://brandi-palmar-pickily.ngrok-free.dev' # Tu Ngrok
         
-        # 🔥🔥🔥 ACÁ ESTÁ LA SOLUCIÓN 🔥🔥🔥
-        # Ponemos tu dirección de Ngrok explícitamente
-        base_url = 'https://brandi-palmar-pickily.ngrok-free.dev'
-        
-        for info_cliente in clientes_a_enviar:
-            cliente = info_cliente['cliente']
-            dias_inactivo = info_cliente['dias_inactivo']
+        for info in clientes_a_enviar:
+            cliente = info['cliente']
+            dias = info['dias_inactivo']
             
             try:
                 codigo = f"VOLVE{secrets.token_hex(3).upper()}"
-                
-                # Formatear teléfono
                 telefono = str(cliente.telefono).strip()
                 if not telefono.startswith('+'):
                     if telefono.startswith('0'): telefono = telefono[1:]
                     telefono = f"+54{telefono}"
                 
-                # Link con Ngrok
                 link = f"{base_url}/turnos/crear-web?cup={codigo}"
                 
-                # Mensaje
                 mensaje = (
                     f"✂️ *¡TE EXTRAÑAMOS!* 💈\n\n"
-                    f"Hola {cliente.nombre}, hace *{dias_inactivo} días* que no te vemos.\n\n"
-                    f"🎁 *TENÉS UN 15% OFF DE REGALO*\n"
-                    f"Reservá tu próximo turno tocando acá:\n\n"
-                    f"{link}\n\n" 
-                    f"🎫 Código: *{codigo}*\n"
-                    f"⏳ Vence en 7 días"
+                    f"Hola {cliente.nombre}, hace *{dias} días* que no venís.\n"
+                    f"🎁 *15% OFF* reservando acá:\n{link}\n"
+                    f"🎫 Cupón: *{codigo}*"
+                    f"\n⏰ Vence en 7 días\n"
                 )
                 
-                # Enviar Twilio
+                # Twilio (Descomentar para envío real)
                 from twilio.rest import Client
                 client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-                
-                message = client.messages.create(
-                    body=mensaje,
-                    from_=settings.TWILIO_WHATSAPP_NUMBER,
-                    to=f'whatsapp:{telefono}'
+                m = client.messages.create(
+                   body=mensaje,
+                   from_=settings.TWILIO_WHATSAPP_NUMBER,
+                   to=f'whatsapp:{telefono}'
                 )
                 
-                # Guardar Promo
                 PromocionReactivacion.objects.create(
                     cliente=cliente,
                     codigo=codigo,
                     descuento_porcentaje=15,
                     fecha_vencimiento=hoy + timedelta(days=7),
-                    mensaje_sid=message.sid,
+                    mensaje_sid=m.sid,
                     canal_envio='WHATSAPP'
                 )
                 
                 enviados += 1
-                logger.info(f"✅ Enviado a {cliente.nombre} con link Ngrok")
                 time.sleep(1)
                 
             except Exception as e:
-                logger.error(f"❌ Error enviando a {cliente.nombre}: {e}")
+                logger.error(f"Error enviando a {cliente.nombre}: {e}")
                 continue
         
-        return f"{enviados} mensajes enviados"
+        return f"{enviados} mensajes enviados (Límite configurado: {DIAS_INACTIVIDAD} días)"
         
     except Exception as e:
-        logger.error(f"🚨 Error General: {e}")
+        logger.error(f"Error fatal: {e}")
         return str(e)
     
 #PROBANDO

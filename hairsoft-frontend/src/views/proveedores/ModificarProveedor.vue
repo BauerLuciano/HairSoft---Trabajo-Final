@@ -138,6 +138,7 @@
 <script setup>
 import { ref, reactive, onMounted, watch } from 'vue'
 import axios from 'axios'
+import Swal from 'sweetalert2'
 
 const props = defineProps({
   proveedorId: {
@@ -156,8 +157,8 @@ const proveedor = reactive({
   telefono: '',
   email: '',
   direccion: '',
-  categorias_seleccionadas: [],
-  productos_seleccionados: [],
+  categorias_seleccionadas: [], 
+  productos_seleccionados: [],   
   productos_especificos: '',
   estado: 'ACTIVO'
 })
@@ -166,104 +167,106 @@ const categorias = ref([])
 const productos = ref([])
 const cargando = ref(false)
 
-const filtrarCuit = (event) => {
-  event.target.value = event.target.value.replace(/[^0-9-]/g, '')
-  proveedor.cuit = event.target.value
-}
-
-const cargarCategorias = async () => {
+// 1. Cargar las listas maestras (Categorías y Productos)
+const cargarListas = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/categorias/productos/`)
-    categorias.value = res.data
+    const [resCats, resProds] = await Promise.all([
+      axios.get(`${API_BASE}/api/categorias/productos/`),
+      axios.get(`${API_BASE}/api/productos/`)
+    ])
+    categorias.value = resCats.data
+    productos.value = resProds.data
   } catch (err) {
-    console.error('Error al cargar categorías:', err)
-    categorias.value = []
+    console.error('Error cargando listas:', err)
   }
 }
 
-const cargarProductos = async () => {
-  try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/productos/`)
-    productos.value = res.data
-  } catch (err) {
-    console.error('Error al cargar productos:', err)
-    productos.value = []
-  }
-}
-
+// 2. Cargar los datos del proveedor y MAPEARLOS
 const cargarProveedor = async () => {
+  if (!props.proveedorId) return
+  cargando.value = true
+  
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/proveedores/${props.proveedorId}/`)
+    const res = await axios.get(`${API_BASE}/api/proveedores/${props.proveedorId}/`)
     const data = res.data
-    proveedor.nombre = data.nombre
-    proveedor.cuit = data.cuit
-    proveedor.contacto = data.contacto
-    proveedor.telefono = data.telefono
-    proveedor.email = data.email
-    proveedor.direccion = data.direccion
+
+    // Mapeo campo por campo para asegurar la carga
+    proveedor.nombre = data.nombre || ''
+    proveedor.cuit = data.cuit || ''
+    proveedor.contacto = data.contacto || ''
+    proveedor.telefono = data.telefono || ''
+    proveedor.email = data.email || ''
+    proveedor.direccion = data.direccion || ''
+    proveedor.productos_especificos = data.productos_especificos || ''
+    proveedor.estado = data.estado || 'ACTIVO'
+
+    // El Serializer ahora manda IDs, así que Vue los vincula con los checkboxes
     proveedor.categorias_seleccionadas = data.categorias || []
     proveedor.productos_seleccionados = data.productos || []
-    proveedor.productos_especificos = data.productos_especificos || ''
-    proveedor.estado = data.estado
+
+    console.log("✅ Datos del proveedor cargados:", proveedor)
   } catch (err) {
     console.error('Error al cargar proveedor:', err)
-    alert('Error al cargar los datos del proveedor')
-  }
-}
-
-const modificarProveedor = async () => {
-  if (!validarProveedor()) return
-
-  cargando.value = true
-  try {
-    const payload = {
-      nombre: proveedor.nombre.trim(),
-      cuit: proveedor.cuit.trim(),
-      contacto: proveedor.contacto.trim(),
-      telefono: proveedor.telefono.trim(),
-      email: proveedor.email.trim(),
-      direccion: proveedor.direccion.trim(),
-      categorias: proveedor.categorias_seleccionadas,
-      productos: proveedor.productos_seleccionados,
-      productos_especificos: proveedor.productos_especificos?.trim() || '',
-      estado: proveedor.estado
-    }
-
-    await axios.put(`${API_BASE}/usuarios/api/proveedores/${props.proveedorId}/`, payload)
-    alert('Proveedor actualizado con éxito')
-    emit('proveedor-actualizado')
-  } catch (err) {
-    console.error(err)
-    alert('Error al actualizar el proveedor')
+    Swal.fire('Error', 'No se pudo obtener la información del proveedor', 'error')
   } finally {
     cargando.value = false
   }
 }
 
-const validarProveedor = () => {
-  if (!proveedor.nombre.trim()) {
-    alert('El nombre del proveedor es obligatorio')
-    return false
+const modificarProveedor = async () => {
+  if (!proveedor.nombre || !proveedor.telefono) {
+    return Swal.fire('Atención', 'Nombre y Teléfono son obligatorios', 'warning')
   }
-  if (!proveedor.telefono.trim()) {
-    alert('El teléfono es obligatorio')
-    return false
+
+  cargando.value = true
+  try {
+    const payload = {
+      nombre: proveedor.nombre,
+      cuit: proveedor.cuit,
+      contacto: proveedor.contacto,
+      telefono: proveedor.telefono,
+      email: proveedor.email,
+      direccion: proveedor.direccion,
+      categorias: proveedor.categorias_seleccionadas,
+      productos: proveedor.productos_seleccionados,
+      productos_especificos: proveedor.productos_especificos,
+      estado: proveedor.estado
+    }
+
+    await axios.put(`${API_BASE}/api/proveedores/${props.proveedorId}/`, payload)
+    
+    Swal.fire({
+      icon: 'success',
+      title: '¡Actualizado!',
+      text: 'Proveedor modificado correctamente',
+      timer: 1500,
+      showConfirmButton: false
+    })
+    
+    emit('proveedor-actualizado')
+  } catch (err) {
+    console.error(err)
+    Swal.fire('Error', 'No se pudo actualizar el proveedor', 'error')
+  } finally {
+    cargando.value = false
   }
-  return true
 }
 
-const volver = () => {
-  emit('cancelar')
+const filtrarCuit = (event) => {
+  event.target.value = event.target.value.replace(/[^0-9-]/g, '')
+  proveedor.cuit = event.target.value
 }
 
-onMounted(() => {
-  cargarCategorias()
-  cargarProductos()
-  cargarProveedor()
+const volver = () => emit('cancelar')
+
+onMounted(async () => {
+  // Primero las listas, después el proveedor
+  await cargarListas()
+  await cargarProveedor()
 })
 
-watch(() => props.proveedorId, () => {
-  if (props.proveedorId) cargarProveedor()
+watch(() => props.proveedorId, async (newVal) => {
+  if (newVal) await cargarProveedor()
 })
 </script>
 

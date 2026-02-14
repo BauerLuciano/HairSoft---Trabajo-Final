@@ -23,69 +23,107 @@
       <div v-else class="fade-in">
         
         <div class="usuarios-count">
-          <p><Building2 :size="20" /> Información de Facturación y Comprobantes</p>
+          <p><Info :size="20" /> Logo y Marca Visual</p>
         </div>
 
         <div class="filters-container">
-          <div class="filters-grid">
-            <div class="filter-group" style="grid-column: span 2;">
-              <label>Razón Social</label>
-              <input v-model="config.razon_social" type="text" class="filter-input" placeholder="Nombre legal" />
+          <div class="logo-upload-section">
+            <div class="logo-preview-container">
+              <img v-if="previewLogo || config.logo" :src="previewLogo || config.logo" class="logo-img-preview" />
+              <Building2 v-else :size="40" class="placeholder-icon" />
             </div>
-            <div class="filter-group">
-              <label>CUIL / CUIT (XX-XXXXXXXX-X)</label>
-              <input 
-                v-model="config.cuil_cuit" 
-                type="text" 
-                class="filter-input" 
-                placeholder="XX-XXXXXXXX-X" 
-                maxlength="13" 
-              />
-            </div>
-            <div class="filter-group">
-              <label>Teléfono (Máx 15 dígitos)</label>
-              <input 
-                v-model="config.telefono" 
-                type="text" 
-                class="filter-input" 
-                placeholder="3755xxxxxx" 
-                maxlength="15" 
-              />
-            </div>
-            <div class="filter-group" style="grid-column: span 2;">
-              <label>Dirección Comercial</label>
-              <input v-model="config.direccion" type="text" class="filter-input" placeholder="Ubicación física del local" />
-            </div>
-            <div class="filter-group" style="grid-column: span 2;">
-              <label>Email de Contacto</label>
-              <input v-model="config.email" type="email" class="filter-input" placeholder="correo@ejemplo.com" />
+            
+            <div class="upload-controls">
+              <label class="upload-btn">
+                <i class="ri-image-add-line"></i>
+                <span>Seleccionar Logo</span>
+                <input type="file" @change="handleFileUpload" accept="image/*" style="display: none;" />
+              </label>
+              <p class="upload-hint">Recomendado: Imagen cuadrada (PNG/JPG) sobre fondo oscuro.</p>
             </div>
           </div>
         </div>
 
         <div class="usuarios-count">
-          <p><Clock :size="20" /> Reglas de Negocio y Mensajes al Cliente</p>
+          <p><Building2 :size="20" /> Información de Facturación y Contacto</p>
         </div>
 
         <div class="filters-container">
-          <div class="filters-grid" style="grid-template-columns: 1fr;">
+          <div class="vertical-stack">
+            
             <div class="filter-group">
-              <label>Margen de Cancelación para Reembolso (En Horas)</label>
-              <div style="display: flex; align-items: center; gap: 15px;">
-                <input v-model.number="config.margen_horas_cancelacion" type="number" class="filter-input" style="width: 120px;" min="1" />
-                <span class="badge-estado estado-info">Horas de anticipación requeridas</span>
+              <label>Razón Social</label>
+              <input v-model="config.razon_social" type="text" class="filter-input" placeholder="Nombre legal" />
+            </div>
+
+            <div class="row-2-cols">
+              <div class="filter-group">
+                <label>CUIL / CUIT</label>
+                <input v-model="config.cuil_cuit" type="text" class="filter-input" placeholder="XX-XXXXXXXX-X" maxlength="13" />
               </div>
+              <div class="filter-group">
+                <label>Teléfono</label>
+                <input v-model="config.telefono" type="text" class="filter-input" placeholder="3755xxxxxx" maxlength="15" />
+              </div>
+            </div>
+
+            <div class="filter-group">
+              <label>Dirección Comercial</label>
+              <input v-model="config.direccion" type="text" class="filter-input" placeholder="Ubicación física del local" />
             </div>
             
             <div class="filter-group">
-              <label>Texto Informativo de Política de Señas</label>
-              <textarea 
-                v-model="config.politica_senia" 
-                class="filter-input" 
-                style="height: 150px; resize: none; padding: 15px; line-height: 1.6;"
-                placeholder="Escribí aquí lo que el cliente leerá antes de pagar la seña..."
-              ></textarea>
+              <label>Email de Contacto</label>
+              <input v-model="config.email" type="email" class="filter-input" placeholder="correo@ejemplo.com" />
             </div>
+
+          </div>
+        </div>
+
+        <div class="usuarios-count">
+          <p><Clock :size="20" /> Reglas de Negocio y Automatización</p>
+        </div>
+
+        <div class="filters-container">
+          <div class="vertical-stack">
+            
+            <div class="process-group">
+              
+              <div class="filter-group">
+                <label style="color: #0ea5e9;">Automatización: Cancelaciones y Reembolsos</label>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                  <input v-model.number="config.margen_horas_cancelacion" type="number" class="filter-input input-short" min="1" />
+                  <span class="badge-estado estado-info">Horas antes del turno</span>
+                </div>
+              </div>
+
+              <div class="filter-group mt-3">
+                <label>Texto Informativo de Política de Señas</label>
+                <textarea 
+                  v-model="config.politica_senia" 
+                  class="filter-input" 
+                  style="height: 100px; resize: none; padding: 15px; line-height: 1.6;"
+                  placeholder="Escribí aquí lo que el cliente leerá antes de pagar la seña..."
+                ></textarea>
+              </div>
+
+            </div>
+
+            <hr class="divider">
+
+            <div class="process-group">
+              <div class="filter-group">
+                <label style="color: #f97316;">Automatización: Reactivación de Clientes</label>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                  <input v-model.number="config.dias_inactividad_clientes" type="number" class="filter-input input-short" min="1" />
+                  <span class="badge-estado estado-alert">Días sin asistir</span>
+                </div>
+                <small style="color: var(--text-secondary); margin-top: 8px;">
+                  * Al superar estos días, se envía un WhatsApp automático con promo.
+                </small>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -107,17 +145,28 @@ const config = ref({
   telefono: '',
   email: '',
   margen_horas_cancelacion: 3,
-  politica_senia: ''
+  dias_inactividad_clientes: 60,
+  politica_senia: '',
+  logo: null
 })
 
 const cargando = ref(true)
 const guardando = ref(false)
+const previewLogo = ref(null)
+const logoFile = ref(null)
 
 const obtenerConfig = async () => {
   try {
     const res = await axios.get('/api/configuracion/')
-    config.value = res.data
+    const data = res.data
+
+    if (data.logo) {
+      data.logo = `${data.logo}?t=${new Date().getTime()}`;
+    }
+
+    config.value = data
   } catch (e) {
+    console.error(e)
     Swal.fire({
       icon: 'error',
       title: 'Error',
@@ -130,25 +179,25 @@ const obtenerConfig = async () => {
   }
 }
 
-// ✅ FUNCIÓN DE VALIDACIÓN SOLICITADA
+// ✅ Manejo de selección de archivo
+const handleFileUpload = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    logoFile.value = file
+    previewLogo.value = URL.createObjectURL(file) // Crear URL temporal para previsualización
+  }
+}
+
 const validarFormulario = () => {
   const cuitRegex = /^\d{2}-\d{8}-\d{1}$/;
   
   if (!config.value.razon_social.trim()) return "La Razón Social es obligatoria.";
-  
-  if (!cuitRegex.test(config.value.cuil_cuit)) {
-    return "El CUIT debe tener el formato exacto XX-XXXXXXXX-X (11 números y guiones).";
-  }
+  if (!cuitRegex.test(config.value.cuil_cuit)) return "El CUIT debe tener el formato exacto XX-XXXXXXXX-X.";
+  if (config.value.telefono.length > 15) return "El teléfono no puede superar los 15 dígitos.";
+  if (!config.value.email.includes('@')) return "El email debe ser válido.";
+  if (config.value.dias_inactividad_clientes < 1) return "Los días de inactividad deben ser al menos 1.";
 
-  if (config.value.telefono.length > 15) {
-    return "El teléfono no puede superar los 15 dígitos.";
-  }
-
-  if (!config.value.email.includes('@')) {
-    return "El email debe ser válido y contener un '@'.";
-  }
-
-  return null; // OK
+  return null; 
 }
 
 const guardarCambios = async () => {
@@ -164,21 +213,49 @@ const guardarCambios = async () => {
   }
 
   guardando.value = true
+
+  // ✅ Uso de FormData para enviar archivo de imagen + textos
+  const formData = new FormData();
+  formData.append('razon_social', config.value.razon_social);
+  formData.append('cuil_cuit', config.value.cuil_cuit);
+  formData.append('direccion', config.value.direccion);
+  formData.append('telefono', config.value.telefono);
+  formData.append('email', config.value.email);
+  formData.append('margen_horas_cancelacion', config.value.margen_horas_cancelacion);
+  formData.append('dias_inactividad_clientes', config.value.dias_inactividad_clientes);
+  formData.append('politica_senia', config.value.politica_senia);
+  
+  // Si el usuario seleccionó un archivo nuevo, lo adjuntamos
+  if (logoFile.value) {
+    formData.append('logo', logoFile.value);
+  }
+
   try {
-    await axios.post('/api/configuracion/', config.value)
-    Swal.fire({
+    await axios.post('/api/configuracion/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+    
+    await Swal.fire({
       icon: 'success',
       title: '¡Ajustes guardados!',
-      text: 'Los cambios se aplicarán en todos los reportes.',
+      text: 'La configuración del local ha sido actualizada.',
       timer: 2000,
       showConfirmButton: false,
       background: '#0f172a',
       color: '#f8fafc'
     })
+
+    // ✅ Forzar recarga para que el Sidebar actualice el logo
+    window.location.reload();
+
   } catch (e) {
+    console.error(e)
     Swal.fire({
       icon: 'error',
       title: 'Fallo al guardar',
+      text: 'Ocurrió un error al procesar la solicitud.',
       background: '#0f172a',
       color: '#f8fafc'
     })
@@ -192,189 +269,55 @@ onMounted(obtenerConfig)
 
 <style scoped>
 /* ========================================
-   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE
+   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE 
    ======================================== */
 
-.list-container {
-  padding: 32px;
-  max-width: 1600px;
-  margin: 0 auto;
-  min-height: 100vh;
-  font-family: 'Inter', sans-serif;
-}
+.list-container { padding: 32px; max-width: 1200px; margin: 0 auto; min-height: 100vh; font-family: 'Inter', sans-serif; }
+.list-card { background: var(--bg-secondary); color: var(--text-primary); border-radius: 24px; padding: 40px; width: 100%; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; border: 1px solid var(--border-color); }
+.list-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9); }
 
-.list-card {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border-radius: 24px;
-  padding: 40px;
-  width: 100%;
-  box-shadow: var(--shadow-lg);
-  position: relative;
-  overflow: hidden;
-  border: 1px solid var(--border-color);
-}
+.list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; border-bottom: 2px solid var(--border-color); padding-bottom: 25px; }
+.header-content h1 { margin: 0; font-size: 2.2rem; background: linear-gradient(135deg, var(--text-primary), #0ea5e9); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
+.header-content p { color: var(--text-secondary); font-weight: 500; margin-top: 8px; }
 
-.list-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9);
-}
+.register-button { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; border: none; padding: 14px 28px; border-radius: 12px; font-weight: 800; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; display: flex; align-items: center; gap: 10px; box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35); }
+.register-button:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(14, 165, 233, 0.5); }
 
-.list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 35px;
-  border-bottom: 2px solid var(--border-color);
-  padding-bottom: 25px;
-}
+/* SECCIÓN UPLOAD LOGO */
+.logo-upload-section { display: flex; align-items: center; gap: 30px; }
+.logo-preview-container { width: 120px; height: 120px; border: 2px dashed var(--border-color); border-radius: 18px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--bg-primary); }
+.logo-img-preview { width: 100%; height: 100%; object-fit: cover; }
+.placeholder-icon { opacity: 0.3; color: var(--text-secondary); }
+.upload-btn { background: var(--bg-tertiary); color: white; padding: 10px 20px; border-radius: 10px; border: 1px solid var(--border-color); cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 8px; transition: 0.3s; font-size: 0.9rem; }
+.upload-btn:hover { background: var(--hover-bg); transform: translateY(-2px); border-color: #0ea5e9; }
+.upload-hint { font-size: 0.8rem; color: var(--text-tertiary); margin-top: 8px; font-style: italic; }
 
-.header-content h1 {
-  margin: 0;
-  font-size: 2.2rem;
-  background: linear-gradient(135deg, var(--text-primary), #0ea5e9);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  font-weight: 900;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-}
+.filters-container { margin-bottom: 30px; background: var(--hover-bg); padding: 30px; border-radius: 16px; border: 1px solid var(--border-color); }
+.vertical-stack { display: flex; flex-direction: column; gap: 25px; }
+.row-2-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+.filter-group { display: flex; flex-direction: column; }
+.filter-group label { font-weight: 700; margin-bottom: 12px; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; }
+.filter-input { padding: 14px; border: 2px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); color: var(--text-primary); font-size: 1rem; transition: all 0.3s; width: 100%; }
+.input-short { width: 120px !important; text-align: center; font-weight: bold; }
+.filter-input:focus { outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 4px var(--accent-light); }
 
-.header-content p {
-  color: var(--text-secondary);
-  font-weight: 500;
-  margin-top: 8px;
-}
+.usuarios-count { display: flex; justify-content: space-between; align-items: center; margin: 40px 0 20px; padding: 15px 25px; background: var(--bg-primary); border-radius: 12px; border-left: 5px solid var(--accent-color); }
+.usuarios-count p { color: #fff; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 10px; font-size: 1.1rem; }
 
-.register-button {
-  background: linear-gradient(135deg, #0ea5e9, #0284c7);
-  color: white;
-  border: none;
-  padding: 14px 28px;
-  border-radius: 12px;
-  font-weight: 800;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  text-transform: uppercase;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35);
-}
-
-.register-button:hover:not(:disabled) {
-  transform: translateY(-3px);
-  box-shadow: 0 10px 30px rgba(14, 165, 233, 0.5);
-}
-
-.filters-container {
-  margin-bottom: 30px;
-  background: var(--hover-bg);
-  padding: 30px;
-  border-radius: 16px;
-  border: 1px solid var(--border-color);
-}
-
-.filters-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 25px;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-}
-
-.filter-group label {
-  font-weight: 700;
-  margin-bottom: 12px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 1px;
-}
-
-.filter-input {
-  padding: 14px;
-  border: 2px solid var(--border-color);
-  border-radius: 10px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font-size: 1rem;
-  transition: all 0.3s;
-}
-
-.filter-input:focus {
-  outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 4px var(--accent-light);
-}
-
-.usuarios-count {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: 40px 0 20px;
-  padding: 15px 25px;
-  background: var(--bg-primary);
-  border-radius: 12px;
-  border-left: 5px solid var(--accent-color);
-}
-
-.usuarios-count p {
-  color: #fff;
-  font-weight: 700;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 1.1rem;
-}
-
-.badge-estado {
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.estado-info {
-  background: rgba(14, 165, 233, 0.1);
-  color: #0ea5e9;
-  border: 2px solid #0ea5e9;
-}
+.badge-estado { padding: 8px 16px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; }
+.estado-info { background: rgba(14, 165, 233, 0.1); color: #0ea5e9; border: 2px solid #0ea5e9; }
+.estado-alert { background: rgba(249, 115, 22, 0.1); color: #f97316; border: 2px solid #f97316; }
+.divider { border: 0; height: 1px; background: var(--border-color); margin: 15px 0; opacity: 0.3; }
 
 .animate-spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-.no-results {
-  text-align: center;
-  padding: 100px 0;
-  color: var(--text-secondary);
-}
-
+.no-results { text-align: center; padding: 100px 0; color: var(--text-secondary); }
 .no-results-icon { margin-bottom: 20px; color: var(--accent-color); }
-
-.fade-in {
-  animation: fadeIn 0.4s ease-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@media (max-width: 1200px) {
-  .filters-grid { grid-template-columns: repeat(2, 1fr); }
-}
+.fade-in { animation: fadeIn 0.4s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 768px) {
-  .filters-grid { grid-template-columns: 1fr; }
-  .list-header { flex-direction: column; gap: 20px; text-align: center; }
-  .list-card { padding: 20px; }
+  .row-2-cols { grid-template-columns: 1fr; }
+  .logo-upload-section { flex-direction: column; text-align: center; }
 }
 </style>

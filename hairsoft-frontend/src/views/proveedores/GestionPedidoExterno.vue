@@ -24,7 +24,7 @@
           </div>
         </header>
 
-        <div v-if="pedido.estado !== 'ENVIADO'" class="banner-estado">
+        <div v-if="pedido.estado !== 'ENVIADO' && pedido.estado !== 'PENDIENTE'" class="banner-estado">
           <div class="icon-check">✅</div>
           <div>
             <h3>Pedido Confirmado</h3>
@@ -36,8 +36,8 @@
           <div class="intro-text">
             <h2>Hola, {{ pedido.proveedor_nombre }} 👋</h2>
             <p>
-              Por favor, confirmanos el stock y precio actual de los siguientes productos para preparar la orden de compra.
-              Si no tenés stock, poné <strong>0</strong> en la cantidad.
+              Por favor, revisá lo que te solicitamos. Podés modificar la cantidad si tenés menos stock, 
+              pero <strong>no podés superar la cantidad solicitada</strong>.
             </p>
           </div>
 
@@ -46,7 +46,8 @@
               <thead>
                 <tr>
                   <th class="col-prod">Producto</th>
-                  <th class="col-num">Cantidad</th>
+                  <th class="col-num text-center">Solicitado</th>
+                  <th class="col-num text-center">Tu Stock</th>
                   <th class="col-price">Precio Unit. ($)</th>
                   <th class="col-total">Subtotal</th>
                 </tr>
@@ -57,14 +58,25 @@
                     <span class="nombre-prod">{{ detalle.producto_nombre }}</span>
                     <span class="codigo-prod">Cód: {{ detalle.producto_codigo || 'N/A' }}</span>
                   </td>
+                  
+                  <td class="cell-display text-center">
+                    <span class="badge-solicitado">{{ detalle.cantidad_original }} u.</span>
+                  </td>
+
                   <td class="cell-input">
                     <input 
                       type="number" 
                       v-model.number="detalle.cantidad" 
                       min="0" 
+                      :max="detalle.cantidad_original"
                       class="input-modern input-qty"
+                      :class="{ 'input-error': detalle.cantidad > detalle.cantidad_original }"
                     >
+                    <small v-if="detalle.cantidad > detalle.cantidad_original" class="error-msg">
+                      Máx: {{ detalle.cantidad_original }}
+                    </small>
                   </td>
+
                   <td class="cell-input">
                     <div class="input-group">
                       <span class="prefix">$</span>
@@ -84,7 +96,7 @@
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="3" class="text-right label-total">Total Estimado</td>
+                  <td colspan="4" class="text-right label-total">Total Estimado</td>
                   <td class="monto-total">${{ calcularTotal().toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</td>
                 </tr>
               </tfoot>
@@ -102,7 +114,7 @@
 
           <div class="actions-bar">
             <button class="btn-confirmar" @click="confirmarPedido" :disabled="enviando">
-              <span v-if="!enviando">🚀 Confirmar Disponibilidad y Precios</span>
+              <span v-if="!enviando">Confirmar Disponibilidad y Precios</span>
               <span v-else>Procesando...</span>
             </button>
           </div>
@@ -119,11 +131,12 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import api from '@/services/api';
+import axios from 'axios';
 import Swal from 'sweetalert2';
 
 const route = useRoute();
 const token = route.params.token;
+const API_URL = 'http://127.0.0.1:8000/api'; 
 
 const pedido = ref(null);
 const loading = ref(true);
@@ -134,8 +147,16 @@ const comentarios = ref('');
 // --- Carga Inicial ---
 const cargarPedido = async () => {
   try {
-    const res = await api.get(`/externo/pedido/${token}/`);
+    const res = await axios.get(`${API_URL}/externo/pedido/${token}/`);
     pedido.value = res.data;
+
+    if (pedido.value.detalles) {
+      pedido.value.detalles.forEach(d => {
+        // Guardamos la cantidad original para validación y visualización
+        d.cantidad_original = d.cantidad; 
+      });
+    }
+
   } catch (err) {
     console.error(err);
     error.value = 'El pedido no existe o el enlace ya caducó.';
@@ -161,6 +182,21 @@ const calcularTotal = () => {
 
 // --- Acción Principal ---
 const confirmarPedido = async () => {
+  // 1. VALIDACIÓN DE CANTIDADES EXCEDIDAS
+  const excedidos = pedido.value.detalles.filter(d => d.cantidad > d.cantidad_original);
+  
+  if (excedidos.length > 0) {
+    const nombres = excedidos.map(d => d.producto_nombre).join(', ');
+    Swal.fire({
+      title: 'Cantidades Excedidas',
+      text: `No podés enviar más de lo solicitado en: ${nombres}. Por favor corregí las cantidades.`,
+      icon: 'error',
+      confirmButtonText: 'Entendido'
+    });
+    return;
+  }
+
+  // 2. Validación de Stock 0
   const totalItems = pedido.value.detalles.reduce((acc, item) => acc + item.cantidad, 0);
   
   if (totalItems === 0) {
@@ -173,9 +209,17 @@ const confirmarPedido = async () => {
     });
     if (!result.isConfirmed) return;
   } else {
+    // 3. Confirmación normal
+    const itemsModificados = pedido.value.detalles.filter(d => d.cantidad !== d.cantidad_original);
+    let msg = "Se enviará la confirmación al comercio.";
+    
+    if (itemsModificados.length > 0) {
+      msg = `Has modificado el stock de ${itemsModificados.length} productos (siempre menor o igual a lo pedido).`;
+    }
+
     const result = await Swal.fire({
       title: '¿Confirmar Pedido?',
-      text: "Se actualizarán los precios y cantidades en el sistema de HairSoft.",
+      text: msg,
       icon: 'question',
       showCancelButton: true,
       confirmButtonColor: '#10b981',
@@ -186,7 +230,7 @@ const confirmarPedido = async () => {
 
   enviando.value = true;
   try {
-    await api.post(`/externo/pedido/${token}/confirmar/`, {
+    await axios.post(`${API_URL}/externo/pedido/${token}/confirmar/`, {
       detalles: pedido.value.detalles,
       comentarios: comentarios.value 
     });
@@ -213,7 +257,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* --- DISEÑO PREMIUM REFINADO --- */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 .portal-proveedor {
@@ -228,7 +271,7 @@ onMounted(() => {
 .paper-container {
   background: white;
   width: 100%;
-  max-width: 960px; /* Un poco más ancho para mejor respiro */
+  max-width: 1024px;
   border-radius: 16px;
   box-shadow: 0 10px 40px -10px rgba(0,0,0,0.1);
   overflow: hidden;
@@ -255,7 +298,7 @@ onMounted(() => {
 .pedido-content { padding: 40px; flex: 1; }
 
 .intro-text h2 { color: #111827; margin-top: 0; font-size: 1.8rem; margin-bottom: 0.5rem; }
-.intro-text p { color: #4b5563; line-height: 1.6; max-width: 700px; margin-bottom: 40px; }
+.intro-text p { color: #4b5563; line-height: 1.6; max-width: 800px; margin-bottom: 40px; }
 
 /* Tabla Estilizada */
 .tabla-responsive { 
@@ -265,7 +308,7 @@ onMounted(() => {
   border: 1px solid #e5e7eb; 
   box-shadow: 0 2px 4px rgba(0,0,0,0.02);
 }
-.tabla-items { width: 100%; border-collapse: collapse; min-width: 700px; }
+.tabla-items { width: 100%; border-collapse: collapse; min-width: 800px; }
 
 .tabla-items th {
   background: #f9fafb; 
@@ -281,21 +324,47 @@ onMounted(() => {
 
 .tabla-items td { padding: 16px 24px; border-top: 1px solid #e5e7eb; vertical-align: middle; }
 
-/* Columnas & Alineación */
-.col-prod { width: 40%; }
-.col-num { width: 15%; text-align: center; }
-.col-price { width: 25%; text-align: right; } /* Precio alineado a derecha */
-.col-total { width: 20%; text-align: right; }
+/* Columnas */
+.col-prod { width: 35%; }
+.col-num { width: 15%; }
+.col-price { width: 20%; text-align: right; }
+.col-total { width: 15%; text-align: right; }
+
+.text-center { text-align: center; }
+.text-right { text-align: right; }
 
 /* Celda Producto */
 .cell-prod { display: flex; flex-direction: column; }
 .nombre-prod { color: #111827; font-weight: 600; font-size: 1rem; margin-bottom: 4px; }
 .codigo-prod { color: #9ca3af; font-size: 0.85rem; }
 
+.badge-solicitado {
+  background-color: #f3f4f6;
+  color: #4b5563;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border: 1px solid #e5e7eb;
+}
+
 /* Celda Inputs */
 .cell-input { vertical-align: middle; }
 
-/* Inputs Modernos Refinados */
+/* ERROR VISUAL (ROJO) */
+.input-error {
+  border-color: #ef4444 !important;
+  background-color: #fef2f2 !important;
+  color: #b91c1c !important;
+}
+.error-msg {
+  color: #ef4444;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: block;
+  margin-top: 4px;
+}
+
 .input-modern {
   width: 100%; 
   padding: 10px 12px; 
@@ -313,19 +382,13 @@ onMounted(() => {
   box-shadow: 0 0 0 3px rgba(59,130,246,0.1); 
 }
 
-.input-qty { text-align: center; max-width: 80px; margin: 0 auto; display: block; }
-.input-price { text-align: right; padding-left: 20px; } /* Espacio para el $ */
+.input-qty { text-align: center; max-width: 90px; margin: 0 auto; display: block; font-weight: 700; color: #059669; }
+.input-price { text-align: right; padding-left: 20px; } 
 
 .input-group { position: relative; display: flex; align-items: center; justify-content: flex-end;}
 .input-group .prefix { 
-  position: absolute; 
-  left: 10px; 
-  color: #9ca3af; 
-  pointer-events: none;
-  font-weight: 500;
-  z-index: 1; /* Asegura que el símbolo quede sobre el input */
+  position: absolute; left: 10px; color: #9ca3af; pointer-events: none; font-weight: 500; z-index: 1; 
 }
-/* Ajuste para que el texto no se monte sobre el símbolo $ */
 .input-group input { padding-left: 24px; } 
 
 .cell-total { text-align: right; font-weight: 700; color: #111827; font-size: 1.1rem; }
@@ -340,13 +403,11 @@ tfoot td { background: #f8fafc; padding: 24px; border-top: 2px solid #e5e7eb; }
 .observaciones-box label { display: block; font-weight: 600; color: #374151; margin-bottom: 10px; }
 .observaciones-box textarea {
   width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px;
-  font-family: inherit; resize: vertical; min-height: 100px; font-size: 0.95rem;
-  background-color: white;
+  font-family: inherit; resize: vertical; min-height: 100px; font-size: 0.95rem; background-color: white;
 }
 .observaciones-box textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
 
-
-/* Botón Acción */
+/* Acciones */
 .actions-bar { display: flex; justify-content: flex-end; }
 .btn-confirmar {
   background: linear-gradient(135deg, #10b981, #059669);
@@ -358,10 +419,7 @@ tfoot td { background: #f8fafc; padding: 24px; border-top: 2px solid #e5e7eb; }
 .btn-confirmar:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(16, 185, 129, 0.5); }
 .btn-confirmar:disabled { opacity: 0.6; cursor: not-allowed; filter: grayscale(0.5); }
 
-/* Footer Page */
 .footer-portal { text-align: center; padding: 30px; border-top: 1px solid #f3f4f6; color: #9ca3af; font-size: 0.9rem; background: #fdfdfd; }
-
-/* Estados (Loading/Error/Success) */
 .loading-state, .error-state { text-align: center; padding: 80px 20px; }
 .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 24px; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -379,6 +437,5 @@ tfoot td { background: #f8fafc; padding: 24px; border-top: 2px solid #e5e7eb; }
   .meta-pedido { text-align: center; }
   .pedido-content { padding: 24px; }
   .btn-confirmar { width: 100%; }
-  .col-prod, .col-num, .col-price, .col-total { width: auto; } /* Reset width en móvil para que scrollee natural */
 }
 </style>

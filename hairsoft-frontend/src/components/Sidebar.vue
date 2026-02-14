@@ -3,10 +3,7 @@
     <div class="sidebar-header">
       <div class="logo-wrapper">
         <div class="logo-container">
-          <img :src="logo" alt="HairSoft Logo" class="logo" />
-        </div>
-        <div class="brand-info">
-          <span class="brand-name">HairSoft</span>
+          <img :src="empresa.logo || logoEstatico" alt="HairSoft Logo" class="logo" />
         </div>
       </div>
     </div>
@@ -64,11 +61,34 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
-import logo from '@/assets/logo.jpg';
+import { ref, computed, onMounted } from 'vue';
+import axios from '@/utils/axiosConfig';
+import logoEstatico from '@/assets/logo.jpg';
 
 const openSection = ref('comercial'); 
 const userRol = localStorage.getItem('user_rol'); 
+
+const empresa = ref({
+  razon_social: '',
+  logo: null
+});
+
+const cargarBranding = async () => {
+  try {
+    const res = await axios.get('/api/configuracion/');
+    const data = res.data;
+    
+    // ✅ CORRECCIÓN: Si la URL es relativa (/media/...), le agregamos el dominio del backend
+    if (data.logo && !data.logo.startsWith('http')) {
+        const API_BASE = 'http://127.0.0.1:8000'; // Ajustá esto a tu puerto de Django
+        data.logo = `${API_BASE}${data.logo}`;
+    }
+    
+    empresa.value = data;
+  } catch (e) {
+    console.error("No se pudo cargar el logo dinámico");
+  }
+};
 
 const menuData = {
   comercial: {
@@ -102,7 +122,6 @@ const menuData = {
       { name: 'Roles', path: '/roles', icon: 'ri-shield-user-line', roles: ['ADMINISTRADOR'] },
       { name: 'Liquidación Sueldos', path: '/admin/liquidacion', icon: 'ri-money-dollar-circle-line', roles: ['ADMINISTRADOR'] }, 
       { name: 'Auditoría', path: '/auditoria', icon: 'ri-file-history-line', roles: ['ADMINISTRADOR'] },
-      // ✅ ITEM AGREGADO AL FINAL DE LA SECCIÓN ADMINISTRACIÓN
       { name: 'Ajustes Local', path: '/configuracion', icon: 'ri-settings-4-line', roles: ['ADMINISTRADOR'] },
     ]
   }
@@ -123,6 +142,8 @@ const filteredMenu = computed(() => {
 const toggleSection = (section) => {
   openSection.value = openSection.value === section ? null : section;
 };
+
+onMounted(cargarBranding);
 </script>
 
 <style scoped>
@@ -189,9 +210,9 @@ const toggleSection = (section) => {
 .logo-container {
   width: 90px;
   height: 90px;
-  border-radius: 50%;
+  border-radius: 10%;
   overflow: hidden;
-  border: 3px solid #3b82f6;
+  border: 3px solid #949494;
   box-shadow: 
     0 0 20px rgba(59, 130, 246, 0.4),
     0 4px 12px rgba(0, 0, 0, 0.3),

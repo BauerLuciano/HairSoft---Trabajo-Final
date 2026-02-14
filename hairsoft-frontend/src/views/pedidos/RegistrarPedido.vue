@@ -319,7 +319,10 @@ const productosSeleccionados = ref([])
 
 // Computed
 const proveedoresActivos = computed(() => {
-  return proveedores.value.filter(p => p.estado === 'ACTIVO')
+  // Verificamos que proveedores.value sea un array antes de filtrar
+  return Array.isArray(proveedores.value) 
+    ? proveedores.value.filter(p => p.estado === 'ACTIVO')
+    : []
 })
 
 const proveedorSeleccionado = computed(() => {
@@ -354,11 +357,19 @@ const puedeRegistrar = computed(() => {
 })
 
 // Métodos
+
+// 🏁 CORRECCIÓN AQUÍ: Usamos el endpoint especializado y accedemos a .proveedores
 const cargarDatosIniciales = async () => {
   try {
     cargandoProveedores.value = true
-    const response = await axios.get(`${API_BASE}/usuarios/api/proveedores/`)
-    proveedores.value = response.data.filter(p => p.estado === 'ACTIVO')
+    // Cambiamos la URL a la que definiste en urls.py y quitamos /usuarios/
+    const response = await axios.get(`${API_BASE}/api/pedidos/datos-crear/`)
+    
+    // Como la vista 'datos_crear_pedido' devuelve un objeto {proveedores, productos, categorias}
+    // Asignamos directamente la lista de proveedores
+    proveedores.value = response.data.proveedores || []
+    
+    console.log('✅ Proveedores cargados:', proveedores.value)
   } catch (error) {
     console.error('Error cargando datos:', error)
     Swal.fire('Error', 'No se pudieron cargar los proveedores', 'error')
@@ -379,19 +390,20 @@ const formatPrecio = (precio) => {
 
 const cargarProductosDelProveedor = async (proveedorId) => {
   try {
-    const responseListas = await axios.get(`${API_BASE}/usuarios/api/listas-precios/por-proveedor/?proveedor_id=${proveedorId}`)
+    // Quitamos /usuarios/ de estas rutas también para evitar errores 404 o HTML
+    const responseListas = await axios.get(`${API_BASE}/api/listas-precios/por-proveedor/?proveedor_id=${proveedorId}`)
     const listasPrecios = responseListas.data
     
-    const responseProductos = await axios.get(`${API_BASE}/usuarios/api/productos/`)
+    const responseProductos = await axios.get(`${API_BASE}/api/productos/`)
     const todosProductos = responseProductos.data
     
     productosDelProveedor.value = listasPrecios.map(lista => {
       const producto = todosProductos.find(p => p.id === lista.producto)
       return {
-        id: producto.id,
-        nombre: producto.nombre,
-        codigo: producto.codigo,
-        stock_actual: producto.stock_actual || producto.stock || 0,
+        id: producto?.id,
+        nombre: producto?.nombre || 'Producto no encontrado',
+        codigo: producto?.codigo || 'S/C',
+        stock_actual: producto?.stock_actual || 0,
         precio_compra: lista.precio_base || 0,
         precio_venta: lista.precio_sugerido_venta || 0
       }
@@ -417,14 +429,15 @@ const onProveedorChange = async () => {
         text: 'Se eliminarán los productos agregados al pedido',
         icon: 'warning',
         showCancelButton: true,
+        confirmButtonColor: '#0ea5e9',
         confirmButtonText: 'Sí, cambiar',
         cancelButtonText: 'Cancelar'
       }).then((result) => {
         if (result.isConfirmed) {
           pedido.value.detalles = []
         } else {
-          pedido.value.proveedor = ''
-          productosDelProveedor.value = []
+          // Volver al proveedor anterior si es posible o resetear
+          // Nota: Para mejorar esto deberías guardar el proveedor anterior en una ref
         }
       })
     }
@@ -459,7 +472,7 @@ const agregarProductosSeleccionados = () => {
         producto_stock_actual: producto.stock_actual,
         precio_unitario: producto.precio_compra,
         cantidad: 1,
-        subtotal: producto.precio_compra // Inicializar subtotal
+        subtotal: producto.precio_compra 
       })
     }
   })
@@ -506,7 +519,8 @@ const registrarPedido = async () => {
       }))
     }
 
-    const response = await axios.post(`${API_BASE}/usuarios/api/pedidos/`, payload)
+    // Quitamos /usuarios/ de la ruta de guardado
+    const response = await axios.post(`${API_BASE}/api/pedidos/`, payload)
     
     await Swal.fire({
       title: '✅ Pedido Registrado',

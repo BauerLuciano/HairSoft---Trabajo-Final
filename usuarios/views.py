@@ -2996,6 +2996,8 @@ def anular_venta(request, venta_id):
 # ================================
 # PEDIDOS
 # ================================
+# usuarios/views.py
+
 class PedidoListCreateAPIView(generics.ListCreateAPIView):
     """
     Listar y crear pedidos.
@@ -3009,12 +3011,12 @@ class PedidoListCreateAPIView(generics.ListCreateAPIView):
     permission_classes = [AllowAny]
 
     def perform_create(self, serializer):
-        try:
-            # 1. Guardar el pedido
-            usuario = self.request.user if self.request.user.is_authenticated else None
-            pedido = serializer.save(usuario_creador=usuario)
+        # 1. GUARDAR EL PEDIDO (Fuera del try/except para capturar errores de validación)
+        usuario = self.request.user if self.request.user.is_authenticated else None
+        pedido = serializer.save(usuario_creador=usuario)
 
-            # 2. 📧 PREPARACIÓN DEL CORREO
+        # 2. 📧 PREPARACIÓN DEL CORREO (Ahora sí, protegido por try/except)
+        try:
             proveedor = pedido.proveedor
             
             if proveedor.email:
@@ -3022,20 +3024,14 @@ class PedidoListCreateAPIView(generics.ListCreateAPIView):
                 
                 # Link al portal
                 link = f"http://localhost:5173/externo/pedido/{pedido.token}"
-                
                 asunto = f"📦 Solicitud de Pedido #{pedido.id} | HairSoft"
                 
                 fecha_formato = timezone.localtime(pedido.fecha_pedido).strftime("%d/%m/%Y a las %H:%M")
                 
-                # --- DISEÑO HTML "CHETO" ---
+                # --- DISEÑO HTML "CHETO" (Tu diseño intacto) ---
                 mensaje_html = f"""
                 <!DOCTYPE html>
                 <html lang="es">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Nuevo Pedido</title>
-                </head>
                 <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                     
                     <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f3f4f6; padding: 40px 0;">
@@ -3133,8 +3129,9 @@ class PedidoListCreateAPIView(generics.ListCreateAPIView):
                 print("⚠️ Proveedor sin email. Pedido guardado como PENDIENTE.")
 
         except Exception as e:
-            print(f"❌ Error en el proceso de creación/envío: {e}")
+            print(f"❌ Error en el proceso de envío de correo: {e}")
             # No hacemos raise para no bloquear la creación del pedido si falla el mail
+            # Pero el pedido YA SE GUARDÓ correctamente en el paso 1.
 
 class PedidoRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
     """Detalle, actualizar y eliminar pedidos"""
@@ -3395,7 +3392,6 @@ def enviar_pedido_proveedor(request, pedido_id):
 # ==============================================================================
 # GESTIÓN EXTERNA DE PEDIDOS (PARA EL PROVEEDOR) - SIN LOGIN REQUERIDO
 # ==============================================================================
-
 @api_view(['GET'])
 @permission_classes([AllowAny]) # Pública para que entre con el token
 def obtener_pedido_externo(request, token):
@@ -3422,37 +3418,41 @@ def confirmar_pedido_externo(request, token):
         pedido = get_object_or_404(Pedido, token=token)
         
         # Validamos que no se pueda responder dos veces
-        if pedido.estado not in ['ENVIADO', 'PENDIENTE']: # PENDIENTE por si lo mandaste manual
+        if pedido.estado not in ['ENVIADO', 'PENDIENTE']:
             return Response({'error': 'Este pedido ya fue respondido o no está disponible.'}, status=400)
 
         # Recibimos la lista de detalles editada por el proveedor
         datos_recibidos = request.data.get('detalles', [])
+        comentarios = request.data.get('comentarios', '')
         
         with transaction.atomic():
-            cambios_realizados = False
             
             for item in datos_recibidos:
                 detalle_id = item.get('id')
-                nueva_cantidad = item.get('cantidad')
+                nueva_cantidad = item.get('cantidad') # ESTO ES LO QUE EDITÓ EL PROVEEDOR
                 nuevo_precio = item.get('precio_unitario')
                 
                 # Buscamos el detalle específico dentro de este pedido
                 detalle = pedido.detalles.filter(id=detalle_id).first()
                 
                 if detalle:
+                    # ACÁ ACTUALIZAMOS LA BASE DE DATOS CON LO REAL
                     if nueva_cantidad is not None:
-                        detalle.cantidad = nueva_cantidad
-                        cambios_realizados = True
+                        detalle.cantidad = int(nueva_cantidad)
+                    
                     if nuevo_precio is not None:
-                        detalle.precio_unitario = nuevo_precio
-                        cambios_realizados = True
+                        detalle.precio_unitario = float(nuevo_precio)
                     
                     # Recalculamos el subtotal de esa línea
-                    if detalle.precio_unitario and detalle.cantidad:
+                    if detalle.precio_unitario is not None and detalle.cantidad is not None:
                         detalle.subtotal = detalle.cantidad * detalle.precio_unitario
                     
                     detalle.save()
             
+            # Guardamos comentarios del proveedor en las observaciones
+            if comentarios:
+                pedido.observaciones = f"{pedido.observaciones or ''}\n\n[Proveedor]: {comentarios}".strip()
+
             # Actualizamos totales y estado del pedido padre
             pedido.total = pedido.calcular_total()
             pedido.estado = 'CONFIRMADO' # Queda listo para recibir
@@ -3464,8 +3464,9 @@ def confirmar_pedido_externo(request, token):
         })
 
     except Exception as e:
+        print(f"Error confirmando pedido: {e}")
         return Response({'error': str(e)}, status=500)
-
+    
 #-----TEMPORAAAAAAAALLLLLL
 
 @api_view(['POST'])
@@ -5292,18 +5293,23 @@ def debug_auditoria(request):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def gestionar_configuracion(request):
-    # Usamos el método get_solo() que ya tenés en el modelo
     config = ConfiguracionSistema.get_solo()
     
     if request.method == 'GET':
-        serializer = ConfiguracionSistemaSerializer(config)
+        serializer = ConfiguracionSistemaSerializer(config, context={'request': request})
         return Response(serializer.data)
     
-    # Si es POST, actualizamos solo los campos que mande el Admin
-    serializer = ConfiguracionSistemaSerializer(config, data=request.data, partial=True)
+    serializer = ConfiguracionSistemaSerializer(
+        config, 
+        data=request.data, 
+        partial=True, 
+        context={'request': request}
+    )
+    
     if serializer.is_valid():
         serializer.save()
         return Response(serializer.data)
+    
     return Response(serializer.errors, status=400)
 
 

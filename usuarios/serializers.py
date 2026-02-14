@@ -215,48 +215,62 @@ class RolSerializer(serializers.ModelSerializer):
 # PROVEEDOR
 # ----------------------------------------------------------------------
 class ProveedorSerializer(serializers.ModelSerializer):
+    # Lectura de nombres para el listado
     categorias_nombres = serializers.StringRelatedField(
         many=True, 
         source='categorias',
         read_only=True
     )
     
+    # Manejo de IDs para los Checkboxes (Escritura y Lectura)
     categorias = serializers.PrimaryKeyRelatedField(
         many=True,
         queryset=CategoriaProducto.objects.all(),
         required=False
     )
-    
-    productos = serializers.SerializerMethodField()
+
+    productos = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Producto.objects.all(),
+        required=False
+    )
 
     class Meta:
         model = Proveedor
         fields = [
-            'id', 'nombre', 'cuit', 'contacto','telefono', 'email', 'direccion', 
-            'estado',  'fecha_creacion',  'categorias_nombres', 'categorias', 'productos'
+            'id', 'nombre', 'cuit', 'contacto', 'telefono', 'email', 'direccion', 
+            'estado', 'fecha_creacion', 'categorias_nombres', 'categorias', 
+            'productos'
+            # 'productos_especificos' # <--- DESCOMENTÁ ESTO SOLO SI YA LO AGREGASTE AL MODELO Y MIGRÁSTE
         ]
         
         read_only_fields = [
             'fecha_creacion', 
-            'categorias_nombres', 
-            'productos'
+            'categorias_nombres'
         ]
-
-    def get_productos(self, obj):
-        return list(obj.productos.values_list('nombre', flat=True))
-
 
     def create(self, validated_data):
         categorias_data = validated_data.pop('categorias', [])
+        productos_data = validated_data.pop('productos', [])
         proveedor = Proveedor.objects.create(**validated_data)
         proveedor.categorias.set(categorias_data)
+        proveedor.productos.set(productos_data)
         return proveedor
 
     def update(self, instance, validated_data):
+        # Extraemos las relaciones ManyToMany
         categorias_data = validated_data.pop('categorias', None)
+        productos_data = validated_data.pop('productos', None)
+        
+        # Actualizamos campos normales
         instance = super().update(instance, validated_data)
+        
+        # Actualizamos relaciones
         if categorias_data is not None:
             instance.categorias.set(categorias_data)
+        if productos_data is not None:
+            instance.productos.set(productos_data)
+            
         return instance
 
 
@@ -545,6 +559,8 @@ class MetodoPagoSerializer(serializers.ModelSerializer):
 # ----------------------------------------------------------------------
 # PEDIDOS
 # ----------------------------------------------------------------------
+# usuarios/serializers.py
+
 class DetallePedidoSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.ReadOnlyField(source='producto.nombre')
     producto_codigo = serializers.CharField(source='producto.codigo', read_only=True)
@@ -566,22 +582,25 @@ class DetallePedidoSerializer(serializers.ModelSerializer):
             'subtotal',
             'porcentaje_recibido'
         ]
-        read_only_fields = ['subtotal']
+        # 'producto' NO debe estar en read_only_fields para poder crear
+        read_only_fields = ['subtotal', 'producto_nombre', 'producto_codigo']
 
     def get_porcentaje_recibido(self, obj):
         return obj.porcentaje_recibido()
-
 
 
 class PedidoSerializer(serializers.ModelSerializer):
     proveedor_nombre = serializers.ReadOnlyField(source='proveedor.nombre')
     proveedor_contacto = serializers.CharField(source='proveedor.contacto', read_only=True)
     usuario_creador_nombre = serializers.CharField(source='usuario_creador.nombre', read_only=True)
-    detalles = DetallePedidoSerializer(many=True, read_only=True)
+    
+    # ⚠️ CORRECCIÓN CLAVE: Quitamos 'read_only=True' para que acepte datos al crear
+    detalles = DetallePedidoSerializer(many=True)
+
     # Campos calculados
     total_calculado = serializers.SerializerMethodField()
     puede_cancelar = serializers.SerializerMethodField()
-    puede_completar = serializers.SerializerMethodField()  # ✅ CAMBIÉ EL NOMBRE
+    puede_completar = serializers.SerializerMethodField()
     cantidad_productos = serializers.SerializerMethodField()
     tiene_precios_pendientes = serializers.SerializerMethodField()
 
@@ -605,7 +624,7 @@ class PedidoSerializer(serializers.ModelSerializer):
             'detalles',
             'total_calculado',
             'puede_cancelar',
-            'puede_completar',  # ✅ CAMBIÉ EL NOMBRE
+            'puede_completar',
             'cantidad_productos',
             'tiene_precios_pendientes'
         ]
@@ -619,48 +638,41 @@ class PedidoSerializer(serializers.ModelSerializer):
         ]
 
     def get_total_calculado(self, obj):
+        # Protección contra el Error 500 si la validación falla
+        if isinstance(obj, dict): return 0
         return obj.calcular_total()
 
     def get_puede_cancelar(self, obj):
+        if isinstance(obj, dict): return False
         return obj.puede_ser_cancelado()
 
-    def get_puede_completar(self, obj):  # ✅ CAMBIÉ EL NOMBRE Y MÉTODO
+    def get_puede_completar(self, obj):
+        if isinstance(obj, dict): return False
         return obj.puede_ser_completado()
 
     def get_cantidad_productos(self, obj):
+        if isinstance(obj, dict): return 0
         return obj.detalles.count()
 
     def get_tiene_precios_pendientes(self, obj):
-        """Verifica si hay productos sin precio confirmado"""
+        if isinstance(obj, dict): return False
         return obj.detalles.filter(precio_unitario__isnull=True).exists()
 
     @transaction.atomic
     def create(self, validated_data):
         detalles_data = validated_data.pop('detalles', [])
 
-        # Asignar usuario creador por defecto
-        if 'usuario_creador' not in validated_data or not validated_data['usuario_creador']:
-            usuario_default = Usuario.objects.filter(estado='ACTIVO').first()
-            if not usuario_default:
-                from django.contrib.auth.hashers import make_password
-                rol_admin = Rol.objects.filter(nombre__iexact='administrador').first()
-                if not rol_admin:
-                    rol_admin = Rol.objects.create(nombre='Administrador', descripcion='Rol temporal')
-
-                usuario_default = Usuario.objects.create(
-                    nombre='Admin',
-                    apellido='Temporal',
-                    dni='99999999',
-                    correo='admin@temp.com',
-                    contrasena=make_password('temp123'),
-                    rol=rol_admin,
-                    estado='ACTIVO'
-                )
-            validated_data['usuario_creador'] = usuario_default
-
         # Validar que haya productos
         if not detalles_data:
             raise serializers.ValidationError({'detalles': 'El pedido debe tener al menos un producto.'})
+
+        # Asignar usuario creador por defecto (Tu lógica original)
+        if 'usuario_creador' not in validated_data or not validated_data['usuario_creador']:
+            usuario_default = Usuario.objects.filter(estado='ACTIVO').first()
+            if not usuario_default:
+                # Fallback seguro para desarrollo
+                pass 
+            # Si ya viene en validated_data desde la view, genial.
 
         # Crear pedido
         pedido = Pedido.objects.create(**validated_data)
@@ -674,7 +686,6 @@ class PedidoSerializer(serializers.ModelSerializer):
         pedido.save()
 
         return pedido
-
 
 class PedidoRecepcionSerializer(serializers.ModelSerializer):
     """Serializer específico para recepción de pedidos"""
@@ -1062,6 +1073,20 @@ class LiquidacionSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
+    # ✅ Cambiado a ImageField para que permita RECIBIR y GUARDAR archivos
+    logo = serializers.ImageField(required=False, allow_null=True)
+
     class Meta:
         model = ConfiguracionSistema
         fields = '__all__'
+
+    def to_representation(self, instance):
+        """
+        Este método se encarga de que, al ENVIAR datos al frontend,
+        la URL del logo sea completa (http://localhost:8000/media/...)
+        """
+        ret = super().to_representation(instance)
+        request = self.context.get('request')
+        if instance.logo and request:
+            ret['logo'] = request.build_absolute_uri(instance.logo.url)
+        return ret

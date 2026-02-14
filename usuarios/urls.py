@@ -1,10 +1,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from django.conf import settings 
+from django.conf.urls.static import static 
 
-# Importamos tus vistas basadas en funciones (donde escribimos el código nuevo)
 from . import views as func_views
 
-# Importamos las vistas basadas en clases (para lo que no hemos tocado)
 from .api_views import (
     AuditoriaViewSet,
     PedidoWebViewSet,
@@ -283,3 +283,5 @@ urlpatterns = [
     # Parametrizar la política de seña
     path('api/configuracion/', func_views.gestionar_configuracion, name='configuracion_sistema'),
 ]
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

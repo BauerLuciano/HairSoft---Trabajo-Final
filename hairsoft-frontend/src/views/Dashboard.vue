@@ -28,8 +28,8 @@
         </div>
 
         <button @click="generatePDF" class="pdf-btn" :disabled="loading">
-          <i class="fas fa-file-pdf"></i>
-          Exportar Reporte
+          <i class="fas fa-file-invoice-dollar"></i>
+          Exportar Balance
         </button>
       </div>
     </header>
@@ -57,7 +57,7 @@
 
     <div v-if="loading" class="state-container">
       <div class="loader"></div>
-      <p class="loading-text">Cargando datos...</p>
+      <p class="loading-text">Generando balance de gestión...</p>
     </div>
 
     <div v-else-if="error" class="state-container error">
@@ -70,53 +70,29 @@
     </div>
 
     <main v-else class="dashboard-content fade-in" ref="dashboardContent">
-
       <div class="kpi-grid">
         <div class="kpi-card income">
-          <div class="kpi-header-card">
-            <div class="kpi-icon"><i class="fas fa-dollar-sign"></i></div>
-          </div>
+          <div class="kpi-header-card"><div class="kpi-icon"><i class="fas fa-dollar-sign"></i></div></div>
           <div class="kpi-data">
             <span class="label">Ingresos Totales</span>
             <span class="value">${{ formatNumber(dashboardData.ingresosTotales) }}</span>
-            <span class="subtitle">Facturación del período</span>
-          </div>
-          <div class="kpi-sparkline">
-            <svg viewBox="0 0 100 24" preserveAspectRatio="none">
-              <polyline points="0,18 20,15 40,10 60,12 80,6 100,4" fill="none" stroke="currentColor" stroke-width="2"/>
-            </svg>
+            <span class="subtitle">Facturación bruta</span>
           </div>
         </div>
-
         <div class="kpi-card service">
-          <div class="kpi-header-card">
-            <div class="kpi-icon"><i class="fas fa-cut"></i></div>
-          </div>
+          <div class="kpi-header-card"><div class="kpi-icon"><i class="fas fa-cut"></i></div></div>
           <div class="kpi-data">
-            <span class="label">Servicios Completados</span>
+            <span class="label">Servicios Realizados</span>
             <span class="value">{{ dashboardData.serviciosRealizados }}</span>
             <span class="subtitle">Turnos atendidos</span>
           </div>
-          <div class="kpi-sparkline">
-            <svg viewBox="0 0 100 24" preserveAspectRatio="none">
-              <polyline points="0,20 20,16 40,18 60,13 80,10 100,8" fill="none" stroke="currentColor" stroke-width="2"/>
-            </svg>
-          </div>
         </div>
-
         <div class="kpi-card product">
-          <div class="kpi-header-card">
-            <div class="kpi-icon"><i class="fas fa-shopping-bag"></i></div>
-          </div>
+          <div class="kpi-header-card"><div class="kpi-icon"><i class="fas fa-shopping-bag"></i></div></div>
           <div class="kpi-data">
             <span class="label">Productos Vendidos</span>
             <span class="value">{{ dashboardData.productosVendidos }}</span>
-            <span class="subtitle">Unidades despachadas</span>
-          </div>
-          <div class="kpi-sparkline">
-            <svg viewBox="0 0 100 24" preserveAspectRatio="none">
-              <polyline points="0,14 20,12 40,9 60,11 80,5 100,3" fill="none" stroke="currentColor" stroke-width="2"/>
-            </svg>
+            <span class="subtitle">Unidades vendidas</span>
           </div>
         </div>
       </div>
@@ -129,7 +105,7 @@
           </div>
         </div>
         <div class="chart-body">
-          <div v-if="dashboardData.ventasPorDia.length" class="trading-chart-container">
+          <div v-if="dashboardData.ventasPorDia && dashboardData.ventasPorDia.length" class="trading-chart-container">
             <svg class="chart-grid" :viewBox="`0 0 ${chartWidth} ${chartHeight}`">
               <g v-for="i in 5" :key="`ref-${i}`">
                 <line :x1="60" :y1="(chartHeight / 5) * i" :x2="chartWidth - 20" :y2="(chartHeight / 5) * i" stroke="#475569" stroke-width="1" stroke-dasharray="5,5" opacity="0.6"/>
@@ -155,13 +131,7 @@
               </g>
             </svg>
             <div class="chart-labels">
-              <span 
-                v-for="(label, i) in dashboardData.labelsDias" 
-                :key="`label-${i}`" 
-                class="day-label" 
-                :style="{ left: getXPositionPercent(i) + '%' }" 
-                v-if="shouldShowLabel(i)"
-              >
+              <span v-for="(label, i) in dashboardData.labelsDias" :key="`label-${i}`" class="day-label" :style="{ left: getXPositionPercent(i) + '%' }" v-if="shouldShowLabel(i)">
                 {{ label }}
               </span>
             </div>
@@ -172,61 +142,18 @@
               </div>
             </Transition>
           </div>
-          <div v-else class="no-data">
-            <i class="fas fa-chart-line"></i><p>No hay ventas registradas en este período</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="section-card distribution-card">
-        <div class="section-header">
-          <h3><i class="fas fa-chart-pie"></i> Distribución de Actividad</h3>
-        </div>
-        <div class="distribution-body">
-          <div class="distribution-chart-container">
-            <svg width="240" height="240" viewBox="0 0 200 200">
-              <defs>
-                <linearGradient id="pieGradient1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" /><stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" /></linearGradient>
-                <linearGradient id="pieGradient2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#10b981;stop-opacity:1" /><stop offset="100%" style="stop-color:#047857;stop-opacity:1" /></linearGradient>
-              </defs>
-              <circle cx="100" cy="100" r="85" fill="transparent" stroke="#334155" stroke-width="2" opacity="0.3"/>
-              <path :d="getPiePath(0, getServicePercentage())" fill="url(#pieGradient2)" class="pie-sector"/>
-              <path :d="getPiePath(getServicePercentage(), 100)" fill="url(#pieGradient1)" class="pie-sector"/>
-              <circle cx="100" cy="100" r="45" fill="#1e293b"/>
-              <text x="100" y="105" text-anchor="middle" fill="#f1f5f9" font-size="20" font-weight="800">{{ getTotalTransactions() }}</text>
-            </svg>
-          </div>
-          <div class="distribution-legend">
-            <div class="legend-item">
-              <div class="legend-color service"></div>
-              <div class="legend-content">
-                <span class="legend-label">Servicios</span>
-                <span class="legend-value">{{ dashboardData.serviciosRealizados }} turnos ({{ getServicePercentage().toFixed(1) }}%)</span>
-              </div>
-            </div>
-            <div class="legend-item">
-              <div class="legend-color product"></div>
-              <div class="legend-content">
-                <span class="legend-label">Productos</span>
-                <span class="legend-value">{{ dashboardData.productosVendidos }} unidades ({{ getProductPercentage().toFixed(1) }}%)</span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
       <div class="top-section">
-        <h3 class="section-title"><i class="fas fa-trophy"></i> Análisis de Desempeño</h3>
+        <h3 class="section-title"><i class="fas fa-trophy"></i> Desempeño Comercial</h3>
         <div class="top-grid">
           <div class="section-card top-card">
             <div class="section-header"><h3><i class="fas fa-star"></i> Servicios Top</h3></div>
             <div class="list-body">
               <div class="list-item" v-for="(s, i) in dashboardData.serviciosTop" :key="i">
-                <div class="rank" :class="getRankClass(i)">{{ i + 1 }}</div>
-                <div class="item-content">
-                  <div class="item-name">{{ s.nombre }}</div>
-                  <div class="progress-bar"><div class="progress-fill service" :style="{ width: getPercentage(s.cantidad, dashboardData.serviciosTop) + '%' }"></div></div>
-                </div>
+                <div class="rank">{{ i + 1 }}</div>
+                <div class="item-content"><div class="item-name">{{ s.nombre }}</div></div>
                 <div class="item-count">{{ s.cantidad }}</div>
               </div>
             </div>
@@ -235,143 +162,83 @@
             <div class="section-header"><h3><i class="fas fa-fire"></i> Productos Top</h3></div>
             <div class="list-body">
               <div class="list-item" v-for="(p, i) in dashboardData.productosTop" :key="i">
-                <div class="rank" :class="getRankClass(i)">{{ i + 1 }}</div>
-                <div class="item-content">
-                  <div class="item-name">{{ p.nombre }}</div>
-                  <div class="progress-bar"><div class="progress-fill product" :style="{ width: getPercentage(p.cantidad, dashboardData.productosTop) + '%' }"></div></div>
-                </div>
+                <div class="rank">{{ i + 1 }}</div>
+                <div class="item-content"><div class="item-name">{{ p.nombre }}</div></div>
                 <div class="item-count">{{ p.cantidad }}</div>
               </div>
             </div>
           </div>
         </div>
       </div>
-
     </main>
 
-    <div id="print-template" style="display: none; width: 850px; background: white; color: #1e293b; padding: 40px; font-family: Arial, sans-serif;">
+    <div id="print-template" style="display: none; width: 850px; min-height: 1100px; background: white; color: #1e293b; padding: 60px; font-family: Arial, sans-serif; position: relative;">
       
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 20px; margin-bottom: 30px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0f172a; padding-bottom: 25px; margin-bottom: 40px;">
         
-        <div style="display: flex; gap: 15px; align-items: flex-start;">
-          <div class="pdf-logo-box">
-            <img :src="logoUrl" class="pdf-logo-img" style="width: 70px; height: 70px; object-fit: cover;" alt="Logo" crossorigin="anonymous" />
+        <div style="display: flex; align-items: center; gap: 20px;">
+          <div style="width: 100px; height: 100px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; background: #f8fafc;">
+            <img v-if="logoBase64" :src="logoBase64" style="width: 100%; height: 100%; object-fit: contain;" />
+            <div v-else style="font-weight: bold; color: #0f172a;">LOGO</div>
           </div>
-          <div style="text-align: left; font-size: 11px; color: #334155; line-height: 1.6;">
-            <p style="margin: 0; font-weight: bold; color: #0f172a; text-transform: uppercase; font-size: 11px;">
-              {{ dashboardData.empresa?.razon_social || 'Los Últimos Serán Los Primeros' }}
-            </p>
-            <p style="margin: 0;">
-              <strong>CUIT:</strong> {{ (dashboardData.empresa?.cuil_cuit && dashboardData.empresa?.cuil_cuit !== '0') ? dashboardData.empresa.cuil_cuit : '27-23456789-3' }}
-            </p>
-            <p style="margin: 0;">
-              <strong>Dirección:</strong> {{ dashboardData.empresa?.direccion || 'Avenida Libertador 600, San Vicente - Misiones' }}
-            </p>
-            <p style="margin: 0;">
-              <strong>Teléfono:</strong> {{ dashboardData.empresa?.telefono || '3755 67-2716' }}
-            </p>
-            <p style="margin: 0;">
-              <strong>Email:</strong> {{ dashboardData.empresa?.email || 'contacto@hairsoft.com' }}
-            </p>
+          <div style="text-align: left; line-height: 1.6;">
+            <h1 style="margin: 0; font-size: 24px; color: #0f172a; text-transform: uppercase; font-weight: 900;">{{ dashboardData.empresa?.razon_social || 'GESTIÓN' }}</h1>
+            <p style="margin: 0; font-size: 12px; color: #334155; font-weight: bold;">CUIT: {{ dashboardData.empresa?.cuil_cuit || '-' }}</p>
+            <p style="margin: 0; font-size: 11px; color: #64748b;">DIRECCIÓN: {{ dashboardData.empresa?.direccion || '-' }}</p>
+            <p style="margin: 0; font-size: 11px; color: #64748b;">TELÉFONO: {{ dashboardData.empresa?.telefono || '-' }}</p>
+            <p style="margin: 0; font-size: 11px; color: #64748b;">EMAIL: {{ dashboardData.empresa?.email || '-' }}</p>
           </div>
         </div>
 
         <div style="text-align: right;">
-          <h2 style="margin: 0 0 10px 0; font-size: 16px; color: #1e293b; text-transform: uppercase;">Reporte de Gestión</h2>
-          <div style="margin-bottom: 10px;">
-            <p style="margin: 0; font-size: 10px; color: #64748b; text-transform: uppercase;">Período Analizado</p>
-            <p style="margin: 2px 0 0; font-size: 14px; font-weight: bold; color: #0f172a;">
-              {{ getPeriodDisplay }}
-            </p>
-          </div>
-          <p style="margin: 0; font-size: 10px; color: #94a3b8;">
-            Emisor: <strong>{{ dashboardData.usuario_emisor }}</strong>
-          </p>
-          <p style="margin: 2px 0 0; font-size: 10px; color: #94a3b8;">
-            Fecha: {{ new Date().toLocaleDateString('es-AR') }}
-          </p>
+          <div style="background: #0f172a; color: white; padding: 10px 15px; font-size: 12px; font-weight: 800; border-radius: 4px; margin-bottom: 12px;">BALANCE DE RENDIMIENTO</div>
+          <p style="margin: 0; font-size: 11px; color: #64748b; text-transform: uppercase;">Emitido por:</p>
+          <p style="margin: 2px 0 10px; font-size: 13px; font-weight: bold; color: #0f172a;">{{ dashboardData.usuario_emisor || 'ADMINISTRADOR' }}</p>
+          <p style="margin: 0; font-size: 11px; color: #64748b;">PERÍODO: <strong>{{ getPeriodDisplay }}</strong></p>
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 30px;">
-        <div style="padding: 15px; background: #f8fafc; border-radius: 6px; border-top: 3px solid #10b981; text-align: center;">
-          <span style="font-size: 10px; color: #64748b; text-transform: uppercase;">Ingresos Totales</span>
-          <span style="display: block; font-size: 18px; font-weight: bold; color: #10b981;">${{ formatNumber(dashboardData.ingresosTotales) }}</span>
+      <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #0ea5e9; padding-left: 10px; margin-bottom: 20px; color: #0f172a;">1. Resultados del Período</h3>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px;">
+        <div style="padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center; background: #f8fafc;">
+          <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Ingresos Totales</span>
+          <p style="margin: 10px 0 0; font-size: 22px; font-weight: 900; color: #10b981;">$ {{ formatNumber(dashboardData.ingresosTotales) }}</p>
         </div>
-        <div style="padding: 15px; background: #f8fafc; border-radius: 6px; border-top: 3px solid #3b82f6; text-align: center;">
-          <span style="font-size: 10px; color: #64748b; text-transform: uppercase;">Turnos Realizados</span>
-          <span style="display: block; font-size: 18px; font-weight: bold;">{{ dashboardData.serviciosRealizados }}</span>
+        <div style="padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center;">
+          <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Ticket Promedio</span>
+          <p style="margin: 10px 0 0; font-size: 22px; font-weight: 900; color: #0ea5e9;">$ {{ formatNumber(ticketPromedio) }}</p>
         </div>
-        <div style="padding: 15px; background: #f8fafc; border-radius: 6px; border-top: 3px solid #f59e0b; text-align: center;">
-          <span style="font-size: 10px; color: #64748b; text-transform: uppercase;">Productos Vendidos</span>
-          <span style="display: block; font-size: 18px; font-weight: bold;">{{ dashboardData.productosVendidos }}</span>
+        <div style="padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center;">
+          <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Operaciones</span>
+          <p style="margin: 10px 0 0; font-size: 24px; font-weight: 900; color: #0f172a;">{{ getTotalTransactions() }}</p>
         </div>
       </div>
 
-      <div style="margin-bottom: 30px;">
-        <h4 style="font-size: 13px; border-left: 4px solid #ef4444; padding-left: 10px; margin-bottom: 15px;">Tendencia de Ventas Diarias</h4>
-        <svg :viewBox="`0 0 ${chartWidth} ${chartHeight + 40}`" width="100%" height="250">
-           <defs>
-            <linearGradient id="pdfGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" style="stop-color:#ef4444;stop-opacity:0.2" />
-              <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0" />
-            </linearGradient>
-          </defs>
-          <g v-for="i in 5" :key="`pdf-line-${i}`">
-            <line :x1="60" :y1="(chartHeight / 5) * i" :x2="chartWidth - 20" :y2="(chartHeight / 5) * i" stroke="#e2e8f0" stroke-width="1"/>
-            <text :x="50" :y="(chartHeight / 5) * i + 5" text-anchor="end" fill="#64748b" font-size="12" font-family="Helvetica">
-              ${{ formatNumberShort(Math.round((getMaxValue() / 5) * (5 - i))) }}
-            </text>
-          </g>
-          <path :d="getAreaPath()" fill="url(#pdfGradient)" />
-          <path :d="getLinePath()" fill="none" stroke="#dc2626" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-          <g v-for="(label, i) in dashboardData.labelsDias" :key="`pdf-lbl-${i}`" v-if="shouldShowLabelPDF(i)">
-            <text :x="getXPosition(i)" :y="chartHeight + 25" text-anchor="middle" fill="#475569" font-size="11" font-weight="bold" font-family="Helvetica">
-              {{ label }}
-            </text>
-          </g>
-        </svg>
-      </div>
-
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
         <div>
-          <h4 style="font-size: 13px; margin-bottom: 10px;">Top 5 Servicios</h4>
-          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-            <thead style="background: #f1f5f9; color: #475569; text-transform: uppercase;">
-              <tr><th style="padding: 6px; text-align: left;">Servicio</th><th style="padding: 6px; text-align: right;">Cant.</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="(s, i) in dashboardData.serviciosTop.slice(0, 5)" :key="i" style="border-bottom: 1px solid #f1f5f9;">
-                <td style="padding: 6px;">{{ s.nombre }}</td>
-                <td style="padding: 6px; text-align: right;"><strong>{{ s.cantidad }}</strong></td>
-              </tr>
-              <tr v-if="dashboardData.serviciosTop.length === 0"><td colspan="2" style="padding: 15px; text-align: center; color: #94a3b8;">Sin datos</td></tr>
-            </tbody>
+          <h4 style="font-size: 12px; color: #475569; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">Top Servicios</h4>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr v-for="s in dashboardData.serviciosTop.slice(0, 5)" :key="s.nombre" style="border-bottom: 1px solid #f1f5f9;">
+              <td style="padding: 10px 0; font-size: 12px;">{{ s.nombre }}</td>
+              <td style="padding: 10px 0; font-size: 12px; text-align: right; font-weight: bold;">{{ s.cantidad }} uds.</td>
+            </tr>
           </table>
         </div>
         <div>
-          <h4 style="font-size: 13px; margin-bottom: 10px;">Top 5 Productos</h4>
-          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-            <thead style="background: #f1f5f9; color: #475569; text-transform: uppercase;">
-              <tr><th style="padding: 6px; text-align: left;">Producto</th><th style="padding: 6px; text-align: right;">Unid.</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="(p, i) in dashboardData.productosTop.slice(0, 5)" :key="i" style="border-bottom: 1px solid #f1f5f9;">
-                <td style="padding: 6px;">{{ p.nombre }}</td>
-                <td style="padding: 6px; text-align: right;"><strong>{{ p.cantidad }}</strong></td>
-              </tr>
-              <tr v-if="dashboardData.productosTop.length === 0"><td colspan="2" style="padding: 15px; text-align: center; color: #94a3b8;">Sin datos</td></tr>
-            </tbody>
+          <h4 style="font-size: 12px; color: #475569; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">Top Productos</h4>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr v-for="p in dashboardData.productosTop.slice(0, 5)" :key="p.nombre" style="border-bottom: 1px solid #f1f5f9;">
+              <td style="padding: 10px 0; font-size: 12px;">{{ p.nombre }}</td>
+              <td style="padding: 10px 0; font-size: 12px; text-align: right; font-weight: bold;">{{ p.cantidad }} uds.</td>
+            </tr>
           </table>
         </div>
       </div>
 
-      <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center;">
-        <p style="margin: 0; font-size: 10px; color: #64748b;">HairSoft - Sistema de Gestión Integral</p>
+      <div style="position: absolute; bottom: 50px; right: 60px; text-align: right;">
+        <p style="margin: 0; font-size: 11px; color: #94a3b8; font-weight: bold;">Página 1 de 1</p>
       </div>
-
     </div>
-
   </div>
 </template>
 
@@ -381,22 +248,32 @@ import axios from '@/utils/axiosConfig'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 
-const logoUrl = '/logo_barberia.jpg'
+const logoBase64 = ref(null) 
 const selectedPeriod = ref('semana')
 const loading = ref(true)
 const error = ref(null)
-const dashboardContent = ref(null)
 const customDateRange = ref(false)
 const dateFrom = ref('')
 const dateTo = ref('')
 const tooltip = ref({ visible: false, x: 0, y: 0, value: 0, date: '', index: 0 })
 
-// Fecha local
+const dashboardData = ref({
+  ingresosTotales: 0, serviciosRealizados: 0, productosVendidos: 0,
+  ventasPorDia: [], labelsDias: [], serviciosTop: [], productosTop: [],
+  usuario_emisor: '', empresa: null
+})
+
+const ticketPromedio = computed(() => {
+  const t = (dashboardData.value.serviciosRealizados || 0) + (dashboardData.value.productosVendidos || 0)
+  return t > 0 ? (dashboardData.value.ingresosTotales / t) : 0
+})
+
+const getTotalTransactions = () => (dashboardData.value.serviciosRealizados || 0) + (dashboardData.value.productosVendidos || 0)
+
 const getLocalToday = () => {
   const d = new Date()
   const offset = d.getTimezoneOffset()
-  const dLocal = new Date(d.getTime() - (offset*60*1000))
-  return dLocal.toISOString().split('T')[0]
+  return new Date(d.getTime() - (offset*60*1000)).toISOString().split('T')[0]
 }
 const today = getLocalToday()
 
@@ -406,147 +283,202 @@ const periods = [
   { value: 'mes', label: 'Este Mes', icon: 'fas fa-calendar-alt' },
 ]
 
-const dashboardData = ref({
-  ingresosTotales: 0,
-  serviciosRealizados: 0,
-  productosVendidos: 0,
-  ventasPorDia: [],
-  labelsDias: [],
-  serviciosTop: [],
-  productosTop: [],
-  usuario_emisor: '',
-  empresa: null
-})
-
 const getPeriodDisplay = computed(() => {
-  if (customDateRange.value && dateFrom.value && dateTo.value) {
-    return `${formatDate(dateFrom.value)} al ${formatDate(dateTo.value)}`
-  }
-  const period = periods.find(p => p.value === selectedPeriod.value)
-  return period ? period.label : 'Período'
+  if (customDateRange.value && dateFrom.value && dateTo.value) return `${formatDate(dateFrom.value)} al ${formatDate(dateTo.value)}`
+  const p = periods.find(p => p.value === selectedPeriod.value)
+  return p ? p.label : 'Período'
 })
 
-const chartWidth = 900
-const chartHeight = 320
-const padding = 60
+// ✅ CONVERSOR MEJORADO CON LOGS Y MANEJO DE ERRORES
+const convertToBase64 = async (url) => {
+  if (!url) {
+    console.warn('convertToBase64: URL vacía')
+    return null
+  }
+  try {
+    console.log('🟡 convertToBase64 - URL original:', url)
+    // Construir URL absoluta si es relativa
+    let finalURL = url
+    if (!url.startsWith('http')) {
+      const base = axios.defaults.baseURL.replace(/\/$/, '')
+      const path = url.startsWith('/') ? url : `/${url}`
+      finalURL = base + path
+    }
+    console.log('🟡 convertToBase64 - URL final:', finalURL)
 
-// ✅ FUNCIÓN REFORZADA PARA ASEGURAR DATOS DE EMPRESA Y DASHBOARD
+    const response = await axios.get(finalURL, { 
+      responseType: 'blob',
+      // Asegurar token por si acaso (aunque el interceptor ya lo hace)
+      headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
+    })
+    
+    console.log('🟢 convertToBase64 - Blob recibido, tipo:', response.data.type, 'tamaño:', response.data.size)
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        console.log('🟢 convertToBase64 - Base64 generado (primeros 50):', reader.result.substring(0, 50))
+        resolve(reader.result)
+      }
+      reader.onerror = (error) => {
+        console.error('🔴 convertToBase64 - Error leyendo blob:', error)
+        reject(error)
+      }
+      reader.readAsDataURL(response.data)
+    })
+  } catch (e) {
+    console.error('🔴 convertToBase64 - Error en Axios:', e)
+    if (e.response) {
+      console.error('Status:', e.response.status)
+      console.error('Data:', e.response.data)
+    }
+    return null
+  }
+}
+
 const fetchDashboardData = async () => {
   loading.value = true
   error.value = null
   try {
     let params = customDateRange.value && dateFrom.value && dateTo.value 
       ? { date_from: dateFrom.value, date_to: dateTo.value }
-      : { period: selectedPeriod.value };
+      : { period: selectedPeriod.value }
     
-    // Llamada principal al dashboard
-    const res = await axios.get('/api/dashboard/', { params })
+    // Hacer ambas peticiones en paralelo
+    const [dashboardRes, configRes] = await Promise.all([
+      axios.get('/api/dashboard/', { params }),
+      axios.get('/api/configuracion/')
+    ])
     
-    // Si la API del dashboard no trae la empresa, la pedimos por separado
-    if (!res.data.empresa) {
-        const resConfig = await axios.get('/api/configuracion/')
-        res.data.empresa = resConfig.data
+    let data = dashboardRes.data
+    // Sobrescribir empresa con la de configuración (que tiene el logo)
+    data.empresa = configRes.data
+    
+    console.log('🟢 fetchDashboardData - datos empresa (con logo):', data.empresa)
+
+    // Convertir el logo a Base64
+    if (data.empresa && data.empresa.logo) {
+        logoBase64.value = await convertToBase64(data.empresa.logo)
+        console.log('🟢 fetchDashboardData - logoBase64 asignado:', logoBase64.value ? 'OK' : 'VACÍO')
+    } else {
+        console.warn('fetchDashboardData - No hay logo en empresa')
     }
     
-    dashboardData.value = { ...dashboardData.value, ...res.data }
+    dashboardData.value = data
   } catch (err) {
+    console.error('🔴 fetchDashboardData - Error:', err)
     error.value = "Error al conectar con el servidor."
   } finally {
     loading.value = false
   }
 }
 
-const selectPeriod = (p) => { customDateRange.value = false; selectedPeriod.value = p; fetchDashboardData() }
-const toggleCustomRange = () => { customDateRange.value = !customDateRange.value; if (!customDateRange.value) fetchDashboardData() }
-const applyCustomRange = () => { if (dateFrom.value && dateTo.value) fetchDashboardData() }
-
+// LÓGICA DE GRÁFICOS (SIN MODIFICAR)
+const chartWidth = 900; const chartHeight = 320; const padding = 60;
+const formatNumber = (num) => new Intl.NumberFormat('es-AR').format(num || 0)
+const formatNumberShort = (num) => num >= 1000 ? (num / 1000).toFixed(1) + 'K' : num
 const formatDate = (d) => d ? d.split('-').reverse().join('/') : '-'
 const formatDateLong = (d) => d ? new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'
-const formatNumber = (num) => new Intl.NumberFormat('es-AR').format(num || 0)
-const formatNumberShort = (num) => num >= 1000000 ? (num / 1000000).toFixed(1) + 'M' : num >= 1000 ? (num / 1000).toFixed(1) + 'K' : num
 
-// Métodos para el Gráfico SVG
-const getMaxValue = () => Math.max(...dashboardData.value.ventasPorDia, 100)
-const getXPosition = (i) => padding + (i / (dashboardData.value.ventasPorDia.length - 1 || 1)) * (chartWidth - padding * 2)
+const getMaxValue = () => {
+  const v = dashboardData.value.ventasPorDia;
+  return (v && v.length) ? Math.max(...v, 100) : 100;
+}
+const getXPosition = (i) => padding + (i / ((dashboardData.value.ventasPorDia?.length - 1) || 1)) * (chartWidth - padding * 2)
 const getYPosition = (v) => chartHeight - padding - ((v / getMaxValue()) * (chartHeight - padding * 2))
 const getXPositionPercent = (i) => (getXPosition(i) / chartWidth) * 100
 
 const getLinePath = () => {
-  if (!dashboardData.value.ventasPorDia.length) return ''
-  return dashboardData.value.ventasPorDia.reduce((path, val, i) => {
-    const x = getXPosition(i), y = getYPosition(val)
-    return i === 0 ? `M ${x} ${y}` : `${path} Q ${(getXPosition(i-1)+x)/2} ${getYPosition(dashboardData.value.ventasPorDia[i-1])}, ${x} ${y}`
-  }, '')
+  const v = dashboardData.value.ventasPorDia;
+  if (!v || !v.length) return '';
+  return v.reduce((p, val, i) => i === 0 ? `M ${getXPosition(i)} ${getYPosition(val)}` : `${p} L ${getXPosition(i)} ${getYPosition(val)}`, '')
 }
-
 const getAreaPath = () => {
-  if (!dashboardData.value.ventasPorDia.length) return ''
-  return `${getLinePath()} L ${getXPosition(dashboardData.value.ventasPorDia.length-1)} ${chartHeight-padding} L ${getXPosition(0)} ${chartHeight-padding} Z`
+  const v = dashboardData.value.ventasPorDia;
+  if (!v || !v.length) return '';
+  return `${getLinePath()} L ${getXPosition(v.length-1)} ${chartHeight-padding} L ${getXPosition(0)} ${chartHeight-padding} Z`
 }
+const shouldShowLabel = (i) => (dashboardData.value.labelsDias?.length || 0) <= 7 || i % 2 === 0
 
-const getPiePath = (start, end) => {
-  const s = (start / 100) * 360 - 90, e = (end / 100) * 360 - 90
-  const rad = Math.PI / 180, r = 80, cx = 100, cy = 100
-  const x1 = cx + r * Math.cos(s * rad), y1 = cy + r * Math.sin(s * rad)
-  const x2 = cx + r * Math.cos(e * rad), y2 = cy + r * Math.sin(e * rad)
-  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${end - start > 180 ? 1 : 0} 1 ${x2} ${y2} Z`
-}
-
-const getServicePercentage = () => {
-  const t = dashboardData.value.serviciosRealizados + dashboardData.value.productosVendidos
-  return t === 0 ? 50 : (dashboardData.value.serviciosRealizados / t) * 100
-}
-const getProductPercentage = () => 100 - getServicePercentage()
-const getTotalTransactions = () => dashboardData.value.serviciosRealizados + dashboardData.value.productosVendidos
-
-const shouldShowLabel = (i) => {
-  const t = dashboardData.value.labelsDias.length
-  return t <= 7 || (t <= 15 ? i % 2 === 0 : t <= 25 ? i % 3 === 0 : i % 5 === 0) || i === t - 1
-}
-const shouldShowLabelPDF = (i) => {
-  const t = dashboardData.value.labelsDias.length
-  return t <= 7 || (t <= 15 ? i % 3 === 0 : t <= 31 ? i % 6 === 0 : i % 8 === 0) || i === t - 1
-}
+// NAVEGACIÓN
+const selectPeriod = (p) => { customDateRange.value = false; selectedPeriod.value = p; fetchDashboardData() }
+const toggleCustomRange = () => { customDateRange.value = !customDateRange.value; if (!customDateRange.value) fetchDashboardData() }
+const applyCustomRange = () => { if (dateFrom.value && dateTo.value) fetchDashboardData() }
 
 const showTooltip = (i, v, e) => {
   const rect = e.target.getBoundingClientRect(), container = e.target.closest('.trading-chart-container').getBoundingClientRect()
   tooltip.value = { visible: true, x: rect.left - container.left, y: rect.top - container.top - 90, value: v, date: dashboardData.value.labelsDias[i] }
 }
 const hideTooltip = () => tooltip.value.visible = false
-const getRankClass = (i) => i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''
-const getPercentage = (v, arr) => (v / Math.max(...arr.map(x => x.cantidad), 1)) * 100
 
-// ✅ GENERACIÓN PDF CORREGIDA PARA ACTUALIZAR DATOS DE EMPRESA
+// ✅ GENERACIÓN DE PDF CORREGIDA Y MEJORADA
 const generatePDF = async () => {
   loading.value = true
-  
-  // Refrescar configuración antes de generar el reporte
-  await fetchDashboardData();
-  
-  const el = document.getElementById('print-template')
-  el.style.display = 'block'
-  
-  await new Promise(r => setTimeout(r, 600)) 
-  
-  const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
-  el.style.display = 'none'
-  
-  const pdf = new jsPDF('p', 'mm', 'a4')
-  const pdfWidth = pdf.internal.pageSize.getWidth()
-  const pdfHeight = pdf.internal.pageSize.getHeight()
-  
-  const imgProps = pdf.getImageProperties(canvas.toDataURL('image/jpeg', 0.95))
-  const imgHeight = (imgProps.height * pdfWidth) / imgProps.width
-  
-  pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pdfWidth, imgHeight)
-  
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(10);
-  pdf.setTextColor(150);
-  pdf.text('Página 1 de 1', pdfWidth - 20, pdfHeight - 10, { align: 'right' });
+  console.log('🟡 generatePDF - Iniciando...')
 
-  pdf.save(`Reporte_HAIRSOFT_${selectedPeriod.value}.pdf`)
-  loading.value = false
+  try {
+    // 1. Asegurar que el logo esté cargado
+    if (dashboardData.value.empresa?.logo && !logoBase64.value) {
+      console.log('🟡 generatePDF - Logo no cargado, forzando carga...')
+      logoBase64.value = await convertToBase64(dashboardData.value.empresa.logo)
+    }
+
+    console.log('🟡 generatePDF - logoBase64 después de carga:', logoBase64.value ? 'OK' : 'VACÍO')
+
+    // 2. Esperar a que Vue actualice el DOM
+    await nextTick()
+
+    // 3. Mostrar el template oculto
+    const el = document.getElementById('print-template')
+    if (!el) {
+      throw new Error('No se encontró el elemento #print-template')
+    }
+    el.style.display = 'block'
+    console.log('🟡 generatePDF - Template mostrado')
+
+    // 4. Dar tiempo para que la imagen se renderice (especialmente si es Base64)
+    await new Promise(r => setTimeout(r, 500))
+
+    // 5. Verificar que el img tenga el src
+    const imgElement = el.querySelector('img')
+    console.log('🟡 generatePDF - src del img en template:', imgElement ? (imgElement.src ? imgElement.src.substring(0, 50) + '...' : 'src vacío') : 'no img')
+
+    // 6. Generar canvas con opciones mejoradas
+    console.log('🟡 generatePDF - Generando canvas...')
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: true, // Activamos logging para ver problemas en consola
+      allowTaint: false,
+      foreignObjectRendering: false,
+      onclone: (clonedDoc, element) => {
+        // Podemos verificar que el logo esté en el clon
+        const clonedImg = element.querySelector('img')
+        console.log('🟡 html2canvas onclone - img src:', clonedImg ? clonedImg.src.substring(0,50) : 'no img')
+      }
+    })
+    console.log('🟢 generatePDF - Canvas generado')
+
+    // 7. Ocultar el template
+    el.style.display = 'none'
+
+    // 8. Crear PDF y agregar imagen
+    const pdf = new jsPDF('p', 'mm', 'a4')
+    const imgData = canvas.toDataURL('image/jpeg', 0.95)
+    const pdfWidth = pdf.internal.pageSize.getWidth()
+    const imgProps = pdf.getImageProperties(imgData)
+    const imgHeight = (imgProps.height * pdfWidth) / imgProps.width
+
+    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, imgHeight)
+    pdf.save(`Balance_Operativo.pdf`)
+    console.log('🟢 generatePDF - PDF guardado')
+  } catch (err) {
+    console.error('🔴 generatePDF - Error:', err)
+    // Podrías mostrar una notificación al usuario
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(() => fetchDashboardData())

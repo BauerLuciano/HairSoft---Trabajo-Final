@@ -1289,7 +1289,12 @@ class ConfiguracionSistema(models.Model):
     direccion = models.CharField(max_length=255, default="Avenida Libertador 600, San Vicente - Misiones")
     telefono = models.CharField(max_length=50, default="3755-72716")
     email = models.EmailField(default="contacto@hairsoft.com")
-    margen_horas_cancelacion = models.PositiveIntegerField(default=3) # ✅ Cambiado a 3 por defecto
+    logo = models.ImageField(upload_to='config/', null=True, blank=True)
+    
+    margen_horas_cancelacion = models.PositiveIntegerField(default=3) 
+    
+    dias_inactividad_clientes = models.PositiveIntegerField(default=60, help_text="Días sin venir para considerar al cliente inactivo y enviarle promo.")
+    
     politica_senia = models.TextField(default="Política de señas: Reembolso total si cancelas con tiempo.")
 
     class Meta:
