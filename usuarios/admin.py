@@ -38,6 +38,11 @@ class PromocionReactivacionAdmin(NoLogAdmin):
     # Agregamos el botón de acción
     actions = [limpiar_historial_promociones]
 
+@admin.register(Silla)
+class SillaAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'orden', 'activa') # Lo que ves en la lista
+    list_editable = ('orden', 'activa') # Para activar/desactivar rápido sin entrar al detalle
+    ordering = ('orden',)
 # =========================================================
 # REGISTRO AUTOMÁTICO DEL RESTO DE MODELOS
 # =========================================================

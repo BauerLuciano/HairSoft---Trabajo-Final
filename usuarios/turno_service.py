@@ -4,12 +4,119 @@ from django.db import transaction
 from decimal import Decimal
 import logging
 import uuid
-from .models import Turno
+from django.core.exceptions import ValidationError # <--- IMPORTANTE PARA VALIDAR
+from .models import Turno, Silla # <--- AGREGADA IMPORTACIÓN DE SILLA
 from .tasks import procesar_reoferta_masiva  # Importar la tarea de Celery
 
 logger = logging.getLogger(__name__)
 
 class TurnoService:
+
+    # =========================================================================
+    # 🆕 NUEVA LÓGICA DE SILLAS (REGISTRAR TURNO)
+    # =========================================================================
+
+    @staticmethod
+    def _asignar_silla_disponible(fecha, hora):
+        """
+        Busca una silla activa que no esté ocupada en ese horario.
+        Prioriza por el campo 'orden'.
+        """
+        # 1. Traer todas las sillas activas ordenadas
+        sillas_activas = Silla.objects.filter(activa=True).order_by('orden')
+        
+        if not sillas_activas.exists():
+            return None # No hay sillas configuradas en el sistema
+
+        # 2. Identificar cuáles están ocupadas en ese slot
+        # Consideramos ocupadas las que tienen turno confirmado, reservado, etc.
+        ids_ocupadas = Turno.objects.filter(
+            fecha=fecha,
+            hora=hora,
+            estado__in=['RESERVADO', 'CONFIRMADO', 'PENDIENTE', 'PAGADO', 'SENADO'] # Ajustá según tus estados exactos
+        ).exclude(silla__isnull=True).values_list('silla_id', flat=True)
+
+        # 3. Algoritmo de asignación (Bolsa de recursos)
+        for silla in sillas_activas:
+            if silla.id not in ids_ocupadas:
+                return silla # Encontré lugar
+        
+        return None # Todo lleno
+
+    @staticmethod
+    def registrar_turno(datos):
+        """
+        Crea el turno validando peluquero y asignando silla (Manual o Automática).
+        """
+        # Validaciones básicas (puedes agregar más si tenés validaciones de peluquero acá)
+        
+        silla_asignada = None
+
+        # CASO A: Asignación Manual (El recepcionista eligió una silla)
+        if 'silla' in datos and datos['silla']:
+            silla_id = datos['silla']
+            try:
+                silla_elegida = Silla.objects.get(id=silla_id)
+                
+                # Verificar si está activa
+                if not silla_elegida.activa:
+                    raise ValidationError(f"La {silla_elegida.nombre} está fuera de servicio.")
+
+                # Verificar si está ocupada
+                esta_ocupada = Turno.objects.filter(
+                    fecha=datos['fecha'],
+                    hora=datos['hora'],
+                    silla=silla_elegida,
+                    estado__in=['RESERVADO', 'CONFIRMADO', 'PENDIENTE', 'PAGADO', 'SENADO']
+                ).exists()
+
+                if esta_ocupada:
+                    raise ValidationError(f"La {silla_elegida.nombre} ya está ocupada en ese horario.")
+                
+                silla_asignada = silla_elegida
+
+            except Silla.DoesNotExist:
+                raise ValidationError("La silla seleccionada no existe.")
+
+        # CASO B: Asignación Automática (Vino null o no vino)
+        else:
+            silla_asignada = TurnoService._asignar_silla_disponible(datos['fecha'], datos['hora'])
+            
+            if not silla_asignada:
+                raise ValidationError("No hay puestos de trabajo disponibles en este horario (Local lleno).")
+
+        # Crear el turno con la silla definida
+        try:
+            turno = Turno.objects.create(
+                fecha=datos['fecha'],
+                hora=datos['hora'],
+                cliente=datos['cliente'],
+                peluquero=datos['peluquero'],
+                servicio=datos.get('servicio'), # Puede venir o agregarse después
+                silla=silla_asignada, # <--- ACÁ LA GUARDAMOS
+                estado='RESERVADO', # O el estado inicial que uses
+                # Campos opcionales según tu modelo:
+                canal=datos.get('canal', 'PRESENCIAL'),
+                monto_total=datos.get('monto_total', 0),
+                monto_seña=datos.get('monto_seña', 0),
+                tipo_pago=datos.get('tipo_pago', 'TOTAL'),
+                medio_pago=datos.get('medio_pago', 'EFECTIVO')
+            )
+            
+            # Si el servicio viene como lista de IDs (many-to-many)
+            if 'servicios' in datos and datos['servicios']:
+                turno.servicios.set(datos['servicios'])
+            # Si es un solo servicio y ya lo pasaste en el create, joya.
+
+            return turno
+
+        except Exception as e:
+            logger.error(f"Error creando turno: {e}")
+            raise e
+
+    # =========================================================================
+    # 🛑 FIN LÓGICA DE SILLAS - A CONTINUACIÓN TU CÓDIGO ORIGINAL
+    # =========================================================================
     
     @staticmethod
     def procesar_cancelacion_automatica(turno_id, usuario_cancelacion=None, motivo="", observacion=""):

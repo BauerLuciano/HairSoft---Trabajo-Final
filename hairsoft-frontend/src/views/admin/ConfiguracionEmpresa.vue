@@ -127,7 +127,10 @@
           </div>
         </div>
 
-      </div>
+        <div style="margin-top: 40px;">
+           <GestionSillas />
+        </div>
+        </div>
     </div>
   </div>
 </template>
@@ -137,6 +140,7 @@ import { ref, onMounted } from 'vue'
 import axios from '../../utils/axiosConfig'
 import { Building2, Clock, Save, Loader2, Info } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
+import GestionSillas from '@/components/GestionSillas.vue'; // <-- Importamos el componente nuevo
 
 const config = ref({
   razon_social: '',

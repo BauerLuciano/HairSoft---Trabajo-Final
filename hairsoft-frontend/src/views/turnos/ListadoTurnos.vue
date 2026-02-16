@@ -299,21 +299,16 @@ const irARegistrar = () => {
 
 // 🔥 FUNCIÓN: Editar turno
 const editarTurno = (turno) => {
-  // Navegar a la página de edición del turno
   router.push(`/turnos/modificar/${turno.id}`)
 }
 
 // 🔥 FUNCIÓN: Verificar si se puede editar el turno
 const puedeEditarTurno = (turno) => {
-  // Solo se puede editar turnos en estado RESERVADO o CONFIRMADO
   if (!['RESERVADO', 'CONFIRMADO'].includes(turno.estado)) {
     return false
   }
-  
-  // Verificar permisos del usuario
   const rol = userRol.value.toUpperCase()
   const rolesPermitidos = ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'PELUQUERO', 'PEL']
-  
   return rolesPermitidos.includes(rol)
 }
 
@@ -329,7 +324,6 @@ const formatHora = (horaStr) => {
   return horaStr.slice(0, 5)
 }
 
-// FORMATO DE PRECIO CORREGIDO: 2 decimales siempre
 const formatPrecio = (precio) => {
   if (!precio && precio !== 0) return '0.00'
   const numero = parseFloat(precio)
@@ -343,23 +337,12 @@ const formatPrecio = (precio) => {
 // FUNCIÓN: Formatear texto de entidad de pago
 const getEntidadPagoTexto = (entidad) => {
   if (!entidad) return ''
-  
   const mapaEntidades = {
-    'MERCADO_PAGO': 'Mercado Pago',
-    'MERCADOPAGO': 'Mercado Pago',
-    'UALA': 'Ualá',
-    'CUENTADNI': 'Cuenta DNI',
-    'BRUBANK': 'Brubank',
-    'LEMON': 'Lemon Cash',
-    'NARANJAX': 'Naranja X',
-    'MODO': 'MODO',
-    'SANTANDER': 'Santander Río',
-    'GALICIA': 'Galicia',
-    'BBVA': 'BBVA',
-    'MACRO': 'Macro',
-    'OTRO': 'Otro'
+    'MERCADO_PAGO': 'Mercado Pago', 'MERCADOPAGO': 'Mercado Pago', 'UALA': 'Ualá',
+    'CUENTADNI': 'Cuenta DNI', 'BRUBANK': 'Brubank', 'LEMON': 'Lemon Cash',
+    'NARANJAX': 'Naranja X', 'MODO': 'MODO', 'SANTANDER': 'Santander Río',
+    'GALICIA': 'Galicia', 'BBVA': 'BBVA', 'MACRO': 'Macro', 'OTRO': 'Otro'
   }
-  
   return mapaEntidades[entidad] || entidad
 }
 
@@ -370,19 +353,16 @@ const calcularFaltaPagar = (turno) => {
   return total - senia
 }
 
-// Lógica de reembolso SOLO para cancelados con PENDIENTE
 const calcularMontoReembolso = (turno) => {
   if (turno.estado !== 'CANCELADO' || turno.reembolso_estado !== 'PENDIENTE') {
     return 0
   }
-  
   if (turno.tipo_pago === 'SENA_50') {
     return turno.monto_seña || 0
   }
   return turno.monto_total || 0
 }
 
-// DETECTAR SI EL TURNO ES POR CANJE
 const esTurnoPorCanje = (turno) => {
   return turno.obs_cancelacion && 
          (turno.obs_cancelacion.includes('Canjeado') || 
@@ -390,50 +370,37 @@ const esTurnoPorCanje = (turno) => {
           turno.obs_cancelacion.includes('Origen: Turno Viejo'))
 }
 
-// DETECTAR SI EL TURNO TIENE DESCUENTO DE CANJE
 const esTurnoConDescuento = (turno) => {
   return turno.obs_cancelacion && 
          (turno.obs_cancelacion.includes('15%') || 
           turno.obs_cancelacion.includes('Descuento'))
 }
 
-// EXTRAER SALDO A FAVOR DE LA OBSERVACIÓN (Canje)
 const extraerSaldoAFavor = (turno) => {
   if (!turno.obs_cancelacion) return 0
-  
   const obs = turno.obs_cancelacion.toLowerCase()
   const patron1 = /saldo\s*favor[:\s]*\$?\s*([\d,\.]+)/i
   const patron2 = /saldo\s*a\s*favor[:\s]*\$?\s*([\d,\.]+)/i
-  
   let match = obs.match(patron1) || obs.match(patron2)
-  
   if (match && match[1]) {
     const monto = parseFloat(match[1].replace(',', '.'))
     return isNaN(monto) ? 0 : monto
   }
-  
   return 0
 }
 
 const getDuracion = (turno) => {
-  if (turno.duracion_total) {
-    return `${turno.duracion_total} min`
-  }
-  
+  if (turno.duracion_total) return `${turno.duracion_total} min`
   if (turno.servicios && turno.servicios.length > 0) {
     const duracion = turno.servicios.reduce((total, servicio) => {
       return total + (servicio.duracion || 0)
     }, 0)
     return `${duracion} min`
   }
-  
   return '30 min'
 }
 
-// FUNCIONES DE ESTADO Y CLASES
-const esEstadoActivo = (estado) => {
-  return ['RESERVADO', 'CONFIRMADO'].includes(estado)
-}
+const esEstadoActivo = (estado) => ['RESERVADO', 'CONFIRMADO'].includes(estado)
 
 const getEstadoTexto = (estado, tipoPago) => {
   if (estado === 'RESERVADO') return 'Reservado'
@@ -466,15 +433,13 @@ const getMedioPagoClass = (medioPago) => {
 const getMedioPagoTexto = (medioPago) => {
   if (!medioPago || medioPago === 'PENDIENTE') return 'Pendiente'
   const map = {
-    'MERCADO_PAGO': 'Mercado Pago',
-    'EFECTIVO': 'Efectivo',
-    'TRANSFERENCIA': 'Transferencia',
-    'TARJETA': 'Tarjeta'
+    'MERCADO_PAGO': 'Mercado Pago', 'EFECTIVO': 'Efectivo',
+    'TRANSFERENCIA': 'Transferencia', 'TARJETA': 'Tarjeta'
   }
   return map[medioPago] || medioPago
 }
 
-// CARGA DE TURNOS CON FILTRO PARA INCLUIR CANCELADOS Y DEBUG
+// CARGA DE TURNOS
 const cargarTurnos = async () => {
   try {
     loading.value = true
@@ -489,21 +454,8 @@ const cargarTurnos = async () => {
     
     params.append('incluir_cancelados', 'true')
     
-    console.log('🔍 Cargando turnos con parámetros:', params.toString())
-    
     const response = await axios.get(`/api/turnos/?${params.toString()}`)
     turnos.value = response.data || []
-    
-    if (turnos.value.length > 0) {
-      console.log('✅ Primer turno recibido para debug:', {
-        id: turnos.value[0].id,
-        medio_pago: turnos.value[0].medio_pago,
-        codigo_transaccion: turnos.value[0].codigo_transaccion,
-        entidad_pago: turnos.value[0].entidad_pago,
-        mp_payment_id: turnos.value[0].mp_payment_id,
-        nro_transaccion: turnos.value[0].nro_transaccion
-      })
-    }
     
     turnos.value.sort((a, b) => {
       const dateA = new Date(`${a.fecha}T${a.hora}`)
@@ -513,11 +465,7 @@ const cargarTurnos = async () => {
     
   } catch (error) {
     console.error('❌ Error cargando turnos:', error)
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'No se pudieron cargar los turnos. Por favor, intenta nuevamente.'
-    })
+    Swal.fire('Error', 'No se pudieron cargar los turnos.', 'error')
   } finally {
     loading.value = false
   }
@@ -532,157 +480,47 @@ const cancelarTurno = async (turno) => {
         if (resConfig.data && resConfig.data.margen_horas_cancelacion) {
             margenReembolso = resConfig.data.margen_horas_cancelacion;
         }
-    } catch (e) {
-        console.error("Error obteniendo margen dinámico, usando 3 por defecto:", e);
-    }
+    } catch (e) { console.error(e) }
 
     const ahora = new Date()
     const fechaTurno = new Date(`${turno.fecha}T${turno.hora}`)
     const horasFaltantes = (fechaTurno - ahora) / (1000 * 60 * 60)
-    
     const hayReembolso = horasFaltantes >= margenReembolso
-    
-    let mensajeReembolso = ''
-    let iconoReembolso = ''
-    
-    if (hayReembolso) {
-      mensajeReembolso = `El cliente recibirá reembolso (cancelación con más de ${margenReembolso} horas de anticipación).`
-      iconoReembolso = 'success'
-    } else {
-      mensajeReembolso = `No habrá reembolso (faltan menos de ${margenReembolso} horas para el turno).`
-      iconoReembolso = 'warning'
-    }
+    let mensajeReembolso = hayReembolso ? `El cliente recibirá reembolso (cancelación con más de ${margenReembolso} horas de anticipación).` : `No habrá reembolso (faltan menos de ${margenReembolso} horas para el turno).`
+    let iconoReembolso = hayReembolso ? 'success' : 'warning'
 
     const { value: formValues } = await Swal.fire({
-      title: `<div style="text-align: center; margin-bottom: 10px;">
-                <span style="font-size: 1.5rem; font-weight: 700; color: #1f2937;">Cancelar Turno</span>
-              </div>`,
+      title: `<span style="font-size: 1.5rem; font-weight: 700; color: #1f2937;">Cancelar Turno</span>`,
       html: `
-        <div style="text-align: left; max-width: 520px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-          
-          <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); border: 1px solid #e5e7eb;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-              <div>
-                <div style="font-size: 1.1rem; font-weight: 700; color: #111827; margin-bottom: 4px;">
-                  ${turno.cliente_nombre} ${turno.cliente_apellido}
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: #6b7280;">
-                  <span style="display: inline-flex; align-items: center; gap: 4px;">
-                    <i class="bi bi-calendar3" style="font-size: 0.9rem;"></i>
-                    ${formatFecha(turno.fecha)}
-                  </span>
-                  <span style="display: inline-flex; align-items: center; gap: 4px;">
-                    <i class="bi bi-clock" style="font-size: 0.9rem;"></i>
-                    ${formatHora(turno.hora)}hs
-                  </span>
-                </div>
-              </div>
-              <div style="font-size: 1.3rem; font-weight: 800; color: #0f172a; background: linear-gradient(135deg, #f8fafc, #e2e8f0); padding: 8px 12px; border-radius: 8px;">
-                $${formatPrecio(turno.monto_total)}
-              </div>
-            </div>
-            
-            <div style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; color: #4b5563; background: #f9fafb; padding: 8px 12px; border-radius: 6px; margin-top: 8px;">
-              <i class="bi bi-person-badge" style="color: #6366f1;"></i>
-              <span>${turno.peluquero_nombre || 'Peluquero no asignado'}</span>
-            </div>
-          </div>
-
-          <div style="background: ${hayReembolso ? '#f0fdf4' : '#fffbeb'}; 
-                      padding: 16px; border-radius: 10px; margin-bottom: 24px; 
-                      border-left: 4px solid ${hayReembolso ? '#10b981' : '#f59e0b'};">
-            <div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px;">
-              <div style="background: ${hayReembolso ? '#d1fae5' : '#fef3c7'}; 
-                          width: 32px; height: 32px; border-radius: 50%; 
-                          display: flex; align-items: center; justify-content: center; 
-                          flex-shrink: 0;">
-                <i class="bi bi-${hayReembolso ? 'check-circle' : 'exclamation-triangle'}" 
-                   style="color: ${hayReembolso ? '#059669' : '#d97706'}; font-size: 1rem;"></i>
-              </div>
-              <div style="flex: 1;">
-                <div style="font-weight: 700; color: ${hayReembolso ? '#065f46' : '#92400e'}; margin-bottom: 6px; font-size: 1rem;">
-                  ${hayReembolso ? '✅ Reembolso aplicable' : '⚠️ Sin reembolso'}
-                </div>
-                <div style="color: ${hayReembolso ? '#047857' : '#b45309'}; font-size: 0.9rem; line-height: 1.4;">
-                  ${mensajeReembolso}
-                </div>
-                ${turno.monto_seña > 0 ? `
-                  <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid ${hayReembolso ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'};">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                      <span style="font-weight: 600; color: ${hayReembolso ? '#065f46' : '#92400e'};">Monto a devolver:</span>
-                      <span style="font-weight: 800; color: ${hayReembolso ? '#059669' : '#d97706'}; font-size: 1.1rem;">
-                        $${formatPrecio(hayReembolso ? turno.monto_seña : 0)}
-                      </span>
-                    </div>
-                  </div>
-                ` : ''}
-              </div>
-            </div>
-          </div>
-
-          <div style="margin-bottom: 24px;">
-            <div style="margin-bottom: 16px;">
-              <label for="motivoCancelacion" style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151; font-size: 0.95rem;">
-                <i class="bi bi-flag" style="margin-right: 6px; color: #6366f1;"></i>
-                Motivo de cancelación *
-              </label>
-              <select id="motivoCancelacion" 
-                      style="width: 100%; padding: 12px 14px; border-radius: 8px; border: 2px solid #d1d5db; 
-                             background: white; color: #111827; font-size: 0.95rem; outline: none; cursor: pointer;">
+        <div style="margin-bottom: 15px;">
+            <label>Motivo:</label>
+            <select id="motivoCancelacion" class="swal2-input">
                 <option value="" disabled selected>Selecciona un motivo...</option>
                 <option value="MOTIVOS_PERSONALES">Motivos personales</option>
                 <option value="PROBLEMAS_SALUD">Problemas de salud</option>
-                <option value="ERROR_RESERVA">Error al reservar</option>
-                <option value="CAMBIO_PLANES">Cambio de planes</option>
-                <option value="NO_PRESENTO">No se presentó</option>
-                <option value="EMERGENCIA">Emergencia familiar</option>
-                <option value="CANJE_AUTOMATICO">Canje Automático</option>
-                <option value="OTRO">Otro motivo</option>
-              </select>
-            </div>
-
-            <div>
-              <label for="observacionesCancelacion" style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151; font-size: 0.95rem;">
-                <i class="bi bi-chat-left-text" style="margin-right: 6px; color: #6366f1;"></i>
-                Observaciones adicionales (Opcional)
-              </label>
-              <textarea id="observacionesCancelacion" rows="3" style="width: 100%; padding: 12px 14px; border-radius: 8px; border: 2px solid #d1d5db;"></textarea>
-            </div>
-          </div>
-
-          <div style="background: #eff6ff; padding: 14px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dbeafe;">
-            <div style="display: flex; align-items: flex-start; gap: 10px;">
-              <div style="background: #3b82f6; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                <i class="bi bi-info-lg" style="color: white; font-size: 0.9rem;"></i>
-              </div>
-              <div>
-                <div style="font-weight: 600; color: #1e40af; margin-bottom: 4px; font-size: 0.95rem;">Proceso automático</div>
-                <div style="color: #3b82f6; font-size: 0.85rem; line-height: 1.4;">
-                  El sistema evaluará si hay clientes en lista de espera y les ofrecerá el turno con 15% de descuento.
-                </div>
-              </div>
-            </div>
-          </div>
+                <option value="OTRO">Otro</option>
+            </select>
+        </div>
+        <div>
+            <label>Observaciones:</label>
+            <textarea id="observacionesCancelacion" class="swal2-textarea"></textarea>
+        </div>
+        <div style="margin-top: 10px; color: ${hayReembolso ? 'green' : 'orange'}">
+            ${mensajeReembolso}
         </div>
       `,
       showCancelButton: true,
       confirmButtonText: 'Confirmar cancelación',
-      cancelButtonText: 'Volver atrás',
       confirmButtonColor: '#ef4444',
-      cancelButtonColor: '#f3f4f6',
       preConfirm: () => {
         const motivoSelect = document.getElementById('motivoCancelacion')
         const observacionesTextarea = document.getElementById('observacionesCancelacion')
-        
         if (!motivoSelect.value) {
           Swal.showValidationMessage('Por favor, selecciona un motivo de cancelación')
           return false
         }
-        
-        const motivoTexto = motivoSelect.options[motivoSelect.selectedIndex].text
-        
         return {
-          motivo_cancelacion: motivoTexto,
+          motivo_cancelacion: motivoSelect.options[motivoSelect.selectedIndex].text,
           motivo_cancelacion_codigo: motivoSelect.value,
           obs_cancelacion: observacionesTextarea.value.trim() || ''
         }
@@ -691,31 +529,15 @@ const cancelarTurno = async (turno) => {
 
     if (formValues) {
       loading.value = true
-      
-      Swal.fire({
-        title: 'Procesando cancelación',
-        text: 'Evaluando reembolso y actualizando sistema...',
-        showConfirmButton: false,
-        allowOutsideClick: false
-      })
-
       try {
         const response = await axios.post(`/api/turnos/${turno.id}/cancelar/`, formValues)
-        Swal.close()
-
         if (response.data.status === 'ok') {
-          await Swal.fire({
-            icon: iconoReembolso,
-            title: 'Turno cancelado',
-            text: response.data.message,
-            confirmButtonColor: '#10b981'
-          })
+          await Swal.fire({ icon: iconoReembolso, title: 'Turno cancelado', text: response.data.message })
         } else {
           await Swal.fire('Error', response.data.error || 'Error desconocido', 'error')
         }
         await cargarTurnos()
       } catch (error) {
-        console.error('Error cancelando turno:', error)
         Swal.fire('Error', 'Error de conexión', 'error')
       } finally {
         loading.value = false
@@ -727,251 +549,185 @@ const cancelarTurno = async (turno) => {
   }
 }
 
-// PAGO TOTAL
+// PAGO Y REEMBOLSO
 const confirmarPagoTotal = async (turno) => {
   const falta = calcularFaltaPagar(turno)
-  
   const { value: nroTransaccion } = await Swal.fire({
     title: 'Cobrar Restante',
-    html: `
-      <div style="text-align: left;">
-        <p><strong>Cliente:</strong> ${turno.cliente_nombre} ${turno.cliente_apellido}</p>
-        <p><strong>Falta cobrar:</strong> <span style="color: #f59e0b; font-weight: bold;">$${formatPrecio(falta)}</span></p>
-        <br>
-        <label for="nro_transaccion">N° transacción (opcional):</label>
-        <input id="nro_transaccion" class="swal2-input" placeholder="Ej: MP-123456789">
-      </div>
-    `,
+    html: `<p>Falta cobrar: <b>$${formatPrecio(falta)}</b></p><br><input id="nro_transaccion" class="swal2-input" placeholder="N° Transacción (Opcional)">`,
     showCancelButton: true,
-    confirmButtonColor: '#10b981',
     confirmButtonText: 'Registrar Pago',
     preConfirm: () => document.getElementById('nro_transaccion').value || ''
   })
-
   if (nroTransaccion !== undefined) {
     try {
-      await axios.post(`/api/turnos/${turno.id}/actualizar-pago/`, {
-        tipo_pago: 'TOTAL',
-        medio_pago: turno.medio_pago || 'EFECTIVO',
-        nro_transaccion: nroTransaccion || ''
-      })
+      await axios.post(`/api/turnos/${turno.id}/actualizar-pago/`, { tipo_pago: 'TOTAL', medio_pago: turno.medio_pago || 'EFECTIVO', nro_transaccion: nroTransaccion })
       await cargarTurnos()
       Swal.fire('¡Pago registrado!', '', 'success')
-    } catch (error) {
-      Swal.fire('Error', 'No se pudo registrar el pago.', 'error')
-    }
+    } catch (error) { Swal.fire('Error', 'No se pudo registrar el pago.', 'error') }
   }
 }
 
-// REEMBOLSO MANUAL
 const gestionarReembolsoManual = async (turno) => {
   const monto = calcularMontoReembolso(turno)
-  
   const { isConfirmed } = await Swal.fire({
     title: 'Confirmar devolución',
-    html: `Devolver <span style="color:#f59e0b; font-weight:bold;">$${formatPrecio(monto)}</span> a ${turno.cliente_nombre}`,
+    html: `Devolver <b>$${formatPrecio(monto)}</b> a ${turno.cliente_nombre}`,
     icon: 'question',
     showCancelButton: true,
-    confirmButtonColor: '#f59e0b',
     confirmButtonText: 'Sí, devuelto'
   })
-
   if (isConfirmed) {
     try {
       await axios.post(`/api/turnos/${turno.id}/completar-reembolso-manual/`)
       await cargarTurnos()
       Swal.fire('¡Reembolso completado!', '', 'success')
-    } catch (error) {
-      Swal.fire('Error', 'No se pudo completar el reembolso.', 'error')
-    }
+    } catch (error) { Swal.fire('Error', 'No se pudo completar el reembolso.', 'error') }
   }
 }
 
-// VER DETALLE
 const verDetalleTurno = async (turno) => {
-  console.log('=== DEBUG TURNO DETALLE ===');
-  console.log('ID:', turno.id);
-  console.log('Canal:', turno.canal);
-  console.log('codigo_transaccion:', turno.codigo_transaccion);
-  console.log('entidad_pago:', turno.entidad_pago);
-  console.log('mp_payment_id:', turno.mp_payment_id);
-  console.log('nro_transaccion:', turno.nro_transaccion);
-  console.log('==========================');
-  
-  const duracionTotal = turno.duracion_total || 30
-  
-  let serviciosHTML = ''
-  let totalServicios = 0
-  
-  if (turno.servicios && turno.servicios.length > 0) {
-    serviciosHTML = turno.servicios.map(s => {
-      totalServicios += parseFloat(s.precio || 0)
-      return `<tr><td>${s.nombre}</td><td align="right">${s.duracion}m</td><td align="right">$${formatPrecio(s.precio)}</td></tr>`
-    }).join('')
-  }
-  
-  const esCanje = esTurnoPorCanje(turno)
-  const tieneDescuento = esTurnoConDescuento(turno)
-  
-  let montoSaldoAFavor = 0
-  let esSaldoAFavor = false
-  
-  if (esCanje) {
-    montoSaldoAFavor = extraerSaldoAFavor(turno)
-    esSaldoAFavor = montoSaldoAFavor > 0
-  } else {
-    const faltaPagar = calcularFaltaPagar(turno)
-    esSaldoAFavor = faltaPagar < 0
-    montoSaldoAFavor = Math.abs(faltaPagar)
-  }
-  
-  const faltaPagar = calcularFaltaPagar(turno)
-  
-  let pagoInfoHTML = ''
-  
-  if (esSaldoAFavor && esCanje) {
-    pagoInfoHTML = `
-      <div style="background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 2px solid #10b981; border-left: 5px solid #059669;">
-        <div style="font-size: 0.85rem; color: #065f46; margin-bottom: 6px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
-          <i class="bi bi-cash-coin" style="font-size: 1rem;"></i>
-          SALDO A DEVOLVER AL CLIENTE
-        </div>
-        <div style="font-size: 1.6rem; font-weight: 900; color: #059669; margin: 10px 0;">
-          $${formatPrecio(montoSaldoAFavor)}
-        </div>
-        <div style="font-size: 0.75rem; color: #0ea5e9; margin-top: 8px; padding: 6px 10px; background: #f0f9ff; border-radius: 6px; border-left: 3px solid #0ea5e9;">
-          <i class="bi bi-info-circle" style="margin-right: 5px;"></i>
-          Saldo generado por canje automático
-        </div>
-      </div>
-    `
-  } else if (esSaldoAFavor) {
-    pagoInfoHTML = `
-      <div style="background: white; padding: 12px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 2px solid #10b981;">
-        <div style="font-size: 0.8rem; color: #059669; margin-bottom: 4px; font-weight: bold;">
-          <i class="bi bi-wallet2"></i> SALDO A FAVOR
-        </div>
-        <div style="font-size: 1.4rem; font-weight: 900; color: #059669;">
-          $${formatPrecio(montoSaldoAFavor)}
-        </div>
-      </div>
-    `
-  } else {
-    pagoInfoHTML = `
-      <div style="background: white; padding: 12px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-        <div style="font-size: 0.8rem; color: #64748b; margin-bottom: 4px;">
-          ${faltaPagar > 0 ? 'Falta pagar' : 'Pagado completo'}
-        </div>
-        <div style="font-size: 1.2rem; font-weight: 900; color: ${faltaPagar > 0 ? '#f59e0b' : '#10b981'};">$${formatPrecio(Math.abs(faltaPagar))}</div>
-      </div>
-    `
-  }
+  try {
+    console.log('🔍 Turno recibido:', turno);
 
-  let transaccionInfoHTML = ''
-  
-  if (turno.codigo_transaccion) {
-    transaccionInfoHTML = `<div><strong><i class="bi bi-credit-card"></i> Cód. Transacción:</strong> ${turno.codigo_transaccion}</div>`
-  } else if (turno.mp_payment_id) {
-    transaccionInfoHTML = `<div><strong><i class="bi bi-cash"></i> MP Payment ID:</strong> ${turno.mp_payment_id}</div>`
-  } else if (turno.nro_transaccion) {
-    transaccionInfoHTML = `<div><strong><i class="bi bi-fingerprint"></i> ID Transacción:</strong> ${turno.nro_transaccion}</div>`
-  }
+    // 1. Hacemos la petición al backend para obtener el detalle completo
+    const response = await axios.get(`/api/turnos/${turno.id}/`);
+    
+    console.log('📡 Respuesta completa:', response);
+    console.log('📦 Datos recibidos:', response.data);
 
-  Swal.fire({
-    title: `<div style="display: flex; align-items: center; gap: 12px; color: #0ea5e9;">
-              <i class="bi bi-calendar2-week" style="font-size: 1.5rem;"></i>
-              <span>Turno #${turno.id}</span>
-            </div>`,
-    html: `
-      <div style="text-align: left; max-width: 700px; font-family: 'Segoe UI', sans-serif;">
-        
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e2e8f0;">
-          <div>
-            <span class="badge-estado ${getEstadoClass(turno.estado, turno.tipo_pago)}">
-              ${getEstadoTexto(turno.estado, turno.tipo_pago)}
-            </span>
-            <span class="canal-badge ${(turno.canal || 'PRESENCIAL').toLowerCase()}" style="margin-left: 8px;">
-              ${turno.canal || 'PRESENCIAL'}
-            </span>
-            ${esCanje ? `
-              <span style="margin-left: 8px; background: #fef3c7; color: #d97706; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700;">
-                <i class="bi bi-arrow-repeat"></i> CANJE
+    // 2. Verificar si la respuesta es un error (por ejemplo, si tiene campo 'error')
+    if (response.data && response.data.error) {
+      throw new Error(`Error del servidor: ${response.data.error}`);
+    }
+
+    // 3. Verificar que los datos tengan el campo 'id' (estructura esperada)
+    if (!response.data || !response.data.id) {
+      console.error('❌ La respuesta no tiene la estructura esperada:', response.data);
+      throw new Error('La respuesta del servidor no contiene los datos del turno');
+    }
+
+    const turnoDetalle = response.data;
+
+    // 4. Construcción del HTML de servicios (con valores por defecto)
+    let serviciosHTML = '';
+    if (turnoDetalle.servicios && turnoDetalle.servicios.length > 0) {
+      serviciosHTML = turnoDetalle.servicios.map(s => `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 12px; font-weight: 500; color: #1e293b; font-size: 0.95rem;">${s.nombre || 'Sin nombre'}</td>
+          <td style="padding: 12px; text-align: right; color: #64748b; font-size: 0.9rem;">${s.duracion || 0}m</td>
+          <td style="padding: 12px; text-align: right; font-weight: 700; color: #0f172a;">$${formatPrecio(s.precio || 0)}</td>
+        </tr>
+      `).join('');
+    } else {
+      serviciosHTML = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #94a3b8;">Sin servicios detallados</td></tr>`;
+    }
+
+    const faltaPagar = calcularFaltaPagar(turnoDetalle);
+
+    // 5. Mostrar SweetAlert con los datos del detalle
+    Swal.fire({
+      title: `<div style="text-align:left; color:#0ea5e9; font-weight:800; font-size: 1.4rem;">Turno #${turnoDetalle.id}</div>`,
+      width: '750px',
+      background: '#ffffff',
+      showConfirmButton: false,
+      showCloseButton: true,
+      html: `
+        <div style="text-align: left; font-family: 'Inter', -apple-system, sans-serif;">
+          
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+            <div>
+              <span class="badge-estado ${getEstadoClass(turnoDetalle.estado, turnoDetalle.tipo_pago)}" style="padding: 6px 12px; border-radius: 8px; font-weight: 700;">
+                ${getEstadoTexto(turnoDetalle.estado, turnoDetalle.tipo_pago)}
               </span>
-            ` : ''}
-          </div>
-          <div style="font-size: 1.2rem; font-weight: 900; color: #0f172a;">
-            $${formatPrecio(turno.monto_total)}
-            ${tieneDescuento ? '<span style="font-size: 0.8rem; color: #0ea5e9; margin-left: 5px;">(15% OFF)</span>' : ''}
-          </div>
-        </div>
-        
-        ${esCanje ? `
-          <div style="background: linear-gradient(135deg, #fef3c7, #fde68a); padding: 15px; border-radius: 12px; margin-bottom: 20px; border-left: 4px solid #f59e0b;">
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-              <i class="bi bi-info-circle-fill" style="color: #d97706; font-size: 1.2rem;"></i>
-              <strong style="color: #92400e;">Información de Canje</strong>
+              <span class="canal-badge ${(turnoDetalle.canal || 'PRESENCIAL').toLowerCase()}" style="margin-left: 8px; font-weight: 600;">
+                ${turnoDetalle.canal || 'PRESENCIAL'}
+              </span>
             </div>
-            <div style="color: #92400e; font-size: 0.9rem; line-height: 1.4;">
-              ${turno.obs_cancelacion || 'Turno generado por sistema de canje automático.'}
+            <div style="font-size: 1.6rem; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">
+              $${formatPrecio(turnoDetalle.monto_total || 0)}
             </div>
           </div>
-        ` : ''}
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px;">
-          <div style="background: #f8fafc; padding: 15px; border-radius: 10px;">
-            <h4 style="color: #0ea5e9; margin-bottom: 10px;"><i class="bi bi-person"></i> Cliente</h4>
-            <p><strong>${turno.cliente_nombre} ${turno.cliente_apellido}</strong></p>
-          </div>
-          <div style="background: #f8fafc; padding: 15px; border-radius: 10px;">
-            <h4 style="color: #10b981; margin-bottom: 10px;"><i class="bi bi-scissors"></i> Peluquero</h4>
-            <p><strong>${turno.peluquero_nombre || 'No asignado'}</strong></p>
-          </div>
-        </div>
-        
-        <div style="background: linear-gradient(135deg, #f0f9ff, #e0f2fe); padding: 20px; border-radius: 12px; margin-bottom: 20px; border-left: 4px solid #0ea5e9;">
-          <h4 style="color: #0369a1; margin-bottom: 15px;"><i class="bi bi-cash-stack"></i> Información de Pago</h4>
-          
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; text-align: center;">
-            <div style="background: white; padding: 12px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-              <div style="font-size: 0.8rem; color: #64748b;">Total</div>
-              <div style="font-size: 1.2rem; font-weight: 900;">$${formatPrecio(turno.monto_total)}</div>
-            </div>
-            <div style="background: white; padding: 12px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-              <div style="font-size: 0.8rem; color: #64748b;">Pagado/Seña</div>
-              <div style="font-size: 1.2rem; font-weight: 900; color: #10b981;">$${formatPrecio(turno.monto_seña)}</div>
-            </div>
-            ${pagoInfoHTML}
-          </div>
-          
-          <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0; font-size: 0.9rem;">
-            <div><strong><i class="bi bi-credit-card"></i> Medio:</strong> ${getMedioPagoTexto(turno.medio_pago)}</div>
-            ${turno.entidad_pago ? `<div><strong><i class="bi bi-building"></i> Entidad:</strong> ${getEntidadPagoTexto(turno.entidad_pago)}</div>` : ''}
-            ${transaccionInfoHTML}
-            ${turno.estado === 'CANCELADO' && turno.reembolso_estado === 'NO_APLICA' ? `
-              <div style="margin-top: 8px;">
-                <span style="background: #f3f4f6; color: #6b7280; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: 600;">
-                  <i class="bi bi-arrow-left-right"></i> Reembolso: No aplica (Canje)
-                </span>
-              </div>
-            ` : ''}
-          </div>
-        </div>
 
-        ${serviciosHTML ? `
-          <div style="background: #f8fafc; padding: 20px; border-radius: 12px;">
-            <h4 style="color: #7c3aed; margin-bottom: 10px;">Servicios</h4>
-            <table style="width: 100%; border-collapse: collapse;">
-              ${serviciosHTML}
-            </table>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px;">
+            <div style="background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;">
+              <small style="color: #64748b; font-weight: 800; text-transform: uppercase; font-size: 0.65rem; display: block; margin-bottom: 5px; letter-spacing: 0.5px;">👤 Cliente</small>
+              <div style="font-size: 1.1rem; font-weight: 700; color: #1e293b;">${turnoDetalle.cliente_nombre || 'Cliente'} ${turnoDetalle.cliente_apellido || ''}</div>
+            </div>
+            <div style="background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;">
+              <small style="color: #64748b; font-weight: 800; text-transform: uppercase; font-size: 0.65rem; display: block; margin-bottom: 5px; letter-spacing: 0.5px;">✂️ Profesional</small>
+              <div style="font-size: 1.1rem; font-weight: 700; color: #1e293b;">${turnoDetalle.peluquero_nombre || 'Profesional'}</div>
+            </div>
           </div>
-        ` : ''}
-      </div>
-    `,
-    showCloseButton: true,
-    showConfirmButton: false,
-    width: '750px'
-  })
-}
+
+          <div style="margin-bottom: 25px;">
+            <h4 style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 1px;">📋 Detalle de Servicios</h4>
+            <div style="border: 1px solid #f1f5f9; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+              <table style="width: 100%; border-collapse: collapse; background: #fff;">
+                ${serviciosHTML}
+              </table>
+            </div>
+          </div>
+
+          <div style="background: ${turnoDetalle.silla_nombre ? '#f0fdfa' : '#fff1f2'}; padding: 18px; border-radius: 14px; border: 1px solid ${turnoDetalle.silla_nombre ? '#bbf7d0' : '#fecaca'}; display: flex; align-items: center; gap: 15px; margin-bottom: 25px; transition: 0.3s;">
+            <div style="font-size: 2rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));">🪑</div>
+            <div>
+              <small style="color: ${turnoDetalle.silla_nombre ? '#0d9488' : '#991b1b'}; font-weight: 800; text-transform: uppercase; font-size: 0.7rem; display: block; margin-bottom: 3px;">Puesto de Trabajo Asignado</small>
+              <div style="font-size: 1.3rem; font-weight: 800; color: ${turnoDetalle.silla_nombre ? '#115e59' : '#7f1d1d'};">
+                 ${turnoDetalle.silla_nombre ? turnoDetalle.silla_nombre : 'Pendiente de asignación'}
+              </div>
+            </div>
+          </div>
+
+          <div style="background: linear-gradient(135deg, #1e293b, #0f172a); padding: 22px; border-radius: 16px; color: #fff; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+               <h4 style="margin:0; font-size: 0.85rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">💰 Resumen de Pago</h4>
+               <span style="font-size: 0.75rem; font-weight: 700; background: #334155; padding: 5px 12px; border-radius: 20px; color: #e2e8f0; border: 1px solid #475569;">
+                 ${getMedioPagoTexto(turnoDetalle.medio_pago)}
+               </span>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+               <div>
+                  <small style="color: #94a3b8; display: block; margin-bottom: 4px; font-size: 0.75rem;">Abonado a la fecha</small>
+                  <div style="font-size: 1.4rem; font-weight: 800; color: #4ade80;">$${formatPrecio(turnoDetalle.monto_seña || 0)}</div>
+               </div>
+               <div>
+                  <small style="color: #94a3b8; display: block; margin-bottom: 4px; font-size: 0.75rem;">Saldo Pendiente</small>
+                  <div style="font-size: 1.4rem; font-weight: 800; color: ${faltaPagar > 0 ? '#fbbf24' : '#fff'};">
+                    $${formatPrecio(faltaPagar > 0 ? faltaPagar : 0)}
+                  </div>
+               </div>
+            </div>
+
+            <div style="margin-top: 18px; padding-top: 15px; border-top: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+               <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: #64748b;">ID: ${turnoDetalle.codigo_transaccion || turnoDetalle.mp_payment_id || 'PRESENCIAL_CASH'}</span>
+               <i class="bi bi-shield-check" style="color: #4ade80; font-size: 1rem;"></i>
+            </div>
+          </div>
+
+        </div>
+      `
+    });
+  } catch (error) {
+    console.error('❌ Error al obtener detalle del turno:', error);
+    
+    // Mostrar un mensaje más claro según el error
+    let mensaje = 'No se pudo cargar el detalle del turno.';
+    if (error.response) {
+      // El servidor respondió con un código de error
+      mensaje += ` (Código ${error.response.status}: ${error.response.statusText})`;
+      console.error('🔴 Datos del error:', error.response.data);
+    } else if (error.request) {
+      // La petición se hizo pero no se recibió respuesta
+      mensaje += ' No se recibió respuesta del servidor.';
+    } else {
+      mensaje += ` ${error.message}`;
+    }
+    
+    Swal.fire('Error', mensaje, 'error');
+  }
+};
 
 // COMPLETAR TURNO
 const completarTurno = async (turno) => {

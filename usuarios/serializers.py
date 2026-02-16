@@ -77,67 +77,51 @@ class TurnoSerializer(serializers.ModelSerializer):
     cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True)
     cliente_apellido = serializers.CharField(source='cliente.apellido', read_only=True)
     peluquero_nombre = serializers.CharField(source='peluquero.nombre', read_only=True)
+    
+    # 🔥 NUEVO: Campo para recibir el ID de la silla al crear/editar
+    silla_id = serializers.PrimaryKeyRelatedField(
+        source='silla',                # se asigna al campo 'silla' del modelo
+        queryset=Silla.objects.all(),
+        allow_null=True,
+        required=False
+    )
+    silla_nombre = serializers.CharField(source='silla.nombre', read_only=True, allow_null=True)
+
     precio_total = serializers.SerializerMethodField()
-    info_descuento = serializers.SerializerMethodField() # ✅ NUEVO CAMPO
+    info_descuento = serializers.SerializerMethodField()
 
     class Meta:
         model = Turno
         fields = [
-            'id', 'fecha', 'hora', 'estado', 'canal', 'tipo_pago', 'medio_pago',               
+            'id', 'fecha', 'hora', 'estado', 'canal', 'tipo_pago', 'medio_pago',
             'monto_total', 'monto_seña', 'duracion_total', 'precio_total',
-            'oferta_activa', 'reembolsado', 
-            'reembolso_estado',  # ✅ CAMPO CLAVE PARA LA GESTIÓN MANUAL
-            'mp_payment_id', 'mp_refund_id', 'nro_transaccion', 'motivo_cancelacion', 
+            'oferta_activa', 'reembolsado', 'reembolso_estado',
+            'mp_payment_id', 'mp_refund_id', 'nro_transaccion', 'motivo_cancelacion',
             'obs_cancelacion', 'cliente', 'cliente_nombre', 'cliente_apellido',
             'peluquero', 'peluquero_nombre', 'servicios',
-            # ✅ AGREGAR ESTOS DOS CAMPOS AL FINAL:
-            'codigo_transaccion', 'entidad_pago',
-            'info_descuento' # ✅ NO OLVIDAR AGREGARLO AQUÍ TAMBIÉN
+            'codigo_transaccion', 'entidad_pago', 'info_descuento',
+            'silla', 'silla_nombre', 'silla_id'   # ✅ Incluimos silla_id
         ]
+        extra_kwargs = {
+            'silla': {'read_only': True}  # El campo original del modelo lo dejamos solo lectura
+        }
 
     def get_precio_total(self, obj):
-        """
-        Calcula el precio total basándose en el monto guardado 
-        o la suma de los servicios vinculados.
-        """
         if obj.monto_total and obj.monto_total > 0:
             return obj.monto_total
         return sum(s.precio for s in obj.servicios.all())
 
     def get_info_descuento(self, obj):
-        """
-        Determina si el turno tiene un descuento de FIDELIZACIÓN (Volvé).
-        SOLO devuelve datos si hay una PromocionReactivacion vinculada.
-        """
         try:
-            promo = obj.promo_usada.first() 
-            
+            promo = obj.promo_usada.first()
             if promo:
                 return {
                     'tipo': 'FIDELIZACION',
                     'texto': 'Cliente Recuperado',
-                    'porcentaje': promo.descuento_porcentaje # O hardcodeado 15
+                    'porcentaje': promo.descuento_porcentaje
                 }
         except Exception:
             pass
-
-        # 2. ⚠️ ELIMINAMOS O COMENTAMOS LA LÓGICA MATEMÁTICA
-        # Antes, calculabas si había un 15% de diferencia y asumías que era "Cliente Recuperado".
-        # Eso causaba que la Reoferta (que también tiene 15%) mostrara el cartel incorrecto.
-        
-        # precio_servicios = sum(s.precio for s in obj.servicios.all())
-        # if obj.monto_total and precio_servicios > 0:
-        #     if obj.monto_total < precio_servicios:
-        #         diferencia = precio_servicios - obj.monto_total
-        #         porcentaje_real = (diferencia / precio_servicios) * 100
-        #         if 14 <= porcentaje_real <= 16:
-        #             return {
-        #                 'tipo': 'FIDELIZACION',
-        #                 'texto': 'Cliente Recuperado',
-        #                 'porcentaje': 15
-        #             }
-        
-        # Si es Reoferta, no devolvemos nada aquí para que no salga el cartel de "Recuperado".
         return None
 # ----------------------------------------------------------------------
 # CATEGORIAS DE PRODUCTOS
@@ -1090,3 +1074,9 @@ class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
         if instance.logo and request:
             ret['logo'] = request.build_absolute_uri(instance.logo.url)
         return ret
+
+#Silla
+class SillaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Silla
+        fields = '__all__' # Devuelve id, nombre, activa, orden

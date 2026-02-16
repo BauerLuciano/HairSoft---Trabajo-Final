@@ -17,6 +17,7 @@ from .api_views import (
     ReporteLiquidacionPDFView,
     RegistrarPagoLiquidacionView,
     HistorialLiquidacionesView,
+    SillaViewSet  # <--- ESTO YA LO TENÍAS IMPORTADO, JOYA
 )
 
 from .views import (
@@ -53,6 +54,8 @@ from .views import (
 router = DefaultRouter()
 router.register(r'auditoria', AuditoriaViewSet, basename='auditoria')
 router.register(r'web/pedidos', PedidoWebViewSet, basename='pedidos-web')
+# 👇👇👇 AGREGADO PARA QUE FUNCIONEN LAS SILLAS 👇👇👇
+router.register(r'sillas', SillaViewSet, basename='silla') 
 
 venta_list = VentaViewSet.as_view({
     'get': 'list',

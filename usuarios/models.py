@@ -335,6 +335,21 @@ class CotizacionProveedor(models.Model):
         score_tiempo = 100 / float(self.dias_entrega)
         return (score_precio * 0.7) + (score_tiempo * 0.3)
 
+class Silla(models.Model):
+    nombre = models.CharField(max_length=50, help_text="Ej: Silla 1, Puesto Ventana, Lavacabezas")
+    activa = models.BooleanField(default=True, help_text="Desmarcar si la silla está rota o fuera de servicio")
+    orden = models.PositiveIntegerField(default=1, help_text="Número para ordenar visualmente (1, 2, 3...)")
+    motivo_inactividad = models.CharField(max_length=100, null=True, blank=True, help_text="Razón por la cual no se usa")
+
+    class Meta:
+        ordering = ['orden', 'nombre'] # Para que siempre salgan en orden 1, 2, 3
+        verbose_name = "Silla / Puesto"
+        verbose_name_plural = "Sillas / Puestos"
+
+    def __str__(self):
+        return f"{self.nombre} ({'Activa' if self.activa else 'Inactiva'})"
+
+
 class Turno(models.Model):
     CANAL_CHOICES = [('WEB', 'Web'), ('PRESENCIAL', 'Presencial')]
     ESTADO_CHOICES = [
@@ -395,6 +410,7 @@ class Turno(models.Model):
     monto_comision = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     monto_original = models.DecimalField(max_digits=8, decimal_places=2, default=0, verbose_name="Monto sin descuento")
     descuento_aplicado = models.DecimalField(max_digits=8, decimal_places=2, default=0, verbose_name="Descuento aplicado")
+    silla = models.ForeignKey('Silla', on_delete=models.SET_NULL, null=True, blank=True, related_name='turnos', verbose_name="Silla Asignada")
     
     def __str__(self):
         nombre_cli = self.cliente.nombre if self.cliente else "Disponible"

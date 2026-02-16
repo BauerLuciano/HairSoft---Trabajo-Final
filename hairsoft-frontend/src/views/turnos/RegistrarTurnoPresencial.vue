@@ -2,7 +2,6 @@
   <div class="page-background">
     <div class="main-card-container">
       <div class="turno-container">
-        <!-- Estados de carga y error -->
         <div v-if="cargandoDatos" class="loading-state">
           <Loader2 class="spinner-icon" :size="48" />
           <p>Cargando datos iniciales...</p>
@@ -154,6 +153,28 @@
             </div>
           </div>
 
+          <div v-if="form.peluquero && form.peluquero !== form.cliente" class="card-modern slide-in">
+            <div class="card-header">
+              <div class="card-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);"><Armchair :size="20" /></div>
+              <h3>Puesto de Trabajo</h3>
+            </div>
+            
+            <div class="input-group">
+              <div class="custom-select-wrapper">
+                <select v-model="form.silla" class="form-control-select">
+                  <option :value="null">✨ Asignación Automática (Recomendado)</option>
+                  <option v-for="silla in sillasActivas" :key="silla.id" :value="silla.id">
+                    🪑 {{ silla.nombre }}
+                  </option>
+                </select>
+                <ChevronDown class="select-icon" :size="18" />
+              </div>
+              <small style="color: #6b7280; font-size: 0.85rem; margin-top: 8px; display: block; padding-left: 5px;">
+                <Info :size="14" style="vertical-align: middle; margin-right: 4px;" />
+                Si eliges automático, el sistema buscará la primera silla libre.
+              </small>
+            </div>
+          </div>
           <div v-if="form.peluquero && form.peluquero !== form.cliente" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon"><CalendarDays :size="20" /></div>
@@ -403,7 +424,8 @@ import {
   Calendar, ArrowLeft, Users, Search, X, Plus, User, IdCard,
   AlertCircle, FolderOpen, Tag, Scissors, Check, Clock, UserCheck, 
   CalendarDays, ChevronLeft, ChevronRight, Info, Loader2, Receipt, 
-  CheckCircle2, Bell, Banknote, FileText, Inbox, CheckCircle, CreditCard, Wallet
+  CheckCircle2, Bell, Banknote, FileText, Inbox, CheckCircle, CreditCard, Wallet,
+  Armchair, ChevronDown // 🔥 IMPORTANTE: Iconos nuevos
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 
@@ -424,6 +446,7 @@ const form = ref({
   cliente: null,
   clienteNombre: "",
   peluquero: "",
+  silla: null, // 🔥 NUEVO CAMPO
   servicios_ids: [],
   tipo_pago: "SENA_50",
   medio_pago: "EFECTIVO",
@@ -436,6 +459,7 @@ const form = ref({
 const categorias = ref([])
 const servicios = ref([])
 const peluqueros = ref([])
+const sillas = ref([]) // 🔥 LISTA DE SILLAS
 const busquedaCliente = ref("")
 const clientesSugeridos = ref([])
 const categoriasSeleccionadas = ref([])
@@ -487,6 +511,11 @@ const serviciosFiltrados = computed(() => {
   })
 })
 
+// 🔥 FILTRAR SILLAS ACTIVAS
+const sillasActivas = computed(() => {
+  return sillas.value.filter(s => s.activa)
+})
+
 const currentYear = computed(() => currentDate.value.getFullYear())
 const currentMonth = computed(() => currentDate.value.getMonth())
 const nombreMesActual = computed(() => {
@@ -525,7 +554,12 @@ const cargarHorariosOcupados = async (fecha) => {
   slotsOcupadosReales.value = [] 
   
   try {
-    const url = `${API_URL}/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
+    // 🔥 Agregar la silla seleccionada a la query si existe
+    let url = `${API_URL}/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
+    
+    // Si eligió silla manual, quizás quieras filtrar o validar algo extra acá,
+    // pero por ahora traemos los turnos del peluquero para evitar solapamiento humano.
+    // La validación de silla ocupada la hará el backend al guardar.
     
     const res = await fetch(url, {
       headers: getAuthHeaders()
@@ -643,6 +677,7 @@ const guardarContexto = () => {
     categoriasSeleccionadas: categoriasSeleccionadas.value,
     serviciosSeleccionados: form.value.servicios_ids,
     peluquero: form.value.peluquero,
+    silla_id: form.value.silla, // 🔥 GUARDAMOS SILLA
     tipo_pago: form.value.tipo_pago,
     medio_pago: form.value.medio_pago,
     entidad_pago: form.value.entidad_pago,
@@ -667,6 +702,7 @@ const cargarContexto = () => {
       if (contexto.peluquero && form.value.cliente !== contexto.peluquero) {
         form.value.peluquero = contexto.peluquero
       }
+      if (contexto.silla) form.value.silla = contexto.silla // 🔥 RECUPERAMOS SILLA
       if (contexto.fecha) form.value.fecha = contexto.fecha
       if (contexto.hora) form.value.hora = contexto.hora
       if (contexto.serviciosSeleccionados && contexto.serviciosSeleccionados.length > 0) {
@@ -691,16 +727,19 @@ const cargarDatosIniciales = async () => {
     
     const headers = getAuthHeaders()
 
-    const [catRes, servRes, pelRes] = await Promise.all([
+    const [catRes, servRes, pelRes, sillasRes] = await Promise.all([
       fetch(`${API_URL}/categorias/servicios/`, { headers }),
       fetch(`${API_URL}/servicios/`, { headers }),
-      fetch(`${API_URL}/peluqueros/`, { headers })
+      fetch(`${API_URL}/peluqueros/`, { headers }),
+      fetch(`${API_URL}/sillas/`, { headers }) // 🔥 CARGAMOS SILLAS
     ])
     
     // Verificar respuestas
     if (!catRes.ok) throw new Error(`Error categorías: ${catRes.status}`)
     if (!servRes.ok) throw new Error(`Error servicios: ${servRes.status}`)
     if (!pelRes.ok) throw new Error(`Error peluqueros: ${pelRes.status}`)
+    // No cortamos si fallan las sillas, solo logueamos
+    if (sillasRes.ok) sillas.value = await sillasRes.json()
     
     categorias.value = await catRes.json()
     servicios.value = await servRes.json()
@@ -710,6 +749,7 @@ const cargarDatosIniciales = async () => {
     console.log("- Categorías:", categorias.value.length)
     console.log("- Servicios:", servicios.value.length)
     console.log("- Peluqueros:", peluqueros.value.length)
+    console.log("- Sillas:", sillas.value.length)
 
   } catch (error) {
     console.error("❌ Error en cargarDatosIniciales:", error)
@@ -896,6 +936,7 @@ const crearTurno = async () => {
     fecha: form.value.fecha,
     hora: form.value.hora,
     canal: 'PRESENCIAL',
+    silla: form.value.silla, // 🔥 ENVIAMOS SILLA
     tipo_pago: esPagoSena ? 'SENA_50' : 'TOTAL',
     medio_pago: form.value.medio_pago,
     monto_total: totalCalculado,
@@ -1210,6 +1251,42 @@ onBeforeUnmount(() => {
   padding: 3px 10px;
   border-radius: 6px;
   display: inline-block;
+}
+
+/* 🔥 ESTILOS PARA EL SELECTOR DE SILLA (NUEVO) */
+.custom-select-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.form-control-select {
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px solid #e1e5e9;
+  border-radius: 10px;
+  background: #f8f9fa;
+  font-size: 1rem;
+  color: #1f2937;
+  appearance: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  padding-right: 40px; /* Espacio para el icono */
+}
+
+.form-control-select:focus {
+  border-color: #8b5cf6; /* Morado para diferenciar */
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+  outline: none;
+}
+
+.select-icon {
+  position: absolute;
+  right: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6b7280;
+  pointer-events: none;
 }
 
 /* 🔥 HORARIOS MEJORADOS */

@@ -7,8 +7,8 @@ from rest_framework.decorators import action
 from django.db.models import Sum
 from django.db import transaction
 from django.http import HttpResponse
-from .models import Auditoria, Servicio, Turno, Usuario, Producto, Liquidacion, PedidoWeb, ConfiguracionSistema
-from .serializers import AuditoriaSerializer, ServicioSerializer, TurnoSerializer, UsuarioSerializer, ProductoCatalogoSerializer, LiquidacionSerializer, PedidoWebSerializer
+from .models import Auditoria, Servicio, Turno, Usuario, Producto, Liquidacion, PedidoWeb, ConfiguracionSistema, Silla
+from .serializers import AuditoriaSerializer, ServicioSerializer, TurnoSerializer, UsuarioSerializer, ProductoCatalogoSerializer, LiquidacionSerializer, PedidoWebSerializer, SillaSerializer
 import io
 import datetime
 from reportlab.lib import colors
@@ -362,3 +362,8 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
             'nuevo_estado': pedido.get_estado_display(),
             'repartidor': pedido.datos_entrega_interna
         })
+
+class SillaViewSet(viewsets.ModelViewSet):
+    queryset = Silla.objects.all().order_by('orden') # Ordenadas por el numerito
+    serializer_class = SillaSerializer
+    permission_classes = [IsAuthenticated] # Solo usuarios logueados pueden tocar esto

@@ -43,7 +43,7 @@ from .models import (
     DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, 
     InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, 
     PromocionReactivacion, Auditoria, PasswordResetToken, PedidoWeb, 
-    ConfiguracionSistema
+    ConfiguracionSistema, Silla
 )
 from .serializers import (
     LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, 
@@ -829,6 +829,7 @@ def crear_turno(request):
         servicios_ids = data.get('servicios_ids', [])
         fecha_str = data.get('fecha')
         hora_str = data.get('hora')
+        silla_id = data.get('silla_id') or data.get('silla')  # 🔥 ACEPTA AMBOS NOMBRES
         
         if not all([peluquero_id, fecha_str, hora_str, servicios_ids]):
             return Response({'status': 'error', 'message': "Faltan datos obligatorios."}, status=400)
@@ -850,7 +851,7 @@ def crear_turno(request):
             return Response({'status': 'error', 'message': "Servicios no válidos"}, status=400)
         
         # ---------------------------------------------------------
-        # 3. VALIDACIÓN DE DISPONIBILIDAD
+        # 3. VALIDACIÓN DE DISPONIBILIDAD DEL PELUQUERO
         # ---------------------------------------------------------
         duracion_total = sum(s.duracion for s in servicios) or 30
         inicio_nuevo = datetime.combine(fecha_obj, hora_obj)
@@ -864,9 +865,6 @@ def crear_turno(request):
         ).exclude(estado='CANCELADO')
         
         for t in turnos_existentes:
-            if t.fecha != fecha_obj:
-                continue
-            
             duracion_t = getattr(t, 'duracion_total', 0)
             if not duracion_t and t.servicios.exists():
                 duracion_t = sum(s.duracion for s in t.servicios.all())
@@ -883,21 +881,90 @@ def crear_turno(request):
                 }, status=400)
         
         # ---------------------------------------------------------
-        # 4. LIMPIEZA ZOMBIES
+        # 4. 🔥 VALIDACIÓN Y ASIGNACIÓN DE SILLA
+        # ---------------------------------------------------------
+        silla_asignada = None
+        if silla_id:
+            try:
+                silla_asignada = Silla.objects.get(pk=silla_id, activa=True)
+                print(f"🪑 Silla seleccionada manualmente: {silla_asignada.nombre} (ID: {silla_asignada.id})")
+            except Silla.DoesNotExist:
+                return Response({
+                    'status': 'error',
+                    'message': "La silla seleccionada no existe o está inactiva."
+                }, status=400)
+            
+            # Verificar que la silla esté libre en ese horario
+            turnos_silla = Turno.objects.filter(
+                fecha=fecha_obj,
+                silla=silla_asignada,
+                estado__in=['RESERVADO', 'COMPLETADO']
+            ).exclude(estado='CANCELADO')
+            
+            for t in turnos_silla:
+                duracion_t = getattr(t, 'duracion_total', 0)
+                if not duracion_t and t.servicios.exists():
+                    duracion_t = sum(s.duracion for s in t.servicios.all())
+                if not duracion_t:
+                    duracion_t = 30
+                
+                t_inicio = datetime.combine(t.fecha, t.hora)
+                t_fin = t_inicio + timedelta(minutes=duracion_t)
+                
+                if inicio_nuevo < t_fin and fin_nuevo > t_inicio:
+                    return Response({
+                        'status': 'error',
+                        'message': f"La silla {silla_asignada.nombre} ya está ocupada en ese horario."
+                    }, status=400)
+        else:
+            # 🔥 Asignación automática: buscar la primera silla activa que esté libre
+            sillas_libres = []
+            for silla in Silla.objects.filter(activa=True):
+                turnos_silla = Turno.objects.filter(
+                    fecha=fecha_obj,
+                    silla=silla,
+                    estado__in=['RESERVADO', 'COMPLETADO']
+                ).exclude(estado='CANCELADO')
+                
+                ocupada = False
+                for t in turnos_silla:
+                    duracion_t = getattr(t, 'duracion_total', 0)
+                    if not duracion_t and t.servicios.exists():
+                        duracion_t = sum(s.duracion for s in t.servicios.all())
+                    if not duracion_t:
+                        duracion_t = 30
+                    
+                    t_inicio = datetime.combine(t.fecha, t.hora)
+                    t_fin = t_inicio + timedelta(minutes=duracion_t)
+                    
+                    if inicio_nuevo < t_fin and fin_nuevo > t_inicio:
+                        ocupada = True
+                        break
+                
+                if not ocupada:
+                    sillas_libres.append(silla)
+            
+            if sillas_libres:
+                silla_asignada = sillas_libres[0]  # Elegir la primera libre
+                print(f"🪑 Silla asignada automáticamente: {silla_asignada.nombre} (ID: {silla_asignada.id})")
+            else:
+                print("⚠️ No hay sillas libres en este horario. El turno quedará sin silla asignada.")
+        
+        # ---------------------------------------------------------
+        # 5. LIMPIEZA ZOMBIES
         # ---------------------------------------------------------
         Turno.objects.filter(
             fecha=fecha_obj, hora=hora_obj, peluquero=peluquero, oferta_activa=True
         ).update(estado='CANCELADO', oferta_activa=False)
         
         # ---------------------------------------------------------
-        # 5. 🔥 CÁLCULOS CON CUPÓN - VERSIÓN CORREGIDA
+        # 6. 🔥 CÁLCULOS CON CUPÓN
         # ---------------------------------------------------------
         monto_total_original = sum(float(s.precio) for s in servicios)
         monto_final = monto_total_original
         descuento_aplicado = 0.0
         cupon_usado = None
         
-        # 🔥 CORRECCIÓN: Buscar cupón con múltiples nombres de parámetro
         cup_codigo = data.get('cup_codigo') or data.get('cupon_codigo') or data.get('cupon')
         
         if cup_codigo:
@@ -906,24 +973,20 @@ def crear_turno(request):
             try:
                 from .models import PromocionReactivacion
                 
-                # Normalizar código
                 codigo_normalizado = str(cup_codigo).strip().upper()
                 
-                # Buscar cupón que pertenezca a este cliente y esté activo
                 cupon = PromocionReactivacion.objects.filter(
                     codigo=codigo_normalizado,
-                    cliente=cliente,  # 🔥 IMPORTANTE: Verificar que sea del cliente
+                    cliente=cliente,
                     estado='ACTIVA'
                 ).first()
                 
                 if cupon:
-                    # Validar que no esté vencido
                     if cupon.fecha_vencimiento and cupon.fecha_vencimiento.date() < timezone.now().date():
                         print(f"❌ Cupón vencido: {cupon.codigo}")
                     elif not cupon.esta_vigente:
                         print(f"❌ Cupón no vigente: {cupon.codigo}")
                     else:
-                        # 🔥 APLICAR DESCUENTO
                         descuento_porcentaje = float(cupon.descuento_porcentaje)
                         descuento_aplicado = monto_total_original * (descuento_porcentaje / 100)
                         monto_final = monto_total_original - descuento_aplicado
@@ -941,25 +1004,24 @@ def crear_turno(request):
                 traceback.print_exc()
         
         # ---------------------------------------------------------
-        # 6. CALCULAR PAGO
+        # 7. CALCULAR PAGO
         # ---------------------------------------------------------
         tipo_pago = data.get('tipo_pago', 'SENA_50')
         medio_pago = data.get('medio_pago', 'EFECTIVO')
         
-        # Calcular seña sobre el monto CON DESCUENTO
         monto_seña = monto_final * 0.5 if tipo_pago == 'SENA_50' else monto_final
         
-        # Campos de trazabilidad de pago
         codigo_transaccion = data.get('codigo_transaccion')
         entidad_pago = data.get('entidad_pago')
         mp_payment_id = data.get('mp_payment_id')
         
         # ---------------------------------------------------------
-        # 7. CREAR TURNO CON TODOS LOS DATOS
+        # 8. CREAR TURNO CON SILLA ASIGNADA
         # ---------------------------------------------------------
         turno = Turno.objects.create(
             cliente=cliente,
             peluquero=peluquero,
+            silla=silla_asignada,  # 🔥 ASIGNAMOS LA SILLA (puede ser None)
             fecha=fecha_obj,
             hora=hora_obj,
             canal=canal,
@@ -967,8 +1029,8 @@ def crear_turno(request):
             medio_pago=medio_pago,
             monto_seña=monto_seña,
             monto_total=monto_final,
-            monto_original=monto_total_original,  # 🔥 NUEVO: Guardar monto original
-            descuento_aplicado=descuento_aplicado,  # 🔥 NUEVO: Guardar descuento
+            monto_original=monto_total_original,
+            descuento_aplicado=descuento_aplicado,
             duracion_total=duracion_total,
             estado='RESERVADO',
             codigo_transaccion=codigo_transaccion,
@@ -979,7 +1041,7 @@ def crear_turno(request):
         turno.servicios.set(servicios)
         
         # ---------------------------------------------------------
-        # 8. 🔥 MARCAR CUPÓN COMO USADO
+        # 9. MARCAR CUPÓN COMO USADO
         # ---------------------------------------------------------
         if cupon_usado:
             try:
@@ -992,7 +1054,7 @@ def crear_turno(request):
                 print(f"⚠️ Error al marcar cupón como usado: {e}")
         
         # ---------------------------------------------------------
-        # 9. MERCADO PAGO (solo para WEB)
+        # 10. MERCADO PAGO
         # ---------------------------------------------------------
         mp_data = None
         procesar_pago = False
@@ -1031,7 +1093,7 @@ def crear_turno(request):
                 traceback.print_exc()
         
         # ---------------------------------------------------------
-        # 10. RESPUESTA FINAL
+        # 11. RESPUESTA FINAL
         # ---------------------------------------------------------
         print(f"✅ Turno creado exitosamente: ID {turno.id}")
         
@@ -1041,7 +1103,6 @@ def crear_turno(request):
             'message': 'Turno reservado con éxito.',
             'procesar_pago': procesar_pago,
             'mp_data': mp_data,
-            # 🔥 INFORMACIÓN DE DESCUENTO PARA EL FRONTEND
             'descuento': {
                 'aplicado': bool(cupon_usado),
                 'porcentaje': cupon_usado.descuento_porcentaje if cupon_usado else 0,
@@ -1056,7 +1117,7 @@ def crear_turno(request):
         print(f"💥 ERROR FATAL en crear_turno: {str(e)}")
         traceback.print_exc()
         return Response({'status': 'error', 'message': str(e)}, status=500)
-
+    
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def listado_turnos(request):
@@ -1417,69 +1478,18 @@ def obtener_turnos_con_reembolso_pendiente(request):
     
 @csrf_exempt
 def obtener_turno_por_id(request, turno_id):
-    """
-    Vista SIMPLIFICADA para obtener un turno por ID
-    """
     try:
-        # Obtener el turno directamente
-        turno = Turno.objects.get(pk=turno_id)
+        turno = Turno.objects.select_related(
+            'cliente', 'peluquero', 'silla'
+        ).prefetch_related('servicios').get(pk=turno_id)
         
-        # Construir la respuesta
-        data = {
-            'id': turno.id,
-            'fecha': turno.fecha.strftime('%Y-%m-%d') if turno.fecha else '',
-            'hora': turno.hora.strftime('%H:%M') if turno.hora else '',
-            
-            # Datos Cliente
-            'cliente_id': turno.cliente.id if turno.cliente else None,
-            'cliente_nombre': turno.cliente.nombre if turno.cliente else 'Cliente',
-            'cliente_apellido': turno.cliente.apellido if turno.cliente else '',
-            'cliente_dni': turno.cliente.dni if turno.cliente else '',
-            
-            # Datos Peluquero
-            'peluquero_id': turno.peluquero.id if turno.peluquero else None,
-            'peluquero_nombre': turno.peluquero.nombre if turno.peluquero else '',
-            
-            # Datos Económicos
-            'tipo_pago': turno.tipo_pago,
-            'monto_total': float(turno.monto_total) if turno.monto_total else 0,
-            'monto_seña': float(turno.monto_seña) if turno.monto_seña else 0,
-            'medio_pago': turno.medio_pago,
-            
-            # Trazabilidad
-            'entidad_pago': turno.entidad_pago or '',
-            'codigo_transaccion': turno.codigo_transaccion or '',
-            'mp_payment_id': turno.mp_payment_id or '',
-            'nro_transaccion': turno.nro_transaccion or '',
-
-            # Servicios
-            'servicios': [
-                {
-                    'id': s.id, 
-                    'nombre': s.nombre, 
-                    'precio': float(s.precio), 
-                    'duracion': s.duracion,
-                    'categoria': s.categoria.id if s.categoria else None 
-                } 
-                for s in turno.servicios.all()
-            ],
-            
-            # Lógica de modificación
-            'puede_ser_modificado': True,
-            'mensaje_modificacion': '',
-            'estado': turno.estado
-        }
-        
-        return JsonResponse(data, status=200)
+        serializer = TurnoSerializer(turno)
+        return JsonResponse(serializer.data, status=200)
         
     except Turno.DoesNotExist:
         return JsonResponse({'error': 'Turno no encontrado'}, status=404)
     except Exception as e:
-        print(f"Error obteniendo turno {turno_id}: {str(e)}")
-        return JsonResponse({
-            'error': 'Error interno del servidor',
-            'detail': str(e)
-        }, status=500)
+        return JsonResponse({'error': str(e)}, status=500)
     
 @csrf_exempt
 @api_view(['POST'])
@@ -5017,49 +5027,46 @@ def mis_turnos(request):
         return Response({'error': str(e)}, status=500)
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated]) # 🔥 CAMBIO: Obligamos a reconocer el Token de Lautaro
+@permission_classes([IsAuthenticated])
 def listar_turnos_general(request):
     try:
-        turnos = Turno.objects.all().select_related('cliente', 'peluquero', 'cliente__rol', 'peluquero__rol').prefetch_related('servicios').order_by('-fecha', '-hora')
+        turnos = Turno.objects.all().select_related(
+            'cliente', 'peluquero', 'silla'
+        ).prefetch_related('servicios').order_by('-fecha', '-hora')
+        
         user = request.user
         rol_nombre = user.rol.nombre.upper() if user.rol else ''
         
         if rol_nombre == 'PELUQUERO':
             turnos = turnos.filter(peluquero=user)
-            print(f"🔒 Filtro de seguridad: {user.nombre} solo accede a sus datos.")
 
-        # 2. FILTROS (Mantenidos exactamente como los tenías)
+        # Filtros
         peluquero_id = request.GET.get('peluquero') or request.GET.get('peluquero_id')
         fecha_desde = request.GET.get('fecha_desde')
         fecha_hasta = request.GET.get('fecha_hasta')
         estado = request.GET.get('estado')
         canal = request.GET.get('canal')
+        incluir_cancelados = request.GET.get('incluir_cancelados')
         
-        # Solo permitimos filtrar por otro peluquero si NO eres peluquero
         if peluquero_id and peluquero_id != 'undefined' and rol_nombre != 'PELUQUERO':
             turnos = turnos.filter(peluquero_id=peluquero_id)
 
         if fecha_desde:
             turnos = turnos.filter(fecha__gte=fecha_desde)
-        
         if fecha_hasta:
             turnos = turnos.filter(fecha__lte=fecha_hasta)
-            
         if estado and estado != 'Todos':
             turnos = turnos.filter(estado=estado)
-            
+        elif not incluir_cancelados:
+            turnos = turnos.exclude(estado='CANCELADO')
         if canal and canal != 'Todos':
             turnos = turnos.filter(canal=canal)
 
-        # 3. USA EL SERIALIZER (La forma correcta)
         serializer = TurnoSerializer(turnos, many=True)
-        
         return Response(serializer.data)
 
     except Exception as e:
         print(f"❌ Error listar_turnos_general: {e}")
-        import traceback
-        traceback.print_exc()
         return Response({'error': str(e)}, status=500)
     
 @api_view(['GET'])
