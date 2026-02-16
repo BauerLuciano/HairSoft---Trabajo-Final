@@ -39,7 +39,7 @@
                 <span>Seleccionar Logo</span>
                 <input type="file" @change="handleFileUpload" accept="image/*" style="display: none;" />
               </label>
-              <p class="upload-hint">Recomendado: Imagen cuadrada (PNG/JPG) sobre fondo oscuro.</p>
+              <p class="upload-hint">Inserte su logo con formato: (PNG/JPG)</p>
             </div>
           </div>
         </div>

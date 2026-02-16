@@ -605,7 +605,7 @@ class InteresTurnoLiberado(models.Model):
         db_table = "intereses_turnos_liberados"
         ordering = ['fecha_registro', 'prioridad']
         # ✅ CORRECCIÓN: Evitar duplicados para el mismo slot
-        unique_together = ['cliente', 'peluquero', 'fecha_deseada', 'hora_deseada'] 
+        unique_together = ['cliente', 'peluquero', 'fecha_deseada', 'hora_deseada', 'servicio'] 
         # Se elimina 'servicio' del unique_together para permitir al cliente 
         # registrar interés por el mismo slot pero con distinto servicio (si fuera necesario).
 

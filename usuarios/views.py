@@ -4474,41 +4474,19 @@ def cancelar_turno_unificado(request, turno_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def obtener_info_oferta(request, turno_id, token):
-    """Devuelve la info de la oferta para mostrar en la web"""
-    from .models import Turno, InteresTurnoLiberado
-    from decimal import Decimal
-    
+    """
+    ✅ Llama al Service restaurado para mostrar MULTI-SERVICIO y Saldos.
+    """
     try:
-        # Primero verificar si el usuario está autenticado
-        user = request.user if request.user.is_authenticated else None
-        user_id = request.headers.get('User-Id') or (user.id if user else None)
+        from .turno_service import ReofertaAutomaticaService
         
-        interes = InteresTurnoLiberado.objects.filter(token_oferta=token).first()
-        if not interes or str(interes.turno_liberado.id) != str(turno_id):
-            return Response({'error': 'La oferta no existe o es inválida.'}, status=404)
-
-        # 🔴 VALIDAR QUE EL USUARIO AUTENTICADO SEA EL DUEÑO
-        if user_id and str(interes.cliente_id) != str(user_id):
-            return Response({
-                'error': 'No tienes permiso para ver esta oferta.',
-                'cliente_id': interes.cliente_id,
-                'user_id': user_id
-            }, status=403)
-
-        precio_base = Decimal(str(interes.servicio.precio))
-        descuento = Decimal(str(interes.descuento_aplicado or 15))
-        precio_final = precio_base * (Decimal('1') - (descuento / Decimal('100')))
-
-        return Response({
-            'profesional': f"{interes.peluquero.nombre} {interes.peluquero.apellido}",
-            'fecha': interes.turno_liberado.fecha.strftime("%d/%m/%Y"),
-            'hora': interes.turno_liberado.hora.strftime("%H:%M"),
-            'servicio': interes.servicio.nombre,
-            'precio_original': float(precio_base),
-            'precio_final': float(precio_final),
-            'monto_sena': float(precio_final * Decimal('0.5')),
-            'cliente_id': interes.cliente.id  # Para validar en el Front
-        })
+        # Llamamos al Service con el token corregido
+        data, error = ReofertaAutomaticaService.obtener_datos_oferta_previa(turno_id, token)
+        
+        if error:
+            return Response({'error': error}, status=400)
+            
+        return Response(data)
     except Exception as e:
         return Response({'error': str(e)}, status=500)
     

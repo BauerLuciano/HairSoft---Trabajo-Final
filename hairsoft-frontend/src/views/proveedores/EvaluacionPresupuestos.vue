@@ -259,7 +259,7 @@
                   <strong>Respondidas:</strong> {{ ofertasRespondidas(licitacionSeleccionada) }}
                 </span>
                 <span class="stat-item">
-                  <strong>Mejor precio:</strong> ${{ getMejorPrecio(licitacionSeleccionada)?.toLocaleString() || 'N/A' }}
+                  <strong>Mejor precio (Total):</strong> ${{ getMejorPrecio(licitacionSeleccionada)?.toLocaleString() || 'N/A' }}
                 </span>
               </div>
             </div>
@@ -270,7 +270,9 @@
                   <tr>
                     <th>Proveedor</th>
                     <th>Estado</th>
-                    <th>Cant. Oferta</th> <th>Precio Ofertado</th>
+                    <th>Cant. Oferta</th> 
+                    <th>Precio Unitario</th>
+                    <th>Precio Total</th>
                     <th>Tiempo Entrega</th>
                     <th>Calificación</th>
                     <th v-if="licitacionSeleccionada.estado !== 'CERRADA'">Acción</th>
@@ -300,6 +302,11 @@
                             style="color: #f59e0b; font-size: 0.75rem; display: block; font-weight: 700;">
                         ⚠️ Falta {{ licitacionSeleccionada.cantidad_requerida - cotizacion.cantidad_ofertada }}
                       </span>
+                    </td>
+                    <td v-else class="text-muted">-</td>
+
+                    <td v-if="cotizacion.respondio">
+                      ${{ calcularUnitario(cotizacion, licitacionSeleccionada).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}
                     </td>
                     <td v-else class="text-muted">-</td>
 
@@ -410,9 +417,6 @@ const cargarDatos = async () => {
     cargando.value = false
   }
 }
-
-// ... EL RESTO DEL CÓDIGO SIGUE IGUAL ...
-// (Mantené todo lo de abajo intacto: filtros, paginación, funciones, etc.)
 
 // Filtrado y ordenamiento
 const solicitudesFiltradas = computed(() => {
@@ -541,6 +545,16 @@ const esOfertaRecomendada = (cotizacion, solicitud) => {
   if (!cotizacion.respondio) return false
   const puntaje = calcularPuntaje(cotizacion, solicitud)
   return puntaje >= 7.5
+}
+
+// Nueva función para calcular el unitario
+const calcularUnitario = (cotizacion, solicitud) => {
+  // Usamos la cantidad ofertada por el proveedor, o si es nula, la requerida originalmente
+  const cantidad = cotizacion.cantidad_ofertada || solicitud.cantidad_requerida
+  if (!cantidad || cantidad === 0) return 0
+  
+  // Precio total / Cantidad
+  return cotizacion.precio_ofrecido / cantidad
 }
 
 const calcularPrioridad = (solicitud) => {

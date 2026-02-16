@@ -267,7 +267,7 @@
                 <select v-model="form.medio_pago" class="select-modern">
                   <option value="EFECTIVO">💵 Efectivo</option>
                   <option value="MERCADO_PAGO">🔵 Mercado Pago (QR/Link)</option>
-                  <option value="TRANSFERENCIA">🏦 Transferencia Bancaria</option>
+                  <option value="TRANSFERENCIA">🏦 Transferencia</option>
                 </select>
               </div>
               
@@ -826,7 +826,7 @@ const esDiaSeleccionable = (day) => {
   today.setHours(0,0,0,0)
   const diffTime = date - today
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  return (diffDays >= 0 && diffDays <= 7) && date.getDay() !== 0
+  return (diffDays >= 0 && diffDays <= 8) && date.getDay() !== 0
 }
 
 const esDiaSeleccionado = (day) => {

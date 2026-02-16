@@ -130,116 +130,96 @@ Ingrese su oferta aquí: {link}
 # ==============================================================================
 # 2. TAREAS DE NEGOCIO - VERSIÓN CORREGIDA
 # ==============================================================================
-
 @shared_task
 def procesar_reoferta_masiva(turno_id):
     """
-    🔥 VERSIÓN COMPLETAMENTE CORREGIDA: 
-    - Eliminado raw SQL (causaba error "no existe la relación «usuarios_turno»")
-    - Usa ORM normal de Django
-    - Verifica token y envía WhatsApps
+    🔥 VERSIÓN CORREGIDA: Agrupa notificaciones por cliente
     """
     try:
-        # 🔥 CORRECCIÓN CRÍTICA: Usar ORM normal, NO raw SQL
-        # Error original: turno = Turno.objects.raw('SELECT * FROM usuarios_turno WHERE id = %s', [turno_id])[0]
         turno = Turno.objects.get(id=turno_id)
         
-        # Validaciones de estado
         if turno.estado != 'CANCELADO': 
-            logger.warning(f"⚠️ Turno {turno_id} no está cancelado. Estado: {turno.estado}")
+            logger.warning(f"⚠️ Turno {turno_id} no está cancelado.")
             return False
         
-        # 🔥 VERIFICACIÓN CRÍTICA: Token DEBE existir
+        # Asegurar token del turno (aunque usaremos el del interés por seguridad)
         if not turno.token_reoferta:
-            logger.error(f"🚨 ERROR CRÍTICO: Turno {turno_id} NO tiene token en DB")
-            # Generar token de emergencia
             turno.token_reoferta = str(uuid.uuid4())
-            # Guardar SOLO el token sin afectar otros campos
             Turno.objects.filter(id=turno.id).update(token_reoferta=turno.token_reoferta)
-            logger.warning(f"⚠️ Token de emergencia generado: {turno.token_reoferta}")
-        
-        # Obtener interesados que están en estado 'preparando' (marcados por el Service)
+
+        # Buscar interesados
         interesados = InteresTurnoLiberado.objects.filter(
             turno_liberado=turno,
-            estado_oferta='preparando'
-        ).order_by('fecha_registro')
-        
-        if not interesados.exists():
-            logger.info(f"📭 No hay interesados en estado 'preparando' para turno {turno_id}")
-            # Intentar con 'pendiente' como fallback
-            interesados = InteresTurnoLiberado.objects.filter(
-                peluquero=turno.peluquero,
-                fecha_deseada=turno.fecha,
-                hora_deseada=turno.hora,
-                estado_oferta='pendiente'
-            ).order_by('fecha_registro')
+            estado_oferta__in=['preparando', 'pendiente']
+        ).select_related('cliente', 'servicio').order_by('prioridad', 'fecha_registro')
         
         if not interesados.exists():
             logger.info(f"📭 No hay interesados para turno {turno_id}")
             return True
         
-        logger.info(f"📨 Enviando ofertas a {interesados.count()} interesados para turno {turno_id}")
-        
-        # 🔥 BASE_URL para los links (usa FRONTEND_URL de settings o fallback)
-        base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
-        
-        # Enviar mensajes a los interesados
+        # 🔄 AGRUPAR POR CLIENTE (La magia está acá)
+        clientes_map = {}
         for interes in interesados:
+            cid = interes.cliente.id
+            if cid not in clientes_map:
+                clientes_map[cid] = {
+                    'principal': interes, # Guardamos uno de referencia
+                    'servicios': [],
+                    'registros': []
+                }
+            clientes_map[cid]['servicios'].append(interes.servicio.nombre)
+            clientes_map[cid]['registros'].append(interes)
+
+        count_notificados = 0
+        base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+
+        logger.info(f"📨 Procesando {len(clientes_map)} clientes interesados...")
+
+        # Enviar 1 mensaje por cliente
+        for cid, data in clientes_map.items():
             try:
-                # Actualizar a 'enviada' ANTES de enviar
-                interes.estado_oferta = 'enviada'
-                interes.turno_liberado = turno
-                interes.save(update_fields=['estado_oferta', 'turno_liberado'])
+                interes = data['principal']
+                lista_servicios = data['servicios']
+                registros = data['registros']
                 
-                # 🔥 Generar link con el token (que DEBERÍA existir)
-                link = f"{base_url}/aceptar-oferta/{turno.id}/{turno.token_reoferta}"
+                # Texto de servicios: "Corte, Barba y Lavado"
+                servicios_str = ", ".join(lista_servicios)
+
+                # Actualizar estado A TODOS los registros de este cliente
+                for reg in registros:
+                    reg.estado_oferta = 'enviada'
+                    reg.turno_liberado = turno
+                    reg.fecha_envio_oferta = timezone.now()
+                    reg.save(update_fields=['estado_oferta', 'turno_liberado', 'fecha_envio_oferta'])
+
+                # 🔥 LINK CON TOKEN ESPECÍFICO DEL INTERÉS (Más seguro y directo)
+                link = f"{base_url}/aceptar-oferta/{turno.id}/{interes.token_oferta}"
 
                 msg = (
                     f"¡TURNO DISPONIBLE! 🎁\n"
-                    f"Hola {interes.cliente.nombre}, se liberó un lugar:\n\n"
+                    f"Hola {interes.cliente.nombre}, se liberó un lugar para:\n"
+                    f"✂️ *{servicios_str}*\n\n"
                     f"📅 {turno.fecha}\n"
                     f"⏰ {turno.hora}\n\n"
-                    f"👇 Tocá el link para reservar con un 15% de descuento!:\n"
+                    f"👇 Tocá para reservar con 15% OFF:\n"
                     f"{link}\n\n"
                     f"Los Últimos Serán Los Primeros"
                 )
-                
-                # 🔥 ENVIAR WHATSAPP REALMENTE (antes solo se programaba)
-                if interes.cliente.telefono: 
-                    # Llamar DIRECTAMENTE a la función (no .delay()) para asegurar envío
-                    # O usar .apply_async() con retry
-                    try:
-                        result = enviar_whatsapp_oferta.apply_async(
-                            args=[interes.cliente.telefono, msg],
-                            retry=True,
-                            retry_policy={
-                                'max_retries': 3,
-                                'interval_start': 2,
-                                'interval_step': 2,
-                                'interval_max': 10,
-                            }
-                        )
-                        logger.info(f"📱 WhatsApp ENVIADO para {interes.cliente.nombre} - Tel: {interes.cliente.telefono}")
-                    except Exception as e:
-                        logger.error(f"❌ Error programando WhatsApp: {str(e)}")
-                        # Intento directo como fallback
-                        enviar_whatsapp_oferta(interes.cliente.telefono, msg)
-                
-                # Pequeña pausa para no saturar Twilio
-                time.sleep(1)
-                
+
+                if interes.cliente.telefono:
+                    enviar_whatsapp_oferta.delay(interes.cliente.telefono, msg)
+                    count_notificados += 1
+                    time.sleep(1) # Pequeña pausa
+
             except Exception as e:
-                logger.error(f"❌ Error con interesado {interes.id}: {str(e)}")
+                logger.error(f"❌ Error con cliente {cid}: {e}")
                 continue
-        
-        logger.info(f"✅ Reoferta masiva COMPLETADA para turno {turno_id}")
+
+        logger.info(f"✅ Notificados {count_notificados} clientes correctamente.")
         return True
 
-    except Turno.DoesNotExist:
-        logger.error(f"❌ Turno {turno_id} no encontrado en tarea de reoferta")
-        return False
     except Exception as e:
-        logger.error(f"❌ Error crítico en reoferta masiva: {e}", exc_info=True)
+        logger.error(f"❌ Error crítico en reoferta: {e}", exc_info=True)
         return False
 
 @shared_task

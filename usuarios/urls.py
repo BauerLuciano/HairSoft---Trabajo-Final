@@ -16,7 +16,7 @@ from .api_views import (
     ReporteLiquidacionView,
     ReporteLiquidacionPDFView,
     RegistrarPagoLiquidacionView,
-    HistorialLiquidacionesView
+    HistorialLiquidacionesView,
 )
 
 from .views import (
@@ -249,8 +249,8 @@ urlpatterns = [
     path('api/reoferta/forzar/<int:turno_id>/', func_views.forzar_reoferta, name='forzar-reoferta'),
     path('api/intereses-turnos/cliente/<int:cliente_id>/', func_views.listar_intereses_cliente, name='listar-intereses-cliente'),
     path('api/reoferta/respuesta/<int:interes_id>/', func_views.procesar_respuesta_oferta, name='procesar-respuesta-oferta'),
-    path('api/turnos/<int:turno_id>/oferta-info/<str:token>/', func_views.oferta_info_api, name='oferta_info_api'),
-
+    
+    path('api/turnos/<int:turno_id>/oferta-info/<str:token>/', func_views.obtener_info_oferta, name='oferta_info_api'),
     #Dashboard
     path('api/dashboard/', func_views.dashboard_data, name='dashboard_data'),
 

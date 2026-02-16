@@ -115,53 +115,58 @@ class TurnoService:
             print(f"👥 Interesados encontrados (sin cliente que canceló): {interesados.count()}")
             
             # 8. 🔥 ENVIAR WHATSAPP A TODOS LOS INTERESADOS (excepto el que canceló)
+            # 🔧 MODIFICADO: Agrupar por cliente para enviar UN SOLO mensaje por persona
             whatsapp_enviados = 0
             if interesados.exists():
-                print(f"📡 Enviando WhatsApps a nuevos interesados...")
+                print(f"📡 Enviando WhatsApps a nuevos interesados (agrupados por cliente)...")
                 
                 # Importar función de WhatsApp
                 from .tasks import enviar_whatsapp_oferta
                 base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
                 
+                # Agrupar intereses por cliente_id
+                from collections import defaultdict
+                intereses_por_cliente = defaultdict(list)
                 for interesado in interesados:
-                    try:
-                        print(f"  → Procesando: {interesado.cliente.nombre} (Tel: {interesado.cliente.telefono})")
+                    intereses_por_cliente[interesado.cliente_id].append(interesado)
+                
+                for cliente_id, lista_intereses in intereses_por_cliente.items():
+                    # Tomamos el primer interés para datos del cliente (todos comparten cliente)
+                    interes_ejemplo = lista_intereses[0]
+                    cliente = interes_ejemplo.cliente
+                    print(f"  → Procesando cliente: {cliente.nombre} (ID: {cliente_id}, Tel: {cliente.telefono}) - {len(lista_intereses)} interés(es)")
+                    
+                    # Generar link único con token
+                    link = f"{base_url}/aceptar-oferta/{turno.id}/{turno.token_reoferta}"
+                    mensaje = (
+                        f"¡TURNO DISPONIBLE! 🎁\n"
+                        f"Hola {cliente.nombre}, se liberó un lugar:\n\n"
+                        f"📅 {turno.fecha}\n"
+                        f"⏰ {turno.hora}\n\n"
+                        f"👇 Tocá el link para reservar con un 15% de descuento!:\n"
+                        f"{link}\n\n"
+                        f"Los Últimos Serán Los Primeros"
+                    )
+                    
+                    # Enviar WhatsApp si tiene teléfono (UNA SOLA VEZ por cliente)
+                    if cliente.telefono:
+                        print(f"    📱 Enviando WhatsApp a {cliente.telefono}")
+                        resultado = enviar_whatsapp_oferta(cliente.telefono, mensaje)
                         
-                        # Generar link único con token
-                        link = f"{base_url}/aceptar-oferta/{turno.id}/{turno.token_reoferta}"
-                        mensaje = (
-                            f"¡TURNO DISPONIBLE! 🎁\n"
-                            f"Hola {interesado.cliente.nombre}, se liberó un lugar:\n\n"
-                            f"📅 {turno.fecha}\n"
-                            f"⏰ {turno.hora}\n\n"
-                            f"👇 Tocá el link para reservar con un 15% de descuento!:\n"
-                            f"{link}\n\n"
-                            f"Los Últimos Serán Los Primeros"
-                        )
-                        
-                        # Enviar WhatsApp si tiene teléfono
-                        if interesado.cliente.telefono:
-                            print(f"    📱 Enviando WhatsApp a {interesado.cliente.telefono}")
-                            resultado = enviar_whatsapp_oferta(interesado.cliente.telefono, mensaje)
-                            
-                            if resultado:
-                                print(f"    ✅ WhatsApp ENVIADO correctamente")
-                                whatsapp_enviados += 1
-                            else:
-                                print(f"    ❌ Error enviando WhatsApp")
-                        
-                        # Actualizar estado del interesado
+                        if resultado:
+                            print(f"    ✅ WhatsApp ENVIADO correctamente")
+                            whatsapp_enviados += 1
+                        else:
+                            print(f"    ❌ Error enviando WhatsApp")
+                    
+                    # Actualizar TODOS los intereses de este cliente a 'enviada'
+                    for interesado in lista_intereses:
                         interesado.estado_oferta = 'enviada'
                         interesado.turno_liberado = turno
                         interesado.save(update_fields=['estado_oferta', 'turno_liberado'])
-                        
-                        print(f"    ✅ Estado actualizado a 'enviada'")
-                        
-                    except Exception as e:
-                        print(f"    ❌ Error con {interesado.cliente.nombre}: {e}")
-                        continue
+                        print(f"    ✅ Interés ID {interesado.id} actualizado a 'enviada'")
                 
-                print(f"✅ {whatsapp_enviados} WhatsApps enviados exitosamente")
+                print(f"✅ {whatsapp_enviados} WhatsApps enviados exitosamente (para {len(intereses_por_cliente)} clientes)")
             
             # 9. ✅ MENSAJE FINAL - REEMBOLSO SIEMPRE PENDIENTE
             mensaje = 'Turno cancelado exitosamente'
@@ -300,9 +305,9 @@ class TurnoService:
             logger.error(f"❌ Turno {turno_id} no encontrado para reoferta")
             return False
 
-
 class ReofertaAutomaticaService:
-    
+    print("🚀 Clase ReofertaAutomaticaService cargada correctamente")
+
     @staticmethod
     def procesar_reoferta(turno_cancelado):
         try:
@@ -340,143 +345,52 @@ class ReofertaAutomaticaService:
             return False
 
     @staticmethod
-    @transaction.atomic
-    def ejecutar_canje(interesado, turno_liberado):
-        """
-        🔥 LÓGICA DE CANJE BLINDADA (3 REGISTROS + PAGO CLONADO)
-        """
-        from .models import Turno
-        
-        try:
-            logger.info(f"🔄 EJECUTANDO CANJE PARA: {interesado.cliente.nombre}")
-            
-            # 1. BUSCAR TURNO VIEJO (B)
-            turno_viejo = Turno.objects.filter(
-                cliente=interesado.cliente,
-                estado__in=['RESERVADO', 'CONFIRMADO'],
-                fecha__gte=timezone.now().date()
-            ).order_by('-fecha_creacion').first()
-
-            if not turno_viejo:
-                return False, "El cliente no tiene un turno activo para canjear."
-
-            # 2. CAPTURAR DATOS FINANCIEROS (CLONACIÓN)
-            mp_id_origen = turno_viejo.mp_payment_id
-            transaccion_origen = turno_viejo.nro_transaccion
-            medio_pago_origen = turno_viejo.medio_pago
-            
-            # Plata pagada
-            plata_pagada = turno_viejo.monto_seña or Decimal('0.00')
-            if turno_viejo.tipo_pago == 'TOTAL':
-                plata_pagada = turno_viejo.monto_total or Decimal('0.00')
-
-            logger.info(f"💰 Plata pagada en turno viejo: {plata_pagada}. Medio: {medio_pago_origen}")
-
-            # 3. CANCELAR TURNO VIEJO (B) - SIN DEVOLUCIÓN
-            # Usamos update() directo para evitar que signals interfieran aquí
-            Turno.objects.filter(id=turno_viejo.id).update(
-                estado='CANCELADO',
-                motivo_cancelacion='CANJE_AUTOMATICO',
-                obs_cancelacion=f"Canjeado por turno ID {turno_liberado.id}.",
-                reembolsado=True,
-                reembolso_estado='NO_APLICA', # CLAVE
-                fecha_modificacion=timezone.now()
-            )
-            logger.info(f"🚫 Turno Viejo ID {turno_viejo.id} CANCELADO (Registro 2 de 3)")
-
-            # 4. PRECIO NUEVO
-            precio_base = interesado.servicio.precio
-            descuento = Decimal('0.85')
-            precio_con_descuento = precio_base * descuento
-            
-            # 5. SALDO A FAVOR
-            saldo_a_favor = Decimal('0.00')
-            if plata_pagada > precio_con_descuento:
-                saldo_a_favor = plata_pagada - precio_con_descuento
-
-            # 6. TIPO DE PAGO NUEVO
-            if plata_pagada >= precio_con_descuento:
-                tipo_pago_nuevo = 'TOTAL'
-                monto_seña_nuevo = precio_con_descuento 
-                estado_nuevo = 'CONFIRMADO' 
-            else:
-                tipo_pago_nuevo = 'SENA_50'
-                monto_seña_nuevo = plata_pagada
-                estado_nuevo = 'RESERVADO'
-
-            # 7. CREAR TURNO NUEVO (C)
-            nuevo_turno = Turno.objects.create(
-                cliente=interesado.cliente,
-                peluquero=turno_liberado.peluquero,
-                fecha=turno_liberado.fecha,
-                hora=turno_liberado.hora,
-                canal='WEB',
-                estado=estado_nuevo,
-                
-                # CLONACIÓN EXPLÍCITA
-                mp_payment_id=mp_id_origen,
-                nro_transaccion=transaccion_origen,
-                medio_pago=medio_pago_origen,
-                
-                tipo_pago=tipo_pago_nuevo,
-                monto_seña=monto_seña_nuevo,
-                monto_total=precio_con_descuento,
-                
-                obs_cancelacion=f"Generado por Reoferta. Origen Turno {turno_viejo.id}. Saldo favor: ${saldo_a_favor}",
-                reembolso_estado='NO_APLICA',
-                reembolsado=False,
-            )
-            
-            nuevo_turno.servicios.add(interesado.servicio)
-            interesado.oferta_aceptada = True
-            interesado.fecha_aceptacion = timezone.now()
-            interesado.save()
-
-            logger.info(f"✅ Turno Nuevo ID {nuevo_turno.id} CREADO. MP Clonado: {mp_id_origen}")
-            return True, "Canje exitoso"
-
-        except Exception as e:
-            logger.error(f"❌ Error en canje: {str(e)}")
-            return False, str(e)
-
-    @staticmethod
     def obtener_datos_oferta_previa(turno_liberado_id, token):
+        """
+        ✅ RESTAURADO: Agrupa servicios, calcula saldos y respeta toda tu lógica.
+        """
         from .models import Turno, InteresTurnoLiberado
+        from decimal import Decimal
         try:
             turno_liberado = Turno.objects.get(id=turno_liberado_id)
             
             # Validar token
             if str(turno_liberado.token_reoferta) != str(token):
                 logger.error(f"❌ Mismatch Token. DB: {turno_liberado.token_reoferta}, URL: {token}")
-                return None, "Token inválido"
+                return None, "Token inválido o enlace expirado"
 
-            # CORREGIDO: Filtro por estado_oferta
-            interesado = InteresTurnoLiberado.objects.filter(
-                peluquero=turno_liberado.peluquero, 
-                fecha_deseada=turno_liberado.fecha,
-                hora_deseada=turno_liberado.hora, 
-                estado_oferta='enviada'
+            # 1. Buscamos el interés principal
+            interes_principal = InteresTurnoLiberado.objects.filter(
+                turno_liberado_id=turno_liberado_id,
+                token_oferta=token
             ).first()
-            
-            if not interesado:
-                # Intento con preparando por si acaso
-                interesado = InteresTurnoLiberado.objects.filter(
-                    peluquero=turno_liberado.peluquero, 
-                    fecha_deseada=turno_liberado.fecha,
-                    hora_deseada=turno_liberado.hora, 
-                    estado_oferta='preparando'
+
+            if not interes_principal:
+                interes_principal = InteresTurnoLiberado.objects.filter(
+                    turno_liberado_id=turno_liberado_id,
+                    estado_oferta__in=['enviada', 'preparando']
                 ).first()
             
-            if not interesado: 
+            if not interes_principal: 
                 return None, "Oferta no disponible"
 
-            precio_base = interesado.servicio.precio
-            precio_oferta = precio_base * Decimal('0.85')
+            # 2. Agrupamos todos los servicios de este cliente para este slot
+            intereses_cliente = InteresTurnoLiberado.objects.filter(
+                turno_liberado_id=turno_liberado_id,
+                cliente=interes_principal.cliente
+            )
+
+            total_bruto = sum(Decimal(str(i.servicio.precio)) for i in intereses_cliente)
+            nombres_servicios = ", ".join([i.servicio.nombre for i in intereses_cliente])
             
+            # 3. Cálculo de oferta (15% desc)
+            precio_oferta = total_bruto * Decimal('0.85')
+            
+            # 4. Cálculo de saldo con el turno que el cliente ya tenía
             turno_anterior = Turno.objects.filter(
-                cliente=interesado.cliente, 
+                cliente=interes_principal.cliente, 
                 estado__in=['RESERVADO', 'CONFIRMADO']
-            ).order_by('-fecha_creacion').first()
+            ).exclude(id=turno_liberado_id).order_by('-fecha_creacion').first()
             
             pagado_anterior = Decimal('0.00')
             if turno_anterior:
@@ -486,18 +400,123 @@ class ReofertaAutomaticaService:
             monto_final = max(Decimal('0.00'), precio_oferta - pagado_anterior)
 
             return {
-                "precio_original": float(precio_base),
+                "precio_original": float(total_bruto),
                 "precio_final": float(precio_oferta),
                 "pagado_anterior": float(pagado_anterior),
                 "saldo_a_favor": float(saldo),
                 "monto_final_a_pagar": float(monto_final),
-                "servicio": interesado.servicio.nombre,
+                "servicio": nombres_servicios,
                 "profesional": f"{turno_liberado.peluquero.nombre} {turno_liberado.peluquero.apellido}",
-                "fecha": str(turno_liberado.fecha),
-                "hora": str(turno_liberado.hora),
-                "cliente_id": interesado.cliente.id,
+                "fecha": turno_liberado.fecha.strftime("%d/%m/%Y"),
+                "hora": turno_liberado.hora.strftime("%H:%M"),
+                "cliente_id": interes_principal.cliente.id,
                 "turno_liberado_id": turno_liberado_id,
                 "token": token
             }, None
         except Exception as e:
             return None, str(e)
+
+    @staticmethod
+    def ejecutar_canje(intereses_o_unico, turno_liberado):
+        """
+        🔥 VERSIÓN CORREGIDA: Ahora el motivo del turno anterior es 'Turno por canje'.
+        """
+        print("🔥 EJECUTANDO ejecutar_canje - Método alcanzado")
+        from .models import Turno, InteresTurnoLiberado
+        from django.db import transaction
+        from decimal import Decimal
+        try:
+            with transaction.atomic():
+                # Determinar cliente y turno target
+                if hasattr(intereses_o_unico, '__iter__'):
+                    lista_original = list(intereses_o_unico)
+                    interes_base = lista_original[0]
+                else:
+                    interes_base = intereses_o_unico
+                    lista_original = [interes_base]
+
+                turno_target = Turno.objects.select_for_update().get(id=turno_liberado.id)
+                if turno_target.estado != 'CANCELADO':
+                    return False, "El turno ya fue tomado por otra persona."
+
+                cliente = interes_base.cliente
+
+                # Obtener TODOS los intereses activos de este cliente para este turno
+                intereses_completos = InteresTurnoLiberado.objects.filter(
+                    turno_liberado=turno_target,
+                    cliente=cliente,
+                    estado_oferta='enviada'
+                )
+                if intereses_completos.exists():
+                    lista_intereses = list(intereses_completos)
+                else:
+                    lista_intereses = lista_original
+
+                # Buscar turno anterior para clonar datos de pago
+                turno_anterior = Turno.objects.filter(
+                    cliente=cliente, estado__in=['RESERVADO', 'CONFIRMADO']
+                ).exclude(id=turno_target.id).order_by('-fecha_creacion').first()
+
+                pagado_previo = Decimal('0.00')
+                canal_clonado = 'WEB'
+                mp_id = None
+                cod_trans = None
+                entidad = None
+
+                if turno_anterior:
+                    pagado_previo = turno_anterior.monto_total if turno_anterior.tipo_pago == 'TOTAL' else turno_anterior.monto_seña
+                    canal_clonado = turno_anterior.canal
+                    mp_id = turno_anterior.mp_payment_id
+                    cod_trans = turno_anterior.codigo_transaccion
+                    entidad = turno_anterior.entidad_pago
+
+                    # 🔁 CANCELAR TURNO ANTERIOR CON MOTIVO "Turno por canje"
+                    turno_anterior.estado = 'CANCELADO'
+                    turno_anterior.motivo_cancelacion = "Turno por canje"
+                    turno_anterior.reembolso_estado = 'NO_APLICA'
+                    turno_anterior.save()
+
+                # Calcular precios
+                total_bruto = sum(Decimal(str(i.servicio.precio)) for i in lista_intereses)
+                precio_con_desc = total_bruto * Decimal('0.85')
+
+                # Determinar tipo de pago
+                if pagado_previo < precio_con_desc:
+                    tipo_pago = 'SENA_50'
+                else:
+                    tipo_pago = 'TOTAL'
+
+                monto_seña = pagado_previo
+
+                # 🚀 CREAR NUEVO TURNO (sin motivo de cancelación)
+                nuevo = Turno.objects.create(
+                    fecha=turno_target.fecha,
+                    hora=turno_target.hora,
+                    peluquero=interes_base.peluquero,
+                    cliente=cliente,
+                    estado='RESERVADO',
+                    canal=canal_clonado,
+                    tipo_pago=tipo_pago,
+                    medio_pago='MERCADO_PAGO',
+                    mp_payment_id=mp_id,
+                    codigo_transaccion=cod_trans,
+                    entidad_pago=entidad,
+                    monto_total=precio_con_desc,
+                    monto_seña=monto_seña,
+                    oferta_activa=True,
+                    motivo_cancelacion=""
+                )
+
+                for item in lista_intereses:
+                    nuevo.servicios.add(item.servicio)
+                    item.estado_oferta = 'aceptada'
+                    item.fecha_respuesta = timezone.now()
+                    item.save()
+
+                InteresTurnoLiberado.objects.filter(
+                    turno_liberado=turno_target, estado_oferta='enviada'
+                ).exclude(cliente=cliente).update(estado_oferta='expirada')
+
+                return True, "¡Turno confirmado con éxito!"
+        except Exception as e:
+            return False, f"Error en canje: {str(e)}"

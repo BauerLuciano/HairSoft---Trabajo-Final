@@ -44,12 +44,19 @@
               v-model.number="form.cantidad" 
               type="number" 
               min="1"
+              :max="datos.cantidad_requerida"
               required 
               class="input-field input-destacado"
+              :class="{ 'input-error': esCantidadInvalida }"
             >
           </div>
-          <small v-if="form.cantidad < datos.cantidad_requerida" class="aviso-stock">
+          
+          <small v-if="form.cantidad < datos.cantidad_requerida && form.cantidad > 0" class="aviso-stock">
             ⚠️ Estás ofreciendo menos de lo solicitado (Lote: {{ datos.cantidad_requerida }}).
+          </small>
+          
+          <small v-if="esCantidadInvalida" class="error-msg">
+            ❌ No puedes ofrecer más de lo solicitado (Máx: {{ datos.cantidad_requerida }}).
           </small>
         </div>
 
@@ -93,7 +100,7 @@
           ></textarea>
         </div>
 
-        <button type="submit" class="btn-enviar" :disabled="enviando">
+        <button type="submit" class="btn-enviar" :disabled="enviando || esCantidadInvalida">
           {{ enviando ? 'Procesando...' : 'Confirmar Presupuesto' }}
         </button>
       </form>
@@ -102,20 +109,21 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue' // Agregamos computed
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 
 const route = useRoute()
 const token = route.params.token
-const API_URL = 'http://127.0.0.1:8000/api/cotizacion-externa'
+// OJO: Asegúrate que esta URL sea accesible desde internet si el proveedor está fuera de tu red local
+const API_URL = 'http://127.0.0.1:8000/api/cotizacion-externa' 
 const cargando = ref(true)
 const error = ref(false)
 const mensajeError = ref('')
 const enviado = ref(false)
 const enviando = ref(false)
 
-const datos = ref({}) // Empezamos vacío
+const datos = ref({}) 
 const precioUnitario = ref(0)
 const fechaSeleccionada = ref('')
 const fechaMinima = new Date().toISOString().split('T')[0]
@@ -125,6 +133,14 @@ const form = ref({
   precio_ofrecido: 0,
   dias_entrega: 0,
   comentarios: ''
+})
+
+// CAMBIO 4: Propiedad computada para validar la cantidad fácilmente
+const esCantidadInvalida = computed(() => {
+  // Si no hay datos cargados, no es inválido todavía
+  if (!datos.value.cantidad_requerida) return false;
+  // Es inválido si lo que escribe el usuario es mayor a lo requerido
+  return form.value.cantidad > datos.value.cantidad_requerida;
 })
 
 // Cálculo de total dinámico
@@ -146,11 +162,9 @@ watch(fechaSeleccionada, (val) => {
 
 onMounted(async () => {
   try {
-    // Usamos el puerto 8000 directamente para asegurar que vaya al backend
     const response = await axios.get(`${API_URL}/${token}/`)    
     console.log("📥 RESPUESTA DEL SERVER:", response.data)
 
-    // Si lo que llega es un string (HTML), algo sigue mal en las rutas
     if (typeof response.data === 'string') {
         console.error("🚨 ERROR: Se recibió HTML en lugar de JSON. Revisar URLs de Django.")
         error.value = true
@@ -161,18 +175,25 @@ onMounted(async () => {
       enviado.value = true
     } else {
       datos.value = response.data
-      // Precarga con fallback a 0 para evitar NaN
+      // Precarga con lo requerido (luego ellos pueden bajarlo si quieren)
       form.value.cantidad = Number(response.data.cantidad_requerida) || 0
     }
   } catch (e) {
     console.error("❌ ERROR AXIOS:", e)
     error.value = true
+    mensajeError.value = 'No se pudo cargar la información.'
   } finally {
     cargando.value = false
   }
 })
 
 const enviarCotizacion = async () => {
+  // Doble chequeo antes de enviar por si hackearon el HTML
+  if (esCantidadInvalida.value) {
+    alert("La cantidad no puede superar lo solicitado.");
+    return;
+  }
+
   enviando.value = true
   try {
     await axios.post(`${API_URL}/${token}/`, form.value)
