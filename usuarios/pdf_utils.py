@@ -59,7 +59,6 @@ def footer(canvas, doc):
     canvas.setFillColor(GRIS_CLARO)
     width, height = A4
     canvas.drawCentredString(width / 2, 1.5 * cm, "HairSoft - Sistema de Gestión Integral")
-    # ✅ PÁGINA AL FINAL A LA DERECHA
     canvas.drawRightString(width - 2 * cm, 1.5 * cm, f"Página {canvas.getPageNumber()}")
     canvas.restoreState()
 
@@ -91,7 +90,6 @@ def generar_comprobante_venta(venta_data, detalles, usuario_impresor):
 
     logo_img = obtener_logo_reporte(config)
 
-    # ✅ COLUMNA IZQUIERDA: DATOS APILADOS UNO DEBAJO DEL OTRO
     col_izq = [
         Paragraph(config.razon_social, estilos['Empresa']),
         Spacer(1, 4),
@@ -117,7 +115,6 @@ def generar_comprobante_venta(venta_data, detalles, usuario_impresor):
     
     emisor_nombre = usuario_impresor if usuario_impresor else "Sistema"
 
-    # ✅ COLUMNA DERECHA: EMITIDO POR ARRIBA
     col_der = [
         Paragraph("COMPROBANTE DE VENTA", estilos['TituloDer']),
         Spacer(1, 6),
@@ -142,7 +139,6 @@ def generar_comprobante_venta(venta_data, detalles, usuario_impresor):
     elements.append(tabla_header)
     elements.append(Spacer(1, 1*cm))
 
-    # --- LÓGICA DE CLIENTE Y TABLA (SIN CAMBIOS) ---
     cliente = venta_data.get('cliente_nombre') or "Consumidor Final"
     lbl_style = ParagraphStyle('L', fontSize=8, textColor=GRIS_CLARO, textTransform='uppercase')
     val_style = ParagraphStyle('V', fontName='Helvetica-Bold', fontSize=10, textColor=AZUL_HEADER)
@@ -208,7 +204,6 @@ def generar_liquidacion_pdf(data_empleados, fecha_inicio, fecha_fin, usuario_imp
 
     logo_img = obtener_logo_reporte(config)
 
-    # ✅ CABECERA STACKED PARA LIQUIDACIÓN
     col_izq = [
         Paragraph(config.razon_social, estilos['Empresa']),
         Spacer(1, 4),
@@ -249,7 +244,6 @@ def generar_liquidacion_pdf(data_empleados, fecha_inicio, fecha_fin, usuario_imp
     elements.append(tabla_header)
     elements.append(Spacer(1, 1*cm))
 
-    # --- RESTO DE LA LÓGICA DE LIQUIDACIÓN (MANTENIDA) ---
     grand_total = 0
     for emp in data_empleados:
         grand_total += emp['total']
@@ -267,4 +261,213 @@ def generar_liquidacion_pdf(data_empleados, fecha_inicio, fecha_fin, usuario_imp
 
     funcion_cierre = sello_pagado if es_pagado else footer
     doc.build(elements, onFirstPage=funcion_cierre, onLaterPages=funcion_cierre)
+    return buffer.getvalue()
+
+# ====================================================================
+#  3. GENERAR REPORTE DE VENTAS (LISTADO)
+# ====================================================================
+def generar_reporte_ventas(ventas, filtros, usuario_impresor, config):
+    """
+    Genera un reporte de ventas en PDF con diseño profesional.
+    - ventas: lista de objetos Venta
+    - filtros: dict con filtros aplicados (fecha_desde, fecha_hasta, metodo_pago, tipo, estado)
+    - usuario_impresor: nombre de quien genera el reporte
+    - config: objeto ConfiguracionSistema con datos de la empresa
+    """
+    import re
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_RIGHT
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from io import BytesIO
+    from datetime import datetime
+
+    buffer = BytesIO()
+    estilos = get_estilos()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=50)
+    elements = []
+
+    # Función auxiliar para limpiar texto (elimina caracteres no imprimibles)
+    def limpiar_texto(texto):
+        if texto is None:
+            return ""
+        texto = str(texto)
+        # Eliminar caracteres de control y no imprimibles (excepto espacios y letras comunes)
+        texto = re.sub(r'[^\x20-\x7EáéíóúÁÉÍÓÚñÑ\s]', '', texto)
+        return texto.strip()
+
+    logo_img = obtener_logo_reporte(config)
+
+    # Columna izquierda: datos de la empresa
+    col_izq = [
+        Paragraph(limpiar_texto(config.razon_social), estilos['Empresa']),
+        Spacer(1, 4),
+        Paragraph(f"<b>CUIT:</b> {limpiar_texto(config.cuil_cuit)}", estilos['DatosEmpresa']),
+        Paragraph(f"<b>DIRECCIÓN:</b> {limpiar_texto(config.direccion)}", estilos['DatosEmpresa']),
+        Paragraph(f"<b>TELÉFONO:</b> {limpiar_texto(config.telefono)}", estilos['DatosEmpresa']),
+        Paragraph(f"<b>EMAIL:</b> {limpiar_texto(config.email)}", estilos['DatosEmpresa']),
+    ]
+
+    if logo_img:
+        bloque_izquierda = Table([[logo_img, col_izq]], colWidths=[2.5*cm, 9.5*cm])
+        bloque_izquierda.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 0)]))
+    else:
+        bloque_izquierda = col_izq
+
+    # Columna derecha: título y filtros aplicados
+    filtros_str = ""
+    if filtros:
+        f_list = []
+        if filtros.get('fecha_desde'): f_list.append(f"Desde: {filtros['fecha_desde']}")
+        if filtros.get('fecha_hasta'): f_list.append(f"Hasta: {filtros['fecha_hasta']}")
+        if filtros.get('metodo_pago'): f_list.append(f"Método: {filtros['metodo_pago']}")
+        if filtros.get('tipo'): f_list.append(f"Tipo: {filtros['tipo']}")
+        if filtros.get('estado'): f_list.append(f"Estado: {filtros['estado']}")
+        if f_list:
+            filtros_str = " | ".join(f_list)
+
+    col_der = [
+        Paragraph("REPORTE DE VENTAS", estilos['TituloDer']),
+        Spacer(1, 6),
+        Paragraph("EMITIDO POR", estilos['DatoDerL']),
+        Paragraph(limpiar_texto(usuario_impresor), estilos['DatoDerV']),
+        Spacer(1, 3),
+        Paragraph("FECHA EMISIÓN", estilos['DatoDerL']),
+        Paragraph(datetime.now().strftime("%d/%m/%Y"), estilos['DatoDerV']),
+    ]
+    if filtros_str:
+        col_der.extend([
+            Spacer(1, 3),
+            Paragraph("FILTROS APLICADOS", estilos['DatoDerL']),
+            Paragraph(limpiar_texto(filtros_str), estilos['DatoDerV']),
+        ])
+
+    tabla_header = Table([[bloque_izquierda, col_der]], colWidths=[12*cm, 7*cm])
+    tabla_header.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('LINEBELOW', (0,0), (-1,-1), 2, AZUL_HEADER),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 15),
+    ]))
+    elements.append(tabla_header)
+    elements.append(Spacer(1, 1*cm))
+
+    # Tabla de ventas - anchos ajustados para que quepa en A4
+    col_widths = [
+        2.2*cm,  # FECHA
+        3.5*cm,  # CLIENTE
+        3.0*cm,  # USUARIO
+        2.5*cm,  # MÉTODO
+        2.5*cm,  # TIPO (aumentado)
+        2.0*cm,  # ESTADO
+        2.5*cm,  # TOTAL
+    ]
+
+    rows = [[
+        Paragraph("FECHA", estilos['TH']),
+        Paragraph("CLIENTE", estilos['TH']),
+        Paragraph("USUARIO", estilos['TH']),
+        Paragraph("MÉTODO", estilos['TH']),
+        Paragraph("TIPO", estilos['TH']),
+        Paragraph("ESTADO", estilos['TH']),
+        Paragraph("TOTAL", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)),
+    ]]
+
+    total_general = 0
+    filas_con_error = 0
+
+    for v in ventas:
+        try:
+            fecha_str = v.fecha.strftime("%d/%m/%Y %H:%M") if v.fecha else "-"
+            
+            # Cliente
+            if v.cliente:
+                nombre = limpiar_texto(v.cliente.nombre)
+                apellido = limpiar_texto(v.cliente.apellido)
+                cliente = f"{nombre} {apellido}".strip()
+                if not cliente:
+                    cliente = "Cliente sin nombre"
+            else:
+                cliente = "Venta Rápida"
+            
+            # Usuario
+            if v.usuario:
+                nombre_u = limpiar_texto(v.usuario.nombre)
+                apellido_u = limpiar_texto(v.usuario.apellido)
+                usuario = f"{nombre_u} {apellido_u}".strip()
+                if not usuario:
+                    usuario = limpiar_texto(v.usuario.username) or "-"
+            else:
+                usuario = "-"
+            
+            # Método de pago
+            metodo = limpiar_texto(v.medio_pago.nombre) if v.medio_pago else "-"
+            
+            tipo = limpiar_texto(v.tipo) or "-"
+            estado = "ANULADA" if v.anulada else "ACTIVA"
+            total = float(v.total) if v.total else 0
+            total_general += total
+
+            rows.append([
+                Paragraph(fecha_str, estilos['TD']),
+                Paragraph(cliente, estilos['TD']),
+                Paragraph(usuario, estilos['TD']),
+                Paragraph(metodo, estilos['TD']),
+                Paragraph(tipo, estilos['TD']),
+                Paragraph(estado, estilos['TD']),
+                Paragraph(f"${total:,.2f}", estilos['TD_Right']),
+            ])
+        except Exception as e:
+            filas_con_error += 1
+            rows.append([
+                Paragraph("ERROR", estilos['TD']),
+                Paragraph("", estilos['TD']),
+                Paragraph("", estilos['TD']),
+                Paragraph("", estilos['TD']),
+                Paragraph("", estilos['TD']),
+                Paragraph("", estilos['TD']),
+                Paragraph("", estilos['TD']),
+            ])
+            continue
+
+    # Fila de total general
+    rows.append([
+        Paragraph("", estilos['TD']),
+        Paragraph("", estilos['TD']),
+        Paragraph("", estilos['TD']),
+        Paragraph("", estilos['TD']),
+        Paragraph("", estilos['TD']),
+        Paragraph("TOTAL GENERAL", ParagraphStyle('TDBold', parent=estilos['TD'], fontName='Helvetica-Bold', alignment=TA_RIGHT)),
+        Paragraph(f"${total_general:,.2f}", ParagraphStyle('TDBoldRight', parent=estilos['TD_Right'], fontName='Helvetica-Bold')),
+    ])
+
+    if filas_con_error > 0:
+        elements.append(Spacer(1, 0.5*cm))
+        elements.append(Paragraph(f"Nota: {filas_con_error} fila(s) no pudieron procesarse correctamente.", 
+                                   ParagraphStyle('Nota', parent=estilos['TD'], textColor=colors.red)))
+
+    t_ventas = Table(rows, colWidths=col_widths)
+    t_ventas.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), AZUL_HEADER),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('GRID', (0,0), (-1,-2), 0.5, colors.HexColor('#e2e8f0')),
+        ('LINEABOVE', (0,-1), (-1,-1), 1, AZUL_HEADER),
+        ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
+    ]))
+    elements.append(t_ventas)
+
+    # Construir el PDF
+    try:
+        doc.build(elements, onFirstPage=footer, onLaterPages=footer)
+    except Exception as e:
+        error_buffer = BytesIO()
+        from reportlab.pdfgen import canvas
+        c = canvas.Canvas(error_buffer, pagesize=A4)
+        c.drawString(50, 800, f"Error al generar el reporte: {str(e)}")
+        c.save()
+        error_buffer.seek(0)
+        return error_buffer.getvalue()
+
+    buffer.seek(0)
     return buffer.getvalue()

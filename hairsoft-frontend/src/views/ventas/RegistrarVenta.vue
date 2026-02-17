@@ -235,10 +235,10 @@
               </select>
             </div>
 
-            <div v-if="esMedioPagoConRecargo" class="datos-extra-pago slide-in">
+            <div v-if="esMercadoPago || esTransferencia" class="datos-extra-pago slide-in">
               
               <div class="form-group" v-if="esTransferencia">
-                <label>Billetera / Banco de Origen</label>
+                <label>Billetera / Banco de Origen *</label>
                 <select v-model="datosVenta.entidad_pago" class="input-select">
                   <option value="" disabled selected>Seleccione entidad...</option>
                   <option value="UALA">Ualá</option>
@@ -262,7 +262,7 @@
                   v-model="datosVenta.codigo_transaccion" 
                   class="input-search"
                   :placeholder="esMercadoPago ? 'Ej: #145025893768' : 'Ej: A123B456789'"
-                  :maxlength="maxCodigoLength"
+                  :maxlength="esMercadoPago ? 14 : 25"
                 />
                 <small class="helper-text" style="color: #6b7280; font-size: 0.8rem; margin-top: 4px; display: block;">
                   {{ esMercadoPago ? 'Ingrese el ID de operación (Máx 14).' : 'Copie el código del comprobante bancario.' }}
@@ -365,30 +365,35 @@ export default {
             return this.carrito.reduce((acc, item) => acc + item.subtotal, 0)
         },
         
-        // 🔥 HELPERS COMPUTADOS PARA LA LÓGICA DE PAGO
+        // 🔥 LOGICA MÉTODOS DE PAGO
         metodoPagoSeleccionado() {
             if (!this.datosVenta.medio_pago) return null;
             return this.metodosPago.find(mp => mp.id === this.datosVenta.medio_pago);
         },
         esMercadoPago() {
-            return this.metodoPagoSeleccionado?.tipo === 'MERCADOPAGO';
+            if (!this.metodoPagoSeleccionado) return false;
+            const tipo = (this.metodoPagoSeleccionado.tipo || '').toUpperCase();
+            const nombre = (this.metodoPagoSeleccionado.nombre || '').toUpperCase();
+            return tipo === 'MERCADOPAGO' || tipo === 'MERCADO_PAGO' || nombre.includes('MERCADO');
         },
         esTransferencia() {
-            return this.metodoPagoSeleccionado?.tipo === 'TRANSFERENCIA';
-        },
-        esMedioPagoConRecargo() {
-            return this.esMercadoPago || this.esTransferencia;
-        },
-        maxCodigoLength() {
-            return this.esMercadoPago ? 14 : 25;
+            if (!this.metodoPagoSeleccionado) return false;
+            if (this.esMercadoPago) return false;
+
+            const tipo = (this.metodoPagoSeleccionado.tipo || '').toUpperCase();
+            const nombre = (this.metodoPagoSeleccionado.nombre || '').toUpperCase();
+            return tipo === 'TRANSFERENCIA' || nombre.includes('TRANSF');
         },
         
         formularioValido() {
             if (this.carrito.length === 0) return false;
             if (!this.datosVenta.medio_pago) return false;
             
-            // Validación de código de transacción si aplica
-            if (this.esMedioPagoConRecargo && !this.datosVenta.codigo_transaccion) {
+            if (this.esTransferencia && !this.datosVenta.entidad_pago) {
+                return false;
+            }
+
+            if ((this.esMercadoPago || this.esTransferencia) && !this.datosVenta.codigo_transaccion) {
                 return false;
             }
             return true;
@@ -396,7 +401,6 @@ export default {
     },
     
     watch: {
-        // Limpiar campos si cambian de medio de pago
         'datosVenta.medio_pago'(newVal) {
             this.datosVenta.entidad_pago = '';
             this.datosVenta.codigo_transaccion = '';
@@ -405,13 +409,11 @@ export default {
     
     methods: {
         navegarAListado() {
-            console.log("🚀 Iniciando navegación al listado de ventas");
             if (this.$route.path === '/ventas') {
                 window.location.reload();
                 return;
             }
             this.$router.push('/ventas').catch(err => {
-                console.error("Router err", err);
                 window.location.href = '/ventas';
             });
         },
@@ -437,7 +439,7 @@ export default {
 
         async procesarVentaExitosa(ventaData) {
             Swal.close();
-            this.limpiarFormulario();
+            this.limpiarFormulario(); 
             await this.cargarProductos(); 
 
             const totalConfirmado = parseFloat(ventaData.total);
@@ -473,12 +475,39 @@ export default {
             });
 
             if (result.isConfirmed) {
-                this.abrirComprobante(ventaData.id);
+                // 1. Intentamos abrir el PDF con la nueva lógica de Blob
+                await this.abrirComprobante(ventaData.id);
+                
+                // 2. Esperamos 1.5 segundos para asegurar que el navegador procese la descarga/apertura
+                // y luego redirigimos al listado como pediste.
                 setTimeout(() => {
                     this.navegarAListado();
-                }, 500);
+                }, 1500);
             } else {
                 this.navegarAListado();
+            }
+        },
+
+        // 🔥 FUNCIÓN CORREGIDA PARA EVITAR PANTALLA BLANCA
+        async abrirComprobante(ventaId) {
+            try {
+                // Usamos axios para enviar el TOKEN de autenticación
+                const response = await axios.get(
+                    `${API_BASE_URL}/usuarios/api/ventas/${ventaId}/comprobante-pdf/`, 
+                    { 
+                        responseType: 'blob' // Importante: pedimos el archivo como binario
+                    }
+                );
+                
+                // Creamos una URL temporal local válida
+                const file = new Blob([response.data], { type: 'application/pdf' });
+                const fileURL = URL.createObjectURL(file);
+                
+                // Abrimos esa URL local (esto no falla por auth)
+                window.open(fileURL, '_blank');
+            } catch (error) {
+                console.error("Error al descargar el PDF:", error);
+                this.mostrarMensaje('No se pudo generar el comprobante (Error de Permisos o Red)', 'error');
             }
         },
 
@@ -564,13 +593,9 @@ export default {
 
         async cargarMetodosPago() {
             try {
-                // 1. Cargar desde API para obtener los IDs reales
                 const res = await axios.get(`${API_BASE_URL}/usuarios/api/metodos-pago/`); 
                 if (Array.isArray(res.data)) {
-                    // 🔥 AQUÍ ESTÁ EL ARREGLO:
-                    // Filtramos explícitamente para QUE NO PASE LA TARJETA
-                    // Solo aceptamos Efectivo, MP o Transferencia.
-                    const permitidos = ['EFECTIVO', 'MERCADOPAGO', 'TRANSFERENCIA'];
+                    const permitidos = ['EFECTIVO', 'MERCADOPAGO', 'MERCADO_PAGO', 'TRANSFERENCIA'];
                     
                     this.metodosPago = res.data.filter(mp => 
                         mp.activo !== false && 
@@ -579,7 +604,6 @@ export default {
                     );
                 }
                 
-                // 2. Seleccionar EFECTIVO por defecto si existe
                 if (this.metodosPago.length > 0) {
                     const efectivo = this.metodosPago.find(m => m.tipo === 'EFECTIVO');
                     this.datosVenta.medio_pago = efectivo ? efectivo.id : this.metodosPago[0].id;
@@ -704,8 +728,13 @@ export default {
             this.mostrarMensaje('Debe seleccionar un método de pago', 'warning');
             return false;
           }
-          // Validación extra de código
-          if (this.esMedioPagoConRecargo && !this.datosVenta.codigo_transaccion) {
+          
+          if (this.esTransferencia && !this.datosVenta.entidad_pago) {
+             this.mostrarMensaje('Debe seleccionar la entidad bancaria', 'warning');
+             return false;
+          }
+
+          if ((this.esMercadoPago || this.esTransferencia) && !this.datosVenta.codigo_transaccion) {
              this.mostrarMensaje('Falta el código de transacción', 'warning');
              return false;
           }
@@ -722,7 +751,6 @@ export default {
                 turno: null 
             }));
             
-            // Lógica entidad (Si es MP, la entidad es MERCADOPAGO)
             let entidadFinal = null;
             if (this.esMercadoPago) {
                 entidadFinal = 'MERCADOPAGO';
@@ -733,23 +761,13 @@ export default {
             return { 
                 total: parseFloat(this.total),
                 tipo: 'PRODUCTO', 
-                
-                // MANDAMOS EL ID REAL QUE VIENE DE LA API
                 medio_pago: parseInt(this.datosVenta.medio_pago),
-                
                 detalles,
                 cliente: null,
                 usuario: this.datosVenta.usuario,
-                
-                // Nuevos campos
                 entidad_pago: entidadFinal,
-                codigo_transaccion: this.esMedioPagoConRecargo ? this.datosVenta.codigo_transaccion : null
+                codigo_transaccion: (this.esMercadoPago || this.esTransferencia) ? this.datosVenta.codigo_transaccion : null
             };
-        },
-
-        abrirComprobante(ventaId) {
-            const pdfUrl = `${API_BASE_URL}/usuarios/api/ventas/${ventaId}/comprobante-pdf/`;
-            window.open(pdfUrl, '_blank');
         },
 
         manejarErrorVenta(err) {
@@ -780,7 +798,6 @@ export default {
 
         limpiarFormulario() {
             this.carrito = [];
-            // Volver a seleccionar el por defecto
             if (this.metodosPago.length > 0) {
                 const efectivo = this.metodosPago.find(m => m.tipo === 'EFECTIVO');
                 this.datosVenta.medio_pago = efectivo ? efectivo.id : this.metodosPago[0].id;

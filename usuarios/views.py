@@ -8,7 +8,7 @@ from django.db import models, transaction
 from django.db.models import Count, Sum, F, Q
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
-from django.http import JsonResponse, HttpResponse
+from django.http import FileResponse, JsonResponse, HttpResponse
 from django.views import View
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.hashers import make_password, check_password
@@ -58,7 +58,7 @@ from .serializers import (
 )
 from .forms import UsuarioForm # Ajustado si tenías formularios específicos
 from .mercadopago_service import MercadoPagoService
-from .pdf_utils import generar_comprobante_venta
+from .pdf_utils import generar_comprobante_venta, generar_reporte_ventas
 
 # Configuración del logger
 logger = logging.getLogger(__name__)
@@ -5374,3 +5374,85 @@ def aceptar_oferta_turno(request, turno_id, token):
         
     except Exception as e:
         return Response({'error': str(e)}, status=500)
+
+def exportar_listado_ventas_pdf(request):
+    try:
+        from .pdf_utils import generar_reporte_ventas
+        from .models import Venta, ConfiguracionSistema
+        from datetime import datetime
+        from io import BytesIO
+        from django.http import HttpResponse
+
+        # Obtener filtros
+        fecha_desde = request.GET.get('fecha_desde')
+        fecha_hasta = request.GET.get('fecha_hasta')
+        metodo_pago = request.GET.get('metodo_pago')
+        tipo = request.GET.get('tipo')
+        estado = request.GET.get('estado')
+        nombre_impresor = request.GET.get('impreso_por')
+
+        queryset = Venta.objects.all().order_by('-fecha')
+
+        if fecha_desde:
+            queryset = queryset.filter(fecha__date__gte=fecha_desde)
+        if fecha_hasta:
+            queryset = queryset.filter(fecha__date__lte=fecha_hasta)
+        if metodo_pago:
+            # ✅ CORREGIDO: usar doble guion bajo para acceder al campo del modelo relacionado
+            queryset = queryset.filter(medio_pago__tipo=metodo_pago)
+        if tipo:
+            queryset = queryset.filter(tipo=tipo)
+        if estado == 'activa':
+            queryset = queryset.filter(anulada=False)
+        elif estado == 'anulada':
+            queryset = queryset.filter(anulada=True)
+
+        ventas = list(queryset)
+
+        config = ConfiguracionSistema.get_solo()
+
+        # Determinar nombre del impresor
+        if nombre_impresor:
+            usuario_impresor = nombre_impresor
+        else:
+            # Fallback: usuario autenticado
+            user = request.user
+            if user.is_authenticated:
+                if hasattr(user, 'get_full_name') and callable(user.get_full_name):
+                    nombre_completo = user.get_full_name().strip()
+                elif hasattr(user, 'nombre') and hasattr(user, 'apellido'):
+                    nombre_completo = f"{user.nombre or ''} {user.apellido or ''}".strip()
+                else:
+                    nombre_completo = getattr(user, 'username', '')
+                usuario_impresor = nombre_completo if nombre_completo else "Sistema"
+            else:
+                usuario_impresor = "Sistema"
+
+        filtros_dict = {
+            'fecha_desde': fecha_desde,
+            'fecha_hasta': fecha_hasta,
+            'metodo_pago': metodo_pago,
+            'tipo': tipo,
+            'estado': estado,
+        }
+
+        pdf_bytes = generar_reporte_ventas(ventas, filtros_dict, usuario_impresor, config)
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="reporte_ventas_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf"'
+        return response
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import letter
+        error_buffer = BytesIO()
+        c = canvas.Canvas(error_buffer, pagesize=letter)
+        y = 750
+        c.drawString(50, y, "ERROR al generar reporte:")
+        y -= 20
+        c.drawString(50, y, str(e))
+        c.save()
+        error_buffer.seek(0)
+        return HttpResponse(error_buffer, content_type='application/pdf', status=500)

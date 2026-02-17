@@ -283,6 +283,7 @@ urlpatterns = [
     path('api/liquidaciones/registrar/', RegistrarPagoLiquidacionView.as_view(), name='registrar_pago'),
     path('api/liquidaciones/historial/', HistorialLiquidacionesView.as_view(), name='historial_pagos'),
 
+    path('ventas/exportar-listado-pdf/', func_views.exportar_listado_ventas_pdf, name='exportar_listado_ventas_pdf'),
     # Parametrizar la política de seña
     path('api/configuracion/', func_views.gestionar_configuracion, name='configuracion_sistema'),
 ]

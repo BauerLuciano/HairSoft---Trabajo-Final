@@ -131,8 +131,9 @@
               <td>
                 <div class="pago-info">
                   <div class="medio-pago-wrapper">
+                    <!-- 👇 Aquí pasamos entidad_pago si existe -->
                     <span class="medio-pago-badge" :class="getMedioPagoClass(turno.medio_pago)">
-                      {{ getMedioPagoTexto(turno.medio_pago) }}
+                      {{ getMedioPagoTexto(turno.medio_pago, turno.entidad_pago) }}
                     </span>
                     
                     <span v-if="esTurnoPorCanje(turno) && turno.nro_transaccion" 
@@ -157,27 +158,6 @@
                     </span>
                   </div>
                   
-                  <div v-if="turno.codigo_transaccion || turno.mp_payment_id || turno.nro_transaccion" 
-                       class="transaccion-info-mejorado">
-                    <div class="transaccion-header">
-                      <i class="bi bi-credit-card"></i>
-                      <span>COMPROBANTE</span>
-                    </div>
-                    <div class="transaccion-codigo">
-                      {{ turno.codigo_transaccion || turno.mp_payment_id || turno.nro_transaccion }}
-                    </div>
-                  </div>
-
-                  <div v-if="turno.entidad_pago" class="entidad-pago-info-mejorado">
-                    <div class="entidad-header">
-                      <i class="bi bi-building"></i>
-                      <span>ENTIDAD</span>
-                    </div>
-                    <div class="entidad-nombre">
-                      {{ getEntidadPagoTexto(turno.entidad_pago) }}
-                    </div>
-                  </div>
-
                   <div v-if="esTurnoConDescuento(turno)" class="descuento-info">
                     <span class="badge-descuento">
                       <i class="bi bi-percent me-1"></i>
@@ -346,6 +326,23 @@ const getEntidadPagoTexto = (entidad) => {
   return mapaEntidades[entidad] || entidad
 }
 
+// 💳 FUNCIÓN MEJORADA: Muestra el medio de pago y si es transferencia con entidad, muestra la entidad
+const getMedioPagoTexto = (medioPago, entidadPago = null) => {
+  if (!medioPago || medioPago === 'PENDIENTE') return 'Pendiente'
+  
+  // Si es transferencia y tenemos entidad, mostramos la entidad formateada
+  if (medioPago === 'TRANSFERENCIA' && entidadPago) {
+    return getEntidadPagoTexto(entidadPago)
+  }
+  
+  const map = {
+    'MERCADO_PAGO': 'Mercado Pago',
+    'EFECTIVO': 'Efectivo',
+    'TRANSFERENCIA': 'Transferencia',
+  }
+  return map[medioPago] || medioPago
+}
+
 // FUNCIONES DE CÁLCULO
 const calcularFaltaPagar = (turno) => {
   const total = parseFloat(turno.monto_total) || 0
@@ -424,19 +421,9 @@ const getMedioPagoClass = (medioPago) => {
   const medio = medioPago.toLowerCase()
   if (medio.includes('mercado')) return 'mp'
   if (medio.includes('efectivo')) return 'efectivo'
-  if (medio.includes('tarjeta')) return 'tarjeta'
   if (medio.includes('transferencia')) return 'transferencia'
   if (medio.includes('pendiente')) return 'pendiente'
   return 'otro'
-}
-
-const getMedioPagoTexto = (medioPago) => {
-  if (!medioPago || medioPago === 'PENDIENTE') return 'Pendiente'
-  const map = {
-    'MERCADO_PAGO': 'Mercado Pago', 'EFECTIVO': 'Efectivo',
-    'TRANSFERENCIA': 'Transferencia', 'TARJETA': 'Tarjeta'
-  }
-  return map[medioPago] || medioPago
 }
 
 // CARGA DE TURNOS
@@ -586,22 +573,19 @@ const gestionarReembolsoManual = async (turno) => {
   }
 }
 
+// 👇 VERSIÓN MEJORADA DEL DETALLE (SweetAlert)
 const verDetalleTurno = async (turno) => {
   try {
     console.log('🔍 Turno recibido:', turno);
 
-    // 1. Hacemos la petición al backend para obtener el detalle completo
     const response = await axios.get(`/api/turnos/${turno.id}/`);
-    
     console.log('📡 Respuesta completa:', response);
     console.log('📦 Datos recibidos:', response.data);
 
-    // 2. Verificar si la respuesta es un error (por ejemplo, si tiene campo 'error')
     if (response.data && response.data.error) {
       throw new Error(`Error del servidor: ${response.data.error}`);
     }
 
-    // 3. Verificar que los datos tengan el campo 'id' (estructura esperada)
     if (!response.data || !response.data.id) {
       console.error('❌ La respuesta no tiene la estructura esperada:', response.data);
       throw new Error('La respuesta del servidor no contiene los datos del turno');
@@ -609,7 +593,7 @@ const verDetalleTurno = async (turno) => {
 
     const turnoDetalle = response.data;
 
-    // 4. Construcción del HTML de servicios (con valores por defecto)
+    // HTML de servicios
     let serviciosHTML = '';
     if (turnoDetalle.servicios && turnoDetalle.servicios.length > 0) {
       serviciosHTML = turnoDetalle.servicios.map(s => `
@@ -625,106 +609,136 @@ const verDetalleTurno = async (turno) => {
 
     const faltaPagar = calcularFaltaPagar(turnoDetalle);
 
-    // 5. Mostrar SweetAlert con los datos del detalle
+    // Datos de pago
+    const medioPago = turnoDetalle.medio_pago || '';
+    const entidadPago = turnoDetalle.entidad_pago || null;
+    const transactionId = turnoDetalle.codigo_transaccion || turnoDetalle.mp_payment_id || 'EFECTIVO';
+    const isDigitalPayment = medioPago.toUpperCase().includes('TRANSFERENCIA') || 
+                             medioPago.toUpperCase().includes('MERCADO') ||
+                             medioPago.toUpperCase().includes('MP') ||
+                             turnoDetalle.codigo_transaccion || 
+                             turnoDetalle.mp_payment_id;
+
     Swal.fire({
-      title: `<div style="text-align:left; color:#0ea5e9; font-weight:800; font-size: 1.4rem;">Turno #${turnoDetalle.id}</div>`,
-      width: '750px',
+      title: `<div style="display: flex; align-items: center; gap: 10px; color: #0f172a;">
+                <span style="background: #0ea5e9; color: white; padding: 6px 14px; border-radius: 40px; font-size: 0.9rem; font-weight: 600;">#${turnoDetalle.id}</span>
+                <span style="font-size: 1.6rem; font-weight: 800; letter-spacing: -0.5px;">$${formatPrecio(turnoDetalle.monto_total || 0)}</span>
+              </div>`,
+      width: '800px',
       background: '#ffffff',
       showConfirmButton: false,
       showCloseButton: true,
       html: `
-        <div style="text-align: left; font-family: 'Inter', -apple-system, sans-serif;">
-          
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
-            <div>
-              <span class="badge-estado ${getEstadoClass(turnoDetalle.estado, turnoDetalle.tipo_pago)}" style="padding: 6px 12px; border-radius: 8px; font-weight: 700;">
-                ${getEstadoTexto(turnoDetalle.estado, turnoDetalle.tipo_pago)}
-              </span>
-              <span class="canal-badge ${(turnoDetalle.canal || 'PRESENCIAL').toLowerCase()}" style="margin-left: 8px; font-weight: 600;">
-                ${turnoDetalle.canal || 'PRESENCIAL'}
-              </span>
-            </div>
-            <div style="font-size: 1.6rem; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">
-              $${formatPrecio(turnoDetalle.monto_total || 0)}
-            </div>
+        <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: left;">
+
+          <!-- Estado y canal -->
+          <div style="display: flex; gap: 12px; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+            <span class="badge-estado ${getEstadoClass(turnoDetalle.estado, turnoDetalle.tipo_pago)}" style="padding: 8px 16px; border-radius: 30px; font-weight: 700; font-size: 0.9rem;">
+              ${getEstadoTexto(turnoDetalle.estado, turnoDetalle.tipo_pago)}
+            </span>
+            <span class="canal-badge ${(turnoDetalle.canal || 'PRESENCIAL').toLowerCase()}" style="padding: 8px 16px; border-radius: 30px; font-weight: 600; font-size: 0.9rem;">
+              ${turnoDetalle.canal || 'PRESENCIAL'}
+            </span>
           </div>
 
+          <!-- Cliente y profesional -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px;">
-            <div style="background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;">
-              <small style="color: #64748b; font-weight: 800; text-transform: uppercase; font-size: 0.65rem; display: block; margin-bottom: 5px; letter-spacing: 0.5px;">👤 Cliente</small>
-              <div style="font-size: 1.1rem; font-weight: 700; color: #1e293b;">${turnoDetalle.cliente_nombre || 'Cliente'} ${turnoDetalle.cliente_apellido || ''}</div>
+            <div style="background: #f8fafc; padding: 18px; border-radius: 16px; border: 1px solid #e2e8f0;">
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
+                <span style="font-size: 1.5rem;">👤</span>
+                <span style="font-weight: 700; color: #334155;">Cliente</span>
+              </div>
+              <div style="font-size: 1.25rem; font-weight: 700; color: #0f172a;">${turnoDetalle.cliente_nombre || 'Cliente'} ${turnoDetalle.cliente_apellido || ''}</div>
             </div>
-            <div style="background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;">
-              <small style="color: #64748b; font-weight: 800; text-transform: uppercase; font-size: 0.65rem; display: block; margin-bottom: 5px; letter-spacing: 0.5px;">✂️ Profesional</small>
-              <div style="font-size: 1.1rem; font-weight: 700; color: #1e293b;">${turnoDetalle.peluquero_nombre || 'Profesional'}</div>
+            <div style="background: #f8fafc; padding: 18px; border-radius: 16px; border: 1px solid #e2e8f0;">
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
+                <span style="font-size: 1.5rem;">✂️</span>
+                <span style="font-weight: 700; color: #334155;">Profesional</span>
+              </div>
+              <div style="font-size: 1.25rem; font-weight: 700; color: #0f172a;">${turnoDetalle.peluquero_nombre || 'Profesional'}</div>
             </div>
           </div>
 
+          <!-- Servicios -->
           <div style="margin-bottom: 25px;">
-            <h4 style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 1px;">📋 Detalle de Servicios</h4>
-            <div style="border: 1px solid #f1f5f9; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
-              <table style="width: 100%; border-collapse: collapse; background: #fff;">
-                ${serviciosHTML}
+            <h4 style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 15px; letter-spacing: 0.5px;">
+              <span style="font-size: 1.2rem;">📋</span> Detalle de Servicios
+            </h4>
+            <div style="border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <thead style="background: #f1f5f9;">
+                  <tr>
+                    <th style="padding: 12px; text-align: left; font-weight: 600; color: #334155;">Servicio</th>
+                    <th style="padding: 12px; text-align: right; font-weight: 600; color: #334155;">Duración</th>
+                    <th style="padding: 12px; text-align: right; font-weight: 600; color: #334155;">Precio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${serviciosHTML}
+                </tbody>
               </table>
             </div>
           </div>
 
-          <div style="background: ${turnoDetalle.silla_nombre ? '#f0fdfa' : '#fff1f2'}; padding: 18px; border-radius: 14px; border: 1px solid ${turnoDetalle.silla_nombre ? '#bbf7d0' : '#fecaca'}; display: flex; align-items: center; gap: 15px; margin-bottom: 25px; transition: 0.3s;">
-            <div style="font-size: 2rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));">🪑</div>
+          <!-- Silla asignada -->
+          <div style="background: ${turnoDetalle.silla_nombre ? '#f0fdf4' : '#fef2f2'}; padding: 16px; border-radius: 16px; border: 1px solid ${turnoDetalle.silla_nombre ? '#bbf7d0' : '#fecaca'}; display: flex; align-items: center; gap: 15px; margin-bottom: 25px;">
+            <span style="font-size: 2rem;">🪑</span>
             <div>
-              <small style="color: ${turnoDetalle.silla_nombre ? '#0d9488' : '#991b1b'}; font-weight: 800; text-transform: uppercase; font-size: 0.7rem; display: block; margin-bottom: 3px;">Puesto de Trabajo Asignado</small>
-              <div style="font-size: 1.3rem; font-weight: 800; color: ${turnoDetalle.silla_nombre ? '#115e59' : '#7f1d1d'};">
-                 ${turnoDetalle.silla_nombre ? turnoDetalle.silla_nombre : 'Pendiente de asignación'}
+              <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: ${turnoDetalle.silla_nombre ? '#16a34a' : '#dc2626'};">Puesto de trabajo</span>
+              <div style="font-size: 1.3rem; font-weight: 800; color: ${turnoDetalle.silla_nombre ? '#14532d' : '#7f1d1d'};">${turnoDetalle.silla_nombre || 'Pendiente de asignación'}</div>
+            </div>
+          </div>
+
+          <!-- Resumen de pago mejorado -->
+          <div style="background: linear-gradient(145deg, #1e293b, #0f172a); padding: 24px; border-radius: 20px; color: white;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <h4 style="margin:0; font-size: 1rem; font-weight: 600; color: #94a3b8; display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.4rem;">💰</span> Resumen de pago
+              </h4>
+              <!-- 👇 Mostramos el medio de pago con entidad si corresponde -->
+              <span style="background: #334155; padding: 6px 14px; border-radius: 40px; font-size: 0.85rem; font-weight: 600; color: #e2e8f0;">
+                ${getMedioPagoTexto(medioPago, entidadPago)}
+              </span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+              <div>
+                <span style="font-size: 0.8rem; color: #94a3b8;">Abonado</span>
+                <div style="font-size: 2rem; font-weight: 800; color: #4ade80;">$${formatPrecio(turnoDetalle.monto_seña || 0)}</div>
+              </div>
+              <div>
+                <span style="font-size: 0.8rem; color: #94a3b8;">Pendiente</span>
+                <div style="font-size: 2rem; font-weight: 800; color: ${faltaPagar > 0 ? '#fbbf24' : '#ffffff'};">$${formatPrecio(faltaPagar > 0 ? faltaPagar : 0)}</div>
               </div>
             </div>
-          </div>
 
-          <div style="background: linear-gradient(135deg, #1e293b, #0f172a); padding: 22px; border-radius: 16px; color: #fff; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
-               <h4 style="margin:0; font-size: 0.85rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">💰 Resumen de Pago</h4>
-               <span style="font-size: 0.75rem; font-weight: 700; background: #334155; padding: 5px 12px; border-radius: 20px; color: #e2e8f0; border: 1px solid #475569;">
-                 ${getMedioPagoTexto(turnoDetalle.medio_pago)}
-               </span>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-               <div>
-                  <small style="color: #94a3b8; display: block; margin-bottom: 4px; font-size: 0.75rem;">Abonado a la fecha</small>
-                  <div style="font-size: 1.4rem; font-weight: 800; color: #4ade80;">$${formatPrecio(turnoDetalle.monto_seña || 0)}</div>
-               </div>
-               <div>
-                  <small style="color: #94a3b8; display: block; margin-bottom: 4px; font-size: 0.75rem;">Saldo Pendiente</small>
-                  <div style="font-size: 1.4rem; font-weight: 800; color: ${faltaPagar > 0 ? '#fbbf24' : '#fff'};">
-                    $${formatPrecio(faltaPagar > 0 ? faltaPagar : 0)}
-                  </div>
-               </div>
-            </div>
-
-            <div style="margin-top: 18px; padding-top: 15px; border-top: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
-               <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: #64748b;">ID: ${turnoDetalle.codigo_transaccion || turnoDetalle.mp_payment_id || 'PRESENCIAL_CASH'}</span>
-               <i class="bi bi-shield-check" style="color: #4ade80; font-size: 1rem;"></i>
+            <!-- ID de transacción con tamaño equilibrado -->
+            <div style="background: #0f172a; border-radius: 14px; padding: 16px; border: 1px solid #334155; margin-top: 10px;">
+              <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <span style="font-size: 0.9rem; font-weight: 600; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 1.2rem;">🏦</span> ${getMedioPagoTexto(medioPago, entidadPago)}
+                </span>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.3rem; font-weight: 700; background: #1e293b; padding: 6px 16px; border-radius: 40px; color: #a5f3fc; letter-spacing: 0.5px; margin-left: auto;">
+                  ${transactionId}
+                </span>
+              </div>
+              ${isDigitalPayment ? '<p style="color: #94a3b8; font-size: 0.8rem; margin-top: 10px; border-top: 1px solid #334155; padding-top: 10px;">🔍 Usá este ID para verificar el pago</p>' : ''}
             </div>
           </div>
-
         </div>
       `
     });
   } catch (error) {
     console.error('❌ Error al obtener detalle del turno:', error);
-    
-    // Mostrar un mensaje más claro según el error
     let mensaje = 'No se pudo cargar el detalle del turno.';
     if (error.response) {
-      // El servidor respondió con un código de error
       mensaje += ` (Código ${error.response.status}: ${error.response.statusText})`;
       console.error('🔴 Datos del error:', error.response.data);
     } else if (error.request) {
-      // La petición se hizo pero no se recibió respuesta
       mensaje += ' No se recibió respuesta del servidor.';
     } else {
       mensaje += ` ${error.message}`;
     }
-    
     Swal.fire('Error', mensaje, 'error');
   }
 };
