@@ -100,7 +100,8 @@ class TurnoSerializer(serializers.ModelSerializer):
             'obs_cancelacion', 'cliente', 'cliente_nombre', 'cliente_apellido',
             'peluquero', 'peluquero_nombre', 'servicios',
             'codigo_transaccion', 'entidad_pago', 'info_descuento',
-            'silla', 'silla_nombre', 'silla_id'   # ✅ Incluimos silla_id
+            'silla', 'silla_nombre', 'silla_id',
+            'medio_pago_restante', 'entidad_pago_restante', 'codigo_transaccion_restante'  
         ]
         extra_kwargs = {
             'silla': {'read_only': True}  # El campo original del modelo lo dejamos solo lectura

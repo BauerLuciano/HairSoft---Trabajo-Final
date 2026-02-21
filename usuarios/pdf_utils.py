@@ -251,7 +251,6 @@ def generar_liquidacion_pdf(data_empleados, fecha_inicio, fecha_fin, usuario_imp
         resumen_data = [
             [Paragraph("CONCEPTO", estilos['TH']), Paragraph("MONTO", estilos['TH'])],
             [Paragraph("Comisiones", estilos['TD']), Paragraph(f"${emp['comisiones']:,.2f}", estilos['TD_Right'])],
-            [Paragraph("Sueldo Fijo", estilos['TD']), Paragraph(f"${emp['sueldo_fijo']:,.2f}", estilos['TD_Right'])],
             [Paragraph("TOTAL", estilos['DatoDerV']), Paragraph(f"${emp['total']:,.2f}", estilos['DatoDerV'])]
         ]
         t_res = Table(resumen_data, colWidths=[12*cm, 7*cm])

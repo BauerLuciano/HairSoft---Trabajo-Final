@@ -286,6 +286,9 @@ urlpatterns = [
     path('ventas/exportar-listado-pdf/', func_views.exportar_listado_ventas_pdf, name='exportar_listado_ventas_pdf'),
     # Parametrizar la política de seña
     path('api/configuracion/', func_views.gestionar_configuracion, name='configuracion_sistema'),
+
+    #Silla
+    path('api/turnos/ocupacion-grilla/', func_views.obtener_ocupacion_grilla, name='obtener-ocupacion-grilla'),
 ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

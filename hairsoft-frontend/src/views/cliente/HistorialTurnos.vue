@@ -211,7 +211,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { useRouter, useRoute } from 'vue-router' // ✅ AGREGADO useRoute
+import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
 import Swal from 'sweetalert2'
 import api from '@/services/api'
@@ -222,7 +222,7 @@ import {
 } from 'lucide-vue-next'
 
 const router = useRouter()
-const route = useRoute() // ✅ AGREGADO
+const route = useRoute() 
 
 const turnos = ref([])
 const cargando = ref(true)
@@ -255,75 +255,61 @@ const formatFecha = (f) => {
   return `${d}/${m}/${y}`
 }
 
+const formatPrecio = (p) => parseFloat(p).toLocaleString('es-AR', { minimumFractionDigits: 2 })
+
+// 🔥 ESTADOS ACTUALIZADOS (Chau Confirmado)
 const estadoTexto = (estado) => {
-  const map = {
-    'RESERVADO': 'Reservado',
-    'CONFIRMADO': 'Confirmado',
-    'CANCELADO': 'Cancelado',
-    'COMPLETADO': 'Completado'
-  }
+  const map = { 'RESERVADO': 'Reservado', 'CANCELADO': 'Cancelado', 'COMPLETADO': 'Completado' }
   return map[estado] || estado
 }
 
 const claseEstado = (estado) => {
-  const map = {
-    'RESERVADO': 'reservado',
-    'CONFIRMADO': 'confirmado',
-    'CANCELADO': 'cancelado',
-    'COMPLETADO': 'completado'
-  }
+  const map = { 'RESERVADO': 'reservado', 'CANCELADO': 'cancelado', 'COMPLETADO': 'completado' }
   return map[estado] || 'default'
 }
 
+// 💳 MEDIOS DE PAGO PARA EL DETALLE
+const getMedioPagoTexto = (medio, entidad = null) => {
+  if (medio === 'TRANSFERENCIA' && entidad) return entidad
+  const map = { 'MERCADO_PAGO': 'Mercado Pago', 'EFECTIVO': 'Efectivo', 'TRANSFERENCIA': 'Transferencia' }
+  return map[medio] || medio
+}
+
 const cancelarTurno = async (turno) => {
-  // ✅ PASO 1: Obtener el margen dinámico
   let margenConfig = 3;
   try {
     const resConfig = await api.get('/api/configuracion/');
     if (resConfig.data && resConfig.data.margen_horas_cancelacion) {
       margenConfig = resConfig.data.margen_horas_cancelacion;
     }
-  } catch (error) {
-    console.error("Error al obtener margen de cancelación:", error);
-  }
+  } catch (error) { console.error(error) }
 
-  // ✅ PASO 2: Calcular si corresponde reembolso AHORA
   const ahora = new Date();
   const fechaTurno = new Date(`${turno.fecha}T${turno.hora}`);
   const horasFaltantes = (fechaTurno - ahora) / (1000 * 60 * 60);
   const hayReembolso = horasFaltantes >= margenConfig;
 
-  // ✅ PASO 3: Abrir el modal con la información visual
   const { value: formValues } = await Swal.fire({
     title: '¿Cancelar Turno?',
     html: `
-      <div style="text-align: left; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-        
-        <div style="background: ${hayReembolso ? '#f0fdf4' : '#fffbeb'}; 
-                    padding: 12px; border-radius: 10px; margin-bottom: 15px; 
-                    border: 1px solid ${hayReembolso ? '#bbf7d0' : '#fef3c7'};
-                    display: flex; align-items: center; gap: 10px;">
+      <div style="text-align: left; font-family: sans-serif;">
+        <div style="background: ${hayReembolso ? '#f0fdf4' : '#fffbeb'}; padding: 12px; border-radius: 10px; margin-bottom: 15px; border: 1px solid ${hayReembolso ? '#bbf7d0' : '#fef3c7'}; display: flex; align-items: center; gap: 10px;">
           <div style="font-size: 1.2rem;">${hayReembolso ? '✅' : '⚠️'}</div>
           <div>
-            <div style="font-weight: 700; color: ${hayReembolso ? '#166534' : '#92400e'}; font-size: 0.9rem;">
-              ${hayReembolso ? 'Reembolso disponible' : 'Sin reembolso'}
-            </div>
-            <div style="color: ${hayReembolso ? '#16a34a' : '#b45309'}; font-size: 0.8rem;">
-              Cancelación con ${Math.floor(horasFaltantes)}hs de anticipación (Mínimo: ${margenConfig}hs).
-            </div>
+            <div style="font-weight: 700; color: ${hayReembolso ? '#166534' : '#92400e'}; font-size: 0.9rem;">${hayReembolso ? 'Reembolso disponible' : 'Sin reembolso'}</div>
+            <div style="color: ${hayReembolso ? '#16a34a' : '#b45309'}; font-size: 0.8rem;">Anticipación: ${Math.floor(horasFaltantes)}hs (Mínimo requerido: ${margenConfig}hs).</div>
           </div>
         </div>
-
         <div style="background: #f8fafc; padding: 1rem; border-radius: 12px; border: 1px solid #e2e8f0;">
-          <label style="display:block; margin-bottom:5px; font-weight:bold; color: #1e293b; font-size: 0.9rem;">Motivo:</label>
-          <select id="motivo" class="swal2-input" style="width: 100%; margin: 0 0 15px 0; height: 40px; font-size: 0.9rem;">
+          <label style="display:block; margin-bottom:5px; font-weight:bold;">Motivo:</label>
+          <select id="motivo" class="swal2-input" style="width: 100%; margin: 0 0 15px 0;">
             <option value="PERSONAL">Motivos personales</option>
             <option value="SALUD">Problema de salud</option>
             <option value="ERROR">Error al reservar</option>
             <option value="HORARIO">Cambio de planes</option>
           </select>
-          <label style="display:block; margin-bottom:5px; font-weight:bold; color: #1e293b; font-size: 0.9rem;">Observaciones:</label>
-          <textarea id="obs" class="swal2-textarea" style="width: 100%; margin: 0; height: 80px; font-size: 0.9rem;" placeholder="Opcional..."></textarea>
+          <label style="display:block; margin-bottom:5px; font-weight:bold;">Observaciones:</label>
+          <textarea id="obs" class="swal2-textarea" style="width: 100%; margin: 0; height: 80px;" placeholder="Opcional..."></textarea>
         </div>
       </div>
     `,
@@ -331,254 +317,213 @@ const cancelarTurno = async (turno) => {
     showCancelButton: true,
     confirmButtonColor: '#ef4444',
     confirmButtonText: 'Confirmar Cancelación',
-    cancelButtonText: 'Volver',
-    preConfirm: () => {
-      const motivo = document.getElementById('motivo').value;
-      if (!motivo) {
-        Swal.showValidationMessage('Por favor selecciona un motivo');
-        return false;
-      }
-      return {
-        motivo: motivo,
-        observaciones: document.getElementById('obs').value
-      }
-    }
+    preConfirm: () => ({ motivo: document.getElementById('motivo').value, observaciones: document.getElementById('obs').value })
   });
 
-  // ✅ PASO 4: Procesar la cancelación (Lógica original intacta)
   if (formValues) {
     try {
-      Swal.fire({ 
-        title: 'Procesando...', 
-        allowOutsideClick: false, 
-        didOpen: () => Swal.showLoading() 
-      });
-      
       const response = await api.post(`/turnos/cancelar-propio/${turno.id}/`, formValues);
-      
-      await Swal.fire({
-        icon: response.data.reembolso_ok ? 'success' : 'warning',
-        title: 'Turno Cancelado',
-        text: response.data.message, 
-        confirmButtonColor: '#0ea5e9'
-      });
-      
+      await Swal.fire({ icon: response.data.reembolso_ok ? 'success' : 'warning', title: 'Turno Cancelado', text: response.data.message });
       cargarMisTurnos();
-    } catch (error) {
-      Swal.fire('Error', 'No se pudo cancelar el turno.', 'error');
-    }
+    } catch (error) { Swal.fire('Error', 'No se pudo cancelar el turno.', 'error') }
   }
 }
 
-const verDetalles = (turno) => {
-  Swal.fire({
-    title: 'Detalles del Turno',
-    html: `
-      <div style="text-align: left;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 1rem;">
-          <div style="width: 10px; height: 10px; border-radius: 50%; background: #10b981;"></div>
-          <strong style="color: #10b981;">COMPLETADO</strong>
-        </div>
-        
-        <p><strong>📅 Fecha:</strong> ${formatFecha(turno.fecha)} - ${turno.hora}hs</p>
-        <p><strong>✂️ Servicio:</strong> ${turno.servicios}</p>
-        <p><strong>👨‍💼 Peluquero:</strong> ${turno.peluquero_nombre || 'No asignado'}</p>
-        <p><strong>⏱ Duración:</strong> ${turno.duracion || 30} minutos</p>
-        <p><strong>💰 Total:</strong> $${turno.monto_total || '0'}</p>
-        
-        ${turno.notas ? `<p style="margin-top: 1rem; padding: 10px; background: rgba(14, 165, 233, 0.1); border-radius: 8px;">
-          <strong>📝 Notas:</strong> ${turno.notas}
-        </p>` : ''}
-      </div>
-    `,
-    confirmButtonColor: '#0ea5e9'
-  })
-}
+// 🔥 VERSIÓN UNIFICADA (ESTILO ADMIN) PARA EL CLIENTE
+const verDetalles = async (turno) => {
+  try {
+    // 1. Buscamos los datos completos del turno a la API
+    const response = await api.get(`/api/turnos/${turno.id}/`);
+    const t = response.data;
 
-// ✅ FUNCIÓN NUEVA PARA LA ALERTA DE FELICIDADES
+    // 2. Armamos la tablita de servicios
+    let serviciosHTML = '';
+    if (t.servicios && t.servicios.length > 0) {
+      serviciosHTML = t.servicios.map(s => `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 12px; font-weight: 500; color: #1e293b; font-size: 0.95rem;">${s.nombre}</td>
+          <td style="padding: 12px; text-align: right; color: #64748b; font-size: 0.9rem;">${s.duracion}m</td>
+          <td style="padding: 12px; text-align: right; font-weight: 700; color: #0f172a;">$${formatPrecio(s.precio)}</td>
+        </tr>
+      `).join('');
+    } else {
+      serviciosHTML = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #94a3b8;">Sin servicios detallados</td></tr>`;
+    }
+
+    // 3. Cálculos de dinero (usando la lógica que corregimos hoy)
+    const faltaPagar = t.tipo_pago === 'TOTAL' ? 0 : (parseFloat(t.monto_total) - parseFloat(t.monto_seña));
+    const montoAbonado = t.tipo_pago === 'TOTAL' ? t.monto_total : t.monto_seña;
+
+    // 4. Identificamos los comprobantes
+    const transactionId1 = t.codigo_transaccion || t.mp_payment_id || 'EFECTIVO';
+
+    Swal.fire({
+      title: `<div style="display: flex; align-items: center; justify-content: center; gap: 10px; color: #0f172a;">
+                <span style="font-size: 1.6rem; font-weight: 800; letter-spacing: -0.5px;">Detalle de tu Turno</span>
+              </div>`,
+      width: '700px',
+      background: '#ffffff',
+      showConfirmButton: false,
+      showCloseButton: true,
+      html: `
+        <div style="font-family: 'Inter', sans-serif; text-align: left;">
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+            <span class="estado-badge ${claseEstado(t.estado)}" style="padding: 8px 16px; border-radius: 30px; font-weight: 700; font-size: 0.9rem;">
+              ${estadoTexto(t.estado)}
+            </span>
+            <div style="font-weight: 600; color: #64748b;">
+              📅 ${formatFecha(t.fecha)} - ${t.hora}hs
+            </div>
+          </div>
+
+          ${t.estado === 'CANCELADO' ? `
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
+              <div style="color: #991b1b; font-weight: 700; font-size: 0.85rem; text-transform: uppercase;">Motivo de Cancelación</div>
+              <div style="color: #7f1d1d; font-size: 1.1rem; font-weight: 600;">${t.motivo_cancelacion || 'No especificado'}</div>
+              ${t.obs_cancelacion ? `<div style="color: #b91c1c; font-size: 0.9rem; margin-top: 5px; font-style: italic;">"${t.obs_cancelacion}"</div>` : ''}
+            </div>
+          ` : ''}
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px;">
+            <div style="background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;">
+              <div style="font-weight: 700; color: #475569; font-size: 0.8rem; text-transform: uppercase; margin-bottom: 5px;">Profesional</div>
+              <div style="font-size: 1.1rem; font-weight: 700; color: #0f172a;">${t.peluquero_nombre}</div>
+            </div>
+            <div style="background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;">
+              <div style="font-weight: 700; color: #475569; font-size: 0.8rem; text-transform: uppercase; margin-bottom: 5px;">Duración Total</div>
+              <div style="font-size: 1.1rem; font-weight: 700; color: #0f172a;">${t.duracion_total || t.duracion || 30} min</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 25px;">
+            <h4 style="font-size: 0.85rem; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 10px;">Servicios Contratados</h4>
+            <div style="border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <thead style="background: #f1f5f9;">
+                  <tr>
+                    <th style="padding: 10px; text-align: left; font-size: 0.8rem;">Servicio</th>
+                    <th style="padding: 10px; text-align: right; font-size: 0.8rem;">Tiempo</th>
+                    <th style="padding: 10px; text-align: right; font-size: 0.8rem;">Precio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${serviciosHTML}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="background: linear-gradient(145deg, #1e293b, #0f172a); padding: 20px; border-radius: 16px; color: white;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+              <h4 style="margin:0; font-size: 0.9rem; font-weight: 600; color: #94a3b8;">Resumen Económico</h4>
+              <span style="color: #4ade80; font-weight: 800; font-size: 1.2rem;">Total: $${formatPrecio(t.monto_total)}</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 15px;">
+              <div>
+                <span style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Has Abonado</span>
+                <div style="font-size: 1.4rem; font-weight: 700; color: #4ade80;">$${formatPrecio(montoAbonado)}</div>
+              </div>
+              <div>
+                <span style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Saldo Pendiente</span>
+                <div style="font-size: 1.4rem; font-weight: 700; color: ${faltaPagar > 0 ? '#fbbf24' : '#ffffff'};">$${formatPrecio(faltaPagar)}</div>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div>
+                <span style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; font-weight: 700;">${t.medio_pago_restante ? 'Primer Pago (Seña)' : 'Detalle de Pago'}</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                  <span style="font-size: 0.85rem;">💳 ${getMedioPagoTexto(t.medio_pago, t.entidad_pago)}</span>
+                  <span style="font-family: monospace; font-size: 0.85rem; color: #a5f3fc;">Ref: ${transactionId1}</span>
+                </div>
+              </div>
+
+              ${t.medio_pago_restante ? `
+                <div style="border-top: 1px dashed #334155; pt: 8px; margin-top: 5px;">
+                  <span style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Segundo Pago (Saldo en Local)</span>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                    <span style="font-size: 0.85rem;">💵 ${getMedioPagoTexto(t.medio_pago_restante, t.entidad_pago_restante)}</span>
+                    <span style="font-family: monospace; font-size: 0.85rem; color: #a5f3fc;">Ref: ${t.codigo_transaccion_restante || 'PRESENCIAL'}</span>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          ${t.notas ? `
+            <div style="margin-top: 20px; padding: 12px; background: #fffbeb; border-radius: 10px; border-left: 4px solid #f59e0b; color: #92400e; font-size: 0.9rem;">
+              <strong>Nota del Peluquero:</strong> ${t.notas}
+            </div>
+          ` : ''}
+
+        </div>
+      `
+    });
+  } catch (error) {
+    console.error(error);
+    Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo cargar el detalle del turno.', confirmButtonColor: '#0ea5e9' });
+  }
+};
+
 const mostrarAlertaFelicidades = async (turnoId) => {
   try {
-    // 🛑 ACÁ ESTABA EL ERROR: Faltaba el "/api" al principio
     const res = await api.get(`/api/turnos/${turnoId}/`);
     const t = res.data;
-    
     Swal.fire({
       title: '¡Felicidades! 🎉',
-      html: `
-        <div style="text-align: left; background: #f0f9ff; padding: 1.2rem; border-radius: 12px; border: 1px solid #bae6fd;">
+      html: `<div style="text-align: left; background: #f0f9ff; padding: 1.2rem; border-radius: 12px; border: 1px solid #bae6fd;">
           <p style="font-size: 1.1rem; margin-bottom: 1rem;">Tu reserva ha sido confirmada con éxito.</p>
-          <p>📅 <b>Día:</b> ${formatFecha(t.fecha)}</p>
-          <p>⏰ <b>Hora:</b> ${t.hora} hs</p>
-          <p>💇‍♂️ <b>Profesional:</b> ${t.peluquero_nombre}</p>
-          <p>💰 <b>Monto:</b> $${t.monto_total}</p>
-          <p style="margin-top: 1rem; font-size: 0.9rem; color: #0369a1;">¡Te esperamos!</p>
-        </div>
-      `,
-      icon: 'success',
-      confirmButtonText: 'Genial',
-      confirmButtonColor: '#0ea5e9'
+          <p>📅 <b>Día:</b> ${formatFecha(t.fecha)}</p><p>⏰ <b>Hora:</b> ${t.hora} hs</p><p>💇‍♂️ <b>Profesional:</b> ${t.peluquero_nombre}</p><p>💰 <b>Monto:</b> $${t.monto_total}</p>
+        </div>`,
+      icon: 'success', confirmButtonColor: '#0ea5e9'
     });
-    
-    // Limpiamos los parámetros de la URL para que no vuelva a saltar al recargar
     router.replace({ query: {} });
-  } catch (e) { 
-    console.error("Error al obtener datos del turno:", e); 
-    // Fallback por si falla la API, para que no quede undefined
-    Swal.fire({
-        title: '¡Turno Confirmado!',
-        text: 'Tu pago se procesó correctamente y el turno ya figura en tu historial.',
-        icon: 'success',
-        confirmButtonColor: '#0ea5e9'
-    });
-  }
+  } catch (e) { console.error(e) }
 }
 
 onMounted(async () => {
   await cargarMisTurnos()
-  
   const query = route.query;
   if (query.pago_exitoso === 'true') {
-    if (query.tipo === 'pedido') {
-      // ✅ ALERTA PARA COMPRA DE PRODUCTOS
-      Swal.fire({
-        title: '¡Compra Exitosa! 🛍️',
-        text: `Tu pedido #${query.pedido_id || query.id} ha sido procesado.`,
-        icon: 'success',
-        confirmButtonColor: '#0ea5e9'
-      });
-    } else {
-      // ✅ ALERTA PARA TURNOS (CORREGIDO)
-      mostrarAlertaFelicidades(query.turno_id); 
-    }
-    
-    // Limpiar URL para que no salga el cartel al recargar
+    if (query.tipo !== 'pedido') mostrarAlertaFelicidades(query.turno_id); 
     router.replace({ query: {} }); 
   }
 })
 
-// Computed: turnos filtrados
 const turnosFiltrados = computed(() => {
   const hoy = new Date().toISOString().split('T')[0]
+  let filtrados = tabActiva.value === 'proximos' 
+    ? turnos.value.filter(t => t.fecha >= hoy && t.estado === 'RESERVADO').sort((a, b) => new Date(a.fecha + 'T' + a.hora) - new Date(b.fecha + 'T' + b.hora))
+    : turnos.value.filter(t => t.fecha < hoy || ['CANCELADO', 'COMPLETADO'].includes(t.estado)).sort((a, b) => new Date(b.fecha + 'T' + b.hora) - new Date(a.fecha + 'T' + a.hora))
   
-  let filtrados = []
-  
-  if (tabActiva.value === 'proximos') {
-    filtrados = turnos.value.filter(t => 
-      t.fecha >= hoy && 
-      ['RESERVADO', 'CONFIRMADO'].includes(t.estado)
-    )
-    // Ordenar por fecha y hora más cercana
-    filtrados.sort((a, b) => {
-      const fechaA = new Date(a.fecha + 'T' + a.hora)
-      const fechaB = new Date(b.fecha + 'T' + b.hora)
-      return fechaA - fechaB
-    })
-  } else {
-    filtrados = turnos.value.filter(t => 
-      t.fecha < hoy || 
-      ['CANCELADO', 'COMPLETADO'].includes(t.estado)
-    )
-    // Ordenar por fecha más reciente primero
-    filtrados.sort((a, b) => {
-      const fechaA = new Date(a.fecha + 'T' + a.hora)
-      const fechaB = new Date(b.fecha + 'T' + b.hora)
-      return fechaB - fechaA
-    })
-  }
-  
-  // Paginación solo para historial
   if (tabActiva.value === 'historial') {
     const inicio = (pagina.value - 1) * itemsPorPagina
     return filtrados.slice(inicio, inicio + itemsPorPagina)
   }
-  
   return filtrados
 })
 
-// Computed: contadores
-const contadorProximos = computed(() => {
-  const hoy = new Date().toISOString().split('T')[0]
-  return turnos.value.filter(t => 
-    t.fecha >= hoy && 
-    ['RESERVADO', 'CONFIRMADO'].includes(t.estado)
-  ).length
-})
-
-const contadorHistorial = computed(() => {
-  const hoy = new Date().toISOString().split('T')[0]
-  return turnos.value.filter(t => 
-    t.fecha < hoy || 
-    ['CANCELADO', 'COMPLETADO'].includes(t.estado)
-  ).length
-})
-
-// Computed: próxima fecha
+const contadorProximos = computed(() => turnos.value.filter(t => t.fecha >= new Date().toISOString().split('T')[0] && t.estado === 'RESERVADO').length)
+const contadorHistorial = computed(() => turnos.value.filter(t => t.fecha < new Date().toISOString().split('T')[0] || ['CANCELADO', 'COMPLETADO'].includes(t.estado)).length)
 const proximoEnDias = computed(() => {
-  const hoy = new Date().toISOString().split('T')[0]
-  const proximos = turnos.value.filter(t => 
-    t.fecha >= hoy && 
-    ['RESERVADO', 'CONFIRMADO'].includes(t.estado)
-  )
-  
+  const proximos = turnos.value.filter(t => t.fecha >= new Date().toISOString().split('T')[0] && t.estado === 'RESERVADO')
   if (proximos.length === 0) return 0
-  
-  const fechaProximo = new Date(proximos[0].fecha)
-  const hoyDate = new Date(hoy)
-  const diferencia = Math.ceil((fechaProximo - hoyDate) / (1000 * 60 * 60 * 24))
-  
-  return Math.max(0, diferencia)
+  return Math.max(0, Math.ceil((new Date(proximos[0].fecha) - new Date()) / (1000 * 60 * 60 * 24)))
 })
 
-// Computed: paginación para historial
-const totalPaginas = computed(() => {
-  if (tabActiva.value !== 'historial') return 1
-  
-  const hoy = new Date().toISOString().split('T')[0]
-  const historial = turnos.value.filter(t => 
-    t.fecha < hoy || 
-    ['CANCELADO', 'COMPLETADO'].includes(t.estado)
-  )
-  
-  return Math.max(1, Math.ceil(historial.length / itemsPorPagina))
-})
-
+const totalPaginas = computed(() => tabActiva.value !== 'historial' ? 1 : Math.max(1, Math.ceil(turnos.value.filter(t => t.fecha < new Date().toISOString().split('T')[0] || ['CANCELADO', 'COMPLETADO'].includes(t.estado)).length / itemsPorPagina)))
 const paginasVisibles = computed(() => {
-  const total = totalPaginas.value
-  const current = pagina.value
-  const pages = []
-  
-  if (total <= 5) {
-    for (let i = 1; i <= total; i++) pages.push(i)
-  } else {
-    if (current <= 3) {
-      for (let i = 1; i <= 4; i++) pages.push(i)
-      pages.push('...', total)
-    } else if (current >= total - 2) {
-      pages.push(1, '...')
-      for (let i = total - 3; i <= total; i++) pages.push(i)
-    } else {
-      pages.push(1, '...', current - 1, current, current + 1, '...', total)
-    }
-  }
-  
+  const total = totalPaginas.value, current = pagina.value, pages = []
+  if (total <= 5) for (let i = 1; i <= total; i++) pages.push(i)
+  else if (current <= 3) { for (let i = 1; i <= 4; i++) pages.push(i); pages.push('...', total) }
+  else if (current >= total - 2) { pages.push(1, '...'); for (let i = total - 3; i <= total; i++) pages.push(i) }
+  else { pages.push(1, '...', current - 1, current, current + 1, '...', total) }
   return pages
 })
 
-// FIXED: Indicador de tabs que se mueve correctamente
-const indicatorStyle = computed(() => {
-  if (!tabProximos.value || !tabHistorial.value) {
-    return {
-      transform: `translateX(${tabActiva.value === 'proximos' ? '0%' : '100%'})`,
-      width: '50%'
-    }
-  }
-  const position = tabActiva.value === 'proximos' ? 0 : 100
-  return {
-    transform: `translateX(${position}%)`,
-    width: '50%'
-  }
-})
-
+const indicatorStyle = computed(() => ({ transform: `translateX(${tabActiva.value === 'proximos' ? '0' : '100'}%)`, width: '50%' }))
 const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 const cambiarPagina = (num) => { if (num !== '...') pagina.value = num }

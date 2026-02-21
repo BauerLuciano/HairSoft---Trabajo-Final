@@ -21,7 +21,6 @@
             <select v-model="filtros.estado" id="estado" class="filter-select" @change="cargarTurnos">
               <option value="">Todos</option>
               <option value="RESERVADO">Reservado</option>
-              <option value="CONFIRMADO">Confirmado</option>
               <option value="COMPLETADO">Completado</option>
               <option value="CANCELADO">Cancelado</option>
             </select>
@@ -54,7 +53,7 @@
             <tr>
               <th>Fecha/Hora</th>
               <th>Cliente</th>
-              <th>Estado / Motivo</th>
+              <th>Estado</th> 
               <th>Pago / Transacción</th>
               <th>Acciones</th>
             </tr>
@@ -92,13 +91,6 @@
                 </div>
                 
                 <div v-if="turno.estado === 'CANCELADO'">
-                  <div v-if="turno.motivo_cancelacion" style="margin-top: 5px;">
-                    <span class="badge-motivo-cancelacion">
-                      <i class="bi bi-x-circle me-1"></i>
-                      {{ turno.motivo_cancelacion }}
-                    </span>
-                  </div>
-                  
                   <div v-if="turno.reembolso_estado === 'NO_APLICA'" style="margin-top: 5px;">
                     <span class="badge-reembolso-no-aplica">
                       <i class="bi bi-arrow-left-right me-1"></i>
@@ -128,38 +120,43 @@
                   </span>
                 </div>
               </td>
+              
               <td>
                 <div class="pago-info">
-                  <div class="medio-pago-wrapper">
-                    <!-- 👇 Aquí pasamos entidad_pago si existe -->
-                    <span class="medio-pago-badge" :class="getMedioPagoClass(turno.medio_pago)">
-                      {{ getMedioPagoTexto(turno.medio_pago, turno.entidad_pago) }}
-                    </span>
+                  <div class="medio-pago-wrapper" style="display: flex; flex-direction: column; gap: 6px;">
                     
-                    <span v-if="esTurnoPorCanje(turno) && turno.nro_transaccion" 
-                          class="badge-clonado">
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                      <span v-if="turno.medio_pago_restante || turno.tipo_pago === 'SENA_50'" style="font-size: 0.65rem; color: #64748b; font-weight: 800; width: 40px;">SEÑA:</span>
+                      <span v-else style="font-size: 0.65rem; color: #64748b; font-weight: 800; width: 40px;">PAGO:</span>
+                      
+                      <span class="medio-pago-badge" :class="getMedioPagoClass(turno.medio_pago)">
+                        {{ getMedioPagoTexto(turno.medio_pago, turno.entidad_pago) }}
+                      </span>
+                    </div>
+
+                    <div v-if="turno.medio_pago_restante" style="display: flex; align-items: center; gap: 4px;">
+                      <span style="font-size: 0.65rem; color: #10b981; font-weight: 800; width: 40px;">RESTO:</span>
+                      <span class="medio-pago-badge" :class="getMedioPagoClass(turno.medio_pago_restante)">
+                        {{ getMedioPagoTexto(turno.medio_pago_restante, turno.entidad_pago_restante) }}
+                      </span>
+                    </div>
+                    
+                    <span v-if="esTurnoPorCanje(turno) && turno.nro_transaccion" class="badge-clonado" style="align-self: flex-start; margin-top: 4px;">
                       <i class="bi bi-link-45deg me-1"></i>
                       ID Clonado
                     </span>
                   </div>
                   
-                  <div v-if="turno.tipo_pago === 'SENA_50'" class="detalle-pago">
+                  <div v-if="turno.tipo_pago === 'SENA_50'" class="detalle-pago" style="margin-top: 6px;">
                     <div class="text-senia">Seña: ${{ formatPrecio(turno.monto_seña) }}</div>
                     <div class="text-falta">Falta: ${{ formatPrecio(calcularFaltaPagar(turno)) }}</div>
                   </div>
-                  <div v-else-if="turno.tipo_pago === 'TOTAL'" class="detalle-pago">
+                  <div v-else-if="turno.tipo_pago === 'TOTAL'" class="detalle-pago" style="margin-top: 6px;">
                     <span class="text-pagado">Pagado total: ${{ formatPrecio(turno.monto_total) }}</span>
                   </div>
                   
                   <div v-if="(turno.info_descuento) || (turno.descuento_aplicado && turno.descuento_aplicado > 0)" class="descuento-info">
                     <span class="badge-descuento-fidelizacion">
-                      <i class="bi bi-percent me-1"></i>
-                      15% OFF aplicado
-                    </span>
-                  </div>
-                  
-                  <div v-if="esTurnoConDescuento(turno)" class="descuento-info">
-                    <span class="badge-descuento">
                       <i class="bi bi-percent me-1"></i>
                       15% OFF aplicado
                     </span>
@@ -267,32 +264,27 @@ const filtros = ref({
   fechaHasta: '' 
 })
 
-// Obtener rol del usuario desde localStorage
 const userRol = computed(() => {
   return localStorage.getItem('user_rol') || ''
 })
 
-// NAVEGACIÓN
 const irARegistrar = () => {
   router.push('/turnos/crear-presencial')
 }
 
-// 🔥 FUNCIÓN: Editar turno
 const editarTurno = (turno) => {
   router.push(`/turnos/modificar/${turno.id}`)
 }
 
-// 🔥 FUNCIÓN: Verificar si se puede editar el turno
 const puedeEditarTurno = (turno) => {
-  if (!['RESERVADO', 'CONFIRMADO'].includes(turno.estado)) {
-    return false
+  if (turno.estado !== 'RESERVADO') {
+    return false;
   }
-  const rol = userRol.value.toUpperCase()
-  const rolesPermitidos = ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'PELUQUERO', 'PEL']
-  return rolesPermitidos.includes(rol)
-}
+  const rol = userRol.value.toUpperCase();
+  const rolesPermitidos = ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'PELUQUERO', 'PEL'];
+  return rolesPermitidos.includes(rol);
+};
 
-// FUNCIONES DE FORMATO
 const formatFecha = (fechaStr) => {
   if (!fechaStr) return '-'
   const [year, month, day] = fechaStr.split('-')
@@ -314,7 +306,6 @@ const formatPrecio = (precio) => {
   })
 }
 
-// FUNCIÓN: Formatear texto de entidad de pago
 const getEntidadPagoTexto = (entidad) => {
   if (!entidad) return ''
   const mapaEntidades = {
@@ -326,15 +317,11 @@ const getEntidadPagoTexto = (entidad) => {
   return mapaEntidades[entidad] || entidad
 }
 
-// 💳 FUNCIÓN MEJORADA: Muestra el medio de pago y si es transferencia con entidad, muestra la entidad
 const getMedioPagoTexto = (medioPago, entidadPago = null) => {
   if (!medioPago || medioPago === 'PENDIENTE') return 'Pendiente'
-  
-  // Si es transferencia y tenemos entidad, mostramos la entidad formateada
   if (medioPago === 'TRANSFERENCIA' && entidadPago) {
     return getEntidadPagoTexto(entidadPago)
   }
-  
   const map = {
     'MERCADO_PAGO': 'Mercado Pago',
     'EFECTIVO': 'Efectivo',
@@ -343,20 +330,17 @@ const getMedioPagoTexto = (medioPago, entidadPago = null) => {
   return map[medioPago] || medioPago
 }
 
-// FUNCIONES DE CÁLCULO
+// 🔥 CORREGIDO: Si es TOTAL devuelve 0
 const calcularFaltaPagar = (turno) => {
+  if (turno.tipo_pago === 'TOTAL') return 0;
   const total = parseFloat(turno.monto_total) || 0
   const senia = parseFloat(turno.monto_seña) || 0
-  return total - senia
+  return Math.max(0, total - senia)
 }
 
 const calcularMontoReembolso = (turno) => {
-  if (turno.estado !== 'CANCELADO' || turno.reembolso_estado !== 'PENDIENTE') {
-    return 0
-  }
-  if (turno.tipo_pago === 'SENA_50') {
-    return turno.monto_seña || 0
-  }
+  if (turno.estado !== 'CANCELADO' || turno.reembolso_estado !== 'PENDIENTE') return 0
+  if (turno.tipo_pago === 'SENA_50') return turno.monto_seña || 0
   return turno.monto_total || 0
 }
 
@@ -397,24 +381,23 @@ const getDuracion = (turno) => {
   return '30 min'
 }
 
-const esEstadoActivo = (estado) => ['RESERVADO', 'CONFIRMADO'].includes(estado)
+const esEstadoActivo = (estado) => estado === 'RESERVADO';
 
 const getEstadoTexto = (estado, tipoPago) => {
-  if (estado === 'RESERVADO') return 'Reservado'
-  if (estado === 'CONFIRMADO') return 'Confirmado'
-  return estado
-}
+  if (estado === 'RESERVADO') return 'Reservado';
+  return estado;
+};
 
 const getEstadoClass = (estado, tipoPago) => {
-  if (estado === 'RESERVADO' || estado === 'CONFIRMADO') {
-    return tipoPago === 'TOTAL' ? 'estado-success' : 'estado-warning'
+  if (estado === 'RESERVADO') {
+    return tipoPago === 'TOTAL' ? 'estado-success' : 'estado-warning';
   } else if (estado === 'COMPLETADO') {
-    return 'estado-completado'
+    return 'estado-completado';
   } else if (estado === 'CANCELADO') {
-    return 'estado-cancelado'
+    return 'estado-cancelado';
   }
-  return 'estado-secondary'
-}
+  return 'estado-secondary';
+};
 
 const getMedioPagoClass = (medioPago) => {
   if (!medioPago) return 'otro'
@@ -426,7 +409,6 @@ const getMedioPagoClass = (medioPago) => {
   return 'otro'
 }
 
-// CARGA DE TURNOS
 const cargarTurnos = async () => {
   try {
     loading.value = true
@@ -458,100 +440,261 @@ const cargarTurnos = async () => {
   }
 }
 
-// CANCELACIÓN DE TURNO
 const cancelarTurno = async (turno) => {
   try {
-    let margenReembolso = 3; 
+    let margenConfig = 3; 
     try {
         const resConfig = await axios.get('/api/configuracion/');
         if (resConfig.data && resConfig.data.margen_horas_cancelacion) {
-            margenReembolso = resConfig.data.margen_horas_cancelacion;
+            margenConfig = resConfig.data.margen_horas_cancelacion;
         }
-    } catch (e) { console.error(e) }
+    } catch (e) { console.error("Error al obtener margen de cancelación:", e) }
 
-    const ahora = new Date()
-    const fechaTurno = new Date(`${turno.fecha}T${turno.hora}`)
-    const horasFaltantes = (fechaTurno - ahora) / (1000 * 60 * 60)
-    const hayReembolso = horasFaltantes >= margenReembolso
-    let mensajeReembolso = hayReembolso ? `El cliente recibirá reembolso (cancelación con más de ${margenReembolso} horas de anticipación).` : `No habrá reembolso (faltan menos de ${margenReembolso} horas para el turno).`
-    let iconoReembolso = hayReembolso ? 'success' : 'warning'
+    const ahora = new Date();
+    const fechaTurno = new Date(`${turno.fecha}T${turno.hora}`);
+    const horasFaltantes = (fechaTurno - ahora) / (1000 * 60 * 60);
+    const hayReembolso = horasFaltantes >= margenConfig;
 
     const { value: formValues } = await Swal.fire({
-      title: `<span style="font-size: 1.5rem; font-weight: 700; color: #1f2937;">Cancelar Turno</span>`,
+      title: `<span style="font-size: 1.5rem; font-weight: 700; color: #1f2937;">¿Cancelar Turno?</span>`,
       html: `
-        <div style="margin-bottom: 15px;">
-            <label>Motivo:</label>
-            <select id="motivoCancelacion" class="swal2-input">
-                <option value="" disabled selected>Selecciona un motivo...</option>
-                <option value="MOTIVOS_PERSONALES">Motivos personales</option>
-                <option value="PROBLEMAS_SALUD">Problemas de salud</option>
-                <option value="OTRO">Otro</option>
+        <div style="text-align: left; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+          
+          <div style="background: ${hayReembolso ? '#f0fdf4' : '#fffbeb'}; 
+                      padding: 12px; border-radius: 10px; margin-bottom: 12px; 
+                      border: 1px solid ${hayReembolso ? '#bbf7d0' : '#fef3c7'};
+                      display: flex; align-items: center; gap: 10px;">
+            <div style="font-size: 1.2rem;">${hayReembolso ? '✅' : '⚠️'}</div>
+            <div>
+              <div style="font-weight: 700; color: ${hayReembolso ? '#166534' : '#92400e'}; font-size: 0.9rem;">
+                ${hayReembolso ? 'Reembolso disponible' : 'Sin reembolso'}
+              </div>
+              <div style="color: ${hayReembolso ? '#16a34a' : '#b45309'}; font-size: 0.8rem;">
+                Cancelación con ${Math.floor(horasFaltantes)}hs de anticipación (Mínimo: ${margenConfig}hs).
+              </div>
+            </div>
+          </div>
+
+          <div style="background: #e0f2fe; padding: 12px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #bae6fd; display: flex; align-items: center; gap: 10px;">
+            <div style="font-size: 1.2rem;">🔔</div>
+            <div>
+              <div style="font-weight: 700; color: #0369a1; font-size: 0.9rem;">
+                Notificación Automática
+              </div>
+              <div style="color: #0284c7; font-size: 0.8rem;">
+                Al cancelar, se avisará a los clientes en lista de espera que este horario se liberó.
+              </div>
+            </div>
+          </div>
+
+          <div style="background: #f8fafc; padding: 1rem; border-radius: 12px; border: 1px solid #e2e8f0;">
+            <label style="display:block; margin-bottom:5px; font-weight:bold; color: #1e293b; font-size: 0.9rem;">Motivo:</label>
+            <select id="motivoCancelacion" class="swal2-input" style="width: 100%; margin: 0 0 15px 0; height: 40px; font-size: 0.9rem;">
+              <option value="" disabled selected>Selecciona un motivo...</option>
+              <option value="MOTIVOS_PERSONALES">Motivos personales</option>
+              <option value="PROBLEMAS_SALUD">Problema de salud</option>
+              <option value="ERROR_RESERVA">Error al reservar</option>
+              <option value="CAMBIO_PLANES">Cambio de planes</option>
+              <option value="OTRO">Otro</option>
             </select>
-        </div>
-        <div>
-            <label>Observaciones:</label>
-            <textarea id="observacionesCancelacion" class="swal2-textarea"></textarea>
-        </div>
-        <div style="margin-top: 10px; color: ${hayReembolso ? 'green' : 'orange'}">
-            ${mensajeReembolso}
+            <label style="display:block; margin-bottom:5px; font-weight:bold; color: #1e293b; font-size: 0.9rem;">Observaciones:</label>
+            <textarea id="observacionesCancelacion" class="swal2-textarea" style="width: 100%; margin: 0; height: 80px; font-size: 0.9rem;" placeholder="Opcional..."></textarea>
+          </div>
         </div>
       `,
+      icon: 'question',
       showCancelButton: true,
-      confirmButtonText: 'Confirmar cancelación',
       confirmButtonColor: '#ef4444',
+      confirmButtonText: 'Confirmar Cancelación',
+      cancelButtonText: 'Volver',
       preConfirm: () => {
-        const motivoSelect = document.getElementById('motivoCancelacion')
-        const observacionesTextarea = document.getElementById('observacionesCancelacion')
+        const motivoSelect = document.getElementById('motivoCancelacion');
+        const observacionesTextarea = document.getElementById('observacionesCancelacion');
+        
         if (!motivoSelect.value) {
-          Swal.showValidationMessage('Por favor, selecciona un motivo de cancelación')
-          return false
+          Swal.showValidationMessage('Por favor selecciona un motivo');
+          return false;
         }
+        
         return {
           motivo_cancelacion: motivoSelect.options[motivoSelect.selectedIndex].text,
           motivo_cancelacion_codigo: motivoSelect.value,
           obs_cancelacion: observacionesTextarea.value.trim() || ''
         }
       }
-    })
+    });
 
     if (formValues) {
-      loading.value = true
+      loading.value = true;
       try {
-        const response = await axios.post(`/api/turnos/${turno.id}/cancelar/`, formValues)
+        Swal.fire({ 
+          title: 'Procesando...', 
+          allowOutsideClick: false, 
+          didOpen: () => Swal.showLoading() 
+        });
+        
+        const response = await axios.post(`/api/turnos/${turno.id}/cancelar/`, formValues);
+        
         if (response.data.status === 'ok') {
-          await Swal.fire({ icon: iconoReembolso, title: 'Turno cancelado', text: response.data.message })
+          await Swal.fire({ 
+            icon: hayReembolso ? 'success' : 'warning', 
+            title: 'Turno cancelado', 
+            text: response.data.message || 'El turno ha sido cancelado exitosamente.',
+            confirmButtonColor: '#0ea5e9'
+          });
         } else {
-          await Swal.fire('Error', response.data.error || 'Error desconocido', 'error')
+          await Swal.fire('Error', response.data.error || 'Error desconocido', 'error');
         }
-        await cargarTurnos()
+        await cargarTurnos();
       } catch (error) {
-        Swal.fire('Error', 'Error de conexión', 'error')
+        Swal.fire('Error', 'Error de conexión', 'error');
       } finally {
-        loading.value = false
+        loading.value = false;
       }
     }
   } catch (error) {
-    console.error('Error en cancelarTurno:', error)
-    loading.value = false
+    console.error('Error en cancelarTurno:', error);
+    loading.value = false;
   }
 }
 
-// PAGO Y REEMBOLSO
 const confirmarPagoTotal = async (turno) => {
-  const falta = calcularFaltaPagar(turno)
-  const { value: nroTransaccion } = await Swal.fire({
+  const falta = calcularFaltaPagar(turno);
+  
+  const selectEntidadHtml = `
+    <div id="entidadContainer" style="display: none; margin-top: 15px; text-align: left;">
+      <label style="display: block; font-weight: 600; font-size: 0.9rem; color: #1e293b; margin-bottom: 5px;">Billetera / Banco de Origen *</label>
+      <select id="entidad_pago" class="swal2-input" style="width: 100%; margin: 0; height: 42px; font-size: 0.9rem;">
+        <option value="" disabled selected>Seleccione entidad...</option>
+        <option value="UALA">Ualá</option>
+        <option value="BRUBANK">Brubank</option>
+        <option value="LEMON">Lemon Cash</option>
+        <option value="NARANJAX">Naranja X</option>
+        <option value="MODO">MODO</option>
+        <option value="SANTANDER">Santander</option>
+        <option value="GALICIA">Galicia</option>
+        <option value="BBVA">BBVA</option>
+        <option value="MACRO">Macro</option>
+        <option value="OTRO">Otro</option>
+      </select>
+    </div>
+  `;
+
+  const { isConfirmed, value: formValues } = await Swal.fire({
     title: 'Cobrar Restante',
-    html: `<p>Falta cobrar: <b>$${formatPrecio(falta)}</b></p><br><input id="nro_transaccion" class="swal2-input" placeholder="N° Transacción (Opcional)">`,
+    html: `
+      <div style="background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px;">
+        <p style="margin: 0; color: #64748b; font-size: 0.9rem;">Monto a cobrar</p>
+        <p style="margin: 5px 0 0 0; color: #10b981; font-size: 1.8rem; font-weight: 800;">$${formatPrecio(falta)}</p>
+      </div>
+
+      <div style="text-align: left;">
+        <label style="display: block; font-weight: 600; font-size: 0.9rem; color: #1e293b; margin-bottom: 5px;">Medio de Pago</label>
+        <select id="medio_pago" class="swal2-input" style="width: 100%; margin: 0; height: 42px; font-size: 0.9rem;">
+          <option value="EFECTIVO" selected>💵 Efectivo</option>
+          <option value="MERCADO_PAGO">🔵 Mercado Pago (QR/Link)</option>
+          <option value="TRANSFERENCIA">🏦 Transferencia</option>
+        </select>
+
+        ${selectEntidadHtml}
+
+        <div id="transaccionContainer" style="display: none; margin-top: 15px;">
+          <label style="display: block; font-weight: 600; font-size: 0.9rem; color: #1e293b; margin-bottom: 5px;">N° de Comprobante *</label>
+          <input id="nro_transaccion" type="text" class="swal2-input" style="width: 100%; margin: 0; height: 42px; font-size: 0.9rem;" placeholder="">
+        </div>
+      </div>
+    `,
     showCancelButton: true,
+    confirmButtonColor: '#10b981',
     confirmButtonText: 'Registrar Pago',
-    preConfirm: () => document.getElementById('nro_transaccion').value || ''
-  })
-  if (nroTransaccion !== undefined) {
+    cancelButtonText: 'Cancelar',
+    didOpen: () => {
+      const medioSelect = document.getElementById('medio_pago');
+      const tranContainer = document.getElementById('transaccionContainer');
+      const entContainer = document.getElementById('entidadContainer');
+      const inputTransaccion = document.getElementById('nro_transaccion');
+
+      medioSelect.addEventListener('change', (e) => {
+        const val = e.target.value;
+        inputTransaccion.value = ''; 
+        
+        if (val === 'EFECTIVO') {
+          tranContainer.style.display = 'none';
+          entContainer.style.display = 'none';
+        } else {
+          tranContainer.style.display = 'block';
+          if (val === 'TRANSFERENCIA') {
+            entContainer.style.display = 'block';
+            inputTransaccion.placeholder = "Ej: A1B2C3D4 (Máx 18)";
+            inputTransaccion.maxLength = 18;
+          } else if (val === 'MERCADO_PAGO') {
+            entContainer.style.display = 'none';
+            inputTransaccion.placeholder = "Ej: 1234567890 (Máx 14)";
+            inputTransaccion.maxLength = 14;
+          }
+        }
+      });
+
+      inputTransaccion.addEventListener('input', (e) => {
+        if (medioSelect.value === 'MERCADO_PAGO') {
+          e.target.value = e.target.value.replace(/\D/g, '');
+        } else if (medioSelect.value === 'TRANSFERENCIA') {
+          e.target.value = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        }
+      });
+    },
+    preConfirm: () => {
+      const medio_pago = document.getElementById('medio_pago').value;
+      const entidad_pago = document.getElementById('entidad_pago').value;
+      const nro_transaccion = document.getElementById('nro_transaccion').value.trim();
+
+      if (medio_pago === 'MERCADO_PAGO') {
+        if (!nro_transaccion) {
+          Swal.showValidationMessage('El número de comprobante de Mercado Pago es obligatorio.');
+          return false;
+        }
+        if (!/^\d{1,14}$/.test(nro_transaccion)) {
+          Swal.showValidationMessage('Mercado Pago admite solo números (hasta 14 dígitos).');
+          return false;
+        }
+      }
+
+      if (medio_pago === 'TRANSFERENCIA') {
+        if (!entidad_pago) {
+          Swal.showValidationMessage('Debe seleccionar la billetera o banco de origen.');
+          return false;
+        }
+        if (!nro_transaccion) {
+          Swal.showValidationMessage('El número de transferencia es obligatorio.');
+          return false;
+        }
+        if (!/^[a-zA-Z0-9]{1,18}$/.test(nro_transaccion)) {
+          Swal.showValidationMessage('El comprobante debe ser alfanumérico (hasta 18 caracteres).');
+          return false;
+        }
+      }
+
+      return {
+        tipo_pago: 'TOTAL',
+        medio_pago: medio_pago,
+        entidad_pago: medio_pago === 'TRANSFERENCIA' ? entidad_pago : (medio_pago === 'MERCADO_PAGO' ? 'MERCADO_PAGO' : null),
+        nro_transaccion: medio_pago !== 'EFECTIVO' ? nro_transaccion : null
+      };
+    }
+  });
+
+  if (isConfirmed && formValues) {
     try {
-      await axios.post(`/api/turnos/${turno.id}/actualizar-pago/`, { tipo_pago: 'TOTAL', medio_pago: turno.medio_pago || 'EFECTIVO', nro_transaccion: nroTransaccion })
-      await cargarTurnos()
-      Swal.fire('¡Pago registrado!', '', 'success')
-    } catch (error) { Swal.fire('Error', 'No se pudo registrar el pago.', 'error') }
+      Swal.fire({ title: 'Registrando pago...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+      
+      await axios.post(`/api/turnos/${turno.id}/actualizar-pago/`, formValues);
+      
+      await cargarTurnos();
+      Swal.fire('¡Pago registrado!', 'El saldo restante se cobró exitosamente.', 'success');
+    } catch (error) { 
+      console.error(error);
+      Swal.fire('Error', 'No se pudo registrar el pago.', 'error');
+    }
   }
 }
 
@@ -573,27 +716,15 @@ const gestionarReembolsoManual = async (turno) => {
   }
 }
 
-// 👇 VERSIÓN MEJORADA DEL DETALLE (SweetAlert)
 const verDetalleTurno = async (turno) => {
   try {
-    console.log('🔍 Turno recibido:', turno);
-
     const response = await axios.get(`/api/turnos/${turno.id}/`);
-    console.log('📡 Respuesta completa:', response);
-    console.log('📦 Datos recibidos:', response.data);
-
-    if (response.data && response.data.error) {
-      throw new Error(`Error del servidor: ${response.data.error}`);
-    }
-
-    if (!response.data || !response.data.id) {
-      console.error('❌ La respuesta no tiene la estructura esperada:', response.data);
-      throw new Error('La respuesta del servidor no contiene los datos del turno');
-    }
+    
+    if (response.data && response.data.error) throw new Error(`Error: ${response.data.error}`);
+    if (!response.data || !response.data.id) throw new Error('Error de datos');
 
     const turnoDetalle = response.data;
 
-    // HTML de servicios
     let serviciosHTML = '';
     if (turnoDetalle.servicios && turnoDetalle.servicios.length > 0) {
       serviciosHTML = turnoDetalle.servicios.map(s => `
@@ -608,21 +739,16 @@ const verDetalleTurno = async (turno) => {
     }
 
     const faltaPagar = calcularFaltaPagar(turnoDetalle);
+    const montoAbonado = turnoDetalle.tipo_pago === 'TOTAL' ? turnoDetalle.monto_total : turnoDetalle.monto_seña;
 
-    // Datos de pago
     const medioPago = turnoDetalle.medio_pago || '';
     const entidadPago = turnoDetalle.entidad_pago || null;
-    const transactionId = turnoDetalle.codigo_transaccion || turnoDetalle.mp_payment_id || 'EFECTIVO';
-    const isDigitalPayment = medioPago.toUpperCase().includes('TRANSFERENCIA') || 
-                             medioPago.toUpperCase().includes('MERCADO') ||
-                             medioPago.toUpperCase().includes('MP') ||
-                             turnoDetalle.codigo_transaccion || 
-                             turnoDetalle.mp_payment_id;
+    const transactionId = turnoDetalle.codigo_transaccion || turnoDetalle.mp_payment_id;
 
     Swal.fire({
+      // 🔥 CORREGIDO: Se quitó el precio del título para que no se repita
       title: `<div style="display: flex; align-items: center; gap: 10px; color: #0f172a;">
-                <span style="background: #0ea5e9; color: white; padding: 6px 14px; border-radius: 40px; font-size: 0.9rem; font-weight: 600;">#${turnoDetalle.id}</span>
-                <span style="font-size: 1.6rem; font-weight: 800; letter-spacing: -0.5px;">$${formatPrecio(turnoDetalle.monto_total || 0)}</span>
+                <span style="background: #0ea5e9; color: white; padding: 6px 14px; border-radius: 40px; font-size: 0.9rem; font-weight: 600;">Turno #${turnoDetalle.id}</span>
               </div>`,
       width: '800px',
       background: '#ffffff',
@@ -631,7 +757,6 @@ const verDetalleTurno = async (turno) => {
       html: `
         <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: left;">
 
-          <!-- Estado y canal -->
           <div style="display: flex; gap: 12px; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
             <span class="badge-estado ${getEstadoClass(turnoDetalle.estado, turnoDetalle.tipo_pago)}" style="padding: 8px 16px; border-radius: 30px; font-weight: 700; font-size: 0.9rem;">
               ${getEstadoTexto(turnoDetalle.estado, turnoDetalle.tipo_pago)}
@@ -641,7 +766,23 @@ const verDetalleTurno = async (turno) => {
             </span>
           </div>
 
-          <!-- Cliente y profesional -->
+          ${turnoDetalle.estado === 'CANCELADO' ? `
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 16px; padding: 20px; margin-bottom: 25px; display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.8rem;">🚫</span>
+                <div>
+                  <h4 style="margin: 0; color: #991b1b; font-size: 0.9rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Motivo de Cancelación</h4>
+                  <span style="color: #7f1d1d; font-size: 1.2rem; font-weight: 800;">${turnoDetalle.motivo_cancelacion || 'No especificado'}</span>
+                </div>
+              </div>
+              ${turnoDetalle.obs_cancelacion ? `
+                <div style="background: white; border-radius: 10px; padding: 12px; color: #991b1b; font-size: 0.95rem; font-style: italic; border: 1px dashed #fca5a5;">
+                  " ${turnoDetalle.obs_cancelacion} "
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px;">
             <div style="background: #f8fafc; padding: 18px; border-radius: 16px; border: 1px solid #e2e8f0;">
               <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
@@ -659,7 +800,6 @@ const verDetalleTurno = async (turno) => {
             </div>
           </div>
 
-          <!-- Servicios -->
           <div style="margin-bottom: 25px;">
             <h4 style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 15px; letter-spacing: 0.5px;">
               <span style="font-size: 1.2rem;">📋</span> Detalle de Servicios
@@ -680,7 +820,6 @@ const verDetalleTurno = async (turno) => {
             </div>
           </div>
 
-          <!-- Silla asignada -->
           <div style="background: ${turnoDetalle.silla_nombre ? '#f0fdf4' : '#fef2f2'}; padding: 16px; border-radius: 16px; border: 1px solid ${turnoDetalle.silla_nombre ? '#bbf7d0' : '#fecaca'}; display: flex; align-items: center; gap: 15px; margin-bottom: 25px;">
             <span style="font-size: 2rem;">🪑</span>
             <div>
@@ -689,22 +828,17 @@ const verDetalleTurno = async (turno) => {
             </div>
           </div>
 
-          <!-- Resumen de pago mejorado -->
           <div style="background: linear-gradient(145deg, #1e293b, #0f172a); padding: 24px; border-radius: 20px; color: white;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
               <h4 style="margin:0; font-size: 1rem; font-weight: 600; color: #94a3b8; display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 1.4rem;">💰</span> Resumen de pago
               </h4>
-              <!-- 👇 Mostramos el medio de pago con entidad si corresponde -->
-              <span style="background: #334155; padding: 6px 14px; border-radius: 40px; font-size: 0.85rem; font-weight: 600; color: #e2e8f0;">
-                ${getMedioPagoTexto(medioPago, entidadPago)}
-              </span>
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
               <div>
                 <span style="font-size: 0.8rem; color: #94a3b8;">Abonado</span>
-                <div style="font-size: 2rem; font-weight: 800; color: #4ade80;">$${formatPrecio(turnoDetalle.monto_seña || 0)}</div>
+                <div style="font-size: 2rem; font-weight: 800; color: #4ade80;">$${formatPrecio(montoAbonado || 0)}</div>
               </div>
               <div>
                 <span style="font-size: 0.8rem; color: #94a3b8;">Pendiente</span>
@@ -712,38 +846,44 @@ const verDetalleTurno = async (turno) => {
               </div>
             </div>
 
-            <!-- ID de transacción con tamaño equilibrado -->
             <div style="background: #0f172a; border-radius: 14px; padding: 16px; border: 1px solid #334155; margin-top: 10px;">
-              <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                <span style="font-size: 0.9rem; font-weight: 600; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
-                  <span style="font-size: 1.2rem;">🏦</span> ${getMedioPagoTexto(medioPago, entidadPago)}
-                </span>
-                <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.3rem; font-weight: 700; background: #1e293b; padding: 6px 16px; border-radius: 40px; color: #a5f3fc; letter-spacing: 0.5px; margin-left: auto;">
-                  ${transactionId}
-                </span>
+              
+              <div style="margin-bottom: ${turnoDetalle.medio_pago_restante ? '12px' : '0'}; border-bottom: ${turnoDetalle.medio_pago_restante ? '1px solid #334155' : 'none'}; padding-bottom: ${turnoDetalle.medio_pago_restante ? '12px' : '0'};">
+                <span style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">${turnoDetalle.medio_pago_restante ? '1er Pago (Seña)' : 'Pago Único / Seña'}</span>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                  <span style="font-size: 0.9rem; font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 1.2rem;">🏦</span> ${getMedioPagoTexto(medioPago, entidadPago)}
+                  </span>
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; background: #1e293b; padding: 4px 12px; border-radius: 40px; color: #a5f3fc; letter-spacing: 0.5px; margin-left: auto;">
+                    ${transactionId || 'Sin Comprobante'}
+                  </span>
+                </div>
               </div>
-              ${isDigitalPayment ? '<p style="color: #94a3b8; font-size: 0.8rem; margin-top: 10px; border-top: 1px solid #334155; padding-top: 10px;">🔍 Usá este ID para verificar el pago</p>' : ''}
+
+              ${turnoDetalle.medio_pago_restante ? `
+                <div style="margin-top: 12px;">
+                  <span style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">2do Pago (Restante)</span>
+                  <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <span style="font-size: 0.9rem; font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 6px;">
+                      <span style="font-size: 1.2rem;">🏦</span> ${getMedioPagoTexto(turnoDetalle.medio_pago_restante, turnoDetalle.entidad_pago_restante)}
+                    </span>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; background: #1e293b; padding: 4px 12px; border-radius: 40px; color: #a5f3fc; letter-spacing: 0.5px; margin-left: auto;">
+                      ${turnoDetalle.codigo_transaccion_restante || 'Sin Comprobante'}
+                    </span>
+                  </div>
+                </div>
+              ` : ''}
+              
             </div>
           </div>
         </div>
       `
     });
   } catch (error) {
-    console.error('❌ Error al obtener detalle del turno:', error);
-    let mensaje = 'No se pudo cargar el detalle del turno.';
-    if (error.response) {
-      mensaje += ` (Código ${error.response.status}: ${error.response.statusText})`;
-      console.error('🔴 Datos del error:', error.response.data);
-    } else if (error.request) {
-      mensaje += ' No se recibió respuesta del servidor.';
-    } else {
-      mensaje += ` ${error.message}`;
-    }
-    Swal.fire('Error', mensaje, 'error');
+    Swal.fire('Error', 'No se pudo cargar el detalle del turno.', 'error');
   }
 };
 
-// COMPLETAR TURNO
 const completarTurno = async (turno) => {
   const { isConfirmed } = await Swal.fire({
     title: '¿Completar turno?',
@@ -1337,54 +1477,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   transition: all 0.2s ease;
 }
 
-/* Badge de Fidelización (Violeta Fachero) */
-.badge-fidelizacion {
-    background-color: #6f42c1; /* Violeta Bootstrap */
-    color: white;
-    font-size: 0.75rem; /* Letra chiquita pero legible */
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-weight: 600;
-    box-shadow: 0 2px 4px rgba(111, 66, 193, 0.2);
-    white-space: nowrap;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px; /* Espacio entre ícono y texto */
-    animation: fadeIn 0.5s ease-in;
-}
-
-/* Badge de Descuento (Verde Éxito) */
-.badge-descuento-fidelizacion {
-    color: #198754; /* Verde oscuro */
-    background-color: #d1e7dd; /* Verde clarito fondo */
-    font-size: 0.75rem;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    margin-top: 4px;
-}
-
-/* Animación suave para que aparezcan lindos */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-5px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* Ajustes para la columna de pago */
-.pago-info {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-}
-
-.text-pagado {
-    font-weight: 600;
-    color: #0d6efd; /* Azul standard */
-}
-
 /* Información del cliente */
 .canal-badge {
   padding: 4px 10px;
@@ -1477,96 +1569,28 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   height: 40px;
 }
 
-/* Botón Editar (lapicito) */
-.action-button.edit {
-  background: var(--bg-tertiary);
-  border: 1px solid #0ea5e9;
-  color: #0ea5e9;
-}
-.action-button.edit:hover { 
-  background: var(--hover-bg); 
-  transform: translateY(-2px); 
-  box-shadow: 0 6px 16px rgba(14, 165, 233, 0.4); 
-  border-color: #0ea5e9; 
-}
+.action-button.edit { background: var(--bg-tertiary); border: 1px solid #0ea5e9; color: #0ea5e9; }
+.action-button.edit:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(14, 165, 233, 0.4); border-color: #0ea5e9; }
 
-.action-button.view {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-}
-.action-button.view:hover { 
-  background: var(--hover-bg); 
-  transform: translateY(-2px); 
-  box-shadow: var(--shadow-sm); 
-}
+.action-button.view { background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary); }
+.action-button.view:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
 
-.action-button.reembolso {
-  background: var(--bg-tertiary);
-  border: 1px solid #f59e0b;
-  color: #f59e0b;
-}
-.action-button.reembolso:hover { 
-  background: var(--hover-bg); 
-  transform: translateY(-2px); 
-  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4); 
-  border-color: #f59e0b; 
-}
+.action-button.reembolso { background: var(--bg-tertiary); border: 1px solid #f59e0b; color: #f59e0b; }
+.action-button.reembolso:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4); border-color: #f59e0b; }
 
-.action-button.pagar {
-  background: var(--bg-tertiary);
-  border: 1px solid #10b981;
-  color: #10b981;
-}
-.action-button.pagar:hover { 
-  background: var(--hover-bg); 
-  transform: translateY(-2px); 
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4); 
-  border-color: #10b981; 
-}
+.action-button.pagar { background: var(--bg-tertiary); border: 1px solid #10b981; color: #10b981; }
+.action-button.pagar:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4); border-color: #10b981; }
 
-.action-button.complete {
-  background: var(--bg-tertiary);
-  border: 1px solid #10b981;
-  color: #10b981;
-}
-.action-button.complete:hover { 
-  background: var(--hover-bg); 
-  transform: translateY(-2px); 
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4); 
-  border-color: #10b981; 
-}
+.action-button.complete { background: var(--bg-tertiary); border: 1px solid #10b981; color: #10b981; }
+.action-button.complete:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4); border-color: #10b981; }
 
-.action-button.delete {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--error-color);
-  color: var(--error-color);
-}
-.action-button.delete:hover { 
-  background: var(--hover-bg); 
-  transform: translateY(-2px); 
-  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4); 
-  border-color: var(--error-color); 
-}
+.action-button.delete { background: var(--bg-tertiary); border: 1px solid var(--error-color); color: var(--error-color); }
+.action-button.delete:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4); border-color: var(--error-color); }
 
 /* ESTADOS DE CARGA */
-.no-results {
-  text-align: center;
-  padding: 80px;
-  color: var(--text-secondary);
-}
-
-.no-results-icon {
-  margin-bottom: 15px;
-  opacity: 0.5;
-  color: var(--text-tertiary);
-}
-
-.no-results p {
-  margin: 0 0 8px 0;
-  font-size: 1.1em;
-  color: var(--text-primary);
-}
+.no-results { text-align: center; padding: 80px; color: var(--text-secondary); }
+.no-results-icon { margin-bottom: 15px; opacity: 0.5; color: var(--text-tertiary); }
+.no-results p { margin: 0 0 8px 0; font-size: 1.1em; color: var(--text-primary); }
 
 .btn-reintentar {
   background: linear-gradient(135deg, #0ea5e9, #0284c7);
@@ -1586,56 +1610,16 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   gap: 8px;
   margin: 20px auto 0;
 }
-.btn-reintentar:hover { 
-  background: linear-gradient(135deg, #0284c7, #0369a1); 
-  transform: translateY(-2px); 
-  box-shadow: 0 8px 25px rgba(14, 165, 233, 0.5); 
-}
+.btn-reintentar:hover { background: linear-gradient(135deg, #0284c7, #0369a1); transform: translateY(-2px); box-shadow: 0 8px 25px rgba(14, 165, 233, 0.5); }
 
 /* PAGINACIÓN */
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 20px;
-  margin-top: 25px;
-}
-
+.pagination { display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: 25px; }
 .pagination button {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  padding: 12px 24px;
-  border-radius: 12px;
-  cursor: pointer;
-  font-weight: 800;
-  transition: all 0.3s ease;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-size: 0.85rem;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 12px 24px; border-radius: 12px; cursor: pointer; font-weight: 800; transition: all 0.3s ease; text-transform: uppercase; letter-spacing: 1px; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;
 }
-.pagination button:hover:not(:disabled) { 
-  background: var(--hover-bg); 
-  transform: translateY(-2px); 
-  box-shadow: var(--shadow-sm); 
-}
-.pagination button:disabled { 
-  background: var(--bg-tertiary); 
-  color: var(--text-tertiary); 
-  cursor: not-allowed; 
-  transform: none; 
-  border: 1px solid var(--border-color); 
-  opacity: 0.5; 
-}
-.pagination span { 
-  color: var(--text-primary); 
-  font-weight: 700; 
-  letter-spacing: 0.8px; 
-  font-size: 0.95rem; 
-}
+.pagination button:hover:not(:disabled) { background: var(--hover-bg); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+.pagination button:disabled { background: var(--bg-tertiary); color: var(--text-tertiary); cursor: not-allowed; transform: none; border: 1px solid var(--border-color); opacity: 0.5; }
+.pagination span { color: var(--text-primary); font-weight: 700; letter-spacing: 0.8px; font-size: 0.95rem; }
 
 /* RESPONSIVE */
 @media (max-width: 768px) {

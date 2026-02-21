@@ -1580,57 +1580,85 @@ def completar_turno(request, turno_id):
         }, status=400)
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def actualizar_pago_presencial(request, turno_id):
     try:
         turno = Turno.objects.get(id=turno_id)
         data = request.data
+        
+        nuevo_tipo = data.get('tipo_pago', 'TOTAL')
+        
+        # 🔥 MAGIA: Si ya tenía una seña, guardamos este segundo pago en el "restante"
+        if turno.tipo_pago == 'SENA_50' and nuevo_tipo == 'TOTAL':
+            turno.medio_pago_restante = data.get('medio_pago', 'EFECTIVO')
+            turno.entidad_pago_restante = data.get('entidad_pago')
+            turno.codigo_transaccion_restante = data.get('nro_transaccion')
+        else:
+            # Si era pago PENDIENTE y paga todo de una, va a los campos principales
+            turno.medio_pago = data.get('medio_pago', 'EFECTIVO')
+            turno.entidad_pago = data.get('entidad_pago')
+            turno.codigo_transaccion = data.get('nro_transaccion')
+            if 'MERCADO' in str(turno.medio_pago).upper(): 
+                turno.mp_payment_id = data.get('nro_transaccion', '')
+
+        # El estado sigue siendo RESERVADO, solo cambia la guita
         turno.tipo_pago = 'TOTAL'
-        turno.medio_pago = data.get('medio_pago', 'EFECTIVO')
-        turno.nro_transaccion = data.get('nro_transaccion', '')
-        if 'MERCADO' in str(turno.medio_pago).upper(): turno.mp_payment_id = data.get('nro_transaccion', '')
         turno.save()
         return Response({'status': 'ok'})
-    except: return Response(status=500)
+    except Exception as e: 
+        return Response({'error': str(e)}, status=500)
+
 
 @csrf_exempt
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def actualizar_pago_turno(request, turno_id):
     """
-    Actualiza el tipo de pago y monto total de un turno
+    Actualiza el tipo de pago y monto total de un turno. 
+    NO CAMBIA EL ESTADO (sigue siendo RESERVADO).
     """
     try:
         turno = get_object_or_404(Turno, id=turno_id)
-        data = json.loads(request.body)
+        # Soportamos dict normal o raw JSON
+        data = request.data if hasattr(request, 'data') and request.data else json.loads(request.body)
         
         tipo_pago = data.get('tipo_pago')
-        monto_total = Decimal(data.get('monto_total', 0))
+        monto_total = Decimal(data.get('monto_total', turno.monto_total))
         
         if tipo_pago not in ['SENA_50', 'TOTAL']:
-            return JsonResponse({
-                'status': 'error',
-                'message': 'Tipo de pago no válido'
-            }, status=400)
+            return JsonResponse({'status': 'error', 'message': 'Tipo de pago no válido'}, status=400)
         
-        # Actualizar datos
+        # 🔥 MAGIA 2: Misma lógica por si entra por este endpoint
+        if turno.tipo_pago == 'SENA_50' and tipo_pago == 'TOTAL':
+            turno.medio_pago_restante = data.get('medio_pago', 'EFECTIVO')
+            turno.entidad_pago_restante = data.get('entidad_pago')
+            turno.codigo_transaccion_restante = data.get('nro_transaccion')
+        else:
+            turno.medio_pago = data.get('medio_pago', 'EFECTIVO')
+            turno.entidad_pago = data.get('entidad_pago')
+            turno.codigo_transaccion = data.get('nro_transaccion')
+            if 'MERCADO' in str(turno.medio_pago).upper(): 
+                turno.mp_payment_id = data.get('nro_transaccion', '')
+
+        # Actualizar datos de plata
         turno.tipo_pago = tipo_pago
-        turno.monto_total = monto_total
+        if monto_total > 0:
+            turno.monto_total = monto_total
         
-        # Si es pago total, la seña es igual al total
-        if tipo_pago == 'TOTAL':
-            turno.monto_seña = monto_total
-        
+        # Si es pago total desde cero, la seña se iguala al total
+        if tipo_pago == 'TOTAL' and not turno.medio_pago_restante:
+            turno.monto_seña = turno.monto_total
+            
         turno.save()
         
         return JsonResponse({
             'status': 'ok',
-            'message': f'Pago actualizado a {tipo_pago} - Total: ${monto_total}',
+            'message': f'Pago actualizado a {tipo_pago}',
             'turno_id': turno.id
         })
         
     except Exception as e:
-        return JsonResponse({
-            'status': 'error',
-            'message': str(e)
-        }, status=500)
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 @csrf_exempt
 def modificar_turno(request, turno_id):
@@ -2367,7 +2395,6 @@ def pago_exitoso(request):
         payment_id = request.GET.get('payment_id')
         external_reference = request.GET.get('external_reference', '')
         
-        # 🚀 FORZAMOS SALIDA A LOCALHOST PARA EVITAR EL TIMEOUT DEL TÚNEL
         frontend_url = "http://localhost:5173"
 
         if "PEDIDO_" in external_reference:
@@ -2379,15 +2406,13 @@ def pago_exitoso(request):
                 pedido.mp_payment_id = payment_id
                 pedido.save()
             
-            # ✅ Redirige a '/client/mis-pedidos' (tal cual está en tu router de Vue)
             return redirect(f"{frontend_url}/client/mis-pedidos?pago_exitoso=true&pedido_id={pedido_id}")
 
         elif "TURNO_" in external_reference:
             turno_id = external_reference.split('_')[1]
             turno = Turno.objects.get(id=turno_id)
             
-            if turno.estado != 'CONFIRMADO':
-                turno.estado = 'CONFIRMADO'
+            if not turno.mp_payment_id:
                 turno.mp_payment_id = payment_id
                 turno.save()
             
@@ -5456,3 +5481,64 @@ def exportar_listado_ventas_pdf(request):
         c.save()
         error_buffer.seek(0)
         return HttpResponse(error_buffer, content_type='application/pdf', status=500)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def obtener_ocupacion_grilla(request):
+    fecha_str = request.GET.get('fecha')
+    peluquero_id = request.GET.get('peluquero_id')
+    silla_id = request.GET.get('silla_id')
+
+    if not fecha_str or not peluquero_id:
+        return Response({'ocupados': {}})
+
+    try:
+        fecha_obj = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        sillas_totales = Silla.objects.filter(activa=True).count()
+        
+        turnos_del_dia = Turno.objects.filter(
+            fecha=fecha_obj,
+            estado__in=['RESERVADO', 'CONFIRMADO', 'COMPLETADO']
+        ).exclude(estado='CANCELADO').prefetch_related('servicios')
+
+        minutos_ocupados = {} # 🔥 AHORA ES UN DICCIONARIO
+        ocupacion_global_por_minuto = {}
+
+        for t in turnos_del_dia:
+            duracion = getattr(t, 'duracion_total', 0)
+            if not duracion:
+                if t.servicios.exists():
+                    duracion = sum(s.duracion for s in t.servicios.all())
+                else:
+                    duracion = 30
+            
+            inicio_minutos = t.hora.hour * 60 + t.hora.minute
+            fin_minutos = inicio_minutos + duracion
+
+            es_del_peluquero = str(t.peluquero_id) == str(peluquero_id)
+            es_de_la_silla = str(t.silla_id) == str(silla_id) if silla_id and silla_id != 'null' else False
+
+            for m in range(inicio_minutos, fin_minutos):
+                hora_str_min = f"{m // 60:02d}:{m % 60:02d}"
+                
+                ocupacion_global_por_minuto[hora_str_min] = ocupacion_global_por_minuto.get(hora_str_min, 0) + 1
+                
+                if es_del_peluquero:
+                    minutos_ocupados[hora_str_min] = 'PELUQUERO'
+                elif es_de_la_silla:
+                    # Si no estaba ya bloqueado por el peluquero, avisamos que es por la silla
+                    if hora_str_min not in minutos_ocupados:
+                        minutos_ocupados[hora_str_min] = 'SILLA'
+
+        if sillas_totales > 0:
+            for minuto_str, cantidad in ocupacion_global_por_minuto.items():
+                if cantidad >= sillas_totales:
+                    if minuto_str not in minutos_ocupados:
+                        minutos_ocupados[minuto_str] = 'LOCAL_LLENO'
+
+        return Response({'ocupados': minutos_ocupados})
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return Response({'error': str(e)}, status=500)

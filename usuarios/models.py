@@ -356,7 +356,6 @@ class Turno(models.Model):
         ('RESERVADO', 'Reservado'), 
         ('COMPLETADO', 'Completado'), 
         ('CANCELADO', 'Cancelado'), 
-        ('DISPONIBLE', 'Disponible')
     ]
     TIPO_PAGO_CHOICES = [('SENA_50', 'Seña 50%'), ('TOTAL', 'Pago Total'), ('PENDIENTE', 'Pendiente de Pago')]
     MEDIO_PAGO_CHOICES = [
@@ -393,6 +392,9 @@ class Turno(models.Model):
     nro_transaccion = models.CharField(max_length=100, blank=True, null=True)
     entidad_pago = models.CharField(max_length=50, blank=True, null=True, verbose_name="Billetera/Banco Origen")
     codigo_transaccion = models.CharField(max_length=100, blank=True, null=True, verbose_name="Cód. Comprobante Manual")
+    medio_pago_restante = models.CharField(max_length=20, choices=MEDIO_PAGO_CHOICES, blank=True, null=True)
+    entidad_pago_restante = models.CharField(max_length=50, blank=True, null=True, verbose_name="Billetera/Banco Restante")
+    codigo_transaccion_restante = models.CharField(max_length=100, blank=True, null=True, verbose_name="Cód. Comprobante Restante")
     
     # MOTIVOS DE CANCELACIÓN
     motivo_cancelacion = models.CharField(max_length=100, blank=True, null=True)

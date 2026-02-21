@@ -175,6 +175,7 @@
               </small>
             </div>
           </div>
+
           <div v-if="form.peluquero && form.peluquero !== form.cliente" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon"><CalendarDays :size="20" /></div>
@@ -237,19 +238,28 @@
                 :class="{
                   'hora-selected': form.hora === hora,
                   'hora-disponible': esHorarioDisponibleCompleto(hora),
-                  'hora-ocupada': !esHorarioDisponibleCompleto(hora)
+                  'hora-ocupada': !esHorarioDisponibleCompleto(hora),
+                  'ocupada-silla': obtenerDetalleOcupacion(hora) === 'SILLA',
+                  'ocupada-peluquero': obtenerDetalleOcupacion(hora) === 'PELUQUERO'
                 }"
                 @click="esHorarioDisponibleCompleto(hora) ? seleccionarHora(hora) : null"
               >
                 <div class="hora-icono">
                   <Clock v-if="esHorarioDisponibleCompleto(hora)" :size="16" />
+                  <Armchair v-else-if="obtenerDetalleOcupacion(hora) === 'SILLA'" :size="18" />
+                  <User v-else-if="obtenerDetalleOcupacion(hora) === 'PELUQUERO'" :size="18" />
                   <X v-else :size="18" />
                 </div>
                 <span class="hora-texto">{{ hora }}</span>
-                <span v-if="!esHorarioDisponibleCompleto(hora)" class="etiqueta-ocupado">OCUPADO</span>
+                
+                <span v-if="obtenerDetalleOcupacion(hora) === 'PELUQUERO'" class="etiqueta-ocupado peluquero">PELUQUERO</span>
+                <span v-else-if="obtenerDetalleOcupacion(hora) === 'SILLA'" class="etiqueta-ocupado silla">SILLA EN USO</span>
+                <span v-else-if="obtenerDetalleOcupacion(hora) === 'LOCAL_LLENO'" class="etiqueta-ocupado lleno">SIN SILLAS</span>
+                <span v-else-if="obtenerDetalleOcupacion(hora) === 'PASADO'" class="etiqueta-ocupado pasado">EXPIRÓ</span>
               </div>
             </div>
           </div>
+
           <div v-if="form.hora" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon"><Receipt :size="20" /></div>
@@ -293,7 +303,6 @@
               </div>
               
               <div v-if="form.medio_pago !== 'EFECTIVO'" class="datos-transferencia-container slide-in">
-                
                 <div class="input-group" v-if="form.medio_pago === 'TRANSFERENCIA'">
                   <label class="label-modern">Billetera / Banco de Origen</label>
                   <select v-model="form.entidad_pago" class="select-modern">
@@ -315,7 +324,6 @@
                   <label class="label-modern">
                     {{ form.medio_pago === 'MERCADO_PAGO' ? 'ID Transacción Mercado Pago *' : 'Código de Comprobante *' }}
                   </label>
-                  
                   <input 
                     type="text" 
                     v-model="form.codigo_transaccion" 
@@ -324,7 +332,6 @@
                     :maxlength="maxCodigoLength"
                     :class="{ 'input-error': errorValidacion && !form.codigo_transaccion }"
                   />
-                  
                   <small class="helper-text">
                     <Info :size="12" /> 
                     {{ form.medio_pago === 'MERCADO_PAGO' ? 'ID de operación MP (Ej: #123...). Máx 14.' : 'Código del comprobante bancario. Máx 25.' }}
@@ -421,18 +428,14 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue' 
 import { useRouter } from 'vue-router'
 import { 
-  Calendar, ArrowLeft, Users, Search, X, Plus, User, IdCard,
-  AlertCircle, FolderOpen, Tag, Scissors, Check, Clock, UserCheck, 
-  CalendarDays, ChevronLeft, ChevronRight, Info, Loader2, Receipt, 
-  CheckCircle2, Bell, Banknote, FileText, Inbox, CheckCircle, CreditCard, Wallet,
-  Armchair, ChevronDown // 🔥 IMPORTANTE: Iconos nuevos
+  Calendar, ArrowLeft, Users, Search, X, Plus, User, AlertCircle, FolderOpen, Tag, Scissors, Check, Clock, UserCheck, 
+  CalendarDays, ChevronLeft, ChevronRight, Info, Loader2, Receipt, CheckCircle, Armchair, ChevronDown 
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 
 const router = useRouter()
 const API_URL = "http://localhost:8000/api"
 
-// 🔥 FUNCIÓN PARA OBTENER HEADERS CON TOKEN
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token')
   return {
@@ -446,7 +449,7 @@ const form = ref({
   cliente: null,
   clienteNombre: "",
   peluquero: "",
-  silla: null, // 🔥 NUEVO CAMPO
+  silla: null, 
   servicios_ids: [],
   tipo_pago: "SENA_50",
   medio_pago: "EFECTIVO",
@@ -459,11 +462,14 @@ const form = ref({
 const categorias = ref([])
 const servicios = ref([])
 const peluqueros = ref([])
-const sillas = ref([]) // 🔥 LISTA DE SILLAS
+const sillas = ref([])
 const busquedaCliente = ref("")
 const clientesSugeridos = ref([])
 const categoriasSeleccionadas = ref([])
-const slotsOcupadosReales = ref([]) // 🔥 Ahora guarda TODOS los minutos ocupados
+
+// 🔥 AHORA ES UN OBJETO DONDE GUARDAMOS EL MOTIVO (EJ: { "15:00": "SILLA" })
+const slotsOcupadosReales = ref({}) 
+
 const currentDate = ref(new Date())
 const errorCliente = ref("")
 const mensaje = ref("")
@@ -471,12 +477,11 @@ const mensajeTipo = ref("success")
 const procesando = ref(false)
 const cargandoHorarios = ref(false)
 const errorValidacion = ref(false)
-const cargandoDatos = ref(true) // 🔥 NUEVO: estado de carga
+const cargandoDatos = ref(true) 
 
 const intervaloMinutos = 20
 const STORAGE_KEY = 'turno_presencial_context'
 
-// 🔥 OBSERVADOR: Recalcular disponibilidad cuando cambian los servicios
 watch(() => form.value.servicios_ids, () => {
   if (form.value.fecha && form.value.peluquero && form.value.hora) {
     if (!esHorarioDisponibleCompleto(form.value.hora)) {
@@ -485,7 +490,6 @@ watch(() => form.value.servicios_ids, () => {
   }
 }, { deep: true })
 
-// 🔥 Observador para limpiar campos con valor correcto
 watch(() => form.value.medio_pago, (newVal) => {
   if (newVal === 'EFECTIVO') {
     form.value.entidad_pago = ""
@@ -497,7 +501,13 @@ watch(() => form.value.medio_pago, (newVal) => {
   }
 })
 
-// 🔥 PROPIEDAD COMPUTADA PARA EL LARGO DEL CÓDIGO
+// 🔥 OBSERVADOR: Si cambia la silla, recalculamos la grilla
+watch(() => form.value.silla, () => {
+  if (form.value.fecha && form.value.peluquero && form.value.peluquero !== form.value.cliente) {
+    cargarHorariosOcupados(form.value.fecha)
+  }
+})
+
 const maxCodigoLength = computed(() => {
   return form.value.medio_pago === 'MERCADO_PAGO' ? 14 : 25
 })
@@ -511,7 +521,6 @@ const serviciosFiltrados = computed(() => {
   })
 })
 
-// 🔥 FILTRAR SILLAS ACTIVAS
 const sillasActivas = computed(() => {
   return sillas.value.filter(s => s.activa)
 })
@@ -545,21 +554,16 @@ const horariosGenerados = computed(() => {
   return horariosBase
 })
 
-// 🔥 CORREGIDO: cargarHorariosOcupados - Ahora guarda TODOS los minutos ocupados
+// 🔥 FUNCIÓN ACTUALIZADA: Ahora le pega al endpoint inteligente y recibe un DICCIONARIO
 const cargarHorariosOcupados = async (fecha) => {
   if (!form.value.peluquero || form.value.peluquero === form.value.cliente) return
   
-  form.value.hora = ""
   cargandoHorarios.value = true
-  slotsOcupadosReales.value = [] 
+  slotsOcupadosReales.value = {} // 🔥 Reiniciamos a Objeto vacío
   
   try {
-    // 🔥 Agregar la silla seleccionada a la query si existe
-    let url = `${API_URL}/turnos/?fecha=${fecha}&peluquero=${form.value.peluquero}&estado__in=RESERVADO,CONFIRMADO`
-    
-    // Si eligió silla manual, quizás quieras filtrar o validar algo extra acá,
-    // pero por ahora traemos los turnos del peluquero para evitar solapamiento humano.
-    // La validación de silla ocupada la hará el backend al guardar.
+    const sillaParam = form.value.silla ? `&silla_id=${form.value.silla}` : ''
+    let url = `${API_URL}/turnos/ocupacion-grilla/?fecha=${fecha}&peluquero_id=${form.value.peluquero}${sillaParam}`
     
     const res = await fetch(url, {
       headers: getAuthHeaders()
@@ -567,39 +571,13 @@ const cargarHorariosOcupados = async (fecha) => {
     
     if (!res.ok) throw new Error(`Error API: ${res.status}`)
     
-    const turnos = await res.json()
-    const resultados = Array.isArray(turnos) ? turnos : (turnos.results || [])
-    
-    const ocupadosSet = new Set()
-    
-    resultados.forEach(turno => {
-      if (['CANCELADO', 'DISPONIBLE'].includes(turno.estado)) return
-      if (turno.fecha !== fecha) return
+    const data = await res.json()
+    slotsOcupadosReales.value = data.ocupados || {}
 
-      const [h, m] = turno.hora.split(':').map(Number)
-      const inicioMin = h * 60 + m
-      
-      let duracion = turno.duracion_total || 0
-      if (!duracion && turno.servicios) {
-        if (Array.isArray(turno.servicios) && typeof turno.servicios[0] === 'object') {
-          duracion = turno.servicios.reduce((acc, s) => acc + (s.duracion || 20), 0)
-        } else {
-          duracion = 20 
-        }
-      }
-      if (!duracion) duracion = 20
-      
-      const finMin = inicioMin + duracion
-      
-      // 🔥 GUARDAR TODOS LOS MINUTOS OCUPADOS (no solo slots de 20 min)
-      for (let i = inicioMin; i < finMin; i++) {
-        const hh = Math.floor(i / 60).toString().padStart(2, '0')
-        const mm = (i % 60).toString().padStart(2, '0')
-        ocupadosSet.add(`${hh}:${mm}`)
-      }
-    })
-    
-    slotsOcupadosReales.value = Array.from(ocupadosSet)
+    // Si ya había seleccionado una hora y ahora quedó bloqueada (por ej. por cambiar de silla), se la borramos
+    if (form.value.hora && !esHorarioDisponibleCompleto(form.value.hora)) {
+      form.value.hora = ""
+    }
 
   } catch (e) {
     console.error("❌ Error cargando horarios:", e)
@@ -608,76 +586,56 @@ const cargarHorariosOcupados = async (fecha) => {
   }
 }
 
-// 🔥 FUNCIÓN PARA UI: Verifica solo el slot inicial
-const esHorarioDisponibleUI = (hora) => {
-  if (!form.value.fecha || !form.value.peluquero) return true
-  
-  const [h, m] = hora.split(':').map(Number)
-  const horaString = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
-  
-  // Verificar si el slot inicial está ocupado
-  if (slotsOcupadosReales.value.some(slot => 
-      slot.startsWith(horaString.substring(0, 5)))) return false
+// 🔥 NUEVA FUNCIÓN: Identifica el MOTIVO exacto por el cual está ocupado
+const obtenerDetalleOcupacion = (horaSeleccionada) => {
+  if (!form.value.fecha || !form.value.peluquero) return null
 
-  const hoy = new Date()
-  const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
-  
-  if (form.value.fecha === hoyFormateado) {
-    if (h < hoy.getHours()) return false
-    if (h === hoy.getHours() && m < hoy.getMinutes()) return false
+  let duracionTotal = 0;
+  if (form.value.servicios_ids && form.value.servicios_ids.length > 0) {
+      duracionTotal = form.value.servicios_ids.reduce((acc, id) => {
+        const s = servicios.value.find(x => x.id === id)
+        return acc + (s ? parseInt(s.duracion) : 0)
+      }, 0)
   }
-  return true
-}
-
-// 🔥 NUEVA FUNCIÓN: Verifica disponibilidad COMPLETA considerando duración
-const esHorarioDisponibleCompleto = (horaSeleccionada) => {
-  if (!form.value.fecha || !form.value.peluquero) return false
+  if (duracionTotal === 0) duracionTotal = 20;
   
-  // Calcular duración total de los servicios seleccionados
-  const duracionTotal = form.value.servicios_ids.reduce((acc, id) => {
-    const s = servicios.value.find(x => x.id === id)
-    return acc + (s ? parseInt(s.duracion) : 0)
-  }, 0)
-  
-  // Si no hay servicios seleccionados, duración mínima
-  if (duracionTotal === 0) return esHorarioDisponibleUI(horaSeleccionada)
-  
-  // Convertir hora seleccionada a minutos
   const [h, m] = horaSeleccionada.split(':').map(Number)
   const inicioMinutos = h * 60 + m
   const finMinutos = inicioMinutos + duracionTotal
   
-  // Verificar minuto por minuto si hay solapamiento
+  const hoy = new Date()
+  const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+  if (form.value.fecha === hoyFormateado) {
+    if (inicioMinutos < (hoy.getHours() * 60 + hoy.getMinutes())) {
+      return 'PASADO'
+    }
+  }
+
+  if (!slotsOcupadosReales.value) return null;
+
   for (let i = inicioMinutos; i < finMinutos; i++) {
     const horaSlot = Math.floor(i / 60).toString().padStart(2, '0')
     const minutoSlot = (i % 60).toString().padStart(2, '0')
     const slotActual = `${horaSlot}:${minutoSlot}`
     
-    // Si este minuto está ocupado por otro turno, no está disponible
-    if (slotsOcupadosReales.value.some(slot => 
-        slot.startsWith(slotActual.substring(0, 5)))) {
-      return false
+    // Si encontramos que está ocupado, devolvemos EL MOTIVO ('PELUQUERO', 'SILLA', 'LOCAL_LLENO')
+    if (slotsOcupadosReales.value[slotActual]) {
+      return slotsOcupadosReales.value[slotActual] 
     }
   }
   
-  // También verificar que no sea una hora pasada si es hoy
-  const hoy = new Date()
-  const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
-  if (form.value.fecha === hoyFormateado) {
-    if (inicioMinutos < (hoy.getHours() * 60 + hoy.getMinutes())) {
-      return false
-    }
-  }
-  
-  return true
+  return null // null = Está disponible
 }
+
+// Vinculamos la validación a la nueva función
+const esHorarioDisponibleCompleto = (hora) => obtenerDetalleOcupacion(hora) === null
 
 const guardarContexto = () => {
   const contexto = {
     categoriasSeleccionadas: categoriasSeleccionadas.value,
     serviciosSeleccionados: form.value.servicios_ids,
     peluquero: form.value.peluquero,
-    silla_id: form.value.silla, // 🔥 GUARDAMOS SILLA
+    silla_id: form.value.silla, 
     tipo_pago: form.value.tipo_pago,
     medio_pago: form.value.medio_pago,
     entidad_pago: form.value.entidad_pago,
@@ -702,7 +660,7 @@ const cargarContexto = () => {
       if (contexto.peluquero && form.value.cliente !== contexto.peluquero) {
         form.value.peluquero = contexto.peluquero
       }
-      if (contexto.silla) form.value.silla = contexto.silla // 🔥 RECUPERAMOS SILLA
+      if (contexto.silla_id !== undefined) form.value.silla = contexto.silla_id 
       if (contexto.fecha) form.value.fecha = contexto.fecha
       if (contexto.hora) form.value.hora = contexto.hora
       if (contexto.serviciosSeleccionados && contexto.serviciosSeleccionados.length > 0) {
@@ -720,41 +678,26 @@ const cargarContexto = () => {
 
 const limpiarContexto = () => sessionStorage.removeItem(STORAGE_KEY)
 
-// 🔥 CORREGIDO: cargarDatosIniciales con headers de autenticación
 const cargarDatosIniciales = async () => {
   try {
     cargandoDatos.value = true
-    
     const headers = getAuthHeaders()
-
     const [catRes, servRes, pelRes, sillasRes] = await Promise.all([
       fetch(`${API_URL}/categorias/servicios/`, { headers }),
       fetch(`${API_URL}/servicios/`, { headers }),
       fetch(`${API_URL}/peluqueros/`, { headers }),
-      fetch(`${API_URL}/sillas/`, { headers }) // 🔥 CARGAMOS SILLAS
+      fetch(`${API_URL}/sillas/`, { headers }) 
     ])
     
-    // Verificar respuestas
     if (!catRes.ok) throw new Error(`Error categorías: ${catRes.status}`)
     if (!servRes.ok) throw new Error(`Error servicios: ${servRes.status}`)
     if (!pelRes.ok) throw new Error(`Error peluqueros: ${pelRes.status}`)
-    // No cortamos si fallan las sillas, solo logueamos
     if (sillasRes.ok) sillas.value = await sillasRes.json()
     
     categorias.value = await catRes.json()
     servicios.value = await servRes.json()
     peluqueros.value = await pelRes.json()
-
-    console.log("✅ Datos cargados correctamente")
-    console.log("- Categorías:", categorias.value.length)
-    console.log("- Servicios:", servicios.value.length)
-    console.log("- Peluqueros:", peluqueros.value.length)
-    console.log("- Sillas:", sillas.value.length)
-
   } catch (error) {
-    console.error("❌ Error en cargarDatosIniciales:", error)
-    
-    // Mostrar error específico
     if (error.message.includes('401')) {
       mensaje.value = "Error de autenticación. Por favor, vuelve a iniciar sesión."
       mensajeTipo.value = "error"
@@ -763,7 +706,7 @@ const cargarDatosIniciales = async () => {
         router.push('/login')
       }, 2000)
     } else {
-      mensaje.value = "Error cargando datos del servidor: " + error.message
+      mensaje.value = "Error cargando datos: " + error.message
       mensajeTipo.value = "error"
     }
   } finally {
@@ -786,7 +729,6 @@ const actualizarBusquedaCliente = async (e) => {
     errorCliente.value = clientesSugeridos.value.length === 0 ? "No se encontraron clientes" : ""
   } catch (e) { 
     errorCliente.value = "Error al buscar clientes" 
-    console.error("Error buscando clientes:", e)
   }
 }
 
@@ -846,7 +788,7 @@ const seleccionarPeluquero = (id) => {
 const resetFechas = () => {
   form.value.fecha = ""
   form.value.hora = ""
-  slotsOcupadosReales.value = []
+  slotsOcupadosReales.value = {} // 🔥 Vuelve a ser Objeto
 }
 
 const cambiarMes = (dir) => {
@@ -883,7 +825,6 @@ const seleccionarDiaCalendario = (day) => {
   cargarHorariosOcupados(form.value.fecha)
 }
 
-// 🔥 CORREGIDO: seleccionarHora usa la verificación COMPLETA
 const seleccionarHora = (hora) => {
   if (esHorarioDisponibleCompleto(hora)) form.value.hora = hora
 }
@@ -897,16 +838,10 @@ const calcularTotal = () => {
 
 const calcularSena = () => (calcularTotal() / 2).toFixed(2)
 
-// 🔥 CORRECCIÓN COMPLETA: Función crearTurno
 const crearTurno = async () => {
   if (form.value.medio_pago !== 'EFECTIVO' && !form.value.codigo_transaccion) {
     errorValidacion.value = true
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'Falta el código de transacción',
-      confirmButtonText: 'Entendido'
-    })
+    Swal.fire({ icon: 'error', title: 'Error', text: 'Falta el código de transacción', confirmButtonText: 'Entendido' })
     return
   }
   
@@ -921,7 +856,6 @@ const crearTurno = async () => {
   const totalCalculado = parseFloat(calcularTotal())
   const esPagoSena = form.value.tipo_pago.includes('SENA')
 
-  // Lógica para determinar entidad_pago
   let entidadFinal = null;
   if (form.value.medio_pago === 'MERCADO_PAGO') {
     entidadFinal = 'MERCADO_PAGO';
@@ -936,7 +870,7 @@ const crearTurno = async () => {
     fecha: form.value.fecha,
     hora: form.value.hora,
     canal: 'PRESENCIAL',
-    silla: form.value.silla, // 🔥 ENVIAMOS SILLA
+    silla: form.value.silla, 
     tipo_pago: esPagoSena ? 'SENA_50' : 'TOTAL',
     medio_pago: form.value.medio_pago,
     monto_total: totalCalculado,
@@ -972,25 +906,12 @@ const crearTurno = async () => {
       let errorMsg = "Error al crear turno"
       if (data.message) errorMsg = data.message
       if (data.errors) {
-        errorMsg = Object.entries(data.errors)
-          .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`)
-          .join('; ')
+        errorMsg = Object.entries(data.errors).map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`).join('; ')
       }
-      await Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: errorMsg,
-        confirmButtonText: 'Entendido'
-      })
+      await Swal.fire({ icon: 'error', title: 'Error', text: errorMsg, confirmButtonText: 'Entendido' })
     }
   } catch (e) {
-    await Swal.fire({
-      icon: 'error',
-      title: 'Error de conexión',
-      text: e.message,
-      confirmButtonText: 'Entendido'
-    })
-    console.error('Error completo:', e)
+    await Swal.fire({ icon: 'error', title: 'Error de conexión', text: e.message, confirmButtonText: 'Entendido' })
   } finally {
     procesando.value = false
   }
@@ -1001,7 +922,6 @@ const volverAlListado = () => {
   router.push('/turnos')
 }
 
-// No necesitas estas variables si no las usas
 const mostrarModalRegistro = ref(false)
 const creandoCliente = ref(false)
 const errorCrearCliente = ref("")
@@ -1023,9 +943,7 @@ onMounted(() => {
     window.history.replaceState({}, '', window.location.pathname)
   }
   
-  // Verificar token antes de cargar
-  const token = localStorage.getItem('token')
-  if (!token) {
+  if (!localStorage.getItem('token')) {
     router.push('/login')
     return
   }
@@ -1119,7 +1037,6 @@ onBeforeUnmount(() => {
   transform: translateY(-1px); 
 }
 
-/* Cards Modernas */
 .card-modern {
   background: #fff;
   border-radius: 16px;
@@ -1167,7 +1084,6 @@ onBeforeUnmount(() => {
   letter-spacing: -0.5px;
 }
 
-/* 🔥 PROFESIONALES - CARDS EN VEZ DE SELECT */
 .profesionales-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -1253,7 +1169,6 @@ onBeforeUnmount(() => {
   display: inline-block;
 }
 
-/* 🔥 ESTILOS PARA EL SELECTOR DE SILLA (NUEVO) */
 .custom-select-wrapper {
   position: relative;
   width: 100%;
@@ -1270,11 +1185,11 @@ onBeforeUnmount(() => {
   appearance: none;
   cursor: pointer;
   transition: all 0.3s ease;
-  padding-right: 40px; /* Espacio para el icono */
+  padding-right: 40px; 
 }
 
 .form-control-select:focus {
-  border-color: #8b5cf6; /* Morado para diferenciar */
+  border-color: #8b5cf6; 
   background: #fff;
   box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
   outline: none;
@@ -1289,7 +1204,6 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-/* 🔥 HORARIOS MEJORADOS */
 .grid-horarios {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
@@ -1327,10 +1241,6 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 
-.hora-ocupada .hora-icono {
-  color: #dc2626;
-}
-
 .hora-texto {
   font-weight: 700;
   color: #1f2937;
@@ -1350,39 +1260,62 @@ onBeforeUnmount(() => {
   color: white; 
 }
 
-/* 🔥 HORARIOS OCUPADOS - ESTILO MEJORADO */
+/* ======================================================================
+   🔥 NUEVOS COLORES DINÁMICOS DEPENDIENDO DE QUIÉN OCUPA EL TURNO 🔥 
+   ====================================================================== */
+
 .hora-ocupada {
-  background: linear-gradient(135deg, #fee2e2, #fecaca);
-  border: 2px solid #f87171;
   cursor: not-allowed;
   opacity: 0.85;
 }
 
-.hora-ocupada .hora-texto {
+/* ESTILO: OCUPADO POR PELUQUERO (Tu color rojo original) */
+.hora-ocupada.ocupada-peluquero {
+  background: linear-gradient(135deg, #fee2e2, #fecaca);
+  border: 2px solid #f87171;
+}
+.hora-ocupada.ocupada-peluquero .hora-texto {
   text-decoration: line-through;
   color: #dc2626;
   font-weight: 700;
 }
+.hora-ocupada.ocupada-peluquero .hora-icono { color: #dc2626; }
 
-.hora-ocupada:hover {
-  border-color: #f87171;
-  transform: none;
-  box-shadow: none;
+/* ESTILO: OCUPADO POR LA SILLA (Amarillo/Naranja) */
+.hora-ocupada.ocupada-silla {
+  background: linear-gradient(135deg, #fef08a, #fde047);
+  border: 2px solid #eab308;
 }
+.hora-ocupada.ocupada-silla .hora-texto {
+  text-decoration: line-through;
+  color: #a16207;
+  font-weight: 700;
+}
+.hora-ocupada.ocupada-silla .hora-icono { color: #ca8a04; }
 
+/* ETIQUETITAS ABAJO DE LA HORA */
 .etiqueta-ocupado {
   display: block;
   font-size: 0.65em;
   color: white;
   font-weight: 800;
-  background: #dc2626;
   padding: 3px 8px;
   border-radius: 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-/* Inputs y Selects */
+.etiqueta-ocupado.peluquero { background: #dc2626; }
+.etiqueta-ocupado.silla { background: #ca8a04; }
+.etiqueta-ocupado.lleno { background: #9333ea; }
+.etiqueta-ocupado.pasado { background: #6b7280; }
+
+.hora-ocupada:hover {
+  transform: none;
+  box-shadow: none;
+}
+/* ====================================================================== */
+
 .input-modern, .select-modern {
   width: 100%;
   padding: 14px 16px;
