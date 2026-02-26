@@ -182,18 +182,6 @@
             </div>
           </div>
         </div>
-
-        <div class="acciones-detalle">
-          <button 
-            @click="anularVenta" 
-            class="action-button delete"
-            :disabled="venta.anulada"
-            :title="venta.anulada ? 'Venta ya anulada' : 'Anular esta venta'"
-          >
-            <Trash2 :size="16" />
-            Anular Venta
-          </button>
-        </div>
       </div>
     </div>
   </div>

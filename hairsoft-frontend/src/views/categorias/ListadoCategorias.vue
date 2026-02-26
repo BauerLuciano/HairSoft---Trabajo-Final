@@ -1,7 +1,6 @@
 <template>
   <div class="list-container">
     <div class="list-card">
-      <!-- Header -->
       <div class="list-header">
         <div class="header-content">
           <h1>Gestión de categorías</h1>
@@ -12,7 +11,6 @@
         </button>
       </div>
 
-      <!-- Filtros -->
       <div class="filters-container">
         <div class="filters-grid">
           <div class="filter-group">
@@ -28,13 +26,20 @@
             </select>
           </div>
           <div class="filter-group">
+            <label>Estado</label>
+            <select v-model="filtros.estado" class="filter-select">
+              <option value="todos">Todos</option>
+              <option value="activos">Solo Activos</option>
+              <option value="inactivos">Solo Inactivos</option>
+            </select>
+          </div>
+          <div class="filter-group">
             <label>&nbsp;</label>
-            <button @click="limpiarFiltros" class="clear-filters-btn">🗑️ Limpiar Filtros</button>
+            <button @click="limpiarFiltros" class="clear-filters-btn">🗑️ Limpiar</button>
           </div>
         </div>
       </div>
 
-      <!-- Tabla -->
       <div class="table-container">
         <table class="categories-table">
           <thead>
@@ -42,16 +47,20 @@
               <th>Nombre</th>
               <th>Descripción</th>
               <th>Tipo</th>
+              <th>Estado</th> 
               <th style="width: 120px; text-align: center;">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="cat in categoriasPaginadas" :key="cat.id">
+            <tr v-for="cat in categoriasPaginadas" :key="cat.id + cat.tipo" :class="{'row-inactiva': !cat.activo}">
               <td><strong>{{ cat.nombre }}</strong></td>
               <td class="descripcion-cell">{{ cat.descripcion || 'Sin descripción' }}</td>
               <td>
-                <span class="badge-estado" :class="getTipoClass(cat.tipo)">
-                  {{ cat.tipo }}
+                <span class="badge-tipo" :class="getTipoClass(cat.tipo)">{{ cat.tipo }}</span>
+              </td>
+              <td>
+                <span class="badge-estado" :class="cat.activo ? 'estado-success' : 'estado-danger'">
+                  {{ cat.activo ? 'ACTIVO' : 'INACTIVO' }}
                 </span>
               </td>
               <td>
@@ -59,8 +68,14 @@
                   <button @click="abrirModalEditar(cat)" class="action-button edit" title="Editar">
                     <Edit3 :size="14" />
                   </button>
-                  <button @click="eliminarCategoria(cat)" class="action-button delete" title="Eliminar">
-                    <Trash2 :size="14" />
+
+                  <button 
+                    @click="toggleEstado(cat)" 
+                    :class="['action-button', cat.activo ? 'delete' : 'activate']" 
+                    :title="cat.activo ? 'Desactivar' : 'Activar'"
+                  >
+                    <Trash2 v-if="cat.activo" :size="14" />
+                    <CheckCircle v-else :size="14" />
                   </button>
                 </div>
               </td>
@@ -74,12 +89,6 @@
         </div>
       </div>
 
-      <!-- Información de resultados -->
-      <div class="results-info">
-        <p>Mostrando {{ categoriasPaginadas.length }} de {{ categoriasFiltradas.length }} categorías</p>
-      </div>
-
-      <!-- Paginación -->
       <div class="pagination">
         <button @click="paginaAnterior" :disabled="pagina === 1" class="pagination-btn">← Anterior</button>
         <span class="pagination-info">Página {{ pagina }} de {{ totalPaginas }}</span>
@@ -87,15 +96,14 @@
       </div>
     </div>
 
-    <!-- Modal de creación/edición -->
     <div v-if="modalVisible" class="modal-backdrop">
       <div class="modal-card">
         <h2>{{ form.id ? 'Editar Categoría' : 'Registrar Categoría' }}</h2>
         <form @submit.prevent="guardarCategoria">
           <div class="form-group">
             <label>Nombre:</label>
-            <input v-model="form.nombre" type="text" class="modal-input" />
-            <span class="error">{{ errores.nombre }}</span>
+            <input v-model="form.nombre" type="text" class="modal-input" required />
+            <span class="error" v-if="errores.nombre">{{ errores.nombre }}</span>
           </div>
           <div class="form-group">
             <label>Descripción:</label>
@@ -103,12 +111,19 @@
           </div>
           <div class="form-group">
             <label>Tipo:</label>
-            <select v-model="form.tipo" class="modal-input">
+            <select v-model="form.tipo" class="modal-input" :disabled="form.id !== null">
               <option value="">-- Seleccione --</option>
               <option value="Servicio">Servicio</option>
               <option value="Producto">Producto</option>
             </select>
           </div>
+          <div v-if="form.id" class="form-group-checkbox">
+             <label class="switch-container">
+                <input type="checkbox" v-model="form.activo">
+                <span class="switch-label">¿Categoría Activa?</span>
+             </label>
+          </div>
+
           <div class="modal-actions">
             <button type="submit" class="modal-btn primary">{{ form.id ? 'Actualizar' : 'Crear' }}</button>
             <button type="button" @click="cerrarModal" class="modal-btn secondary">Cancelar</button>
@@ -123,79 +138,79 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
-import { Edit3, Trash2 } from 'lucide-vue-next'
+import { Edit3, Trash2, CheckCircle } from 'lucide-vue-next'
 
-// Configuración API
-const isProduction = window.location.hostname.includes('vercel.app');
-const API_BASE = isProduction 
-  ? 'https://web-production-ac47c.up.railway.app' 
-  : 'http://127.0.0.1:8000';
+const API_BASE = 'http://127.0.0.1:8000';
 
 const categorias = ref([])
-const filtros = ref({ busqueda: '', tipo: '' })
+// 🔥 CAMBIO: Estado 'todos' para ver las 11 manicuras de entrada
+const filtros = ref({ busqueda: '', tipo: '', estado: 'todos' }) 
 const pagina = ref(1)
 const itemsPorPagina = 8
 const modalVisible = ref(false)
 
 const form = reactive({ 
-  id: null, 
-  nombre: '', 
-  descripcion: '', 
-  tipo: '' 
+  id: null, nombre: '', descripcion: '', tipo: '', activo: true 
 })
 
-const errores = reactive({ 
-  nombre: '' 
-})
+const errores = reactive({ nombre: '' })
 
-// --- CARGA DE DATOS ---
-const cargarCategorias = async () => {
-  try {
-    const [resServicios, resProductos] = await Promise.all([
-      axios.get(`${API_BASE}/api/categorias/servicios/`).catch(() => ({ data: [] })),
-      axios.get(`${API_BASE}/api/categorias/productos/`).catch(() => ({ data: [] }))
-    ])
-
-    const dataServicios = Array.isArray(resServicios.data) ? resServicios.data : (resServicios.data?.results || [])
-    const dataProductos = Array.isArray(resProductos.data) ? resProductos.data : (resProductos.data?.results || [])
-
-    categorias.value = [
-      ...dataServicios.map(c => ({ ...c, tipo: 'Servicio' })),
-      ...dataProductos.map(c => ({ ...c, tipo: 'Producto' }))
-    ]
-  } catch (err) {
-    console.error('Error cargando categorías:', err)
-  }
+const getHeaders = () => {
+  const token = localStorage.getItem('token');
+  return token ? { headers: { Authorization: `Token ${token}` } } : {};
 }
 
-// --- FILTROS Y PAGINACIÓN ---
+const cargarCategorias = async () => {
+  try {
+    const [resS, resP] = await Promise.all([
+      axios.get(`${API_BASE}/api/categorias/servicios/`, getHeaders()),
+      axios.get(`${API_BASE}/api/categorias/productos/`, getHeaders())
+    ])
+    
+    const s = Array.isArray(resS.data) ? resS.data : (resS.data.results || []);
+    const p = Array.isArray(resP.data) ? resP.data : (resP.data.results || []);
+
+    categorias.value = [
+      ...s.map(c => ({ ...c, tipo: 'Servicio' })),
+      ...p.map(c => ({ ...c, tipo: 'Producto' }))
+    ]
+  } catch (err) { console.error("Error al cargar:", err) }
+}
+
 const categoriasFiltradas = computed(() => {
-  let filtered = categorias.value
-  if (filtros.value.busqueda) {
-    filtered = filtered.filter(c => c.nombre.toLowerCase().includes(filtros.value.busqueda.toLowerCase()))
-  }
-  if (filtros.value.tipo) filtered = filtered.filter(c => c.tipo === filtros.value.tipo)
-  return filtered
+  return categorias.value.filter(c => {
+    const b = c.nombre.toLowerCase().includes(filtros.value.busqueda.toLowerCase())
+    const t = !filtros.value.tipo || c.tipo === filtros.value.tipo
+    
+    let matchEstado = true
+    if (filtros.value.estado === 'activos') matchEstado = c.activo === true
+    else if (filtros.value.estado === 'inactivos') matchEstado = c.activo === false
+    
+    return b && t && matchEstado
+  })
 })
 
-const totalPaginas = computed(() => Math.ceil(categoriasFiltradas.value.length / itemsPorPagina))
+const totalPaginas = computed(() => Math.max(1, Math.ceil(categoriasFiltradas.value.length / itemsPorPagina)))
 const categoriasPaginadas = computed(() => {
-  const inicio = (pagina.value - 1) * itemsPorPagina
-  return categoriasFiltradas.value.slice(inicio, inicio + itemsPorPagina)
+  const i = (pagina.value - 1) * itemsPorPagina
+  return categoriasFiltradas.value.slice(i, i + itemsPorPagina)
 })
 
-const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
-const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
-
-// --- ACCIONES ---
 const abrirModalCrear = () => {
-  Object.assign(form, { id: null, nombre: '', descripcion: '', tipo: '' })
+  Object.assign(form, { id: null, nombre: '', descripcion: '', tipo: '', activo: true })
   errores.nombre = ''
   modalVisible.value = true
 }
 
 const abrirModalEditar = (cat) => {
-  Object.assign(form, { id: cat.id, nombre: cat.nombre, descripcion: cat.descripcion, tipo: cat.tipo })
+  // 🔥 ASIGNAMOS EL TIPO para que guardarCategoria sepa a qué URL ir
+  Object.assign(form, { 
+    id: cat.id, 
+    nombre: cat.nombre, 
+    descripcion: cat.descripcion || '', 
+    tipo: cat.tipo, 
+    activo: cat.activo 
+  })
   errores.nombre = ''
   modalVisible.value = true
 }
@@ -203,88 +218,54 @@ const abrirModalEditar = (cat) => {
 const cerrarModal = () => { modalVisible.value = false }
 
 const guardarCategoria = async () => {
-  // Validación local básica
-  if (!form.nombre.trim()) {
-    errores.nombre = 'El nombre es requerido'
-    return
-  }
-  if (!form.tipo) {
-    Swal.fire('Atención', 'Selecciona un tipo', 'warning')
-    return
-  }
-  errores.nombre = '' // Limpiamos errores previos
-  
+  if (!form.nombre.trim()) return errores.nombre = 'El nombre es requerido'
   try {
-    let url = ''
-    if (form.tipo === 'Servicio') {
-      url = form.id 
-        ? `${API_BASE}/api/categorias/servicios/editar/${form.id}/` 
-        : `${API_BASE}/api/categorias/servicios/crear/`
-    } else {
-      url = form.id 
-        ? `${API_BASE}/api/categorias/productos/editar/${form.id}/` 
-        : `${API_BASE}/api/categorias/productos/crear/`
-    }
+    const endpoint = form.tipo === 'Servicio' ? 'servicios' : 'productos'
+    const accion = form.id ? `editar/${form.id}` : 'crear'
+    const url = `${API_BASE}/api/categorias/${endpoint}/${accion}/`
     
-    await axios.post(url, { 
-      nombre: form.nombre, 
-      descripcion: form.descripcion 
-    })
-    
-    // Si llegamos acá es éxito
+    await axios.post(url, { ...form }, getHeaders())
     cerrarModal()
     await cargarCategorias()
     
-    Swal.fire({
-      icon: 'success',
-      title: form.id ? 'Actualizada' : 'Creada',
-      timer: 1500,
-      showConfirmButton: false,
-      background: '#fff', color: '#1a1a1a'
-    })
-
-  } catch (err) { 
-    console.error('Error guardando:', err)
-    
-    // 🔥 AQUÍ ESTÁ EL FIX: Capturar el mensaje personalizado del backend
-    if (err.response?.data?.message) {
-      // Backend devolvió: { status: 'error', message: 'Ya existe...' }
-      errores.nombre = err.response.data.message
-    } else if (err.response?.data?.nombre) {
-      // Backend devolvió error de serializer estándar
-      errores.nombre = err.response.data.nombre[0]
-    } else {
-      Swal.fire('Error', 'Ocurrió un error inesperado', 'error')
-    }
+    Swal.fire({ icon: 'success', title: '¡Guardado!', timer: 1000, showConfirmButton: false })
+  } catch (err) {
+    errores.nombre = err.response?.data?.message || 'Error al guardar'
   }
 }
 
-const eliminarCategoria = async (cat) => {
-  const result = await Swal.fire({
-    title: '¿Eliminar?',
-    text: "No se puede deshacer",
-    icon: 'warning',
+// 🔥 FUNCIÓN PARA ACTIVAR/DESACTIVAR DESDE LA TABLA
+const toggleEstado = async (cat) => {
+  const nuevoEstado = !cat.activo
+  const titulo = nuevoEstado ? '¿Reactivar?' : '¿Desactivar?'
+  
+  const res = await Swal.fire({
+    title: titulo,
+    text: nuevoEstado ? "La categoría volverá a aparecer." : "Se ocultará de los formularios.",
+    icon: nuevoEstado ? 'question' : 'warning',
     showCancelButton: true,
-    confirmButtonColor: '#d33',
-    confirmButtonText: 'Eliminar'
+    confirmButtonText: nuevoEstado ? 'Sí, activar' : 'Sí, desactivar',
+    confirmButtonColor: nuevoEstado ? '#10b981' : '#ef4444'
   })
 
-  if (result.isConfirmed) {
+  if (res.isConfirmed) {
     try {
-      const url = cat.tipo === 'Servicio' 
-        ? `${API_BASE}/api/categorias/servicios/eliminar/${cat.id}/` 
-        : `${API_BASE}/api/categorias/productos/eliminar/${cat.id}/`
-        
-      await axios.post(url)
-      cargarCategorias()
-      Swal.fire('Eliminada', '', 'success')
-    } catch (err) { 
-      Swal.fire('Error', 'No se pudo eliminar', 'error')
+      const endpoint = cat.tipo === 'Servicio' ? 'servicios' : 'productos'
+      const url = `${API_BASE}/api/categorias/${endpoint}/editar/${cat.id}/`
+      
+      // Enviamos el estado cambiado a la ruta de edición
+      await axios.post(url, { ...cat, activo: nuevoEstado }, getHeaders())
+      await cargarCategorias()
+      Swal.fire(nuevoEstado ? 'Activada' : 'Desactivada', '', 'success')
+    } catch (err) {
+      Swal.fire('Error', 'No se pudo cambiar el estado', 'error')
     }
   }
 }
 
-const limpiarFiltros = () => { filtros.value = { busqueda: '', tipo: '' }; pagina.value = 1 }
+const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
+const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
+const limpiarFiltros = () => { filtros.value = { busqueda: '', tipo: '', estado: 'todos' }; pagina.value = 1 }
 const getTipoClass = (t) => t === 'Servicio' ? 'estado-info' : 'estado-success'
 
 onMounted(cargarCategorias)
@@ -490,6 +471,17 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   transform: translateY(-2px);
   box-shadow: var(--shadow-sm);
 }
+
+.row-inactiva { opacity: 0.6; background: rgba(0,0,0,0.05); }
+.badge-tipo { padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; }
+
+/* El Switch del Modal */
+.form-group-checkbox { margin: 15px 0; display: flex; align-items: center; }
+.switch-container { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.switch-label { font-weight: 700; color: var(--text-primary); font-size: 0.9rem; }
+
+/* Estilos de tabla ya los tenés, solo asegurate que .badge-estado tenga colores para danger */
+.estado-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444; }
 
 /* TABLA - CON VARIABLES */
 .table-container {

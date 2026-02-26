@@ -62,20 +62,10 @@ class Rol(models.Model):
 # ===============================
 # CATEGORÍAS
 # ===============================
-class CategoriaProducto(models.Model):
-    nombre = models.CharField(max_length=50, unique=True)
-    descripcion = models.TextField(blank=True, null=True)
-
-    def __str__(self):
-        return self.nombre
-
-    class Meta:
-        db_table = "categorias_productos"
-
-
 class CategoriaServicio(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.TextField(blank=True, null=True)
+    activo = models.BooleanField(default=True)
 
     def __str__(self):
         return self.nombre
@@ -83,6 +73,16 @@ class CategoriaServicio(models.Model):
     class Meta:
         db_table = "categorias_servicios"
 
+class CategoriaProducto(models.Model):
+    nombre = models.CharField(max_length=50, unique=True)
+    descripcion = models.TextField(blank=True, null=True)
+    activo = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.nombre
+
+    class Meta:
+        db_table = "categorias_productos"
 
 # ===============================
 # USUARIOS (CORREGIDO)
@@ -746,6 +746,8 @@ class Venta(models.Model):
     )
     nro_transaccion = models.CharField(max_length=100, null=True, blank=True) # Mantenemos por compatibilidad con código viejo
     mp_payment_id = models.CharField(max_length=50, null=True, blank=True)    # Mantenemos por compatibilidad con código viejo
+    motivo_anulacion = models.TextField(null=True, blank=True, help_text="Razón por la cual se canceló la venta.")
+    fecha_anulacion = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"Venta {self.id} - {self.tipo} ({self.fecha.strftime('%d/%m/%Y %H:%M')})"
@@ -820,7 +822,8 @@ class Pedido(models.Model):
     ESTADOS = [
         ('PENDIENTE', 'Pendiente'),               # Creado por vos, borrador
         ('ENVIADO', 'Enviado a Proveedor'),       # Se mandó el mail con el link
-        ('CONFIRMADO', 'Confirmado por Proveedor'), # El proveedor dio el OK (o vos manual)
+        ('COTIZADO', 'Cotizado por Proveedor'),   # 👈 NUEVO: El proveedor tiró precio, espera tu OK
+        ('CONFIRMADO', 'Confirmado por Proveedor'), # El proveedor dio el OK (o vos manual) / O apróbaste el COTIZADO
         ('ENTREGADO', 'Recibido en Local'),       # Llegó la caja (Stock + Precio impactado)
         ('CANCELADO', 'Cancelado')
     ]
@@ -876,7 +879,7 @@ class Pedido(models.Model):
 
     def puede_ser_confirmado(self):
         """El proveedor o el admin confirman precios/cantidades"""
-        return self.estado in ['PENDIENTE', 'ENVIADO']
+        return self.estado in ['PENDIENTE', 'ENVIADO', 'COTIZADO']
 
     def puede_ser_completado(self):
         """
@@ -886,7 +889,7 @@ class Pedido(models.Model):
         return self.estado == 'CONFIRMADO'
     
     def puede_ser_cancelado(self):
-        return self.estado in ['PENDIENTE', 'ENVIADO', 'CONFIRMADO']
+        return self.estado in ['PENDIENTE', 'ENVIADO', 'COTIZADO', 'CONFIRMADO']
 
     # --- MÉTODOS TRANSACCIONALES ---
 
@@ -1241,6 +1244,8 @@ class Auditoria(models.Model):
         ('ELIMINAR', 'Eliminación'),
         ('LOGIN', 'Inicio de Sesión'),
         ('LOGOUT', 'Cierre de Sesión'),
+        ('ANULAR_VENTA', 'Anulación de Venta'),
+        ('AJUSTE_STOCK', 'Ajuste de Stock'),
     )
 
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
@@ -1322,3 +1327,44 @@ class ConfiguracionSistema(models.Model):
     def get_solo(cls):
         obj, created = cls.objects.get_or_create(pk=1)
         return obj
+
+class NotaCredito(models.Model):
+    venta = models.OneToOneField(
+        'Venta', 
+        on_delete=models.CASCADE, 
+        related_name='nota_credito',
+        help_text="Venta que fue anulada."
+    )
+    usuario = models.ForeignKey(
+        'Usuario', 
+        on_delete=models.PROTECT, 
+        help_text="Usuario/Admin que ejecutó la anulación."
+    )
+    motivo = models.TextField(help_text="Motivo por el cual se anuló la venta.")
+    monto_devuelto = models.DecimalField(max_digits=10, decimal_places=2)
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Nota de Crédito #{self.id} - Venta {self.venta.id}"
+
+    class Meta:
+        db_table = "notas_credito"
+        ordering = ['-fecha']
+        verbose_name = "Nota de Crédito"
+        verbose_name_plural = "Notas de Crédito"
+
+class HistorialStock(models.Model):
+    producto = models.ForeignKey('Producto', on_delete=models.CASCADE, related_name='historial_movimientos')
+    cantidad_anterior = models.IntegerField()
+    cantidad_nueva = models.IntegerField()
+    motivo = models.TextField()
+    usuario = models.ForeignKey('Usuario', on_delete=models.SET_NULL, null=True, blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+    tipo_ajuste = models.CharField(max_length=50, default='AJUSTE_MANUAL') 
+
+    class Meta:
+        db_table = "historial_stock"
+        ordering = ['-fecha']
+
+    def diferencia(self):
+        return self.cantidad_nueva - self.cantidad_anterior

@@ -78,13 +78,12 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
+import axios from '@/utils/axiosConfig' // Usamos tu axios configurado
 import Swal from 'sweetalert2'
 import { Shield, ArrowLeft, UserCog, Lock, Check, CheckCircle2, Loader2 } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
-const API_BASE = 'http://127.0.0.1:8000'
 const rolId = route.params.id
 
 const rol = reactive({ nombre: '', descripcion: '', permisos: [], activo: true })
@@ -92,41 +91,64 @@ const errores = reactive({ nombre: '' })
 const permisosDisponibles = ref([])
 const cargando = ref(false)
 
+const getHeaders = () => {
+  const token = localStorage.getItem('token');
+  return token ? { headers: { Authorization: `Token ${token}` } } : {};
+}
+
 onMounted(async () => {
-  if (!rolId) return router.push('/roles')
+  if (!rolId) {
+    return router.push('/roles')
+  }
+  // IMPORTANTE: Primero cargamos los disponibles, después los asignados
   await cargarPermisos()
   await cargarRol()
 })
 
 const cargarPermisos = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/permisos/`)
-    permisosDisponibles.value = res.data
+    // 🔥 CORRECCIÓN: Le sacamos el /usuarios/
+    const res = await axios.get(`/api/permisos/`, getHeaders())
+    let datos = res.data.results || res.data.data || res.data;
+    permisosDisponibles.value = Array.isArray(datos) ? datos : [];
   } catch (err) {
-    console.error(err)
+    console.error("❌ Error al cargar lista de permisos:", err)
   }
 }
 
 const cargarRol = async () => {
   try {
-    // 🔥 URL CORRECTA (ya arreglada en urls.py)
-    const res = await axios.get(`${API_BASE}/usuarios/api/roles/${rolId}/`)
+    const res = await axios.get(`/api/roles/${rolId}/`, getHeaders())
+    const data = res.data.data || res.data;
+
+    rol.nombre = data.nombre || ''
+    rol.descripcion = data.descripcion || ''
+    rol.activo = data.activo !== undefined ? data.activo : true
     
-    rol.nombre = res.data.nombre
-    rol.descripcion = res.data.descripcion
-    rol.activo = res.data.activo
-    rol.permisos = res.data.permisos || []
+    // 🔥 BLINDAJE DE REACTIVIDAD PARA LOS PERMISOS
+    if (data.permisos && Array.isArray(data.permisos)) {
+      if (data.permisos.length > 0 && typeof data.permisos[0] === 'object') {
+        // Si vienen como objetos {id: 1}
+        rol.permisos = data.permisos.map(p => Number(p.id));
+      } else {
+        // Si vienen como números [1, 2]
+        rol.permisos = data.permisos.map(id => Number(id));
+      }
+    } else {
+      rol.permisos = [];
+    }
     
   } catch (err) {
-    console.error(err)
-    Swal.fire('Error', 'No se pudo cargar el rol', 'error')
+    console.error("❌ Error al cargar el rol:", err)
+    Swal.fire('Error', 'No se pudo cargar la información del rol.', 'error')
     router.push('/roles')
   }
 }
 
 const togglePermiso = (id) => {
-  const i = rol.permisos.indexOf(id)
-  if (i === -1) rol.permisos.push(id)
+  const numId = Number(id); // Aseguramos que sea número
+  const i = rol.permisos.indexOf(numId)
+  if (i === -1) rol.permisos.push(numId)
   else rol.permisos.splice(i, 1)
 }
 
@@ -140,8 +162,14 @@ const guardarCambios = async () => {
 
   cargando.value = true
   try {
-    // 🔥 Usamos PUT para actualizar
-    await axios.put(`${API_BASE}/usuarios/api/roles/${rolId}/`, rol)
+    // Para mandar los datos al backend, algunas APIs prefieren 'permisos' y otras 'permisos_ids'
+    // Mandamos ambos para que no falle tu DRF
+    const payload = {
+      ...rol,
+      permisos_ids: rol.permisos
+    };
+
+    await axios.put(`/api/roles/${rolId}/`, payload, getHeaders())
     
     await Swal.fire({
       icon: 'success',
@@ -153,7 +181,8 @@ const guardarCambios = async () => {
     })
     router.push('/roles')
   } catch (err) {
-    const msg = err.response?.data?.message || 'Error al guardar cambios'
+    console.error("❌ Error al guardar:", err)
+    const msg = err.response?.data?.message || err.response?.data?.error || 'Error al guardar cambios'
     if (msg.includes('existe')) errores.nombre = msg
     else Swal.fire('Error', msg, 'error')
   } finally {

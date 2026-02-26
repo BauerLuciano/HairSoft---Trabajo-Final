@@ -43,7 +43,7 @@ from .models import (
     DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, 
     InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, 
     PromocionReactivacion, Auditoria, PasswordResetToken, PedidoWeb, 
-    ConfiguracionSistema, Silla
+    ConfiguracionSistema, Silla, NotaCredito
 )
 from .serializers import (
     LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, 
@@ -54,7 +54,7 @@ from .serializers import (
     ActualizarListaPreciosSerializer, CotizacionExternaSerializer, SolicitudPresupuestoSerializer, 
     MarcaSerializer, AuditoriaSerializer, SolicitarResetPasswordSerializer, 
     ResetPasswordConfirmarSerializer, ServicioSerializer, RolSerializer, 
-    PermisoSerializer, TurnoSerializer, ConfiguracionSistemaSerializer
+    PermisoSerializer, TurnoSerializer, ConfiguracionSistemaSerializer, NotaCreditoSerializer
 )
 from .forms import UsuarioForm # Ajustado si tenías formularios específicos
 from .mercadopago_service import MercadoPagoService
@@ -710,6 +710,58 @@ class ProductoRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView
     queryset = Producto.objects.select_related('categoria', 'marca').prefetch_related('proveedores').all()
     serializer_class = ProductoSerializer
     permission_classes = [AllowAny]  # Temporal para testing
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def ajustar_stock_manual(request, producto_id):
+    try:
+        producto = get_object_or_404(Producto, id=producto_id)
+        nuevo_stock = request.data.get('nuevo_stock')
+        motivo = request.data.get('motivo')
+
+        if nuevo_stock is None or int(nuevo_stock) < 0:
+            return Response({'error': 'Stock inválido.'}, status=400)
+        if not motivo or len(motivo.strip()) < 5:
+            return Response({'error': 'Debe ingresar un motivo válido.'}, status=400)
+
+        stock_anterior = producto.stock_actual
+        
+        # 🔥 Usamos UPDATE para no generar doble auditoría
+        Producto.objects.filter(id=producto.id).update(stock_actual=int(nuevo_stock))
+
+        from .models import HistorialStock, Auditoria 
+        
+        HistorialStock.objects.create(
+            producto=producto,
+            cantidad_anterior=stock_anterior,
+            cantidad_nueva=int(nuevo_stock),
+            motivo=motivo,
+            usuario=request.user,
+            tipo_ajuste='AJUSTE_MANUAL'
+        )
+
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
+
+        # 🔥 UN SOLO REGISTRO MAESTRO
+        Auditoria.objects.create(
+            usuario=request.user,
+            modelo_afectado='Producto',
+            objeto_id=str(producto.id),
+            accion='AJUSTE_STOCK',
+            detalles={
+                'cambios': {
+                    'stock_fisico': {'anterior': stock_anterior, 'nuevo': int(nuevo_stock)}
+                },
+                'motivo_ajuste': motivo
+            },
+            ip_address=ip
+        )
+
+        return Response({'message': 'Stock actualizado.', 'nuevo_stock': int(nuevo_stock)}, status=200)
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)
     
 # ================================
 # Peluqueros
@@ -2051,16 +2103,16 @@ def turnos_ocupados(request):
 # Listado  de  Categorías
 # ================================
 @api_view(['GET'])
-@permission_classes([AllowAny]) # O IsAuthenticated si preferís seguridad
+@permission_classes([AllowAny])
 def listado_categorias_servicios(request):
     try:
         categorias = CategoriaServicio.objects.all().order_by('nombre')
-        # Construimos la data simple para el select
         data = [
             {
                 'id': c.id, 
                 'nombre': c.nombre, 
-                'descripcion': c.descripcion
+                'descripcion': c.descripcion, # ✅ COMA AGREGADA (faltaba acá)
+                'activo': c.activo           # ✅ Campo activo incluido
             } 
             for c in categorias
         ]
@@ -2068,17 +2120,26 @@ def listado_categorias_servicios(request):
     except Exception as e:
         return Response({'error': str(e)}, status=500)
 
-
-class CategoriaProductoListAPIView(generics.ListAPIView):
-    # 1. Fuente de datos: Todas las categorías de productos
-    queryset = CategoriaProducto.objects.all().order_by('nombre')
-    
-    # 2. Traductor: Usa el Serializer (que ya revisamos)
-    # Asegúrate de que CategoriaProductoSerializer esté importado en views.py
-    # from .serializers import ..., CategoriaProductoSerializer
-    serializer_class = CategoriaProductoSerializer
-    pagination_class = None
-
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def listado_categorias_productos(request):
+    """
+    Versión funcional para productos (reemplaza la clase genérica para evitar líos)
+    """
+    try:
+        categorias = CategoriaProducto.objects.all().order_by('nombre')
+        data = [
+            {
+                'id': c.id, 
+                'nombre': c.nombre, 
+                'descripcion': c.descripcion,
+                'activo': c.activo
+            } 
+            for c in categorias
+        ]
+        return Response(data)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
 
 
 # ================================
@@ -2126,9 +2187,10 @@ def editar_categoria_servicio(request, pk):
         data = json.loads(request.body)
         nombre = data.get('nombre', '').strip()
         descripcion = data.get('descripcion', '').strip()
+        # 🛡️ CAPTURA DE ESTADO
+        activo = data.get('activo')
         
         if nombre:
-            # 🔥 VALIDACIÓN INSENSIBLE A ACENTOS (Excluyendo la propia)
             nombre_norm = normalizar_texto(nombre)
             categorias = CategoriaServicio.objects.exclude(pk=pk)
             for c in categorias:
@@ -2139,20 +2201,23 @@ def editar_categoria_servicio(request, pk):
         if descripcion is not None:
             cat.descripcion = descripcion
             
+        if activo is not None:
+            cat.activo = activo # 🔌 Guardamos el estado real
+            
         cat.save()
         return JsonResponse({'status': 'ok', 'id': cat.id})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
-
-
+    
 @csrf_exempt
 def eliminar_categoria_servicio(request, pk):
     cat = get_object_or_404(CategoriaServicio, pk=pk)
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
     try:
-        cat.delete()
-        return JsonResponse({'status': 'ok', 'message': 'Categoría eliminada'})
+        cat.activo = False
+        cat.save()
+        return JsonResponse({'status': 'ok', 'message': 'Categoría desactivada exitosamente'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
@@ -2168,7 +2233,6 @@ def crear_categoria_producto(request):
         if not nombre:
             return JsonResponse({'status': 'error', 'message': 'El nombre es obligatorio'}, status=400)
             
-        # 🔥 VALIDACIÓN INSENSIBLE A ACENTOS
         nombre_norm = normalizar_texto(nombre)
         categorias = CategoriaProducto.objects.all()
         for cat in categorias:
@@ -2189,9 +2253,10 @@ def editar_categoria_producto(request, pk):
         data = json.loads(request.body)
         nombre = data.get('nombre', '').strip()
         descripcion = data.get('descripcion', '').strip()
+        # 🛡️ CAPTURA DE ESTADO
+        activo = data.get('activo')
         
         if nombre:
-            # 🔥 VALIDACIÓN INSENSIBLE A ACENTOS
             nombre_norm = normalizar_texto(nombre)
             categorias = CategoriaProducto.objects.exclude(pk=pk)
             for c in categorias:
@@ -2201,6 +2266,9 @@ def editar_categoria_producto(request, pk):
             
         if descripcion is not None:
             cat.descripcion = descripcion
+            
+        if activo is not None:
+            cat.activo = activo # 🔌 Guardamos el estado real
             
         cat.save()
         return JsonResponse({'status': 'ok', 'id': cat.id})
@@ -2213,8 +2281,9 @@ def eliminar_categoria_producto(request, pk):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
     try:
-        cat.delete()
-        return JsonResponse({'status': 'ok', 'message': 'Categoría eliminada'})
+        cat.activo = False
+        cat.save()
+        return JsonResponse({'status': 'ok', 'message': 'Categoría desactivada exitosamente'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
@@ -2566,7 +2635,7 @@ def obtener_usuario_por_id(request, user_id):
 def registrar_venta(request):
     """
     Registra una venta, descuenta stock y valida datos.
-    Reemplaza la lógica del Serializer para mayor control.
+    Genera un único log de auditoría detallado.
     """
     print("💰 Iniciando registro de venta (Función Personalizada)...")
     data = request.data
@@ -2576,20 +2645,15 @@ def registrar_venta(request):
             
             # 1. Validar datos básicos
             usuario_vendedor = request.user
-            # En Vue mandas 'usuario', pero lo tomamos del request.user por seguridad
-            
             cliente_id = data.get('cliente') or data.get('cliente_id')
-            # Vue manda 'medio_pago' (que es el ID)
             medio_pago_id = data.get('medio_pago') 
             items = data.get('detalles', [])
 
-            # 🔥 RECUPERAR DATOS DE TRAZABILIDAD DEL REQUEST 🔥
             entidad_pago = data.get('entidad_pago')
             codigo_transaccion = data.get('codigo_transaccion')
 
             if not items:
                 return Response({"error": "La venta debe tener al menos un detalle."}, status=400)
-
             if not medio_pago_id:
                 return Response({"error": "El medio de pago es obligatorio."}, status=400)
 
@@ -2599,75 +2663,97 @@ def registrar_venta(request):
             except MetodoPago.DoesNotExist:
                 return Response({"error": "Método de pago inválido o inactivo."}, status=400)
 
-            # 3. Crear Cabecera de Venta
-            venta = Venta.objects.create(
+            # 3. Crear Cabecera de Venta 
+            # 🚨 Acá no usamos .create() porque .create() guarda instantáneamente y dispara la señal.
+            # Vamos a instanciarlo, apagarle la auditoría y luego guardarlo.
+            venta = Venta(
                 cliente_id=cliente_id if cliente_id else None,
                 usuario=usuario_vendedor,
                 tipo='PRODUCTO',
                 medio_pago=medio_pago,
                 total=0,
-                # 🔥 GUARDAR LOS CAMPOS EN LA BASE DE DATOS 🔥
                 entidad_pago=entidad_pago,
                 codigo_transaccion=codigo_transaccion
             )
+            
+            # 🔥 APAGAMOS EL ESPÍA (señal) PARA ESTA VENTA ESPECÍFICA 🔥
+            venta._disable_audit = True 
+            venta.save()
 
             total_acumulado = 0
+            productos_vendidos = [] # Para el log de auditoría
 
             # 4. Procesar items
             for item in items:
-                # Vue manda 'producto' (ID) dentro de cada detalle
                 producto_id = item.get('producto')
                 cantidad = int(item.get('cantidad', 1))
-                # precio_enviado = float(item.get('precio_unitario', 0))
 
                 if cantidad <= 0:
                     raise Exception(f"La cantidad debe ser mayor a 0.")
 
-                # Bloqueamos el producto para evitar condición de carrera
                 try:
                     producto = Producto.objects.select_for_update().get(id=producto_id)
                 except Producto.DoesNotExist:
                     raise Exception(f"El producto con ID {producto_id} no existe.")
 
-                # 📦 Validación de Stock
                 if producto.stock_actual < cantidad:
                     raise Exception(f"Stock insuficiente para '{producto.nombre}'. Disponibles: {producto.stock_actual}, Solicitados: {cantidad}")
                 
-                # 📉 Descontar Stock
-                producto.stock_actual -= cantidad
-                producto.save()
+                # 📉 Descontar Stock con UPDATE para no disparar señal
+                nuevo_stock = producto.stock_actual - cantidad
+                Producto.objects.filter(id=producto.id).update(stock_actual=nuevo_stock)
 
-                # Usamos el precio del producto en BD por seguridad
                 precio_unitario = producto.precio 
                 subtotal = precio_unitario * cantidad
 
-                DetalleVenta.objects.create(
+                # 🔥 También apagamos el espía para el DetalleVenta
+                detalle = DetalleVenta(
                     venta=venta,
                     producto=producto,
                     cantidad=cantidad,
                     precio_unitario=precio_unitario,
                     subtotal=subtotal
                 )
+                detalle._disable_audit = True
+                detalle.save()
 
                 total_acumulado += subtotal
+                productos_vendidos.append(f"{cantidad}x {producto.nombre}")
 
-            # 5. Guardar Total Final
-            venta.total = total_acumulado
-            venta.save()
+            # 5. Guardar Total Final con UPDATE para no disparar señal
+            Venta.objects.filter(id=venta.id).update(total=total_acumulado)
 
-            print(f"✅ Venta #{venta.id} registrada con éxito. Total: ${venta.total}")
+            # 6. 🔥 CREAR EL REGISTRO ÚNICO MAESTRO DE AUDITORÍA
+            from .models import Auditoria
+            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+            ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
+
+            Auditoria.objects.create(
+                usuario=usuario_vendedor,
+                modelo_afectado='Venta',
+                objeto_id=str(venta.id),
+                accion='CREAR',
+                detalles={
+                    'total_venta': f"${total_acumulado}",
+                    'metodo_pago': medio_pago.nombre,
+                    'productos_vendidos': " | ".join(productos_vendidos)
+                },
+                ip_address=ip
+            )
+
+            print(f"✅ Venta #{venta.id} registrada con éxito. Total: ${total_acumulado}")
             
             return Response({
                 "success": True,
                 "message": "Venta registrada correctamente",
-                "id": venta.id, # Vue espera 'id'
-                "total": float(venta.total)
+                "id": venta.id,
+                "total": float(total_acumulado)
             }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
         print(f"❌ Error al registrar venta: {str(e)}")
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
+    
 class VentaViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly]
     
@@ -2861,35 +2947,85 @@ def actualizar_venta(request, venta_id):
         print(f"🔍 Traceback: {traceback.format_exc()}")
         return JsonResponse({'error': f'Error interno: {str(e)}'}, status=500)
 
-@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def anular_venta(request, venta_id):
-    """Anula una venta (borrado lógico)"""
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
-    
+    motivo = request.data.get('motivo')
+    if not motivo or len(motivo.strip()) < 5:
+        return Response({'error': 'Debe ingresar un motivo válido (mínimo 5 caracteres).'}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
-        venta = Venta.objects.get(id=venta_id)
-        
-        # Restaurar stock de productos
-        for detalle in venta.detalles.all():
-            if detalle.producto:
-                detalle.producto.stock_actual += detalle.cantidad
-                detalle.producto.save()
-        
-        # Marcar como anulada
-        venta.anulada = True
-        venta.save()
-        
-        return JsonResponse({
-            'status': 'ok',
-            'message': 'Venta anulada correctamente'
-        })
-        
+        with transaction.atomic():
+            venta = Venta.objects.select_for_update().get(id=venta_id)
+            if venta.anulada:
+                return Response({'error': 'Esta venta ya se encuentra anulada.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            productos_devueltos = []
+            
+            # 1. Devolver el stock usando UPDATE (no dispara auditoría automática)
+            for detalle in venta.detalles.all():
+                if detalle.producto:
+                    producto = Producto.objects.select_for_update().get(id=detalle.producto.id)
+                    nuevo_stock = producto.stock_actual + detalle.cantidad
+                    # 🔥 Usamos UPDATE: no crea fila automática de auditoría
+                    Producto.objects.filter(id=producto.id).update(stock_actual=nuevo_stock)
+                    productos_devueltos.append(f"{detalle.cantidad}x {producto.nombre}")
+            
+            # 2. Marcar venta como anulada usando UPDATE
+            Venta.objects.filter(id=venta.id).update(
+                anulada=True,
+                motivo_anulacion=motivo,
+                fecha_anulacion=timezone.now()
+            )
+            
+            # 3. Crear la Nota de Crédito
+            NotaCredito.objects.create(
+                venta=venta, usuario=request.user, motivo=motivo, monto_devuelto=venta.total
+            )
+            
+            # 4. 🔥 CREAR EL REGISTRO ÚNICO MAESTRO DE AUDITORÍA
+            from .models import Auditoria
+            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+            ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
+
+            Auditoria.objects.create(
+                usuario=request.user,
+                modelo_afectado='Venta',
+                objeto_id=str(venta.id),
+                accion='ANULAR_VENTA',
+                detalles={
+                    'cambios': {
+                        'estado_venta': {'anterior': 'Activa', 'nuevo': 'Anulada'}
+                    },
+                    'motivo_anulacion': motivo,
+                    'monto_reintegrado': f"${venta.total}",
+                    'stock_repuesto': " | ".join(productos_devueltos) if productos_devueltos else "Ninguno (Servicios/Turnos)"
+                },
+                ip_address=ip
+            )
+            
+            return Response({'success': True, 'message': 'Venta anulada y stock restaurado correctamente.'}, status=status.HTTP_200_OK)
+            
     except Venta.DoesNotExist:
-        return JsonResponse({'error': 'Venta no encontrada'}, status=404)
+        return Response({'error': 'Venta no encontrada.'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        print(f"Error al anular venta: {str(e)}")
-        return JsonResponse({'error': f'Error interno: {str(e)}'}, status=500)
+        return Response({'error': f'Error interno: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listar_notas_credito(request):
+    """Devuelve el listado de Notas de Crédito generadas por ventas anuladas."""
+    try:
+        # Traemos las notas optimizando consultas con select_related y prefetch_related
+        notas = NotaCredito.objects.select_related('venta', 'usuario')\
+                                   .prefetch_related('venta__detalles__producto')\
+                                   .order_by('-fecha')
+        
+        serializer = NotaCreditoSerializer(notas, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except Exception as e:
+        print(f"Error obteniendo notas de crédito: {str(e)}")
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ================================
@@ -2982,52 +3118,6 @@ def generar_comprobante_pdf(request, venta_id):
     except Exception as e:
         return HttpResponse(f"Error generando comprobante: {str(e)}", status=500)
     
-@api_view(['POST'])
-def anular_venta(request, venta_id):
-    """
-    Anula una venta y devuelve el stock de los productos
-    """
-    try:
-        with transaction.atomic():
-            # Obtener la venta
-            venta = get_object_or_404(Venta, id=venta_id)
-            
-            # Verificar que no esté ya anulada
-            if venta.anulada:
-                return Response(
-                    {'error': 'Esta venta ya está anulada'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Obtener los detalles de la venta
-            detalles = DetalleVenta.objects.filter(venta=venta)
-            
-            # Devolver el stock de los productos
-            for detalle in detalles:
-                if detalle.producto:
-                    producto = detalle.producto
-                    producto.stock_actual += detalle.cantidad
-                    producto.save()
-            
-            # Marcar la venta como anulada
-            venta.anulada = True
-            venta.save()
-            
-            # Registrar en logs
-            print(f"✅ Venta #{venta_id} anulada. Stock devuelto.")
-            
-            return Response(
-                {'message': f'Venta #{venta_id} anulada exitosamente. Stock actualizado.'},
-                status=status.HTTP_200_OK
-            )
-            
-    except Exception as e:
-        print(f"❌ Error anulando venta: {str(e)}")
-        return Response(
-            {'error': 'Error interno al anular la venta'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
 # ================================
 # PEDIDOS
 # ================================
@@ -3291,34 +3381,63 @@ def recibir_pedido(request, pedido_id):
         with transaction.atomic():
             for detalle in pedido.detalles.all():
                 producto = detalle.producto
-                if producto:
-                    # ✅ Sumamos la cantidad de la OFERTA (los 18) al stock actual
-                    producto.stock_actual += detalle.cantidad
-                    
-                    # Lógica de protección de precios (Freno de mano)
-                    costo_nuevo = detalle.precio_unitario
-                    if costo_nuevo and costo_nuevo > 0:
-                        try:
-                            lista = ListaPrecioProveedor.objects.get(proveedor=pedido.proveedor, producto=producto)
-                            margen = lista.margen_ganancia
-                            precio_nuevo_calculado = costo_nuevo * (1 + (margen / 100))
-                            precio_actual = producto.precio if producto.precio else 0
+                if not producto:
+                    continue
+
+                # 1. ACTUALIZACIÓN DE STOCK
+                # Sumamos lo que llegó al stock actual
+                producto.stock_actual += detalle.cantidad
+                
+                # 2. LÓGICA DE PROTECCIÓN DE PRECIOS
+                costo_nuevo = detalle.precio_unitario
+                
+                if costo_nuevo and costo_nuevo > 0:
+                    try:
+                        # Buscamos la lista de precios de este proveedor para este producto
+                        lista = ListaPrecioProveedor.objects.get(
+                            proveedor=pedido.proveedor, 
+                            producto=producto
+                        )
+                        
+                        margen = lista.margen_ganancia
+                        # Calculamos: Costo * (1 + Margen/100)
+                        precio_nuevo_calculado = costo_nuevo * (1 + (margen / 100))
+                        precio_actual_venta = producto.precio if producto.precio else 0
+                        
+                        # 🔥 REGLA DE ORO: Solo sube, nunca baja solo
+                        if precio_nuevo_calculado > precio_actual_venta:
+                            # Registramos en el Historial antes de cambiar
+                            HistorialPrecios.objects.create(
+                                lista_precio=lista,
+                                precio_anterior=precio_actual_venta,
+                                precio_nuevo=precio_nuevo_calculado,
+                                margen_anterior=lista.margen_ganancia,
+                                margen_nuevo=lista.margen_ganancia,
+                                motivo=f"Aumento automático por compra en Pedido #{pedido.id}"
+                            )
                             
-                            if precio_nuevo_calculado > precio_actual:
-                                producto.precio = precio_nuevo_calculado
-                            
-                            lista.precio_base = costo_nuevo
-                            lista.save()
-                        except ListaPrecioProveedor.DoesNotExist:
-                            pass
-                    producto.save()
+                            # Actualizamos el precio final de venta en el Producto
+                            producto.precio = precio_nuevo_calculado
+                        
+                        # Siempre actualizamos el precio_base (costo) en la lista del proveedor
+                        lista.precio_base = costo_nuevo
+                        lista.save()
+
+                    except ListaPrecioProveedor.DoesNotExist:
+                        # Si no hay lista, solo sumamos stock (no sabemos qué margen aplicar)
+                        print(f"⚠️ No hay ListaPrecioProveedor para {producto.nombre}")
+
+                producto.save()
             
+            # 3. FINALIZAR PEDIDO
             pedido.estado = 'ENTREGADO'
             pedido.fecha_recepcion = timezone.now()
             pedido.save()
 
-        return Response({'message': 'Pedido recibido y stock actualizado con éxito.'})
+        return Response({'message': 'Mercadería recibida. Stock y Precios actualizados automáticamente.'})
+
     except Exception as e:
+        print(f"❌ Error en recibir_pedido: {e}")
         return Response({'error': str(e)}, status=400)
     
 @api_view(['GET'])
@@ -3444,63 +3563,167 @@ def obtener_pedido_externo(request, token):
         return Response({'error': 'Pedido no encontrado o enlace inválido'}, status=404)
 
 @api_view(['POST'])
-@permission_classes([AllowAny]) # Pública
+@permission_classes([AllowAny]) # Pública para que el proveedor acceda sin login
 def confirmar_pedido_externo(request, token):
     """
-    El proveedor confirma cantidades y precios.
+    El proveedor propone cantidades, precios y FECHA ESTIMADA DE ENTREGA.
     """
     try:
         pedido = get_object_or_404(Pedido, token=token)
         
-        # Validamos que no se pueda responder dos veces
+        # Validamos que el pedido esté en un estado respondible
         if pedido.estado not in ['ENVIADO', 'PENDIENTE']:
             return Response({'error': 'Este pedido ya fue respondido o no está disponible.'}, status=400)
 
-        # Recibimos la lista de detalles editada por el proveedor
+        # Recibimos los datos del frontend
         datos_recibidos = request.data.get('detalles', [])
         comentarios = request.data.get('comentarios', '')
-        
+        fecha_entrega = request.data.get('fecha_entrega') # 📅 NUEVO: Capturamos la fecha
+
         with transaction.atomic():
-            
             for item in datos_recibidos:
                 detalle_id = item.get('id')
-                nueva_cantidad = item.get('cantidad') # ESTO ES LO QUE EDITÓ EL PROVEEDOR
-                nuevo_precio = item.get('precio_unitario')
-                
-                # Buscamos el detalle específico dentro de este pedido
                 detalle = pedido.detalles.filter(id=detalle_id).first()
                 
                 if detalle:
-                    # ACÁ ACTUALIZAMOS LA BASE DE DATOS CON LO REAL
-                    if nueva_cantidad is not None:
-                        detalle.cantidad = int(nueva_cantidad)
+                    # Actualizamos con lo que el proveedor realmente tiene
+                    if item.get('cantidad') is not None:
+                        detalle.cantidad = int(item.get('cantidad'))
                     
-                    if nuevo_precio is not None:
-                        detalle.precio_unitario = float(nuevo_precio)
+                    if item.get('precio_unitario') is not None:
+                        detalle.precio_unitario = float(item.get('precio_unitario'))
                     
-                    # Recalculamos el subtotal de esa línea
-                    if detalle.precio_unitario is not None and detalle.cantidad is not None:
+                    if detalle.precio_unitario and detalle.cantidad:
                         detalle.subtotal = detalle.cantidad * detalle.precio_unitario
                     
                     detalle.save()
             
-            # Guardamos comentarios del proveedor en las observaciones
+            # Guardamos comentarios
             if comentarios:
                 pedido.observaciones = f"{pedido.observaciones or ''}\n\n[Proveedor]: {comentarios}".strip()
 
-            # Actualizamos totales y estado del pedido padre
+            # 📅 GUARDAMOS LA FECHA ELEGIDA EN EL MODELO
+            if fecha_entrega:
+                pedido.fecha_esperada_recepcion = fecha_entrega
+
+            # Recalculamos total y frenamos el pedido en COTIZADO para tu revisión
             pedido.total = pedido.calcular_total()
-            pedido.estado = 'CONFIRMADO' # Queda listo para recibir
+            pedido.estado = 'COTIZADO' 
             pedido.save()
 
         return Response({
-            'message': '¡Gracias! El pedido fue confirmado exitosamente.',
+            'message': '¡Gracias! Su cotización fue enviada exitosamente para evaluación.',
             'nuevo_estado': pedido.estado
         })
 
     except Exception as e:
         print(f"Error confirmando pedido: {e}")
         return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def evaluaciones_compras_unificadas(request):
+    """
+    Devuelve una lista combinada de Licitaciones y Pedidos Manuales.
+    Calcula automáticamente los 'dias_entrega' para los pedidos manuales.
+    """
+    datos = []
+    from django.utils import timezone
+    hoy = timezone.now().date()
+
+    # 1. Licitaciones Automáticas (SolicitudPresupuesto)
+    solicitudes = SolicitudPresupuesto.objects.exclude(estado='CERRADA_ARCHIVADA')\
+                                              .select_related('producto')\
+                                              .prefetch_related('cotizaciones__proveedor')
+    
+    for sol in solicitudes:
+        datos.append({
+            "id": sol.id,
+            "tipo_solicitud": "AUTOMATICA",
+            "producto_nombre": sol.producto.nombre,
+            "producto_stock": sol.producto.stock_actual,
+            "cantidad_requerida": sol.cantidad_requerida,
+            "fecha_creacion": sol.fecha_creacion,
+            "estado": sol.estado,
+            "cotizaciones": [
+                {
+                    "id": c.id,
+                    "proveedor_nombre": c.proveedor.nombre if c.proveedor else "Desconocido",
+                    "respondio": c.respondio,
+                    "cantidad_ofertada": c.cantidad_ofertada,
+                    "precio_ofrecido": c.precio_ofrecido,
+                    "dias_entrega": c.dias_entrega,
+                    "es_la_mejor": c.es_la_mejor
+                } for c in sol.cotizaciones.all()
+            ]
+        })
+
+    # 2. Pedidos Manuales
+    # 🔥 CORRECCIÓN: Agregamos ENTREGADO para que no desaparezcan del historial
+    pedidos_manuales = Pedido.objects.filter(estado__in=['ENVIADO', 'COTIZADO', 'CONFIRMADO', 'ENTREGADO'])\
+                                     .prefetch_related('detalles__producto', 'proveedor')
+    
+    for ped in pedidos_manuales:
+        dias_calculados = 0
+        if ped.fecha_esperada_recepcion:
+            diferencia = ped.fecha_esperada_recepcion - hoy
+            dias_calculados = max(0, diferencia.days)
+
+        for det in ped.detalles.all():
+            
+            # 🔥 CORRECCIÓN: Si está Confirmado o ya Entregado, lo mostramos como CERRADA
+            estado_vista = "PENDIENTE"
+            if ped.estado == 'COTIZADO':
+                estado_vista = "COTIZADO"
+            elif ped.estado in ['CONFIRMADO', 'ENTREGADO']:
+                estado_vista = "CERRADA"
+
+            precio_total = det.subtotal if det.subtotal else (det.precio_unitario * det.cantidad if det.precio_unitario else 0)
+
+            datos.append({
+                "id": f"manual_{ped.id}_{det.id}",
+                "pedido_real_id": ped.id,
+                "tipo_solicitud": "MANUAL", 
+                "producto_nombre": det.producto.nombre,
+                "producto_stock": det.producto.stock_actual,
+                "cantidad_requerida": det.cantidad,
+                "fecha_creacion": ped.fecha_pedido,
+                "estado": estado_vista, 
+                "cotizaciones": [
+                    {
+                        "id": ped.id,
+                        "proveedor_nombre": ped.proveedor.nombre,
+                        # Si ya no está en 'ENVIADO', es porque respondió
+                        "respondio": ped.estado != 'ENVIADO',
+                        "cantidad_ofertada": det.cantidad,
+                        "precio_ofrecido": precio_total,
+                        "dias_entrega": dias_calculados,
+                        # Es la mejor/ganadora si ya se confirmó o entregó
+                        "es_la_mejor": ped.estado in ['CONFIRMADO', 'ENTREGADO']
+                    }
+                ]
+            })
+
+    datos.sort(key=lambda x: x['fecha_creacion'], reverse=True)
+    return Response(datos, status=200)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def aprobar_pedido_manual(request, pedido_id):
+    """Pasa un pedido manual de COTIZADO a CONFIRMADO"""
+    try:
+        with transaction.atomic():
+            pedido = Pedido.objects.select_for_update().get(id=pedido_id)
+            if pedido.estado != 'COTIZADO':
+                return Response({'error': f'El pedido está en estado {pedido.estado}, no se puede aprobar.'}, status=400)
+            
+            pedido.estado = 'CONFIRMADO'
+            pedido.save()
+            
+            return Response({'message': 'Presupuesto manual aprobado exitosamente. ¡Orden confirmada!'})
+    except Pedido.DoesNotExist:
+        return Response({'error': 'Pedido no encontrado'}, status=404)
     
 #-----TEMPORAAAAAAAALLLLLL
 
@@ -5542,3 +5765,29 @@ def obtener_ocupacion_grilla(request):
         import traceback
         traceback.print_exc()
         return Response({'error': str(e)}, status=500)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def historial_stock_producto(request, producto_id):
+    """Devuelve el historial de ajustes de stock de un producto específico."""
+    try:
+        from .models import HistorialStock # Asegurate de tener el modelo creado como te pasé antes
+        historial = HistorialStock.objects.filter(producto_id=producto_id).order_by('-fecha')
+        
+        datos = []
+        for h in historial:
+            diferencia = h.cantidad_nueva - h.cantidad_anterior
+            datos.append({
+                'id': h.id,
+                'fecha': h.fecha,
+                'cantidad_anterior': h.cantidad_anterior,
+                'cantidad_nueva': h.cantidad_nueva,
+                'diferencia': diferencia,
+                'motivo': h.motivo,
+                'usuario': f"{h.usuario.nombre} {h.usuario.apellido}" if h.usuario else "Sistema",
+                'tipo_ajuste': h.tipo_ajuste
+            })
+            
+        return Response(datos, status=200)
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)

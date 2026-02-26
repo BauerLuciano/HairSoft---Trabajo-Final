@@ -63,11 +63,11 @@ const EvaluacionPresupuestos = () => import('@/views/proveedores/EvaluacionPresu
 const CotizarExterno = () => import('@/views/proveedores/CotizarExterno.vue')
 const GestionPedidoExterno = () => import('@/views/proveedores/GestionPedidoExterno.vue')
 
-// Ventas
+// Ventas y Notas de Crédito
 const ListadoVentas = () => import('@/views/ventas/ListadoVentas.vue')
 const RegistrarVenta = () => import('@/views/ventas/RegistrarVenta.vue')
-const ModificarVenta = () => import('@/views/ventas/ModificarVenta.vue')
 const DetalleVenta = () => import('@/views/ventas/DetalleVenta.vue')
+const ListadoNotasCredito = () => import('@/views/ventas/ListadoNotasCredito.vue') // ✅ NUEVO
 
 // Pedidos
 const ListadoPedidos = () => import('@/views/pedidos/ListadoPedidos.vue')
@@ -83,7 +83,7 @@ const GestionPedidosWeb = () => import('@/views/pedidos/GestionPedidosWeb.vue')
 const ListadoAuditoria = () => import('@/views/auditoria/ListadoAuditoria.vue')
 const LiquidacionSueldos = () => import('@/views/admin/LiquidacionSueldos.vue')
 
-// ✅ NUEVO: Configuración del Sistema
+// ✅ Configuración del Sistema
 const ConfiguracionEmpresa = () => import('@/views/admin/ConfiguracionEmpresa.vue')
 
 const routes = [
@@ -138,20 +138,26 @@ const routes = [
   { path: '/proveedores/modificar/:id', name: 'ModificarProveedor', component: ModificarProveedor, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/proveedores/listas-precios', name: 'GestionListasPrecios', component: GestionListasPrecios, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/proveedores/evaluacion', name: 'EvaluacionPresupuestos', component: EvaluacionPresupuestos, meta: { requiresAuth: true, role: 'ADMIN' } },
+  
+  // ✅ VENTAS (ModificarVenta eliminado)
   { path: '/ventas', name: 'ListadoVentas', component: ListadoVentas, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/ventas/crear', name: 'RegistrarVenta', component: RegistrarVenta, meta: { requiresAuth: true, role: 'ADMIN' } },
-  { path: '/ventas/modificar/:id', name: 'ModificarVenta', component: ModificarVenta, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/ventas/detalle/:id', name: 'DetalleVenta', component: DetalleVenta, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
+  { path: '/notas-credito', name: 'NotasCredito', component: ListadoNotasCredito, meta: { requiresAuth: true, role: 'ADMIN' } }, // ✅ NUEVO
+
+  // Pedidos
   { path: '/pedidos', name: 'ListadoPedidos', component: ListadoPedidos, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/pedidos/crear', name: 'RegistrarPedido', component: RegistrarPedido, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/pedidos/modificar/:id', name: 'ModificarPedido', component: ModificarPedido, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/pedidos/recibir/:id', name: 'RecibirPedido', component: RecibirPedido, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/pedidos/detalle/:id', name: 'DetallePedido', component: DetallePedido, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
+  
   { path: '/compra-exitosa', name: 'CompraExitosa', component: CompraExitosa, meta: { requiresAuth: true} },
   { path: '/pedidos-web-admin', name: 'GestionPedidosWeb', component: GestionPedidosWeb, meta: { requiresAuth: true, role: 'ADMIN', layout: 'admin' } },
   { path: '/auditoria', name: 'ListadoAuditoria', component: ListadoAuditoria, meta: { requiresAuth: true, role: 'ADMIN' }},
   { path: '/admin/liquidacion', name: 'LiquidacionSueldos', component: LiquidacionSueldos, meta: { requiresAuth: true, role: 'ADMIN' } },
-  // ✅ NUEVA RUTA AGREGADA
+  
+  // ✅ Configuración
   { path: '/configuracion', name: 'ConfiguracionEmpresa', component: ConfiguracionEmpresa, meta: { requiresAuth: true, role: 'ADMIN' } },
 ]
 

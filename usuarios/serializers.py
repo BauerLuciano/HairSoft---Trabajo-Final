@@ -67,7 +67,7 @@ class ServicioSerializer(serializers.ModelSerializer):
 class CategoriaServicioSerializer(serializers.ModelSerializer):
     class Meta:
         model = CategoriaServicio
-        fields = ['id', 'nombre', 'descripcion']
+        fields = ['id', 'nombre', 'descripcion', 'activo']
 
 
 class TurnoSerializer(serializers.ModelSerializer):
@@ -130,7 +130,7 @@ class TurnoSerializer(serializers.ModelSerializer):
 class CategoriaProductoSerializer(serializers.ModelSerializer):
     class Meta:
         model = CategoriaProducto
-        fields = ['id', 'nombre', 'descripcion']
+        fields = ['id', 'nombre', 'descripcion', 'activo']
 
 # ----------------------------------------------------------------------
 # CATALOGO DE PRODUCTOS
@@ -402,17 +402,16 @@ class VentaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Venta
-        # 🔥 AGREGAMOS LOS CAMPOS DE TRAZABILIDAD AQUÍ 🔥
         fields = [
             'id', 'cliente', 'cliente_nombre', 'cliente_apellido',
             'usuario', 'usuario_nombre',
             'fecha', 'total', 'anulada', 'tipo', 
             'medio_pago', 'medio_pago_nombre', 'medio_pago_tipo',
-            'entidad_pago',       # Nuevo
-            'codigo_transaccion', # Nuevo
-            'nro_transaccion',    # Viejo (por compatibilidad)
-            'mp_payment_id',      # Viejo (por compatibilidad)
-            'detalles'
+            'entidad_pago',       
+            'codigo_transaccion', 
+            'nro_transaccion',    
+            'mp_payment_id',      
+            'detalles', 'motivo_anulacion', 'fecha_anulacion' 
         ]
 
     def get_medio_pago_tipo(self, obj):
@@ -1081,3 +1080,21 @@ class SillaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Silla
         fields = '__all__' # Devuelve id, nombre, activa, orden
+
+class NotaCreditoSerializer(serializers.ModelSerializer):
+    usuario_nombre = serializers.CharField(source='usuario.nombre', read_only=True)
+    usuario_apellido = serializers.CharField(source='usuario.apellido', read_only=True)
+    venta_id = serializers.IntegerField(source='venta.id', read_only=True)
+    detalles_venta = serializers.SerializerMethodField()
+
+    class Meta:
+        model = NotaCredito
+        fields = ['id', 'venta_id', 'usuario_nombre', 'usuario_apellido', 'motivo', 'monto_devuelto', 'fecha', 'detalles_venta']
+
+    def get_detalles_venta(self, obj):
+        # Muestra en un texto qué productos se devolvieron
+        try:
+            detalles = obj.venta.detalles.all()
+            return ", ".join([f"{d.producto.nombre if d.producto else 'Turno/Servicio'} x{d.cantidad}" for d in detalles])
+        except Exception:
+            return "Detalles no disponibles"

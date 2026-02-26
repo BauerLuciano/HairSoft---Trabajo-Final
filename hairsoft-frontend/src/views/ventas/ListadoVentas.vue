@@ -1,13 +1,18 @@
 <template>
   <div class="list-container">
-    <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarEditar }">
+    <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarModalAnular }">
       <div class="list-header">
         <div class="header-content">
           <h1>Gestión de ventas</h1>
           <p>Historial y administración de transacciones</p>
         </div>
         
-        <div style="display: flex; gap: 10px;">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <button @click="irANotasCredito" class="register-button" style="background-color: #f59e0b; color: #fff;">
+            <FileText :size="18" />
+            Notas de Crédito
+          </button>
+
           <button @click="generarReporteListado" class="register-button" style="background-color: #7c3aed;" :disabled="loadingPdf">
             <FileText :size="18" />
             {{ loadingPdf ? 'Generando...' : 'Exportar Listado' }}
@@ -24,7 +29,7 @@
         <div class="filters-grid">
           <div class="filter-group">
             <label>Buscar</label>
-            <input v-model="filtros.busqueda" placeholder="Cliente, Usuario o ID..." class="filter-input"/>
+            <input v-model="filtros.busqueda" placeholder="Cliente o Usuario" class="filter-input"/>
           </div>
 
           <div class="filter-group">
@@ -39,7 +44,7 @@
 
           <div class="filter-group">
             <label>Método Pago</label>
-            <select v-model="filtros.metodoPago" class="filter-input">
+            <select v-model="filtros.metodoPago" class="filter-input select-dark">
               <option value="">Todos</option>
               <option value="EFECTIVO">Efectivo</option>
               <option value="TRANSFERENCIA">Transferencia</option>
@@ -49,7 +54,7 @@
 
           <div class="filter-group">
             <label>Tipo</label>
-            <select v-model="filtros.tipo" class="filter-input">
+            <select v-model="filtros.tipo" class="filter-input select-dark">
               <option value="">Todos</option>
               <option value="PRODUCTO">Producto</option>
               <option value="TURNO">Turno</option>
@@ -58,7 +63,7 @@
 
           <div class="filter-group">
             <label>Estado</label>
-            <select v-model="filtros.estado" class="filter-input">
+            <select v-model="filtros.estado" class="filter-input select-dark">
               <option value="">Todos</option>
               <option value="activa">Activa</option>
               <option value="anulada">Anulada</option>
@@ -112,8 +117,8 @@
               
               <td>
                 <span class="badge-pago" :class="getMedioPagoInfo(venta).clase">
-                    <component :is="getMedioPagoInfo(venta).icono" :size="12" />
-                    {{ venta.medio_pago_nombre || '–' }}
+                  <component :is="getMedioPagoInfo(venta).icono" :size="12" />
+                  {{ venta.medio_pago_nombre || '–' }}
                 </span>
               </td>
 
@@ -143,18 +148,10 @@
               <td>
                 <div class="action-buttons">
                   <button 
-                    @click="editarVenta(venta)" 
-                    class="action-button edit" 
-                    :disabled="venta.anulada"
-                    title="Editar"
-                  >
-                    <Edit3 :size="14" />
-                  </button>
-                  <button 
-                    @click="anularVenta(venta)" 
+                    @click="abrirModalAnular(venta)" 
                     class="action-button delete" 
-                    :disabled="venta.anulada"
-                    title="Anular"
+                    :disabled="venta.anulada || venta.tipo === 'TURNO'"
+                    :title="venta.tipo === 'TURNO' ? 'No se puede anular un turno completado' : 'Anular Venta'"
                   >
                     <Trash2 :size="14" />
                   </button>
@@ -164,6 +161,15 @@
                     title="Ver Detalle y Auditoría"
                   >
                     <Eye :size="14" />
+                  </button>
+
+                  <button 
+                    v-if="venta.anulada" 
+                    @click="verMotivoAnulacion(venta)" 
+                    class="action-button anulada-info" 
+                    title="Ver auditoría de anulación"
+                  >
+                    <Info :size="14" />
                   </button>
                 </div>
               </td>
@@ -221,13 +227,44 @@
       </div>
     </div>
 
-    <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
-      <div class="modal-content">
-        <ModificarVenta 
-          :venta-id="ventaEditando?.id" 
-          @venta-actualizada="ventaActualizada"
-          @cancelar="cerrarModalEditar"
-        />
+    <div v-if="mostrarModalAnular" class="modal-overlay" @click.self="cerrarModalAnular">
+      <div class="modal-content-anular">
+        <h2>Anular Venta #{{ ventaAAnular?.id }}</h2>
+        <p class="anular-warning">Atención: Esta acción devolverá el stock y generará una Nota de Crédito. <b>No se puede deshacer.</b></p>
+        
+        <div class="form-group">
+          <label style="font-weight: bold; margin-bottom: 8px; display: block;">Motivo de la anulación:</label>
+          <select v-model="motivoSeleccionado" class="filter-input select-dark w-full" style="margin-bottom: 12px;">
+            <option value="Error en método de pago">Error en método de pago</option>
+            <option value="Fondos insuficientes del cliente">Fondos insuficientes del cliente</option>
+            <option value="Cliente se arrepintió de la compra">Cliente se arrepintió de la compra</option>
+            <option value="Carga duplicada por error">Carga duplicada por error</option>
+            <option value="Error al seleccionar los productos">Error al seleccionar los productos</option>
+            <option value="Otro">Otro motivo (Especifique)</option>
+          </select>
+        </div>
+
+        <div class="form-group" v-if="motivoSeleccionado === 'Otro'">
+          <label style="font-size: 0.85rem; color: var(--text-secondary);">Especifique el motivo (Mín. 5 caracteres):</label>
+          <textarea 
+            v-model="motivoAnulacion" 
+            rows="3" 
+            placeholder="Escriba aquí la razón de la anulación..."
+            class="filter-input w-full mt-2"
+          ></textarea>
+        </div>
+
+        <div class="modal-actions-anular">
+          <button @click="cerrarModalAnular" class="btn-cancelar">Cancelar</button>
+          <button 
+            @click="confirmarAnulacion" 
+            class="btn-confirmar-anular"
+            :disabled="!esMotivoValido || cargandoAnulacion"
+          >
+            <Loader v-if="cargandoAnulacion" :size="16" class="spin" style="margin-right: 5px;"/>
+            {{ cargandoAnulacion ? 'Anulando...' : 'Confirmar Anulación' }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -237,37 +274,45 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from '@/utils/axiosConfig' 
 import Swal from 'sweetalert2'
-import jsPDF from 'jspdf'
 import RegistrarVenta from './RegistrarVenta.vue'
-import ModificarVenta from './ModificarVenta.vue'
 import { 
-  Plus, Trash2, Edit3, Eye, FileText, Loader, PackageX,
+  Plus, Trash2, Eye, FileText, Loader, PackageX,
   ChevronLeft, ChevronRight, RefreshCw, AlertTriangle, CheckCircle,
-  CreditCard, Banknote, Smartphone, ArrowRightLeft, HelpCircle, DollarSign
+  CreditCard, Banknote, Smartphone, ArrowRightLeft, HelpCircle, Info // 🔥 IMPORTADO INFO
 } from 'lucide-vue-next'
 
-const logoUrl = '/logo_barberia.jpg'
 const router = useRouter()
 const ventas = ref([])
 const filtros = ref({ busqueda: '', fechaDesde: '', fechaHasta: '', metodoPago: '', tipo: '', estado: '' })
 const pagina = ref(1)
 const itemsPorPagina = 8
+
+// Estados UI
 const mostrarRegistrar = ref(false)
-const mostrarEditar = ref(false)
-const ventaEditando = ref(null)
 const cargando = ref(false)
 const generandoPDF = ref(null)
 const ventaRecienCreada = ref(null)
 const loadingPdf = ref(false)
 const usuarioEmisor = ref('')
 
+// Estados Anulación
+const mostrarModalAnular = ref(false)
+const ventaAAnular = ref(null)
+const motivoSeleccionado = ref('Error en método de pago')
+const motivoAnulacion = ref('')
+const cargandoAnulacion = ref(false)
+
 const empresaData = ref({
     razon_social: "", cuil_cuit: "", direccion: "", telefono: "", email: "" 
 })
+
+const irANotasCredito = () => {
+  router.push('/notas-credito')
+}
 
 const cargarConfiguracionEmpresa = async () => {
     try {
@@ -277,7 +322,6 @@ const cargarConfiguracionEmpresa = async () => {
 }
 
 const obtenerUsuarioLogueado = () => {
-  // Lógica simplificada de tu código original para no hacer spam, funciona igual
   const n = localStorage.getItem('user_nombre');
   const a = localStorage.getItem('user_apellido');
   if(n || a) usuarioEmisor.value = `${n} ${a}`.trim();
@@ -310,8 +354,10 @@ onMounted(() => {
 const ventasFiltradas = computed(() => {
   const busca = filtros.value.busqueda.toLowerCase()
   return ventas.value.filter(v => {
+    // 🔍 CORRECCIÓN: Ahora busca también por usuario_nombre
     const matchBusqueda = !busca || 
       (v.cliente_nombre?.toLowerCase() || '').includes(busca) || 
+      (v.usuario_nombre?.toLowerCase() || '').includes(busca) || 
       (v.id || '').toString().includes(busca)
     
     const fecha = v.fecha ? new Date(v.fecha) : null
@@ -337,18 +383,62 @@ const ventasPaginadas = computed(() => {
 const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 
-const editarVenta = (venta) => { if (venta.anulada) return; ventaEditando.value = venta; mostrarEditar.value = true }
 const verDetallesVenta = (id) => router.push({ name: 'DetalleVenta', params: { id } })
 
-const anularVenta = async (venta) => {
-  const res = await Swal.fire({ title: '¿Anular venta?', text: "Esta acción no se puede deshacer", icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'Sí, anular' })
-  if (!res.isConfirmed) return
+// LÓGICA DE ANULACIÓN MEJORADA
+const abrirModalAnular = (venta) => {
+  ventaAAnular.value = venta;
+  motivoSeleccionado.value = 'Error en método de pago';
+  motivoAnulacion.value = '';
+  mostrarModalAnular.value = true;
+};
+
+const cerrarModalAnular = () => {
+  mostrarModalAnular.value = false;
+  ventaAAnular.value = null;
+  motivoAnulacion.value = '';
+};
+
+const esMotivoValido = computed(() => {
+  if (motivoSeleccionado.value === 'Otro') {
+    return motivoAnulacion.value.trim().length >= 5;
+  }
+  return true;
+});
+
+const confirmarAnulacion = async () => {
+  if (!esMotivoValido.value) return;
+  
+  const motivoFinal = motivoSeleccionado.value === 'Otro' ? motivoAnulacion.value : motivoSeleccionado.value;
+  
+  cargandoAnulacion.value = true;
   try {
-    await axios.post(`/api/ventas/${venta.id}/anular/`)
-    await cargarVentas()
-    Swal.fire('Anulada', 'La venta ha sido anulada.', 'success')
-  } catch (err) { Swal.fire('Error', 'No se pudo anular', 'error') }
-}
+    const response = await axios.post(`/api/ventas/${ventaAAnular.value.id}/anular/`, {
+      motivo: motivoFinal
+    });
+    
+    Swal.fire({
+        icon: 'success',
+        title: 'Venta Anulada',
+        text: response.data.message || 'La venta ha sido anulada y el stock restaurado.',
+        confirmButtonColor: '#10b981'
+    });
+    
+    cerrarModalAnular();
+    await cargarVentas(); 
+  } catch (error) {
+    console.error("Error anulando venta:", error);
+    Swal.fire({
+        icon: 'error',
+        title: 'Error al anular',
+        text: error.response?.data?.error || 'Ocurrió un error inesperado.',
+        confirmButtonColor: '#ef4444'
+    });
+  } finally {
+    cargandoAnulacion.value = false;
+  }
+};
+
 
 const generarComprobantePDF = (venta) => {
   generandoPDF.value = venta.id
@@ -370,7 +460,6 @@ const generarReporteListado = async () => {
     if (filtros.value.tipo) params.append('tipo', filtros.value.tipo);
     if (filtros.value.estado) params.append('estado', filtros.value.estado);
     
-    // 👇 AGREGAR ESTO
     if (usuarioEmisor.value) {
       params.append('impreso_por', usuarioEmisor.value);
     }
@@ -388,13 +477,11 @@ const generarReporteListado = async () => {
 };
 
 const cerrarModal = () => { mostrarRegistrar.value = false }
-const cerrarModalEditar = () => { mostrarEditar.value = false; ventaEditando.value = null }
 const procesarVentaRegistrada = async (venta) => { 
   await cargarVentas(); 
   ventaRecienCreada.value = venta.id 
   setTimeout(() => ventaRecienCreada.value = null, 5000) 
 }
-const ventaActualizada = async () => { await cargarVentas(); cerrarModalEditar() }
 const limpiarFiltros = () => { filtros.value = { busqueda: '', fechaDesde: '', fechaHasta: '', metodoPago: '', tipo: '', estado: '' }; pagina.value = 1 }
 
 const formatFechaDia = (f) => f ? new Date(f).toLocaleDateString('es-AR', {day: '2-digit', month: '2-digit', year: 'numeric'}) : '-'
@@ -413,31 +500,112 @@ const getMedioPagoInfo = (venta) => {
 
 const getClaseTipoVenta = (t) => t === 'TURNO' ? 'tipo-turno' : 'tipo-prod'
 const getClaseEstadoVenta = (anulada) => anulada ? 'estado-anulada' : 'estado-activa'
+
+// 🔥 FUNCIÓN CORREGIDA: ALERTA DE ANULACIÓN LIMPIA Y ELEGANTE
+const verMotivoAnulacion = async (venta) => {
+  try {
+    Swal.fire({ title: 'Cargando auditoría...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    
+    const token = localStorage.getItem('token');
+    const response = await axios.get(`/api/ventas/${venta.id}/`, {
+      headers: { Authorization: `Token ${token}` }
+    });
+    
+    const detalleVenta = response.data;
+
+    // Lista de productos limpia
+    let itemsHTML = '<p style="color: #94a3b8; font-size: 0.85rem; text-align: center;">No hay productos registrados</p>';
+    if (detalleVenta.detalles && detalleVenta.detalles.length > 0) {
+      itemsHTML = detalleVenta.detalles.map(d => `
+        <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #cbd5e1; padding: 10px 0; font-size: 0.95rem;">
+          <span style="color: #334155; font-weight: 600;">${d.cantidad}x ${d.producto_nombre || d.producto.nombre || 'Producto'}</span>
+          <span style="font-weight: 800; color: #64748b;">$${Number(d.subtotal || (d.precio_unitario * d.cantidad)).toLocaleString('es-AR')}</span>
+        </div>
+      `).join('');
+    }
+
+    // Formateo de fecha
+    const fechaMostrar = detalleVenta.fecha_anulacion 
+      ? new Date(detalleVenta.fecha_anulacion).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) 
+      : 'Fecha no registrada';
+
+    Swal.fire({
+      title: `
+        <div style="color: #ef4444; font-weight: 900; font-size: 1.5rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+          Venta Anulada #${venta.id}
+        </div>`,
+      html: `
+        <div style="text-align: left; font-family: system-ui, -apple-system, sans-serif; margin-top: 15px;">
+          
+          <div style="border-left: 4px solid #ef4444; background-color: #fef2f2; border-radius: 0 8px 8px 0; padding: 16px; margin-bottom: 25px;">
+            <p style="margin: 0 0 5px 0; font-size: 0.8rem; color: #991b1b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">📋 Motivo registrado:</p>
+            <p style="margin: 0; font-size: 1.1rem; color: #7f1d1d; font-weight: 500; font-style: italic;">
+              "${detalleVenta.motivo_anulacion || 'El sistema no registró un motivo.'}"
+            </p>
+          </div>
+
+          <div style="margin-bottom: 20px;">
+            <p style="margin: 0 0 8px 0; font-size: 0.8rem; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">📦 Mercadería reintegrada:</p>
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 5px 18px 15px;">
+              ${itemsHTML}
+              <div style="text-align: right; margin-top: 15px; font-size: 1.2rem; color: #0f172a;">
+                Total cancelado: <strong style="color: #ef4444; font-weight: 900;">-$${Number(detalleVenta.total).toLocaleString('es-AR')}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div style="text-align: center; margin-top: 25px;">
+            <span style="background-color: #f1f5f9; padding: 6px 12px; border-radius: 20px; color: #64748b; font-size: 0.8rem; font-weight: 600;">
+              🕒 Anulado el: ${fechaMostrar}
+            </span>
+          </div>
+        </div>
+      `,
+      showConfirmButton: true,
+      confirmButtonText: 'Cerrar',
+      confirmButtonColor: '#0ea5e9',
+      background: '#ffffff', // Forzamos fondo blanco para que no se rompa con themes oscuros
+      width: '500px',
+      customClass: {
+        popup: 'swal2-border-radius' // Solo le damos bordes redondeados al contenedor
+      }
+    });
+
+  } catch (error) {
+    console.error("Error cargando detalle de anulación:", error);
+    Swal.fire('Error', 'No se pudieron cargar los detalles de la anulación.', 'error');
+  }
+};
 </script>
 
 <style scoped>
-/* ESTILOS PREMIUM (Mismos que tenías + los nuevos de pago) */
+.list-container { padding: 0; width: 100%; }
 .list-card { background: var(--bg-secondary); color: var(--text-primary); border-radius: 24px; padding: 40px; width: 100%; max-width: 1600px; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; border: 1px solid var(--border-color); }
-.list-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1); border-radius: 24px 24px 0 0; }
+.list-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9); border-radius: 24px 24px 0 0; }
 
-.list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; border-bottom: 2px solid var(--border-color); padding-bottom: 25px; }
+.list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; flex-wrap: wrap; gap: 20px; border-bottom: 2px solid var(--border-color); padding-bottom: 25px; }
 .header-content h1 { margin: 0; font-size: 2.2rem; background: linear-gradient(135deg, var(--text-primary), #0ea5e9); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
 .header-content p { color: var(--text-secondary); font-weight: 500; margin-top: 8px; letter-spacing: 0.5px; }
 
 .register-button { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; border: none; padding: 14px 28px; border-radius: 12px; font-weight: 800; cursor: pointer; transition: 0.3s; text-transform: uppercase; letter-spacing: 1px; font-size: 0.95rem; box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35); display: flex; align-items: center; gap: 8px; }
 .register-button:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(14, 165, 233, 0.5); }
+.register-button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
-/* FILTROS */
 .filters-container { margin-bottom: 30px; background: var(--hover-bg); padding: 24px; border-radius: 16px; border: 1px solid var(--border-color); }
 .filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 18px; align-items: end; }
 .filter-group { display: flex; flex-direction: column; }
 .filter-group label { font-weight: 700; margin-bottom: 10px; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; }
+
 .filter-input { padding: 12px 14px; border: 2px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); color: var(--text-primary); font-weight: 500; font-size: 0.95rem; }
 .filter-input:focus { outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 4px var(--accent-light); }
+.select-dark option { background-color: #1e293b; color: #f8fafc; font-weight: 500; }
+
+.w-full { width: 100%; box-sizing: border-box; resize: vertical; }
+.mt-2 { margin-top: 8px; }
 .clear-filters-btn { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 12px 18px; border-radius: 10px; cursor: pointer; font-weight: 700; transition: 0.3s; text-transform: uppercase; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; }
 .clear-filters-btn:hover { background: var(--hover-bg); transform: translateY(-2px); }
 
-/* TABLA */
 .table-container { overflow-x: auto; margin-bottom: 25px; border-radius: 16px; }
 .users-table { width: 100%; border-collapse: collapse; background: var(--bg-primary); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-md); border: 1px solid var(--border-color); }
 .users-table th { background: var(--accent-color); color: white; padding: 18px 14px; text-align: left; font-weight: 900; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1.2px; white-space: nowrap; }
@@ -445,26 +613,19 @@ const getClaseEstadoVenta = (anulada) => anulada ? 'estado-anulada' : 'estado-ac
 .users-table td { padding: 14px; vertical-align: middle; color: var(--text-secondary); font-weight: 500; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; }
 .users-table tr:hover { background: var(--hover-bg); transition: 0.2s; }
 
-/* CELDAS PERSONALIZADAS */
 .fecha-cell { display: flex; flex-direction: column; }
 .fecha-dia { font-weight: 700; color: var(--text-primary); }
 .fecha-hora { font-size: 0.75rem; color: var(--text-tertiary); }
-
 .usuario-cell { color: #e2e8f0; font-weight: 500; }
-.id-cell { font-family: monospace; color: #94a3b8; font-size: 0.85rem; font-weight: 600; }
 .total-cell { font-size: 1rem; font-weight: 800; color: #10b981; }
 
-/* 🔥 BADGES DE PAGO CON ICONO */
 .badge-pago { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid transparent; }
-
-/* Colores específicos para cada medio */
 .pago-efectivo { background: rgba(16, 185, 129, 0.1); color: #10b981; border-color: rgba(16, 185, 129, 0.3); }
-.pago-tarjeta { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border-color: rgba(139, 92, 246, 0.3); } /* Violeta */
-.pago-transferencia { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-color: rgba(245, 158, 11, 0.3); } /* Naranja */
-.pago-mp { background: rgba(14, 165, 233, 0.1); color: #0ea5e9; border-color: rgba(14, 165, 233, 0.3); } /* Azul MP */
+.pago-tarjeta { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border-color: rgba(139, 92, 246, 0.3); }
+.pago-transferencia { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-color: rgba(245, 158, 11, 0.3); }
+.pago-mp { background: rgba(14, 165, 233, 0.1); color: #0ea5e9; border-color: rgba(14, 165, 233, 0.3); }
 .pago-otro { background: rgba(156, 163, 175, 0.1); color: #9ca3af; border-color: rgba(156, 163, 175, 0.3); }
 
-/* OTROS BADGES */
 .badge-tipo, .badge-estado { padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
 .tipo-turno { background: rgba(236, 72, 153, 0.1); color: #ec4899; border: 1px solid rgba(236, 72, 153, 0.3); }
 .tipo-prod { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
@@ -472,7 +633,6 @@ const getClaseEstadoVenta = (anulada) => anulada ? 'estado-anulada' : 'estado-ac
 .estado-anulada { color: #ef4444; background: rgba(239, 68, 68, 0.05); text-decoration: line-through; }
 .venta-anulada-row { opacity: 0.6; background: rgba(239, 68, 68, 0.02); }
 
-/* RESTO DE ESTILOS (Botones PDF, Acciones, Footer) */
 .btn-pdf-icon { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; margin: 0 auto; }
 .btn-pdf-icon:hover:not(:disabled) { background: #0ea5e9; color: white; border-color: #0ea5e9; transform: translateY(-2px); }
 .btn-pdf-icon:disabled { opacity: 0.3; cursor: not-allowed; }
@@ -481,10 +641,14 @@ const getClaseEstadoVenta = (anulada) => anulada ? 'estado-anulada' : 'estado-ac
 .action-buttons { display: flex; gap: 6px; }
 .action-button { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid transparent; transition: 0.2s; background: var(--bg-tertiary); color: var(--text-secondary); }
 .action-button:hover:not(:disabled) { transform: translateY(-2px); }
-.action-button.edit:hover { color: #3b82f6; border-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
-.action-button.delete:hover { color: #ef4444; border-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
-.action-button.detalle:hover { color: #10b981; border-color: #10b981; background: rgba(16, 185, 129, 0.1); }
-.action-button:disabled { opacity: 0.3; cursor: not-allowed; }
+.action-button.delete:hover:not(:disabled) { color: #ef4444; border-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+.action-button.detalle:hover:not(:disabled) { color: #10b981; border-color: #10b981; background: rgba(16, 185, 129, 0.1); }
+
+/* 🔥 ESTILO BOTÓN INFO ANULADA */
+.action-button.anulada-info { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.5); color: #ef4444; }
+.action-button.anulada-info:hover { background: #ef4444; color: white; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3); }
+
+.action-button:disabled { opacity: 0.3; cursor: not-allowed; background: transparent;}
 
 .list-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding: 15px; background: var(--hover-bg); border-radius: 12px; flex-wrap: wrap; gap: 15px; }
 .footer-left { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
@@ -510,64 +674,17 @@ const getClaseEstadoVenta = (anulada) => anulada ? 'estado-anulada' : 'estado-ac
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); z-index: 1000; display: flex; justify-content: center; align-items: center; }
 .modal-content { background: var(--bg-secondary); padding: 0; border-radius: 16px; border: 1px solid var(--border-color); max-height: 90vh; overflow-y: auto; }
 
-/* --- ESTILOS DE TRAZABILIDAD (Copiá esto en tu style scoped) --- */
+.modal-content-anular { background: var(--bg-secondary); padding: 30px; border-radius: 16px; border: 1px solid var(--border-color); width: 100%; max-width: 450px; text-align: left; }
+.modal-content-anular h2 { margin-top: 0; color: var(--text-primary); font-size: 1.5rem; margin-bottom: 10px; }
+.anular-warning { color: #ef4444; font-size: 0.9rem; margin-bottom: 20px; background: rgba(239, 68, 68, 0.1); padding: 10px; border-radius: 8px; border-left: 4px solid #ef4444; }
+.modal-actions-anular { display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px; }
+.btn-cancelar { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+.btn-confirmar-anular { background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 700; cursor: pointer; display: flex; align-items: center; }
+.btn-confirmar-anular:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Contenedor principal para alinear el badge y la info debajo */
-.badge-pago-wrapper {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px; /* Espacio entre el badge de color y los datos */
-}
-
-/* Contenedor de los datos extra (Banco y Código) */
-.trazabilidad-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.75rem; /* Letra chica (aprox 12px) */
-  
-  /* Un detalle visual: línea sutil a la izquierda para conectarlo con el pago */
-  border-left: 2px solid #e2e8f0; 
-  padding-left: 8px; 
-  margin-left: 2px;
-}
-
-/* Filas individuales (Vía... / Ref...) */
-.info-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  line-height: 1.2;
-}
-
-/* Las etiquetas "VÍA:" y "REF:" */
-.label-info {
-  font-size: 0.65rem; /* Más chiquito (aprox 10px) */
-  text-transform: uppercase;
-  font-weight: 800; /* Bien negrita */
-  color: #94a3b8;   /* Gris claro para que no compita */
-  letter-spacing: 0.5px;
-  min-width: 24px;  /* Para que se alineen verticalmente */
-}
-
-/* El nombre del Banco o Billetera */
-.valor-info {
-  font-weight: 600;
-  color: #475569; /* Gris azulado oscuro */
-}
-
-/* El Código de Transacción (Estilo "Ticket") */
-.codigo-transaccion {
-  font-family: 'Courier New', Courier, monospace; /* Fuente monoespaciada para números */
-  background-color: #f8fafc;
-  color: #334155;
-  padding: 1px 6px;
-  border-radius: 4px;
-  border: 1px solid #cbd5e1;
-  font-size: 0.7rem;
-  font-weight: 600;
-}
+/* FIX SWEETALERT PARA MODO OSCURO */
+:deep(.swal-rounded-popup) { border-radius: 20px !important; background: var(--bg-secondary) !important; border: 1px solid var(--border-color) !important; }
+:deep(.swal2-border-radius) { border-radius: 16px !important;}
 
 @media (max-width: 768px) {
   .list-footer { flex-direction: column; align-items: flex-start; }

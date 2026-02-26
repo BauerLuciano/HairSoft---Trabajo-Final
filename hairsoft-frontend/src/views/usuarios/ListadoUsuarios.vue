@@ -166,6 +166,7 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import axios from 'axios'
+import Swal from 'sweetalert2' // 🔥 IMPORTAMOS SWEETALERT
 import RegistrarUsuario from './RegistrarUsuario.vue'
 import ModificarUsuario from './ModificarUsuario.vue'
 import { 
@@ -173,7 +174,6 @@ import {
   ChevronLeft, ChevronRight, Trash2, X
 } from 'lucide-vue-next'
 
-// 1. CORRECCIÓN DE LA BASE (Sin subcarpetas)
 const API_BASE = 'http://127.0.0.1:8000';
 
 const usuarios = ref([])
@@ -187,13 +187,16 @@ const mostrarEditar = ref(false)
 const usuarioEditando = ref(null)
 const hayAdminActivo = ref(false)
 
+// Función auxiliar para headers si usás tokens (opcional)
+const getHeaders = () => {
+  const token = localStorage.getItem('token');
+  return token ? { headers: { Authorization: `Token ${token}` } } : {};
+}
+
 // Cargar usuarios desde backend
 const cargarUsuarios = async () => {
   try {
-    // 2. CORRECCIÓN DE LA RUTA: Sacamos el '/usuarios' que sobraba
-    const res = await axios.get(`${API_BASE}/api/usuarios/`)
-    
-    // 3. SEGURIDAD: Si viene paginado (results) o plano, lo tomamos igual
+    const res = await axios.get(`${API_BASE}/api/usuarios/`, getHeaders())
     const datos = Array.isArray(res.data) ? res.data : (res.data.results || [])
 
     usuarios.value = datos.sort((a, b) => {
@@ -207,19 +210,23 @@ const cargarUsuarios = async () => {
     )
   } catch (err) {
     console.error('Error al cargar usuarios:', err)
-    // alert('No se pudo cargar la lista de usuarios') 
+    // Usamos Toast para errores silenciosos de carga
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: 'error',
+      title: 'No se pudo cargar la lista de usuarios',
+      showConfirmButton: false,
+      timer: 3000
+    })
   }
 }
 
 // Cargar roles
 const cargarRoles = async () => {
   try {
-    // 2. CORRECCIÓN DE LA RUTA: Sacamos el '/usuarios' que sobraba
-    const res = await axios.get(`${API_BASE}/api/roles/`)
-    
-    // 3. SEGURIDAD: Igual acá
+    const res = await axios.get(`${API_BASE}/api/roles/`, getHeaders())
     const datos = Array.isArray(res.data) ? res.data : (res.data.results || [])
-
     roles.value = datos.filter(r => r.activo || r.nombre.toLowerCase() === 'administrador')
   } catch (err) {
     console.error('Error al cargar roles:', err)
@@ -230,8 +237,6 @@ onMounted(async () => {
   await cargarUsuarios()
   await cargarRoles()
 })
-
-// --- EL RESTO DE TU CÓDIGO ORIGINAL (INTACTO) ---
 
 // Filtros por fecha
 const filtrarPorFecha = (usuario) => {
@@ -276,16 +281,9 @@ const usuariosPaginados = computed(() => {
   return usuariosFiltrados.value.slice(inicio, fin)
 })
 
-// Navegación paginación
-const paginaAnterior = () => { 
-  if (pagina.value > 1) pagina.value--
-}
+const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
+const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 
-const paginaSiguiente = () => { 
-  if (pagina.value < totalPaginas.value) pagina.value++
-}
-
-// Acciones sobre usuarios
 const editarUsuario = (usuario) => {
   usuarioEditando.value = usuario
   mostrarEditar.value = true
@@ -296,32 +294,67 @@ const usuarioActualizado = async () => {
   cerrarModalEditar()
 }
 
+// 🔥 ELIMINAR/DESACTIVAR CON SWAL 🔥
 const eliminarUsuario = async (usuario) => {
-  if (!confirm(`¿Desactivar al usuario ${usuario.nombre}?`)) return
+  const result = await Swal.fire({
+    title: '¿Desactivar usuario?',
+    text: `¿Estás seguro de desactivar a ${usuario.nombre} ${usuario.apellido}? No podrá iniciar sesión en el sistema.`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#64748b',
+    confirmButtonText: 'Sí, desactivar',
+    cancelButtonText: 'Cancelar'
+  });
+
+  if (!result.isConfirmed) return;
+
   try {
-    // CORRECCIÓN RUTA
-    await axios.post(`${API_BASE}/api/usuarios/eliminar/${usuario.id}/`)
+    await axios.post(`${API_BASE}/api/usuarios/eliminar/${usuario.id}/`, {}, getHeaders())
     usuario.estado = 'INACTIVO'
-    await nextTick()
-    alert('Usuario desactivado con éxito')
+    
+    Swal.fire({
+      icon: 'success',
+      title: '¡Desactivado!',
+      text: 'El usuario ha sido desactivado correctamente.',
+      timer: 1500,
+      showConfirmButton: false
+    })
   } catch (err) {
     console.error(err)
-    alert('No se pudo desactivar el usuario')
+    Swal.fire('Error', 'No se pudo desactivar el usuario.', 'error')
   }
 }
 
-// Activar usuario
+// 🔥 ACTIVAR CON SWAL 🔥
 const activarUsuario = async (usuario) => {
-  if (!confirm(`¿Reactivar al usuario ${usuario.nombre} ${usuario.apellido}?`)) return
+  const result = await Swal.fire({
+    title: '¿Reactivar usuario?',
+    text: `¿Querés darle acceso nuevamente a ${usuario.nombre} ${usuario.apellido}?`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#10b981',
+    cancelButtonColor: '#64748b',
+    confirmButtonText: 'Sí, reactivar',
+    cancelButtonText: 'Cancelar'
+  });
+
+  if (!result.isConfirmed) return;
+
   try {
-    // CORRECCIÓN RUTA
-    await axios.post(`${API_BASE}/api/usuarios/activar/${usuario.id}/`)
+    await axios.post(`${API_BASE}/api/usuarios/activar/${usuario.id}/`, {}, getHeaders())
     usuario.estado = 'ACTIVO'
-    await nextTick()
-    alert('Usuario reactivado con éxito')
+    
+    Swal.fire({
+      icon: 'success',
+      title: '¡Reactivado!',
+      text: 'El usuario ya puede ingresar al sistema.',
+      timer: 1500,
+      showConfirmButton: false
+    })
   } catch (err) {
     console.error(err)
-    alert('No se pudo reactivar el usuario')
+    Swal.fire('Error', 'No se pudo reactivar el usuario.', 'error')
   }
 }
 

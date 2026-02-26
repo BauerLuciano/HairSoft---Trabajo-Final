@@ -5,7 +5,7 @@
       <div class="list-header">
         <div class="header-content">
           <h1>AUDITORIA DEL SISTEMA</h1>
-          <p>Trazabilidad completa de movimientos</p>
+          <p>Trazabilidad completa de movimientos unificada</p>
         </div>
       </div>
 
@@ -22,6 +22,8 @@
               <option value="CREAR">Creación</option>
               <option value="EDITAR">Edición</option>
               <option value="ELIMINAR">Eliminación</option>
+              <option value="ANULAR_VENTA">Anulación Venta</option>
+              <option value="AJUSTE_STOCK">Ajuste de Stock</option>
             </select>
           </div>
           <div class="filter-group">
@@ -59,14 +61,13 @@
                 <div style="font-weight:600;">{{ log.usuario_nombre || 'Sistema' }}</div>
                 <div style="font-size:0.75em; opacity:0.8;">{{ log.usuario_rol }}</div>
               </td>
-              <td><span class="badge-estado" :class="getClaseAccion(log.accion)">{{ log.accion }}</span></td>
+              <td><span class="badge-estado" :class="getClaseAccion(log.accion)">{{ log.accion.replace('_', ' ') }}</span></td>
               <td>
                 <strong>{{ log.modelo_afectado }}</strong>
                 <span style="font-size:0.8em; margin-left:5px;">#{{ log.objeto_id }}</span>
               </td>
               
               <td>
-                <!-- ✅ CORREGIDO: Usa los campos directos del serializador -->
                 <div class="browser-cell">
                   <div class="browser-main" :class="getColorNavegador(log.navegador_info)">
                     <i :class="getIconoNavegador(log.navegador_info)" style="margin-right:5px;"></i>
@@ -100,13 +101,12 @@
       </div>
     </div>
 
-    <!-- MODAL DE DETALLES -->
     <div v-if="mostrarModal" class="modal-overlay" @click.self="cerrarModal">
       <div class="modal-content">
         <button class="modal-close" @click="cerrarModal">&times;</button>
         
         <div class="modal-header-custom" :class="getClaseAccion(logSeleccionado?.accion)">
-          <h2>Reporte #{{ logSeleccionado?.id }} - {{ logSeleccionado?.accion }}</h2>
+          <h2>Reporte #{{ logSeleccionado?.id }} - {{ logSeleccionado?.accion.replace('_', ' ') }}</h2>
           <p class="modal-subtitle">Objeto: {{ logSeleccionado?.modelo_afectado }} #{{ logSeleccionado?.objeto_id }}</p>
         </div>
 
@@ -121,7 +121,6 @@
             </div>
             <div class="info-item">
               <span class="label">Conexión</span>
-              <!-- ✅ CORREGIDO: Usa los campos directos -->
               <span class="value" style="font-size: 0.9rem;">
                 <i :class="getIconoNavegador(logSeleccionado?.navegador_info)" style="margin-right:5px"></i>
                 {{ getNombreNavegador(logSeleccionado?.navegador_info) }}
@@ -134,9 +133,6 @@
                 <span v-if="logSeleccionado?.sistema_operativo" style="margin-left:10px;">
                   <i class="fas fa-desktop"></i> {{ logSeleccionado?.sistema_operativo }}
                 </span>
-              </span>
-              <span v-if="logSeleccionado?.dispositivo_info" class="sub-value">
-                <i class="fas fa-info-circle"></i> {{ logSeleccionado.dispositivo_info }}
               </span>
             </div>
           </div>
@@ -195,7 +191,6 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 
-// ✅ USAR EXACTAMENTE LA MISMA URL QUE PEDIDOS WEB
 const API_URL = 'http://localhost:8000/api/auditoria/';
 
 const logs = ref([])
@@ -205,94 +200,84 @@ const itemsPorPagina = 10
 const mostrarModal = ref(false)
 const logSeleccionado = ref(null)
 const loading = ref(false)
-const error = ref(null)
 
-// ✅ FUNCIONES SIMPLIFICADAS - USAN CAMPOS DIRECTOS DEL SERIALIZADOR
 const getIconoNavegador = (navegadorInfo) => {
   if (!navegadorInfo) return 'fas fa-globe';
   const navLower = navegadorInfo.toLowerCase();
-  
   if (navLower.includes('edge')) return 'fab fa-edge';
   if (navLower.includes('opera') || navLower.includes('opr')) return 'fab fa-opera';
   if (navLower.includes('chrome')) return 'fab fa-chrome';
   if (navLower.includes('firefox')) return 'fab fa-firefox-browser';
   if (navLower.includes('safari')) return 'fab fa-safari';
-  
   return 'fas fa-globe';
 }
 
 const getColorNavegador = (navegadorInfo) => {
   if (!navegadorInfo) return '';
   const navLower = navegadorInfo.toLowerCase();
-  
   if (navLower.includes('edge')) return 'text-edge';
   if (navLower.includes('opera') || navLower.includes('opr')) return 'text-opera';
   if (navLower.includes('chrome')) return 'text-chrome';
   if (navLower.includes('firefox')) return 'text-firefox';
   if (navLower.includes('safari')) return 'text-safari';
-  
   return 'text-web';
 }
 
 const getNombreNavegador = (navegadorInfo) => {
   if (!navegadorInfo) return '-';
-  
-  // Extraer solo el nombre del navegador (sin versión)
   const navLower = navegadorInfo.toLowerCase();
-  
   if (navLower.includes('edge')) return 'Edge';
   if (navLower.includes('opera') || navLower.includes('opr')) return 'Opera';
   if (navLower.includes('chrome')) return 'Chrome';
   if (navLower.includes('firefox')) return 'Firefox';
   if (navLower.includes('safari')) return 'Safari';
-  
-  // Si no reconocemos, devolver el primer segmento
   return navegadorInfo.split(' ')[0] || 'Navegador';
 }
 
-// ✅ Función de detección simplificada para compatibilidad (usa campos directos)
-const detectarNavegador = (log) => {
-  return {
-    name: getNombreNavegador(log?.navegador_info),
-    icon: getIconoNavegador(log?.navegador_info),
-    colorClass: getColorNavegador(log?.navegador_info)
-  };
-}
-
-// ✅ Función para obtener dispositivo completo (usa campos directos)
-const getDispositivoCompleto = (log) => {
-  if (!log) return 'No registrado';
-  
-  // Usar dispositivo_info si existe
-  if (log.dispositivo_info) return log.dispositivo_info;
-  
-  // Construir a partir de campos individuales
-  const navegador = getNombreNavegador(log.navegador_info);
-  const so = log.sistema_operativo || 'Sistema desconocido';
-  const ip = log.ip_address || 'IP no registrada';
-  
-  return `${navegador} en ${so} (IP: ${ip})`;
-}
-
-// ✅ FUNCIONES RESTANTES (igual que antes)
+// 🔥 PARSEO INTELIGENTE DEFINITIVO (SALVA LAS PAPAS DEL FORMATO VIEJO)
 const parseDetalles = (detalles) => {
   if (!detalles) return {}
   let d = detalles
   if (typeof detalles === 'string') {
     try { d = JSON.parse(detalles) } catch (e) { return {} }
   }
-  const visible = {}
-  for (const key in d) {
-    if (key !== '__meta__') visible[key] = d[key]
+  
+  const adaptado = {}
+
+  // 🚨 CASO 1: El JSON entero es UN SOLO CAMBIO suelto (el viejo formato que me pasaste)
+  // Ej: {"tipo":"CAMBIO", "nuevo":"Juanitardo", "anterior":"Juanito"}
+  if (d.anterior !== undefined && d.nuevo !== undefined) {
+      return {
+        "Modificación": { tipo: 'CAMBIO', anterior: d.anterior, nuevo: d.nuevo }
+      }
   }
+  
+  // 🚨 CASO 2: Es el formato nuevo ordenado (Tiene la caja "cambios")
   if (d.cambios) {
-    const adaptado = {}
     for (const [k, v] of Object.entries(d.cambios)) {
       adaptado[k] = { tipo: 'CAMBIO', anterior: v.anterior, nuevo: v.nuevo }
     }
-    return adaptado
   }
-  return visible
+
+  // 🚨 CASO 3: Recorremos todo lo demás (valores sueltos o cambios anidados)
+  for (const [key, value] of Object.entries(d)) {
+    if (key === 'cambios' || key === '__meta__') continue;
+
+    // Si detecta un objeto anidado que tiene anterior y nuevo
+    if (value && typeof value === 'object' && value.anterior !== undefined && value.nuevo !== undefined) {
+      adaptado[key] = { tipo: 'CAMBIO', anterior: value.anterior, nuevo: value.nuevo }
+    } 
+    // Si viene directo con el tipo seteado
+    else if (value && typeof value === 'object' && value.tipo === 'CAMBIO') {
+       adaptado[key] = value; 
+    }
+    // Si es un valor suelto normal (ej: motivo_anulacion, monto_devuelto, etc.)
+    else {
+      adaptado[key] = { tipo: 'VALOR', valor: value }
+    }
+  }
+  
+  return adaptado
 }
 
 const isEmpty = (d) => Object.keys(parseDetalles(d)).length === 0
@@ -301,6 +286,8 @@ const formatValue = (val) => {
   if (val === null || val === undefined) return '-'
   if (val === true) return 'Sí'
   if (val === false) return 'No'
+  if (Array.isArray(val)) return val.join(' | ')
+  if (typeof val === 'object') return JSON.stringify(val)
   return val
 }
 
@@ -310,151 +297,67 @@ const formatearClave = (clave) => {
 }
 
 const formatFecha = (f) => (f ? new Date(f).toLocaleDateString('es-AR') : '-')
-const formatHora = (f) =>
-  f
-    ? new Date(f).toLocaleTimeString('es-AR', {
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    : ''
+const formatHora = (f) => f ? new Date(f).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : ''
 
 const getClaseAccion = (accion) => {
   const map = {
     CREAR: 'estado-success',
     EDITAR: 'estado-info',
-    ELIMINAR: 'estado-danger'
+    ELIMINAR: 'estado-danger',
+    ANULAR_VENTA: 'estado-danger', 
+    AJUSTE_STOCK: 'estado-warning' 
   }
   return map[accion] || 'estado-secondary'
 }
 
-// ✅ CARGA DE DATOS
 const cargarAuditoria = async () => {
   loading.value = true;
-  error.value = null;
-  
   try {
     const token = localStorage.getItem('token');
-    
-    const headers = {
-      'Content-Type': 'application/json',
-      ...(token && { 'Authorization': `Token ${token}` })
-    };
-    
+    const headers = { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Token ${token}` }) };
     const res = await axios.get(API_URL, { headers });
     
-    // Procesar datos según formato esperado
     let datos = [];
-    
-    if (Array.isArray(res.data)) {
-      datos = res.data;
-    } else if (res.data && Array.isArray(res.data.results)) {
-      datos = res.data.results;
-    } else if (res.data && Array.isArray(res.data.data)) {
-      datos = res.data.data;
-    } else if (res.data && typeof res.data === 'object') {
-      // Buscar cualquier propiedad que sea array
-      for (const key in res.data) {
-        if (Array.isArray(res.data[key])) {
-          datos = res.data[key];
-          break;
-        }
-      }
-    }
+    if (Array.isArray(res.data)) datos = res.data;
+    else if (res.data && Array.isArray(res.data.results)) datos = res.data.results;
+    else if (res.data && Array.isArray(res.data.data)) datos = res.data.data;
     
     logs.value = datos;
-    
-    // Verificar que los campos nuevos están presentes
-    if (datos.length > 0) {
-      console.log('✅ Campos disponibles en el primer registro:', Object.keys(datos[0]));
-      console.log('✅ Navegador info:', datos[0].navegador_info);
-      console.log('✅ Sistema operativo:', datos[0].sistema_operativo);
-      console.log('✅ Dispositivo info:', datos[0].dispositivo_info);
-    }
-    
   } catch (err) {
     console.error('❌ Error cargando auditoría:', err);
-    
-    if (err.response?.status === 403) {
-      error.value = "❌ Error 403: No tienes permisos para ver la auditoría";
-    } else if (err.response?.status === 404) {
-      error.value = "❌ Error 404: Endpoint no encontrado";
-    } else if (err.response?.status === 401) {
-      error.value = "❌ Error 401: No autenticado";
-    } else if (err.code === 'ERR_NETWORK') {
-      error.value = "❌ Error de red: El servidor no responde";
-    } else {
-      error.value = `❌ Error: ${err.message}`;
-    }
-    
   } finally {
     loading.value = false;
   }
 }
 
-// ✅ COMPUTED Y MÉTODOS DE PAGINACIÓN/FILTRADO
 const logsFiltrados = computed(() => {
   return logs.value.filter((log) => {
     const term = filtros.value.busqueda.toLowerCase()
-    const match =
-      !term ||
+    const match = !term ||
       (log.usuario_nombre && log.usuario_nombre.toLowerCase().includes(term)) ||
-      (log.modelo_afectado && log.modelo_afectado.toLowerCase().includes(term)) ||
-      (log.ip_address && log.ip_address.includes(term)) ||
-      (log.navegador_info && log.navegador_info.toLowerCase().includes(term)) ||
-      (log.sistema_operativo && log.sistema_operativo.toLowerCase().includes(term))
+      (log.modelo_afectado && log.modelo_afectado.toLowerCase().includes(term))
     const matchAccion = !filtros.value.accion || log.accion === filtros.value.accion
     return match && matchAccion
   })
 })
 
-const totalPaginas = computed(() =>
-  Math.max(1, Math.ceil(logsFiltrados.value.length / itemsPorPagina))
-)
-
+const totalPaginas = computed(() => Math.max(1, Math.ceil(logsFiltrados.value.length / itemsPorPagina)))
 const logsPaginados = computed(() => {
   const start = (pagina.value - 1) * itemsPorPagina
   return logsFiltrados.value.slice(start, start + itemsPorPagina)
 })
 
-const paginaAnterior = () => {
-  if (pagina.value > 1) pagina.value--
-}
+const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
+const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
+const limpiarFiltros = () => { filtros.value = { busqueda: '', accion: '' }; pagina.value = 1 }
+const abrirDetalles = (log) => { logSeleccionado.value = log; mostrarModal.value = true }
+const cerrarModal = () => { mostrarModal.value = false; logSeleccionado.value = null }
 
-const paginaSiguiente = () => {
-  if (pagina.value < totalPaginas.value) pagina.value++
-}
-
-const limpiarFiltros = () => {
-  filtros.value = { busqueda: '', accion: '' }
-  pagina.value = 1
-}
-
-const abrirDetalles = (log) => {
-  logSeleccionado.value = log
-  mostrarModal.value = true
-}
-
-const cerrarModal = () => {
-  mostrarModal.value = false
-  logSeleccionado.value = null
-}
-
-watch(
-  filtros,
-  () => {
-    pagina.value = 1
-  },
-  { deep: true }
-)
-
-onMounted(() => {
-  console.log("🚀 Componente Auditoría montado - Usando campos directos del serializador");
-  cargarAuditoria();
-})
+watch(filtros, () => { pagina.value = 1 }, { deep: true })
+onMounted(() => { cargarAuditoria() })
 </script>
 
 <style scoped>
-/* ESTILOS GENERALES (Tu base) */
 .list-card { background: var(--bg-secondary); color: var(--text-primary); border-radius: 24px; padding: 40px; width: 100%; max-width: 1600px; box-shadow: var(--shadow-lg); border: 1px solid var(--border-color); position: relative; overflow: hidden; }
 .list-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9); }
 .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; border-bottom: 2px solid var(--border-color); padding-bottom: 25px; }
@@ -476,7 +379,7 @@ onMounted(() => {
 .badge-estado { padding: 6px 12px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; display: inline-block; }
 .estado-success { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981; }
 .estado-info { background: rgba(14, 165, 233, 0.15); color: #0ea5e9; border: 1px solid #0ea5e9; }
-.estado-danger { background: rgba(239, 68, 68, 0.15); color: var(--error-color); border: 1px solid var(--error-color); }
+.estado-danger { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid #ef4444; }
 .estado-warning { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid #f59e0b; }
 .estado-secondary { background: var(--bg-tertiary); color: var(--text-tertiary); border: 1px solid var(--text-tertiary); }
 
@@ -486,64 +389,15 @@ onMounted(() => {
 .pagination button { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 12px 24px; border-radius: 12px; cursor: pointer; font-weight: 800; }
 .pagination button:disabled { opacity: 0.5; }
 
-.loading-overlay {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px;
-  color: var(--text-secondary);
-}
-
-.spinner {
-  border: 4px solid rgba(255, 255, 255, 0.1);
-  border-left-color: #0ea5e9;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-  margin-bottom: 15px;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
+.loading-overlay { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; color: var(--text-secondary); }
+.spinner { border: 4px solid rgba(255, 255, 255, 0.1); border-left-color: #0ea5e9; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
 /* CELDA NAVEGADOR */
-.browser-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.browser-main {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: var(--text-primary);
-}
-
-.ip-sub {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  font-family: monospace;
-  opacity: 0.8;
-}
-
-.os-sub {
-  font-size: 0.7rem;
-  color: #8b5cf6;
-  background: rgba(139, 92, 246, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  width: fit-content;
-}
+.browser-cell { display: flex; flex-direction: column; gap: 4px; }
+.browser-main { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.9rem; color: var(--text-primary); }
+.ip-sub { font-size: 0.75rem; color: var(--text-secondary); font-family: monospace; opacity: 0.8; }
+.os-sub { font-size: 0.7rem; color: #8b5cf6; background: rgba(139, 92, 246, 0.1); padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; width: fit-content; }
 
 /* MODAL */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); display: flex; justify-content: center; align-items: center; z-index: 1000; }
@@ -572,7 +426,9 @@ onMounted(() => {
 .row-changed { background: rgba(234, 179, 8, 0.15); }
 .row-changed .field-col { color: #f59e0b; }
 .changed-flag { background: #f59e0b; color: #000; font-size: 0.6rem; padding: 2px 5px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
-.static-val { opacity: 0.6; } 
+
+/* 🔥 ESTILOS PARA LA DATA DE AUDITORIA */
+.static-val { font-weight: 600; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 8px; border-radius: 6px; display: inline-block;} 
 .change-container { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .val-old { color: #ef4444; background: rgba(239, 68, 68, 0.1); padding: 4px 8px; border-radius: 6px; text-decoration: line-through; opacity: 0.7; }
 .arrow { color: var(--text-secondary); font-size: 0.8rem; }

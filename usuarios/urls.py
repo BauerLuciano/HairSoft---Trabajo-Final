@@ -26,7 +26,6 @@ from .views import (
     ProductoRetrieveUpdateDestroyAPIView,
     ProveedorListCreateView,
     ProveedorRetrieveUpdateDestroyView,
-    CategoriaProductoListAPIView,
     MetodoPagoListAPIView,
     generar_comprobante_pdf,
     PedidoListCreateAPIView,
@@ -130,11 +129,12 @@ urlpatterns = [
     # ================================
     # Productos
     # ================================
-    path('api/categorias/productos/', CategoriaProductoListAPIView.as_view(), name='listado_categorias_productos'),
-    path('api/productos/', ProductoListCreateAPIView.as_view(), name='productos_api'),
+    path('api/categorias/productos/', func_views.listado_categorias_productos, name='listado_categorias_productos'),    path('api/productos/', ProductoListCreateAPIView.as_view(), name='productos_api'),
     path('api/productos/<int:pk>/', ProductoRetrieveUpdateDestroyAPIView.as_view(), name='productos-detail'),
     path('api/metodos-pago/', MetodoPagoListAPIView.as_view(), name='listado_metodos_pago'),
     path('api/catalogo/', ProductoCatalogoView.as_view(), name='catalogo-publico'),
+    path('api/productos/<int:producto_id>/ajustar-stock/', func_views.ajustar_stock_manual, name='ajustar_stock_manual'),
+    path('api/productos/<int:producto_id>/historial-stock/', func_views.historial_stock_producto, name='historial_stock_producto'),
 
     # ================================
     # 📅 TURNOS
@@ -208,6 +208,7 @@ urlpatterns = [
     path('api/ventas/<int:venta_id>/anular/', func_views.anular_venta, name='anular_venta'),
     path('api/debug-ventas/', func_views.debug_ventas, name='debug_ventas'),
     path('api/ventas/<int:venta_id>/comprobante-pdf/', generar_comprobante_pdf, name='generar_comprobante_pdf'),
+    path('api/notas-credito/', func_views.listar_notas_credito, name='listar_notas_credito'),
 
     # ================================
     # Pedidos (Proveedores)
@@ -226,6 +227,9 @@ urlpatterns = [
     path('api/externo/pedido/<str:token>/confirmar/', func_views.confirmar_pedido_externo, name='pedido-externo-post'),
     path('api/pedidos/<int:pedido_id>/proponer-precios/', func_views.proponer_precios, name='proponer-precios'),
     path('api/pedidos/<int:pedido_id>/confirmar-precios/', func_views.confirmar_precios, name='confirmar_precios'),
+    # Rutas nuevas para la vista unificada de presupuestos
+    path('api/evaluaciones-unificadas/', func_views.evaluaciones_compras_unificadas, name='evaluaciones-unificadas'),
+    path('api/pedidos/<int:pedido_id>/aprobar-manual/', func_views.aprobar_pedido_manual, name='aprobar-pedido-manual'),
 
     # ================================
     # Listas de Precios
