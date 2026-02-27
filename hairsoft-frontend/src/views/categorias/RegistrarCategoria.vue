@@ -29,6 +29,7 @@
 import { reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
+import Swal from 'sweetalert2' // ✅ NUEVO: Importamos SweetAlert
 
 const API_BASE = 'http://127.0.0.1:8000'
 const route = useRoute()
@@ -50,7 +51,10 @@ onMounted(async () => {
   const id = route.params.id
   if (id) {
     const tipo = route.query.tipo // pasamos ?tipo=Servicio o Producto
-    if (!tipo) return alert('Tipo de categoría requerido para editar')
+    if (!tipo) {
+      Swal.fire('Error', 'Tipo de categoría requerido para editar', 'error')
+      return router.push('/categorias')
+    }
     form.id = id
     form.tipo = tipo
 
@@ -60,11 +64,15 @@ onMounted(async () => {
         : `${API_BASE}/usuarios/api/categorias/productos/`
       const res = await axios.get(url)
       const cat = res.data.find(c => c.id == id)
-      if (!cat) return alert('Categoría no encontrada')
+      
+      if (!cat) {
+        Swal.fire('Error', 'Categoría no encontrada', 'error')
+        return router.push('/categorias')
+      }
       form.nombre = cat.nombre
     } catch (err) {
       console.error(err)
-      alert('Error cargando categoría')
+      Swal.fire('Error', 'Error cargando categoría', 'error')
     }
   }
 })
@@ -83,19 +91,44 @@ const guardarCategoria = async () => {
         ? `${API_BASE}/usuarios/api/categorias/servicios/editar/${form.id}/`
         : `${API_BASE}/usuarios/api/categorias/productos/editar/${form.id}/`
       await axios.post(url, payload)
-      alert('✅ Categoría actualizada')
+      
+      Swal.fire({
+        icon: 'success',
+        title: '¡Excelente!',
+        text: 'Categoría actualizada con éxito'
+      })
     } else {
       url = form.tipo === 'Servicio'
         ? `${API_BASE}/usuarios/api/categorias/servicios/crear/`
         : `${API_BASE}/usuarios/api/categorias/productos/crear/`
       await axios.post(url, payload)
-      alert('✅ Categoría creada')
+      
+      Swal.fire({
+        icon: 'success',
+        title: '¡Excelente!',
+        text: 'Categoría creada con éxito'
+      })
     }
+    
     resetForm()
     router.push('/categorias')
+    
   } catch (err) {
     console.error(err)
-    alert('❌ Ocurrió un error al guardar la categoría')
+    
+    // ✅ ATRAPAMOS EL MENSAJE DE PYTHON
+    let mensajeError = 'Ocurrió un error al guardar la categoría.'
+
+    if (err.response && err.response.data && err.response.data.message) {
+      mensajeError = err.response.data.message
+    }
+
+    Swal.fire({
+      icon: 'error',
+      title: 'No se pudo guardar',
+      text: mensajeError,
+      confirmButtonColor: '#d33'
+    })
   }
 }
 

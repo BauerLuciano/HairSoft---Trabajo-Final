@@ -2,7 +2,7 @@
 from django.contrib import admin
 from .models import *
 
-# Clase base para desactivar logs (esto ya lo tenías)
+# Clase base para desactivar logs
 class NoLogAdmin(admin.ModelAdmin):
     def log_addition(self, request, object, message):
         return
@@ -27,30 +27,45 @@ def limpiar_historial_promociones(modeladmin, request, queryset):
 
 @admin.register(PromocionReactivacion)
 class PromocionReactivacionAdmin(NoLogAdmin):
-    # ✅ CORREGIDO: Usamos 'fecha_creacion' y sacamos 'usada' que no existe
     list_display = ('cliente', 'codigo', 'fecha_creacion', 'fecha_vencimiento', 'estado') 
-    
-    # ✅ CORREGIDO: Filtros con campos reales
     list_filter = ('estado', 'fecha_creacion') 
-    
     search_fields = ('cliente__nombre', 'cliente__apellido', 'cliente__email', 'codigo')
-    
-    # Agregamos el botón de acción
     actions = [limpiar_historial_promociones]
 
 @admin.register(Silla)
-class SillaAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'orden', 'activa') # Lo que ves en la lista
-    list_editable = ('orden', 'activa') # Para activar/desactivar rápido sin entrar al detalle
+class SillaAdmin(NoLogAdmin): # Le agregué el NoLogAdmin acá también por consistencia
+    list_display = ('nombre', 'orden', 'activa')
+    list_editable = ('orden', 'activa')
     ordering = ('orden',)
+
 # =========================================================
 # REGISTRO AUTOMÁTICO DEL RESTO DE MODELOS
 # =========================================================
 
+# ✅ Acá agregué TODOS los modelos que faltaban
 MODELOS = [
-    Usuario, Rol, Permiso, Servicio, Producto,
-    Turno, Venta, DetalleVenta, MetodoPago, Proveedor,
-    Pedido, DetallePedido, InteresTurnoLiberado
+    # Usuarios y Permisos
+    Usuario, Rol, Permiso, PasswordResetToken,
+    
+    # Catálogos (Productos, Servicios, Proveedores)
+    CategoriaServicio, CategoriaProducto, Servicio, 
+    Marca, Producto, Proveedor, ListaPrecioProveedor, HistorialPrecios,
+    
+    # Turnos y Ofertas
+    Turno, InteresTurnoLiberado, ConfiguracionReoferta,
+    
+    # Finanzas y Ventas
+    Venta, DetalleVenta, MetodoPago, NotaCredito, Liquidacion,
+    
+    # Pedidos Locales e Inteligentes
+    Pedido, DetallePedido, SolicitudReabastecimiento, CotizacionProveedor, 
+    SolicitudPresupuesto, Cotizacion,
+    
+    # Pedidos Web
+    PedidoWeb, DetallePedidoWeb,
+    
+    # Auditoría y Sistema
+    Auditoria, HistorialStock, ConfiguracionSistema
 ]
 
 for modelo in MODELOS:

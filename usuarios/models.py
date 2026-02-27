@@ -162,7 +162,7 @@ ESTADOS = [
 ]
 
 class Proveedor(models.Model):
-    nombre = models.CharField(max_length=200)
+    nombre = models.CharField(max_length=200, unique=True)
     cuit = models.CharField(
         max_length=20,
         unique=True,
@@ -192,7 +192,7 @@ class Marca(models.Model):
         ('inactivo', 'Inactivo'),
     )
     
-    nombre = models.CharField(max_length=100)
+    nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.TextField(blank=True, null=True)
     estado = models.CharField(max_length=10, choices=ESTADOS, default='activo')
     fecha_creacion = models.DateTimeField(auto_now_add=True)
@@ -211,7 +211,7 @@ class Producto(models.Model):
         ('INACTIVO', 'Inactivo'),
     ]
     
-    nombre = models.CharField(max_length=255)
+    nombre = models.CharField(max_length=255, unique=True)
     precio = models.DecimalField(max_digits=10, decimal_places=2)
     descripcion = models.TextField(blank=True, null=True)
     
@@ -336,13 +336,13 @@ class CotizacionProveedor(models.Model):
         return (score_precio * 0.7) + (score_tiempo * 0.3)
 
 class Silla(models.Model):
-    nombre = models.CharField(max_length=50, help_text="Ej: Silla 1, Puesto Ventana, Lavacabezas")
+    nombre = models.CharField(max_length=50, unique=True, help_text="Ej: Silla 1, Puesto Ventana, Lavacabezas")
     activa = models.BooleanField(default=True, help_text="Desmarcar si la silla está rota o fuera de servicio")
     orden = models.PositiveIntegerField(default=1, help_text="Número para ordenar visualmente (1, 2, 3...)")
     motivo_inactividad = models.CharField(max_length=100, null=True, blank=True, help_text="Razón por la cual no se usa")
 
     class Meta:
-        ordering = ['orden', 'nombre'] # Para que siempre salgan en orden 1, 2, 3
+        ordering = ['orden', 'nombre'] 
         verbose_name = "Silla / Puesto"
         verbose_name_plural = "Sillas / Puestos"
 

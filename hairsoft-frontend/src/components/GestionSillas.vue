@@ -128,7 +128,7 @@ const abrirModalCrear = async () => {
       const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true });
       Toast.fire({ icon: 'success', title: 'Silla creada con éxito' });
     } catch (e) {
-      Swal.fire('Error', 'No se pudo crear la silla', 'error');
+      Swal.fire('Error', 'No se pudo crear la silla, ya existe una silla con ese nombre', 'error');
     }
   }
 };

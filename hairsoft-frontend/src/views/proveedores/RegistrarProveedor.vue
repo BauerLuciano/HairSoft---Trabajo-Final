@@ -346,7 +346,7 @@ const registrarProveedor = async () => {
     
   } catch (err) {
     console.error(err)
-    let msg = 'Error al registrar.'
+    let msg = 'Error al registrar, ya existe un proveedor con ese nombre.'
     if (err.response?.data?.cuit) msg = 'Ese CUIT ya está registrado.'
     
     Swal.fire({

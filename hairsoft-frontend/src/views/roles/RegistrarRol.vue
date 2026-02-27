@@ -207,9 +207,42 @@ const guardarRol = async () => {
     
     router.push('/roles')
   } catch (err) {
-    const msg = err.response?.data?.message || 'Error al guardar'
-    if (msg.includes('existe')) errores.nombre = msg
-    else Swal.fire('Error', msg, 'error')
+    console.error("Error capturado:", err.response?.data || err)
+    
+    let mensajeError = 'Ocurrió un error al guardar el rol.'
+
+    // ✅ LÓGICA BLINDADA PARA ATAJAR CUALQUIER TIPO DE ERROR DE DUPLICADO
+    if (err.response && err.response.data) {
+      const data = err.response.data
+      
+      // Si el backend mandó un message manual o la base de datos reventó
+      if (data.message) {
+        mensajeError = data.message
+        if (mensajeError.toLowerCase().includes('duplicate') || mensajeError.toLowerCase().includes('unique')) {
+          mensajeError = 'Ya existe un rol con este nombre. Por favor, elegí otro.'
+        }
+      } 
+      // Por si Django DRF lo manda en formato array (muy común con unique=True)
+      else if (data.nombre && Array.isArray(data.nombre)) {
+        mensajeError = 'Ya existe un rol con este nombre.'
+      } 
+      // Si Django manda un string plano feo
+      else if (typeof data === 'string') {
+        if (data.toLowerCase().includes('duplicate key') || data.toLowerCase().includes('unique constraint')) {
+           mensajeError = 'Ya existe un rol con este nombre exacto.'
+        } else {
+           mensajeError = 'Error del servidor al intentar guardar el rol.'
+        }
+      }
+    }
+
+    // 🚀 ALERTA SWAL FIJA Y SIN FALLAS
+    Swal.fire({
+      icon: 'error',
+      title: 'No se pudo guardar',
+      text: mensajeError,
+      confirmButtonColor: '#d33'
+    })
   } finally {
     cargando.value = false
   }
