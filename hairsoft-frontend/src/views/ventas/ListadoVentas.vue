@@ -29,7 +29,7 @@
         <div class="filters-grid">
           <div class="filter-group">
             <label>Buscar</label>
-            <input v-model="filtros.busqueda" placeholder="Cliente o Usuario" class="filter-input"/>
+            <input v-model="filtros.busqueda" placeholder="Cliente, Usuario, ID de Venta" class="filter-input"/>
           </div>
 
           <div class="filter-group">
@@ -89,7 +89,7 @@
         <table class="users-table">
           <thead>
             <tr>
-              <th style="width: 140px;">Fecha</th>
+              <th style="width: 80px;">ID</th> <th style="width: 140px;">Fecha</th>
               <th>Cliente</th>
               <th>Usuario</th>
               <th>Total</th>
@@ -104,7 +104,7 @@
             <tr v-for="venta in ventasPaginadas" :key="venta.id" 
                 :class="{'venta-anulada-row': venta.anulada}">
               
-              <td class="fecha-cell">
+              <td><strong>#{{ venta.id }}</strong></td> <td class="fecha-cell">
                 <span class="fecha-dia">{{ formatFechaDia(venta.fecha) }}</span>
                 <span class="fecha-hora">{{ formatFechaHora(venta.fecha) }}</span>
               </td>
