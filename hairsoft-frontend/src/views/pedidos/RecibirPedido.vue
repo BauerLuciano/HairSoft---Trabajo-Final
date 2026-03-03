@@ -133,11 +133,11 @@ const cargarPedido = async () => {
 const confirmarRecepcion = async () => {
   const result = await Swal.fire({
     title: '¿Confirmar Recepción Completa?',
-    text: "Se sumará el stock al inventario y los precios se actualizarán si subieron.",
+    text: "Se sumará el stock al inventario, se actualizarán precios y se registrará el pago en la caja actual.",
     icon: 'question',
     showCancelButton: true,
     confirmButtonColor: '#059669',
-    confirmButtonText: 'Sí, recibir todo',
+    confirmButtonText: 'Sí, recibir y pagar',
     cancelButtonText: 'Cancelar'
   })
 
@@ -152,10 +152,26 @@ const confirmarRecepcion = async () => {
       headers: { 'Authorization': `Token ${token}` }
     })
 
-    Swal.fire('¡Recibido!', 'El stock se actualizó y el pedido está ENTREGADO.', 'success')
+    Swal.fire('¡Recibido!', 'El stock se actualizó y el pago se registró en la caja.', 'success')
     router.push('/pedidos')
   } catch (err) {
-    Swal.fire('Error', 'No se pudo procesar la recepción.', 'error')
+    // 🔥 ACÁ ATRAPAMOS EL ERROR DE LA CAJA CERRADA Y LO MOSTRAMOS LINDO
+    let errorMessage = 'No se pudo procesar la recepción.';
+    
+    if (err.response && err.response.data) {
+      if (err.response.data.error) {
+        errorMessage = err.response.data.error; // "Debe abrir una caja..."
+      } else if (typeof err.response.data === 'string') {
+        errorMessage = err.response.data;
+      }
+    }
+    
+    Swal.fire({
+      icon: 'warning',
+      title: 'Atención',
+      text: errorMessage,
+      confirmButtonColor: '#ef4444'
+    })
   } finally {
     procesando.value = false
   }

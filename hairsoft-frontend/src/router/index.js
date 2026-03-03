@@ -67,7 +67,7 @@ const GestionPedidoExterno = () => import('@/views/proveedores/GestionPedidoExte
 const ListadoVentas = () => import('@/views/ventas/ListadoVentas.vue')
 const RegistrarVenta = () => import('@/views/ventas/RegistrarVenta.vue')
 const DetalleVenta = () => import('@/views/ventas/DetalleVenta.vue')
-const ListadoNotasCredito = () => import('@/views/ventas/ListadoNotasCredito.vue') // ✅ NUEVO
+const ListadoNotasCredito = () => import('@/views/ventas/ListadoNotasCredito.vue') 
 
 // Pedidos
 const ListadoPedidos = () => import('@/views/pedidos/ListadoPedidos.vue')
@@ -83,7 +83,10 @@ const GestionPedidosWeb = () => import('@/views/pedidos/GestionPedidosWeb.vue')
 const ListadoAuditoria = () => import('@/views/auditoria/ListadoAuditoria.vue')
 const LiquidacionSueldos = () => import('@/views/admin/LiquidacionSueldos.vue')
 
-// ✅ Configuración del Sistema
+// ✅ MÓDULO CAJA
+const PanelCaja = () => import('@/views/caja/PanelCaja.vue')
+
+// Configuración del Sistema
 const ConfiguracionEmpresa = () => import('@/views/admin/ConfiguracionEmpresa.vue')
 
 const routes = [
@@ -108,14 +111,13 @@ const routes = [
   { path: '/cliente/perfil', name: 'PerfilCliente', component: PerfilCliente, meta: { layout: 'client', requiresAuth: true, role: 'CLIENTE' } },
   { path: '/client/mis-pedidos', name: 'MisPedidos', component: MisPedidos, meta: { layout: 'client', requiresAuth: true, role: 'CLIENTE' } },
 
-  // ZONA ADMINISTRATIVA (Permitida para ADMIN, RECEPCIONISTA y PELUQUERO)
+  // ZONA ADMINISTRATIVA
   { path: '/dashboard', name: 'Dashboard', component: Dashboard, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/usuarios', name: 'ListadoUsuarios', component: ListadoUsuarios, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/usuarios/crear', name: 'RegistrarUsuario', component: RegistrarUsuario, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/usuarios/modificar/:id', name: 'ModificarUsuario', component: ModificarUsuario, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/turnos', name: 'ListadoTurnos', component: ListadoTurnos, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/turnos/crear-presencial', name: 'RegistrarTurnoPresencial', component: RegistrarTurnoPresencial, meta: { requiresAuth: true, role: 'ADMIN' } },
-  // ✅ RUTA DE EDICIÓN DE TURNOS - YA EXISTE
   { path: '/turnos/modificar/:id', name: 'ModificarTurno', component: ModificarTurno, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/aceptar-oferta/:turno_id/:token', name: 'AceptarOferta', component: AceptarOferta, meta: { public: true} },
   { path: '/servicios', name: 'ListadoServicios', component: ListadoServicios, meta: { requiresAuth: true, role: 'ADMIN' } },
@@ -139,11 +141,12 @@ const routes = [
   { path: '/proveedores/listas-precios', name: 'GestionListasPrecios', component: GestionListasPrecios, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/proveedores/evaluacion', name: 'EvaluacionPresupuestos', component: EvaluacionPresupuestos, meta: { requiresAuth: true, role: 'ADMIN' } },
   
-  // ✅ VENTAS (ModificarVenta eliminado)
+  // VENTAS Y CAJA
   { path: '/ventas', name: 'ListadoVentas', component: ListadoVentas, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/ventas/crear', name: 'RegistrarVenta', component: RegistrarVenta, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/ventas/detalle/:id', name: 'DetalleVenta', component: DetalleVenta, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },
-  { path: '/notas-credito', name: 'NotasCredito', component: ListadoNotasCredito, meta: { requiresAuth: true, role: 'ADMIN' } }, // ✅ NUEVO
+  { path: '/notas-credito', name: 'NotasCredito', component: ListadoNotasCredito, meta: { requiresAuth: true, role: 'ADMIN' } },
+  { path: '/caja', name: 'PanelCaja', component: PanelCaja, meta: { requiresAuth: true, role: 'ADMIN' } }, // ✅ NUEVO
 
   // Pedidos
   { path: '/pedidos', name: 'ListadoPedidos', component: ListadoPedidos, meta: { requiresAuth: true, role: 'ADMIN' } },
@@ -157,7 +160,7 @@ const routes = [
   { path: '/auditoria', name: 'ListadoAuditoria', component: ListadoAuditoria, meta: { requiresAuth: true, role: 'ADMIN' }},
   { path: '/admin/liquidacion', name: 'LiquidacionSueldos', component: LiquidacionSueldos, meta: { requiresAuth: true, role: 'ADMIN' } },
   
-  // ✅ Configuración
+  // Configuración
   { path: '/configuracion', name: 'ConfiguracionEmpresa', component: ConfiguracionEmpresa, meta: { requiresAuth: true, role: 'ADMIN' } },
 ]
 
@@ -170,24 +173,20 @@ router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token');
   const userRol = localStorage.getItem('user_rol'); 
 
-  // 1. SI LA RUTA ES PÚBLICA, PASA DIRECTO (Para la oferta y cotizaciones)
   if (to.meta.public) {
     return next();
   }
 
-  // 2. PROTECCIÓN POR AUTH (Si no hay token y la ruta lo pide, al login)
   if (to.meta.requiresAuth && !token) {
     return next({ name: 'Login', query: { redirect: to.fullPath } });
   } 
 
-  // 3. REDIRECCIÓN SEGÚN ROL (Peluquero no entra al dashboard admin)
   if (userRol === 'PELUQUERO') {
     if (to.path === '/dashboard' || to.path === '/') {
       return next('/turnos');
     }
   }
 
-  // 4. CONTROL DE ACCESO A ZONA ADMIN
   const rolesGestion = ['ADMINISTRADOR', 'RECEPCIONISTA', 'PELUQUERO'];
 
   if (to.meta.role === 'ADMIN') {

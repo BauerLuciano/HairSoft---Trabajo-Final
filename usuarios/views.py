@@ -43,7 +43,7 @@ from .models import (
     DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, 
     InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, 
     PromocionReactivacion, Auditoria, PasswordResetToken, PedidoWeb, 
-    ConfiguracionSistema, Silla, NotaCredito
+    ConfiguracionSistema, Silla, NotaCredito, Caja, SesionCaja, MovimientoCaja
 )
 from .serializers import (
     LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, 
@@ -54,7 +54,8 @@ from .serializers import (
     ActualizarListaPreciosSerializer, CotizacionExternaSerializer, SolicitudPresupuestoSerializer, 
     MarcaSerializer, AuditoriaSerializer, SolicitarResetPasswordSerializer, 
     ResetPasswordConfirmarSerializer, ServicioSerializer, RolSerializer, 
-    PermisoSerializer, TurnoSerializer, ConfiguracionSistemaSerializer, NotaCreditoSerializer
+    PermisoSerializer, TurnoSerializer, ConfiguracionSistemaSerializer, NotaCreditoSerializer, 
+    CajaSerializer, SesionCajaSerializer, MovimientoCajaSerializer
 )
 from .forms import UsuarioForm # Ajustado si tenías formularios específicos
 from .mercadopago_service import MercadoPagoService
@@ -838,7 +839,19 @@ def crear_turno(request):
     
     try:
         data = request.data
+        canal = data.get('canal', 'WEB')
+        medio_pago = data.get('medio_pago', 'EFECTIVO')
         
+        # 🛑 CHEQUEO DE CAJA OBLIGATORIO (SOLO PARA TURNOS PRESENCIALES)
+        sesion_abierta = None
+        if canal == 'PRESENCIAL':
+            sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+            if not sesion_abierta:
+                return Response(
+                    {"error": "Debe abrir una caja antes de registrar y cobrar un turno en el local."}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         # 🔥 DEBUG: Verificar si viene cupón
         print(f"🎟️ CUPÓN EN DATA: {data.get('cup_codigo')}")
         
@@ -846,7 +859,6 @@ def crear_turno(request):
         # 1. IDENTIFICACIÓN DEL CLIENTE Y CANAL
         # ---------------------------------------------------------
         cliente = None
-        canal = data.get('canal', 'WEB')
         
         # Caso 1: Presencial (desde admin)
         if canal == 'PRESENCIAL':
@@ -1059,7 +1071,6 @@ def crear_turno(request):
         # 7. CALCULAR PAGO
         # ---------------------------------------------------------
         tipo_pago = data.get('tipo_pago', 'SENA_50')
-        medio_pago = data.get('medio_pago', 'EFECTIVO')
         
         monto_seña = monto_final * 0.5 if tipo_pago == 'SENA_50' else monto_final
         
@@ -1106,7 +1117,7 @@ def crear_turno(request):
                 print(f"⚠️ Error al marcar cupón como usado: {e}")
         
         # ---------------------------------------------------------
-        # 10. MERCADO PAGO
+        # 10. MERCADO PAGO Y CAJA
         # ---------------------------------------------------------
         mp_data = None
         procesar_pago = False
@@ -1144,6 +1155,25 @@ def crear_turno(request):
                 print(f"💥 Error crítico MP: {e}")
                 traceback.print_exc()
         
+        # 💵 SI ES PRESENCIAL Y SE PAGÓ ALGO, LO REGISTRAMOS EN LA CAJA
+        elif canal == 'PRESENCIAL' and sesion_abierta and monto_seña > 0:
+            metodo_pago_caja = 'EFECTIVO'
+            if 'MERCADO' in str(medio_pago).upper():
+                metodo_pago_caja = 'MERCADO_PAGO'
+            elif 'TRANS' in str(medio_pago).upper():
+                metodo_pago_caja = 'TRANSFERENCIA'
+                
+            MovimientoCaja.objects.create(
+                sesion_caja=sesion_abierta,
+                tipo='INGRESO',
+                metodo_pago=metodo_pago_caja,
+                concepto='TURNO_PRESENCIAL',
+                monto=monto_seña,
+                descripcion=f"Cobro Turno (Presencial) #{turno.id} - Cliente: {cliente.nombre}",
+                turno_relacionado=turno
+            )
+            print(f"✅ Ingreso a caja registrado por ${monto_seña}")
+
         # ---------------------------------------------------------
         # 11. RESPUESTA FINAL
         # ---------------------------------------------------------
@@ -1634,20 +1664,29 @@ def completar_turno(request, turno_id):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def actualizar_pago_presencial(request, turno_id):
+    # 🛑 CHEQUEO DE CAJA
+    sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+    if not sesion_abierta:
+        return Response({"error": "Debe abrir una caja antes de cobrar un turno."}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         turno = Turno.objects.get(id=turno_id)
         data = request.data
         
         nuevo_tipo = data.get('tipo_pago', 'TOTAL')
+        metodo_pago_raw = data.get('medio_pago', 'EFECTIVO')
+        monto_a_cobrar = 0
         
         # 🔥 MAGIA: Si ya tenía una seña, guardamos este segundo pago en el "restante"
         if turno.tipo_pago == 'SENA_50' and nuevo_tipo == 'TOTAL':
-            turno.medio_pago_restante = data.get('medio_pago', 'EFECTIVO')
+            monto_a_cobrar = turno.monto_total - (turno.monto_seña or 0)
+            turno.medio_pago_restante = metodo_pago_raw
             turno.entidad_pago_restante = data.get('entidad_pago')
             turno.codigo_transaccion_restante = data.get('nro_transaccion')
         else:
             # Si era pago PENDIENTE y paga todo de una, va a los campos principales
-            turno.medio_pago = data.get('medio_pago', 'EFECTIVO')
+            monto_a_cobrar = turno.monto_total
+            turno.medio_pago = metodo_pago_raw
             turno.entidad_pago = data.get('entidad_pago')
             turno.codigo_transaccion = data.get('nro_transaccion')
             if 'MERCADO' in str(turno.medio_pago).upper(): 
@@ -1656,10 +1695,28 @@ def actualizar_pago_presencial(request, turno_id):
         # El estado sigue siendo RESERVADO, solo cambia la guita
         turno.tipo_pago = 'TOTAL'
         turno.save()
+
+        # 💵 REGISTRAR MOVIMIENTO
+        metodo_pago_caja = 'EFECTIVO'
+        if 'MERCADO' in str(metodo_pago_raw).upper():
+            metodo_pago_caja = 'MERCADO_PAGO'
+        elif 'TRANS' in str(metodo_pago_raw).upper():
+            metodo_pago_caja = 'TRANSFERENCIA'
+
+        if monto_a_cobrar > 0:
+            MovimientoCaja.objects.create(
+                sesion_caja=sesion_abierta,
+                tipo='INGRESO',
+                metodo_pago=metodo_pago_caja,
+                concepto='TURNO_PRESENCIAL',
+                monto=monto_a_cobrar,
+                descripcion=f"Cobro Turno #{turno.id} - Cliente: {turno.cliente.nombre}",
+                turno_relacionado=turno
+            )
+
         return Response({'status': 'ok'})
     except Exception as e: 
         return Response({'error': str(e)}, status=500)
-
 
 @csrf_exempt
 @api_view(['POST'])
@@ -1669,6 +1726,11 @@ def actualizar_pago_turno(request, turno_id):
     Actualiza el tipo de pago y monto total de un turno. 
     NO CAMBIA EL ESTADO (sigue siendo RESERVADO).
     """
+    # 🛑 CHEQUEO DE CAJA
+    sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+    if not sesion_abierta:
+        return JsonResponse({'status': 'error', 'message': 'Debe abrir una caja antes de cobrar un turno.'}, status=400)
+
     try:
         turno = get_object_or_404(Turno, id=turno_id)
         # Soportamos dict normal o raw JSON
@@ -1676,17 +1738,21 @@ def actualizar_pago_turno(request, turno_id):
         
         tipo_pago = data.get('tipo_pago')
         monto_total = Decimal(data.get('monto_total', turno.monto_total))
+        metodo_pago_raw = data.get('medio_pago', 'EFECTIVO')
+        monto_a_cobrar = 0
         
         if tipo_pago not in ['SENA_50', 'TOTAL']:
             return JsonResponse({'status': 'error', 'message': 'Tipo de pago no válido'}, status=400)
         
         # 🔥 MAGIA 2: Misma lógica por si entra por este endpoint
         if turno.tipo_pago == 'SENA_50' and tipo_pago == 'TOTAL':
-            turno.medio_pago_restante = data.get('medio_pago', 'EFECTIVO')
+            monto_a_cobrar = monto_total - (turno.monto_seña or 0)
+            turno.medio_pago_restante = metodo_pago_raw
             turno.entidad_pago_restante = data.get('entidad_pago')
             turno.codigo_transaccion_restante = data.get('nro_transaccion')
         else:
-            turno.medio_pago = data.get('medio_pago', 'EFECTIVO')
+            monto_a_cobrar = monto_total
+            turno.medio_pago = metodo_pago_raw
             turno.entidad_pago = data.get('entidad_pago')
             turno.codigo_transaccion = data.get('nro_transaccion')
             if 'MERCADO' in str(turno.medio_pago).upper(): 
@@ -1702,6 +1768,24 @@ def actualizar_pago_turno(request, turno_id):
             turno.monto_seña = turno.monto_total
             
         turno.save()
+
+        # 💵 REGISTRAR MOVIMIENTO
+        metodo_pago_caja = 'EFECTIVO'
+        if 'MERCADO' in str(metodo_pago_raw).upper():
+            metodo_pago_caja = 'MERCADO_PAGO'
+        elif 'TRANS' in str(metodo_pago_raw).upper():
+            metodo_pago_caja = 'TRANSFERENCIA'
+
+        if monto_a_cobrar > 0:
+            MovimientoCaja.objects.create(
+                sesion_caja=sesion_abierta,
+                tipo='INGRESO',
+                metodo_pago=metodo_pago_caja,
+                concepto='TURNO_PRESENCIAL',
+                monto=monto_a_cobrar,
+                descripcion=f"Cobro Turno #{turno.id} - Cliente: {turno.cliente.nombre}",
+                turno_relacionado=turno
+            )
         
         return JsonResponse({
             'status': 'ok',
@@ -2023,6 +2107,11 @@ def completar_pago_turno(request, turno_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'Método no permitido'}, status=405)
 
+    # 🛑 CHEQUEO DE CAJA
+    sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+    if not sesion_abierta:
+        return JsonResponse({'error': 'Debe abrir una caja antes de cobrar un turno.'}, status=400)
+
     try:
         turno = Turno.objects.get(id=turno_id)
         
@@ -2032,10 +2121,25 @@ def completar_pago_turno(request, turno_id):
                 'message': 'Solo se puede completar pago de turnos confirmados con seña'
             }, status=400)
 
+        # Calcular cuánto está pagando ahora
+        monto_restante = turno.monto_total - (turno.monto_seña or 0)
+
         # Cambiar a pago total
         turno.tipo_pago = 'TOTAL'
         turno.monto_seña = turno.monto_total
         turno.save()
+
+        # 💵 REGISTRAR MOVIMIENTO
+        if monto_restante > 0:
+            MovimientoCaja.objects.create(
+                sesion_caja=sesion_abierta,
+                tipo='INGRESO',
+                metodo_pago='EFECTIVO', # Por defecto si este endpoint no recibe método
+                concepto='TURNO_PRESENCIAL',
+                monto=monto_restante,
+                descripcion=f"Cobro restante Turno #{turno.id} - Cliente: {turno.cliente.nombre}",
+                turno_relacionado=turno
+            )
 
         return JsonResponse({
             'status': 'ok',
@@ -2301,7 +2405,6 @@ def listado_roles(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def crear_rol(request):
-    # Usamos el Serializer para validar y guardar
     serializer = RolSerializer(data=request.data)
     if serializer.is_valid():
         serializer.save()
@@ -2313,18 +2416,16 @@ def crear_rol(request):
 def editar_rol(request, pk):
     rol = get_object_or_404(Rol, pk=pk)
 
-    # 1. GET: Cargar datos
     if request.method == 'GET':
         ids_permisos = list(rol.permisos.values_list('id', flat=True))
         return Response({
             'id': rol.id,
             'nombre': rol.nombre,
             'descripcion': rol.descripcion or '',
-            'activo': rol.activo, # Aseguramos que mande el estado actual
+            'activo': rol.activo, 
             'permisos': ids_permisos
         })
 
-    # 2. PUT/PATCH: Guardar cambios
     try:
         data = request.data
         
@@ -2333,12 +2434,9 @@ def editar_rol(request, pk):
         if 'descripcion' in data:
             rol.descripcion = data['descripcion'].strip()
             
-        # 👇👇👇 ESTO ES LO QUE FALTABA 👇👇👇
         if 'activo' in data:
             rol.activo = data['activo']
-        # 👆👆👆 SIN ESTO, EL BOTÓN NO HACE NADA 👆👆👆
 
-        # Actualizar Permisos
         if 'permisos_ids' in data:
              ids = data['permisos_ids']
              if isinstance(ids, list):
@@ -2356,7 +2454,7 @@ def editar_rol(request, pk):
     except Exception as e:
         return Response({'message': str(e)}, status=500)
     
-@api_view(['POST']) # Usamos POST para acciones destructivas si preferís
+@api_view(['POST']) 
 @permission_classes([AllowAny])
 def eliminar_rol(request, pk):
     rol = get_object_or_404(Rol, pk=pk)
@@ -2366,8 +2464,6 @@ def eliminar_rol(request, pk):
 # ================================
 # LISTADO DE PERMISOS (Con Grupo Inventado)
 # ================================
-# En usuarios/views.py
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def listado_permisos(request):
@@ -2375,14 +2471,13 @@ def listado_permisos(request):
     data = []
     
     for p in permisos:
-        # Recuperamos el grupo desde la descripción o inventamos uno 'General'
         grupo_nombre = p.descripcion if p.descripcion else 'General'
         
         data.append({
             'id': p.id,
             'nombre': p.nombre,
             'codigo': p.codigo,
-            'grupo': grupo_nombre, # ✅ ESTO ES LO QUE NECESITA EL FRONTEND
+            'grupo': grupo_nombre, 
             'descripcion': p.descripcion or ''
         })
         
@@ -2391,7 +2486,6 @@ def listado_permisos(request):
 # ================================
 # API Mercado Pago
 # ================================
-
 @csrf_exempt
 def crear_preferencia_pago_seña(request):
     """Crea una preferencia de pago para la seña de un turno"""
@@ -2404,9 +2498,8 @@ def crear_preferencia_pago_seña(request):
         monto_sena = data.get('monto_sena')
         cliente_nombre = data.get('cliente_nombre')
         peluquero_nombre = data.get('peluquero_nombre')
-        es_pago_total = data.get('es_pago_total', False)
         
-        print(f"🔄 Creando preferencia MP - Turno: {turno_id}, Monto: {monto_sena}")
+        print(f" Creando preferencia MP - Turno: {turno_id}, Monto: {monto_sena}")
         
         if not all([turno_id, monto_sena]):
             return JsonResponse({
@@ -2414,36 +2507,29 @@ def crear_preferencia_pago_seña(request):
                 'error': 'Faltan datos requeridos: turno_id y monto_sena'
             })
 
-        # Crear servicio MP
         mp_service = MercadoPagoService()
         
-        # Datos para la preferencia
+        # Unificamos los nombres para que el service los encuentre sí o sí
         turno_data = {
             'turno_id': turno_id,
-            'monto_seña': monto_sena,
+            'monto_pago': monto_sena, 
             'cliente_nombre': cliente_nombre,
-            'peluquero_nombre': peluquero_nombre,
-            'es_pago_total': es_pago_total
+            'peluquero_nombre': peluquero_nombre
         }
         
-        # Crear preferencia
         resultado = mp_service.crear_preferencia_seña(turno_data)
         
         if resultado['success']:
-            # ✅ Usar sandbox_init_point si está disponible (para testing)
-            init_point = resultado.get('sandbox_init_point') or resultado['init_point']
-            
             return JsonResponse({
                 'success': True,
-                'init_point': init_point,
-                'preference_id': resultado['preference_id'],
-                'modo_test': True
+                'init_point': resultado['init_point'],
+                'preference_id': resultado['preference_id']
             })
         else:
             return JsonResponse({
                 'success': False,
                 'error': resultado['error']
-            })
+            })  
             
     except Exception as e:
         print(f"Error en crear_preferencia_pago_seña: {e}")
@@ -2451,7 +2537,6 @@ def crear_preferencia_pago_seña(request):
             'success': False,
             'error': f'Error interno: {str(e)}'
         })
-
 # ================================================================
 # 💸 FUNCIONES DE MERCADO PAGO
 # ================================================================
@@ -2640,6 +2725,14 @@ def registrar_venta(request):
     print("💰 Iniciando registro de venta (Función Personalizada)...")
     data = request.data
     
+    # 🛑 1. CHEQUEO DE CAJA OBLIGATORIO
+    sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+    if not sesion_abierta:
+        return Response(
+            {"error": "Debe abrir una caja antes de registrar una venta."}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     try:
         with transaction.atomic(): # 🔐 Bloque atómico
             
@@ -2722,6 +2815,23 @@ def registrar_venta(request):
 
             # 5. Guardar Total Final con UPDATE para no disparar señal
             Venta.objects.filter(id=venta.id).update(total=total_acumulado)
+
+            # 💵 2. REGISTRAR EL MOVIMIENTO DE CAJA
+            metodo_pago_caja = 'EFECTIVO'
+            if medio_pago.tipo == 'MERCADO_PAGO':
+                metodo_pago_caja = 'MERCADO_PAGO'
+            elif medio_pago.tipo == 'TRANSFERENCIA':
+                metodo_pago_caja = 'TRANSFERENCIA'
+
+            MovimientoCaja.objects.create(
+                sesion_caja=sesion_abierta,
+                tipo='INGRESO',
+                metodo_pago=metodo_pago_caja,
+                concepto='VENTA',
+                monto=total_acumulado,
+                descripcion=f"Venta #{venta.id} - Cliente: {venta.cliente.nombre if venta.cliente else 'Consumidor Final'}",
+                venta_relacionada=venta
+            )
 
             # 6. 🔥 CREAR EL REGISTRO ÚNICO MAESTRO DE AUDITORÍA
             from .models import Auditoria
@@ -2954,6 +3064,14 @@ def anular_venta(request, venta_id):
     if not motivo or len(motivo.strip()) < 5:
         return Response({'error': 'Debe ingresar un motivo válido (mínimo 5 caracteres).'}, status=status.HTTP_400_BAD_REQUEST)
 
+    # 🛑 CHEQUEO DE CAJA OBLIGATORIO PARA DEVOLVER PLATA
+    sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+    if not sesion_abierta:
+        return Response(
+            {"error": "Debe abrir una caja antes de anular una venta y devolver el dinero."}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     try:
         with transaction.atomic():
             venta = Venta.objects.select_for_update().get(id=venta_id)
@@ -2982,8 +3100,27 @@ def anular_venta(request, venta_id):
             NotaCredito.objects.create(
                 venta=venta, usuario=request.user, motivo=motivo, monto_devuelto=venta.total
             )
+
+            # 💸 4. REGISTRAR EGRESO DE CAJA (Devolución de plata)
+            # Buscamos en qué se pagó originalmente para descontar de ahí
+            metodo_pago_caja = 'EFECTIVO'
+            if venta.medio_pago and venta.medio_pago.tipo == 'MERCADO_PAGO':
+                metodo_pago_caja = 'MERCADO_PAGO'
+            elif venta.medio_pago and venta.medio_pago.tipo == 'TRANSFERENCIA':
+                metodo_pago_caja = 'TRANSFERENCIA'
+
+            if venta.total and venta.total > 0:
+                MovimientoCaja.objects.create(
+                    sesion_caja=sesion_abierta,
+                    tipo='EGRESO',
+                    metodo_pago=metodo_pago_caja,
+                    concepto='OTROS', # O podés agregar 'ANULACION_VENTA' a tus CHOICES del modelo
+                    monto=venta.total,
+                    descripcion=f"Anulación de Venta #{venta.id} - Reintegro",
+                    venta_relacionada=venta
+                )
             
-            # 4. 🔥 CREAR EL REGISTRO ÚNICO MAESTRO DE AUDITORÍA
+            # 5. 🔥 CREAR EL REGISTRO ÚNICO MAESTRO DE AUDITORÍA
             from .models import Auditoria
             x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
             ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
@@ -3004,7 +3141,7 @@ def anular_venta(request, venta_id):
                 ip_address=ip
             )
             
-            return Response({'success': True, 'message': 'Venta anulada y stock restaurado correctamente.'}, status=status.HTTP_200_OK)
+            return Response({'success': True, 'message': 'Venta anulada, stock y caja restaurados correctamente.'}, status=status.HTTP_200_OK)
             
     except Venta.DoesNotExist:
         return Response({'error': 'Venta no encontrada.'}, status=status.HTTP_404_NOT_FOUND)
@@ -3372,6 +3509,11 @@ def cancelar_pedido(request, pedido_id):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def recibir_pedido(request, pedido_id):
+    # 🛑 CHEQUEO DE CAJA
+    sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+    if not sesion_abierta:
+        return Response({'error': 'Debe abrir una caja para registrar el pago al proveedor.'}, status=400)
+
     try:
         pedido = get_object_or_404(Pedido, id=pedido_id)
         
@@ -3433,6 +3575,18 @@ def recibir_pedido(request, pedido_id):
             pedido.estado = 'ENTREGADO'
             pedido.fecha_recepcion = timezone.now()
             pedido.save()
+
+            # 💵 REGISTRAR EGRESO DE CAJA
+            if pedido.total and pedido.total > 0:
+                MovimientoCaja.objects.create(
+                    sesion_caja=sesion_abierta,
+                    tipo='EGRESO',
+                    metodo_pago='EFECTIVO', # Por defecto
+                    concepto='PAGO_PROVEEDOR',
+                    monto=pedido.total,
+                    descripcion=f"Pago Pedido #{pedido.id} a {pedido.proveedor.nombre}",
+                    pedido_proveedor_relacionado=pedido
+                )
 
         return Response({'message': 'Mercadería recibida. Stock y Precios actualizados automáticamente.'})
 
@@ -4214,9 +4368,8 @@ def actualizar_listas_masivo(request):
 def dashboard_data(request):
     try:
         from django.db.models import Sum, Count, Q, F
-        from .models import Venta, Turno, Producto, DetalleVenta, ConfiguracionSistema
+        from .models import Venta, Turno, Producto, DetalleVenta, ConfiguracionSistema, MovimientoCaja, SesionCaja
         
-        # 1. SETUP DE FECHAS
         period = request.GET.get('period', 'semana')
         date_from_str = request.GET.get('date_from')
         date_to_str = request.GET.get('date_to')
@@ -4244,7 +4397,6 @@ def dashboard_data(request):
                 start_date = datetime.combine(start_date_d, time.min).replace(tzinfo=ARG_TZ)
                 end_date = datetime.combine(hoy_date, time.max).replace(tzinfo=ARG_TZ)
 
-        # 2. CONSULTAS
         ventas_periodo = Venta.objects.filter(fecha__range=(start_date, end_date), anulada=False)
         turnos_periodo = Turno.objects.filter(fecha__range=(start_date, end_date), estado='COMPLETADO')
         
@@ -4252,7 +4404,19 @@ def dashboard_data(request):
         servicios_realizados = turnos_periodo.count()
         productos_vendidos = DetalleVenta.objects.filter(venta__in=ventas_periodo, producto__isnull=False).aggregate(total=Sum('cantidad'))['total'] or 0
 
-        # 3. GRÁFICO (Evolución diaria)
+        egresos_totales = MovimientoCaja.objects.filter(
+            tipo='EGRESO', 
+            fecha__range=(start_date, end_date)
+        ).aggregate(total=Sum('monto'))['total'] or 0
+
+        caja_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).exists()
+        pendientes_data = {'cantidad': 0, 'total_dinero': 0}
+        
+        if not caja_abierta:
+            huerfanos = MovimientoCaja.objects.filter(sesion_caja__isnull=True)
+            pendientes_data['cantidad'] = huerfanos.count()
+            pendientes_data['total_dinero'] = float(huerfanos.aggregate(t=Sum('monto'))['t'] or 0)
+
         labels_dias, ventas_por_dia = [], []
         delta_days = (end_date.date() - start_date.date()).days
         for i in range(delta_days + 1):
@@ -4263,23 +4427,21 @@ def dashboard_data(request):
             labels_dias.append(f"{curr.day}/{curr.month}")
             ventas_por_dia.append(float(tot))
 
-        # 4. TOPS (Limpios)
         top_s = turnos_periodo.values('servicios__nombre').annotate(c=Count('id')).order_by('-c')[:5]
         servicios_top = [{'nombre': s['servicios__nombre'] or 'Sin nombre', 'cantidad': s['c']} for s in top_s]
         
         top_p = DetalleVenta.objects.filter(venta__in=ventas_periodo, producto__isnull=False).values('producto__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:5]
         productos_top = [{'nombre': p['producto__nombre'], 'cantidad': p['c']} for p in top_p]
 
-        # 5. CONFIG Y EMISOR (Puntos 1 y 2)
         config = ConfiguracionSistema.get_solo()
         if request.user.is_authenticated:
-            # FIX: usamos campos directos de tu modelo Usuario
             usuario_emisor = f"{request.user.nombre} {request.user.apellido}".strip() or request.user.username
         else:
             usuario_emisor = "Anónimo"
 
         return Response({
             'ingresosTotales': float(ingresos_totales),
+            'egresosTotales': float(egresos_totales), # 🔥 Enviamos egresos
             'serviciosRealizados': servicios_realizados,
             'productosVendidos': productos_vendidos,
             'ventasPorDia': ventas_por_dia,
@@ -4287,6 +4449,8 @@ def dashboard_data(request):
             'serviciosTop': servicios_top,
             'productosTop': productos_top,
             'usuario_emisor': usuario_emisor,
+            'cajaAbierta': caja_abierta,       
+            'pendientesInfo': pendientes_data, 
             'empresa': {
                 'razon_social': config.razon_social,
                 'cuil_cuit': config.cuil_cuit,
@@ -4818,31 +4982,61 @@ def get_client_ip(request):
 @permission_classes([IsAuthenticated])
 def completar_reembolso_manual(request, turno_id):
     """Marca un reembolso como completado manualmente (para efectivo/transferencia)"""
-    try:
-        turno = Turno.objects.get(id=turno_id)
-        
-        if turno.reembolso_estado != 'PENDIENTE':
-            return Response({'error': 'El reembolso no está pendiente'}, status=400)
-        
-        turno.reembolso_estado = 'COMPLETADO'
-        turno.reembolsado = True
-        turno.save()
-        
-        # Registrar en auditoría
-        Auditoria.objects.create(
-            usuario=request.user,
-            modelo_afectado='Turno',
-            objeto_id=turno.id,
-            accion='EDITAR',
-            detalles={'reembolso': 'COMPLETADO_MANUAL'},
-            ip_address=request.META.get('REMOTE_ADDR')
+    # 🛑 CHEQUEO DE CAJA OBLIGATORIO
+    sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+    if not sesion_abierta:
+        return Response(
+            {"error": "Debe abrir una caja antes de realizar un reembolso manual."}, 
+            status=status.HTTP_400_BAD_REQUEST
         )
-        
-        return Response({
-            'status': 'ok',
-            'message': '✅ Reembolso marcado como completado',
-            'turno_id': turno.id
-        })
+
+    try:
+        with transaction.atomic():
+            turno = Turno.objects.select_for_update().get(id=turno_id)
+            
+            if turno.reembolso_estado != 'PENDIENTE':
+                return Response({'error': 'El reembolso no está pendiente'}, status=400)
+            
+            turno.reembolso_estado = 'COMPLETADO'
+            turno.reembolsado = True
+            turno.save()
+
+            # 💸 REGISTRAR EGRESO DE CAJA
+            # Reembolsamos la seña (o el total si había pagado todo)
+            monto_a_devolver = turno.monto_seña if turno.monto_seña else turno.monto_total
+            
+            metodo_pago_caja = 'EFECTIVO'
+            if turno.medio_pago and 'MERCADO' in str(turno.medio_pago).upper():
+                metodo_pago_caja = 'MERCADO_PAGO'
+            elif turno.medio_pago and 'TRANS' in str(turno.medio_pago).upper():
+                metodo_pago_caja = 'TRANSFERENCIA'
+
+            if monto_a_devolver and monto_a_devolver > 0:
+                MovimientoCaja.objects.create(
+                    sesion_caja=sesion_abierta,
+                    tipo='EGRESO',
+                    metodo_pago=metodo_pago_caja,
+                    concepto='OTROS', # O podés agregar 'REEMBOLSO_TURNO' al modelo
+                    monto=monto_a_devolver,
+                    descripcion=f"Reembolso Manual de Turno #{turno.id} a {turno.cliente.nombre if turno.cliente else 'Cliente'}",
+                    turno_relacionado=turno
+                )
+            
+            # Registrar en auditoría
+            Auditoria.objects.create(
+                usuario=request.user,
+                modelo_afectado='Turno',
+                objeto_id=turno.id,
+                accion='EDITAR',
+                detalles={'reembolso': 'COMPLETADO_MANUAL', 'monto_devuelto': str(monto_a_devolver)},
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            
+            return Response({
+                'status': 'ok',
+                'message': '✅ Reembolso marcado como completado y registrado en caja.',
+                'turno_id': turno.id
+            })
         
     except Turno.DoesNotExist:
         return Response({'error': 'Turno no encontrado'}, status=404)
@@ -5432,12 +5626,99 @@ def confirmar_reset_password(request):
 
 @csrf_exempt
 def mercadopago_webhook(request):
-    if request.method == 'POST':
-        print("*****************************************")
-        print("¡EL TÚNEL FUNCIONA! MP ENVIÓ UNA NOTIFICACIÓN")
-        print("*****************************************")
-        return HttpResponse(status=200)
-    return HttpResponse(status=405)
+    if request.method != 'POST':
+        return HttpResponse(status=405)
+
+    try:
+        data = json.loads(request.body.decode('utf-8')) if request.body else {}
+        
+        topic = request.GET.get('topic') or data.get('type')
+        if topic == 'merchant_order':
+            return HttpResponse(status=200)
+
+        payment_id = request.GET.get('data.id') or request.GET.get('id') or data.get('data', {}).get('id')
+        
+        if not payment_id:
+            return HttpResponse(status=200)
+
+        print(f"\n--- 🔔 LLEGÓ WEBHOOK DE MERCADO PAGO ---")
+        print(f"🔎 ID del pago a consultar: {payment_id}")
+
+        # 1. Consultar a Mercado Pago
+        mp_service = MercadoPagoService()
+        payment_info = mp_service.sdk.payment().get(payment_id)
+        
+        if payment_info['status'] != 200:
+            print(f"❌ Error al consultar MP. Status: {payment_info['status']}")
+            return HttpResponse(status=200)
+
+        payment_data = payment_info['response']
+        estado = payment_data.get('status')
+        monto = payment_data.get('transaction_amount')
+        referencia = payment_data.get('external_reference', '') 
+
+        # ESTE PRINT ES LA CLAVE: Te va a decir si MP lo tiene en pending o approved
+        print(f"📌 Estado en MP: {estado.upper()} | Ref: {referencia} | Monto: ${monto}")
+
+        if estado == 'approved':
+            id_obj = referencia.split('_')[1] if '_' in referencia else None
+            
+            if not id_obj:
+                return HttpResponse(status=200)
+
+            concepto_caja = 'OTROS'
+            descripcion_mov = f"Cobro Web #{id_obj} (MP: {payment_id})" 
+            turno_rel = None
+
+            if 'TURNO' in referencia.upper():
+                concepto_caja = 'TURNO_WEB'
+                descripcion_mov = f"Pago Turno Web #{id_obj} (MP: {payment_id})"
+                turno_rel = Turno.objects.filter(id=id_obj).first()
+                if turno_rel:
+                    turno_rel.mp_payment_id = payment_id
+                    turno_rel.save()
+                    print(f"✅ Turno {id_obj} actualizado en BD.")
+
+            elif 'PEDIDO' in referencia.upper():
+                concepto_caja = 'PEDIDO_WEB'
+                descripcion_mov = f"Pago Pedido Web #{id_obj} (MP: {payment_id})"
+                pedido_rel = PedidoWeb.objects.filter(id=id_obj).first()
+                if pedido_rel:
+                    pedido_rel.estado = 'PAGADO'
+                    pedido_rel.mp_payment_id = payment_id
+                    pedido_rel.save()
+                    print(f"✅ Pedido {id_obj} actualizado en BD.")
+
+            # 🔥 Filtro anti-duplicados 
+            if MovimientoCaja.objects.filter(descripcion=descripcion_mov).exists():
+                print(f"⚠️ El pago ya está en la caja. Ignorando duplicado.")
+                return HttpResponse(status=200)
+
+            # 🌟 ¿Hay caja abierta en este momento?
+            sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+
+            MovimientoCaja.objects.create(
+                sesion_caja=sesion_abierta, 
+                tipo='INGRESO',
+                metodo_pago='MERCADO_PAGO',
+                concepto=concepto_caja,
+                monto=monto,
+                descripcion=descripcion_mov,
+                turno_relacionado=turno_rel
+            )
+            
+            estado_caja = f"en Caja #{sesion_abierta.id}" if sesion_abierta else "como HUÉRFANO"
+            print(f"💰 ¡PAGO APROBADO! ${monto} guardado {estado_caja}")
+        else:
+            # SI LLEGA PENDING, TE AVISA:
+            print(f"⏳ El pago está '{estado}'. Tu caja se actualizará recién cuando MP lo marque como 'approved'.")
+
+        print("------------------------------------------\n")
+
+    except Exception as e:
+        print(f"❌ Error webhook: {e}")
+        
+    return HttpResponse(status=200)
 
 class PaginacionReportesHairSoft(PageNumberPagination):
     page_size = 15
@@ -5791,3 +6072,127 @@ def historial_stock_producto(request, producto_id):
         return Response(datos, status=200)
     except Exception as e:
         return Response({'error': str(e)}, status=400)
+
+# ==============================================================================
+# MÓDULO DE CAJAS
+# ==============================================================================
+
+class CajaViewSet(viewsets.ModelViewSet):
+    """
+    CRUD básico para gestionar las cajas físicas del local (Ej: 'Caja Principal')
+    """
+    queryset = Caja.objects.all()
+    serializer_class = CajaSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class SesionCajaViewSet(viewsets.ModelViewSet):
+    queryset = SesionCaja.objects.all().order_by('-id')
+    serializer_class = SesionCajaSerializer
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['GET'])
+    def actual(self, request):
+        sesion = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+        if sesion:
+            return Response(self.get_serializer(sesion).data)
+        return Response({'mensaje': 'No hay ninguna caja abierta.'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['POST'])
+    @transaction.atomic
+    def abrir(self, request):
+        if SesionCaja.objects.filter(fecha_cierre__isnull=True).exists():
+            return Response({'error': 'Ya existe una caja abierta.'}, status=status.HTTP_400_BAD_REQUEST)
+        caja_id = request.data.get('caja')
+        saldo_inicial = Decimal(str(request.data.get('saldo_inicial_efectivo', 0.00)))
+        caja = get_object_or_404(Caja, id=caja_id, activa=True)
+        sesion = SesionCaja.objects.create(caja=caja, usuario_apertura=request.user, saldo_inicial_efectivo=saldo_inicial)
+        MovimientoCaja.objects.filter(sesion_caja__isnull=True).update(sesion_caja=sesion)
+        return Response({'mensaje': 'Caja abierta correctamente.', 'sesion': self.get_serializer(sesion).data}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['POST'])
+    @transaction.atomic
+    def cerrar(self, request, pk=None):
+        sesion = self.get_object()
+        if not sesion.esta_abierta:
+            return Response({'error': 'La sesión ya está cerrada.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. Calcular Esperado Contable
+        movs = sesion.movimientos.all()
+        ingresos = movs.filter(tipo='INGRESO').aggregate(t=Sum('monto'))['t'] or Decimal('0')
+        egresos = movs.filter(tipo='EGRESO').aggregate(t=Sum('monto'))['t'] or Decimal('0')
+        total_esperado = sesion.saldo_inicial_efectivo + ingresos - egresos
+
+        # 2. Capturar Real declarado por el cajero
+        real_ef = Decimal(str(request.data.get('saldo_final_efectivo_real', 0)))
+        real_mp = Decimal(str(request.data.get('saldo_final_mp_real', 0)))
+        real_tr = Decimal(str(request.data.get('saldo_final_transf_real', 0)))
+        total_real = real_ef + real_mp + real_tr
+        
+        observaciones = request.data.get('observaciones', '').strip()
+
+        # 3. Validar Descuadre (Si Real != Esperado, requiere justificación)
+        if abs(total_real - total_esperado) > Decimal('0.01') and not observaciones:
+            return Response({'error': f'Hay una diferencia de ${abs(total_real - total_esperado)}. Ingrese el motivo obligatoriamente.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 4. Guardar
+        sesion.saldo_final_efectivo_real = real_ef
+        sesion.saldo_final_mp_real = real_mp
+        sesion.saldo_final_transf_real = real_tr
+        sesion.observaciones = observaciones
+        sesion.fecha_cierre = timezone.now()
+        sesion.usuario_cierre = request.user
+        sesion.save()
+        return Response({'mensaje': 'Caja cerrada correctamente.', 'sesion': self.get_serializer(sesion).data})
+
+    @action(detail=True, methods=['GET'])
+    def balance(self, request, pk=None):
+        sesion = self.get_object()
+        movs = sesion.movimientos.all()
+        def sum_m(metodo, tipo): return movs.filter(metodo_pago=metodo, tipo=tipo).aggregate(t=Sum('monto'))['t'] or Decimal('0')
+        esp_ef = sesion.saldo_inicial_efectivo + sum_m('EFECTIVO', 'INGRESO') - sum_m('EFECTIVO', 'EGRESO')
+        esp_mp = sum_m('MERCADO_PAGO', 'INGRESO') - sum_m('MERCADO_PAGO', 'EGRESO')
+        esp_tr = sum_m('TRANSFERENCIA', 'INGRESO') - sum_m('TRANSFERENCIA', 'EGRESO')
+        return Response({
+            'saldo_inicial_efectivo': sesion.saldo_inicial_efectivo,
+            'esperado_efectivo': esp_ef, 'esperado_mp': esp_mp, 'esperado_transf': esp_tr
+        })
+
+class MovimientoCajaViewSet(viewsets.ModelViewSet):
+    """
+    Gestiona el historial del dinero. Las ventas crearán movimientos automáticamente, 
+    pero esto sirve para consultar o cargar gastos manuales (yerba, retiro de dueño).
+    """
+    queryset = MovimientoCaja.objects.all().order_by('-fecha')
+    serializer_class = MovimientoCajaSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Permite filtrar en la URL por ?sesion_caja=2"""
+        qs = super().get_queryset()
+        sesion_id = self.request.query_params.get('sesion_caja')
+        if sesion_id:
+            qs = qs.filter(sesion_caja_id=sesion_id)
+        return qs
+
+    @action(detail=False, methods=['GET'])
+    def pendientes(self, request):
+        """
+        Endpoint clave para el Front: pregunta si hay plata de la madrugada 
+        para avisarle al recepcionista antes de que haga clic en 'Abrir Caja'.
+        """
+        huerfanos = MovimientoCaja.objects.filter(sesion_caja__isnull=True)
+        total = huerfanos.aggregate(t=Sum('monto'))['t'] or 0
+        return Response({
+            'cantidad': huerfanos.count(),
+            'total_dinero': total,
+            'movimientos': self.get_serializer(huerfanos, many=True).data
+        })
+
+    def perform_create(self, serializer):
+        """Si un empleado carga un gasto manual, lo metemos en la caja abierta actual"""
+        sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+        if not sesion_abierta:
+            raise serializers.ValidationError({"error": "No puede registrar movimientos manuales si la caja está cerrada."})
+        
+        serializer.save(sesion_caja=sesion_abierta)

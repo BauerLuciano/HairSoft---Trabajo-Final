@@ -70,6 +70,30 @@
     </div>
 
     <main v-else class="dashboard-content fade-in" ref="dashboardContent">
+      
+      <div v-if="!dashboardData.cajaAbierta && dashboardData.pendientesInfo && dashboardData.pendientesInfo.cantidad > 0" class="alerta-huerfanos" style="margin-bottom: 2rem;">
+        <i class="fas fa-exclamation-circle" style="font-size: 2rem;"></i>
+        <div class="alerta-content">
+          <strong>Caja Cerrada - Cobros Web Pendientes</strong>
+          <p>
+            {{ dashboardData.pendientesInfo.cantidad === 1 ? 'Ingresó 1 pago' : `Ingresaron ${dashboardData.pendientesInfo.cantidad} pagos` }} 
+            por Mercado Pago mientras la caja estaba inactiva.
+            <strong>(Total: ${{ formatNumber(dashboardData.pendientesInfo.total_dinero) }})</strong>
+            <span style="font-size: 0.85rem; opacity: 0.9;">Inicie un turno en "Caja Diaria" para asimilar estos ingresos al balance de hoy.</span>
+          </p>
+        </div>
+      </div>
+
+      <div v-if="!dashboardData.cajaAbierta && (!dashboardData.pendientesInfo || dashboardData.pendientesInfo.cantidad === 0)" class="alerta-huerfanos" style="margin-bottom: 2rem; border-color: #ef4444; background: rgba(239, 68, 68, 0.1);">
+        <i class="fas fa-lock" style="font-size: 2rem; color: #ef4444;"></i>
+        <div class="alerta-content">
+          <strong style="color: #b91c1c;">La Caja Diaria está Cerrada</strong>
+          <p style="color: #7f1d1d;">
+            Actualmente no hay ninguna sesión de caja activa. No olvides iniciar el turno de caja antes de comenzar a registrar cobros presenciales.
+          </p>
+        </div>
+      </div>
+
       <div class="kpi-grid">
         <div class="kpi-card income">
           <div class="kpi-header-card"><div class="kpi-icon"><i class="fas fa-dollar-sign"></i></div></div>
@@ -77,6 +101,14 @@
             <span class="label">Ingresos Totales</span>
             <span class="value">${{ formatNumber(dashboardData.ingresosTotales) }}</span>
             <span class="subtitle">Facturación bruta</span>
+          </div>
+        </div>
+        <div class="kpi-card expense">
+          <div class="kpi-header-card"><div class="kpi-icon"><i class="fas fa-arrow-down"></i></div></div>
+          <div class="kpi-data">
+            <span class="label">Egresos Totales</span>
+            <span class="value">${{ formatNumber(dashboardData.egresosTotales) }}</span>
+            <span class="subtitle">Gastos y pagos a proveedores</span>
           </div>
         </div>
         <div class="kpi-card service">
@@ -199,18 +231,22 @@
       </div>
 
       <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #0ea5e9; padding-left: 10px; margin-bottom: 20px; color: #0f172a;">1. Resultados del Período</h3>
-      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px;">
-        <div style="padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center; background: #f8fafc;">
-          <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Ingresos Totales</span>
-          <p style="margin: 10px 0 0; font-size: 22px; font-weight: 900; color: #10b981;">$ {{ formatNumber(dashboardData.ingresosTotales) }}</p>
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 40px;">
+        <div style="padding: 20px 15px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center; background: #f8fafc;">
+          <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Ingresos</span>
+          <p style="margin: 10px 0 0; font-size: 20px; font-weight: 900; color: #10b981;">$ {{ formatNumber(dashboardData.ingresosTotales) }}</p>
         </div>
-        <div style="padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center;">
+        <div style="padding: 20px 15px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center; background: #fffcfc;">
+          <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Egresos</span>
+          <p style="margin: 10px 0 0; font-size: 20px; font-weight: 900; color: #ef4444;">$ {{ formatNumber(dashboardData.egresosTotales) }}</p>
+        </div>
+        <div style="padding: 20px 15px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center;">
           <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Ticket Promedio</span>
-          <p style="margin: 10px 0 0; font-size: 22px; font-weight: 900; color: #0ea5e9;">$ {{ formatNumber(ticketPromedio) }}</p>
+          <p style="margin: 10px 0 0; font-size: 20px; font-weight: 900; color: #0ea5e9;">$ {{ formatNumber(ticketPromedio) }}</p>
         </div>
-        <div style="padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center;">
+        <div style="padding: 20px 15px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center;">
           <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Operaciones</span>
-          <p style="margin: 10px 0 0; font-size: 24px; font-weight: 900; color: #0f172a;">{{ getTotalTransactions() }}</p>
+          <p style="margin: 10px 0 0; font-size: 20px; font-weight: 900; color: #0f172a;">{{ getTotalTransactions() }}</p>
         </div>
       </div>
 
@@ -258,9 +294,9 @@ const dateTo = ref('')
 const tooltip = ref({ visible: false, x: 0, y: 0, value: 0, date: '', index: 0 })
 
 const dashboardData = ref({
-  ingresosTotales: 0, serviciosRealizados: 0, productosVendidos: 0,
+  ingresosTotales: 0, egresosTotales: 0, serviciosRealizados: 0, productosVendidos: 0,
   ventasPorDia: [], labelsDias: [], serviciosTop: [], productosTop: [],
-  usuario_emisor: '', empresa: null
+  usuario_emisor: '', empresa: null, cajaAbierta: true, pendientesInfo: { cantidad: 0, total_dinero: 0 }
 })
 
 const ticketPromedio = computed(() => {
@@ -289,49 +325,28 @@ const getPeriodDisplay = computed(() => {
   return p ? p.label : 'Período'
 })
 
-// ✅ CONVERSOR MEJORADO CON LOGS Y MANEJO DE ERRORES
 const convertToBase64 = async (url) => {
-  if (!url) {
-    console.warn('convertToBase64: URL vacía')
-    return null
-  }
+  if (!url) return null
   try {
-    console.log('🟡 convertToBase64 - URL original:', url)
-    // Construir URL absoluta si es relativa
     let finalURL = url
     if (!url.startsWith('http')) {
       const base = axios.defaults.baseURL.replace(/\/$/, '')
       const path = url.startsWith('/') ? url : `/${url}`
       finalURL = base + path
     }
-    console.log('🟡 convertToBase64 - URL final:', finalURL)
 
     const response = await axios.get(finalURL, { 
       responseType: 'blob',
-      // Asegurar token por si acaso (aunque el interceptor ya lo hace)
       headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
     })
     
-    console.log('🟢 convertToBase64 - Blob recibido, tipo:', response.data.type, 'tamaño:', response.data.size)
-
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
-      reader.onloadend = () => {
-        console.log('🟢 convertToBase64 - Base64 generado (primeros 50):', reader.result.substring(0, 50))
-        resolve(reader.result)
-      }
-      reader.onerror = (error) => {
-        console.error('🔴 convertToBase64 - Error leyendo blob:', error)
-        reject(error)
-      }
+      reader.onloadend = () => resolve(reader.result)
+      reader.onerror = (error) => reject(error)
       reader.readAsDataURL(response.data)
     })
   } catch (e) {
-    console.error('🔴 convertToBase64 - Error en Axios:', e)
-    if (e.response) {
-      console.error('Status:', e.response.status)
-      console.error('Data:', e.response.data)
-    }
     return null
   }
 }
@@ -344,36 +359,26 @@ const fetchDashboardData = async () => {
       ? { date_from: dateFrom.value, date_to: dateTo.value }
       : { period: selectedPeriod.value }
     
-    // Hacer ambas peticiones en paralelo
     const [dashboardRes, configRes] = await Promise.all([
       axios.get('/api/dashboard/', { params }),
       axios.get('/api/configuracion/')
     ])
     
     let data = dashboardRes.data
-    // Sobrescribir empresa con la de configuración (que tiene el logo)
     data.empresa = configRes.data
     
-    console.log('🟢 fetchDashboardData - datos empresa (con logo):', data.empresa)
-
-    // Convertir el logo a Base64
     if (data.empresa && data.empresa.logo) {
         logoBase64.value = await convertToBase64(data.empresa.logo)
-        console.log('🟢 fetchDashboardData - logoBase64 asignado:', logoBase64.value ? 'OK' : 'VACÍO')
-    } else {
-        console.warn('fetchDashboardData - No hay logo en empresa')
-    }
+    } 
     
     dashboardData.value = data
   } catch (err) {
-    console.error('🔴 fetchDashboardData - Error:', err)
     error.value = "Error al conectar con el servidor."
   } finally {
     loading.value = false
   }
 }
 
-// LÓGICA DE GRÁFICOS (SIN MODIFICAR)
 const chartWidth = 900; const chartHeight = 320; const padding = 60;
 const formatNumber = (num) => new Intl.NumberFormat('es-AR').format(num || 0)
 const formatNumberShort = (num) => num >= 1000 ? (num / 1000).toFixed(1) + 'K' : num
@@ -400,7 +405,6 @@ const getAreaPath = () => {
 }
 const shouldShowLabel = (i) => (dashboardData.value.labelsDias?.length || 0) <= 7 || i % 2 === 0
 
-// NAVEGACIÓN
 const selectPeriod = (p) => { customDateRange.value = false; selectedPeriod.value = p; fetchDashboardData() }
 const toggleCustomRange = () => { customDateRange.value = !customDateRange.value; if (!customDateRange.value) fetchDashboardData() }
 const applyCustomRange = () => { if (dateFrom.value && dateTo.value) fetchDashboardData() }
@@ -411,59 +415,30 @@ const showTooltip = (i, v, e) => {
 }
 const hideTooltip = () => tooltip.value.visible = false
 
-// ✅ GENERACIÓN DE PDF CORREGIDA Y MEJORADA
 const generatePDF = async () => {
   loading.value = true
-  console.log('🟡 generatePDF - Iniciando...')
-
   try {
-    // 1. Asegurar que el logo esté cargado
     if (dashboardData.value.empresa?.logo && !logoBase64.value) {
-      console.log('🟡 generatePDF - Logo no cargado, forzando carga...')
       logoBase64.value = await convertToBase64(dashboardData.value.empresa.logo)
     }
 
-    console.log('🟡 generatePDF - logoBase64 después de carga:', logoBase64.value ? 'OK' : 'VACÍO')
-
-    // 2. Esperar a que Vue actualice el DOM
     await nextTick()
-
-    // 3. Mostrar el template oculto
     const el = document.getElementById('print-template')
-    if (!el) {
-      throw new Error('No se encontró el elemento #print-template')
-    }
+    if (!el) throw new Error('No se encontró el elemento #print-template')
+    
     el.style.display = 'block'
-    console.log('🟡 generatePDF - Template mostrado')
-
-    // 4. Dar tiempo para que la imagen se renderice (especialmente si es Base64)
     await new Promise(r => setTimeout(r, 500))
 
-    // 5. Verificar que el img tenga el src
-    const imgElement = el.querySelector('img')
-    console.log('🟡 generatePDF - src del img en template:', imgElement ? (imgElement.src ? imgElement.src.substring(0, 50) + '...' : 'src vacío') : 'no img')
-
-    // 6. Generar canvas con opciones mejoradas
-    console.log('🟡 generatePDF - Generando canvas...')
     const canvas = await html2canvas(el, {
       scale: 2,
       useCORS: true,
       backgroundColor: '#ffffff',
-      logging: true, // Activamos logging para ver problemas en consola
       allowTaint: false,
       foreignObjectRendering: false,
-      onclone: (clonedDoc, element) => {
-        // Podemos verificar que el logo esté en el clon
-        const clonedImg = element.querySelector('img')
-        console.log('🟡 html2canvas onclone - img src:', clonedImg ? clonedImg.src.substring(0,50) : 'no img')
-      }
     })
-    console.log('🟢 generatePDF - Canvas generado')
 
-    // 7. Ocultar el template
     el.style.display = 'none'
 
-    // 8. Crear PDF y agregar imagen
     const pdf = new jsPDF('p', 'mm', 'a4')
     const imgData = canvas.toDataURL('image/jpeg', 0.95)
     const pdfWidth = pdf.internal.pageSize.getWidth()
@@ -472,10 +447,8 @@ const generatePDF = async () => {
 
     pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, imgHeight)
     pdf.save(`Balance_Operativo.pdf`)
-    console.log('🟢 generatePDF - PDF guardado')
   } catch (err) {
     console.error('🔴 generatePDF - Error:', err)
-    // Podrías mostrar una notificación al usuario
   } finally {
     loading.value = false
   }
@@ -580,8 +553,14 @@ onMounted(() => fetchDashboardData())
 
 .pdf-btn:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(239, 68, 68, 0.6); }
 
+/* ALERTA HUERFANOS Y CAJA CERRADA */
+.alerta-huerfanos { background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; border-radius: 16px; padding: 20px 25px; display: flex; gap: 20px; text-align: left; align-items: flex-start; }
+.alerta-huerfanos i { color: #f59e0b; margin-top: 2px; }
+.alerta-content strong { display: block; color: #b45309; font-size: 1.2rem; margin-bottom: 5px; text-transform: uppercase;}
+.alerta-content p { margin: 0; color: #92400e; font-size: 1rem; line-height: 1.5; }
+
 /* KPI CARDS */
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
 .kpi-card {
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   border-radius: 18px;
@@ -593,6 +572,7 @@ onMounted(() => fetchDashboardData())
 }
 .kpi-card:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5); border-color: currentColor; }
 .income { color: #10b981; }
+.expense { color: #ef4444; }
 .service { color: #3b82f6; }
 .product { color: #f97316; }
 
@@ -601,7 +581,6 @@ onMounted(() => fetchDashboardData())
 .kpi-data .label { font-size: 0.9rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: block; }
 .kpi-data .value { font-size: 2.5rem; font-weight: 900; color: white; display: block; margin: 5px 0; }
 .kpi-data .subtitle { font-size: 0.85rem; color: #64748b; }
-.kpi-sparkline { height: 40px; width: 100%; margin-top: 1rem; opacity: 0.4; }
 
 /* SECTIONS */
 .section-card {
@@ -669,29 +648,12 @@ onMounted(() => fetchDashboardData())
   opacity: 0;
 }
 
-/* DISTRIBUTION */
-.distribution-body { padding: 2rem; display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; justify-content: center; }
-.distribution-legend { flex: 1; min-width: 250px; }
-.legend-item { display: flex; align-items: center; gap: 1rem; padding: 1rem; margin-bottom: 1rem; background: rgba(255, 255, 255, 0.03); border-radius: 12px; }
-.legend-color { width: 24px; height: 24px; border-radius: 6px; }
-.legend-color.service { background: linear-gradient(135deg, #10b981, #047857); }
-.legend-color.product { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
-.legend-label { display: block; font-weight: 700; color: #f1f5f9; }
-.legend-value { color: #94a3b8; font-size: 0.9rem; }
-
 /* TOP LISTS */
 .top-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1.5rem; }
 .list-item { display: flex; align-items: center; gap: 1rem; padding: 1.2rem 1.5rem; border-bottom: 1px solid #334155; }
 .rank { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; background: #334155; color: #94a3b8; }
-.rank.gold { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #78350f; }
-.rank.silver { background: linear-gradient(135deg, #e5e7eb, #9ca3af); color: #374151; }
-.rank.bronze { background: linear-gradient(135deg, #fb923c, #ea580c); color: #7c2d12; }
 .item-content { flex: 1; }
 .item-name { font-weight: 700; color: #f1f5f9; margin-bottom: 5px; }
-.progress-bar { height: 6px; background: rgba(148, 163, 184, 0.15); border-radius: 10px; overflow: hidden; }
-.progress-fill { height: 100%; border-radius: 10px; }
-.progress-fill.service { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
-.progress-fill.product { background: linear-gradient(90deg, #f97316, #fb923c); }
 .item-count { font-weight: 900; color: #f1f5f9; font-size: 1.1rem; }
 
 /* DATE PICKER & LOADER */
@@ -713,227 +675,9 @@ onMounted(() => fetchDashboardData())
   background: white;
   width: 210mm;
 }
-
-.pdf-page {
-  padding: 15mm 15mm;
-  background: white;
-}
-
-.pdf-header {
-  margin-bottom: 25px;
-}
-
-.pdf-brand-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 25px;
-  padding-bottom: 15px;
-}
-
-.pdf-logo-box {
-  width: 90px;
-  height: 90px;
-  border-radius: 50%;
-  border: 3px solid #ef4444;
-  padding: 3px;
-  overflow: hidden;
-  background: white;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.pdf-logo-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 50%;
-}
-
-.pdf-brand-info {
-  flex: 1;
-}
-
-.pdf-title {
-  font-size: 38px;
-  font-weight: 900;
-  margin: 0;
-  color: #1f2937;
-  letter-spacing: 2px;
-  line-height: 1;
-}
-
-.pdf-subtitle {
-  font-size: 14px;
-  color: #ef4444;
-  margin: 5px 0 15px 0;
-  text-transform: uppercase;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-}
-
-.pdf-report-meta {
-  display: flex;
-  gap: 20px;
-  align-items: center;
-  font-size: 11px;
-  color: #4b5563;
-  border-left: 3px solid #e5e7eb;
-  padding-left: 15px;
-}
-
-.pdf-period-badge {
-  background: #f3f4f6;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-weight: 700;
-  color: #111;
-  border: 1px solid #d1d5db;
-}
-
-.pdf-divider-line {
-  height: 2px;
-  background: linear-gradient(90deg, #ef4444 0%, #fca5a5 100%);
-  width: 100%;
-  margin-top: 5px;
-}
-
-/* KPI Summary PDF */
-.pdf-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 15px;
-  margin-bottom: 30px;
-}
-
-.pdf-kpi-box {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 15px;
-  text-align: center;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.03);
-}
-
-.pdf-kpi-label {
-  display: block;
-  font-size: 10px;
-  text-transform: uppercase;
-  color: #64748b;
-  font-weight: 700;
-  margin-bottom: 5px;
-}
-
-.pdf-kpi-value {
-  display: block;
-  font-size: 24px;
-  font-weight: 800;
-  color: #0f172a;
-}
-
-.text-green { color: #059669; }
-
-/* Chart PDF */
-.pdf-chart-container {
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 20px;
-  margin-bottom: 30px;
-  background: #fdfdfd;
-}
-
-.pdf-section-title {
-  margin: 0 0 15px 0;
-  font-size: 16px;
-  font-weight: 800;
-  color: #1e293b;
-  border-bottom: 2px solid #ef4444;
-  display: inline-block;
-  padding-bottom: 5px;
-}
-
-/* Tables PDF */
-.pdf-tables-row {
-  display: flex;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.pdf-table-col {
-  flex: 1;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 15px;
-}
-
-.pdf-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.pdf-table th {
-  text-align: left;
-  font-size: 10px;
-  text-transform: uppercase;
-  color: #64748b;
-  border-bottom: 1px solid #cbd5e1;
-  padding: 8px 5px;
-}
-
-.pdf-table td {
-  font-size: 12px;
-  padding: 10px 5px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #334155;
-}
-
-.pdf-rank-circle {
-  background: #f1f5f9;
-  color: #64748b;
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-size: 10px;
-  font-weight: bold;
-}
-
-.text-right { text-align: right; }
-.text-center { text-align: center; }
-.text-muted { color: #94a3b8; }
-
-.pdf-footer {
-  margin-top: 40px;
-  text-align: center;
-  border-top: 1px solid #e2e8f0;
-  padding-top: 15px;
-  color: #64748b;
-  font-size: 11px;
-}
-
-.no-data {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 3rem;
-  color: #64748b;
-}
-
-.no-data i {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  opacity: 0.5;
-}
-
 .fade-in {
   animation: fadeIn 0.5s ease-in;
 }
-
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -957,216 +701,49 @@ onMounted(() => fetchDashboardData())
   filter: drop-shadow(0 0 8px #ef4444);
 }
 
-.pie-sector {
-  transition: opacity 0.3s;
-}
 
-.pie-sector:hover {
-  opacity: 0.8;
-}
-
-/* ============ MODO CLARO (AGREGAR AL FINAL DEL <style>) ============ */
-
-/* Wrapper principal */
+/* ============ MODO CLARO ============ */
 :root.light-theme .dashboard-wrapper {
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   color: #0f172a;
 }
-
-/* Header */
 :root.light-theme .dashboard-header {
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(203, 213, 225, 0.5);
   box-shadow: 0 2px 16px rgba(100, 116, 139, 0.08);
 }
-
 :root.light-theme .dashboard-title {
   background: linear-gradient(135deg, #0f172a 0%, #3b82f6 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
-
-:root.light-theme .dashboard-subtitle {
-  color: #64748b;
-}
-
-:root.light-theme .period-selector {
-  background: rgba(248, 250, 252, 0.95);
-  border: 1px solid #cbd5e1;
-}
-
-:root.light-theme .period-selector button {
-  color: #475569;
-}
-
+:root.light-theme .dashboard-subtitle { color: #64748b; }
+:root.light-theme .period-selector { background: rgba(248, 250, 252, 0.95); border: 1px solid #cbd5e1; }
+:root.light-theme .period-selector button { color: #475569; }
 :root.light-theme .period-selector button.active {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white;
 }
-
-/* KPI Cards */
 :root.light-theme .kpi-card {
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 2px 8px rgba(100, 116, 139, 0.08);
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border: 1px solid #e2e8f0;
 }
-
-:root.light-theme .kpi-card:hover {
-  box-shadow: 0 8px 24px rgba(100, 116, 139, 0.15);
-}
-
-:root.light-theme .kpi-icon {
-  background: rgba(0, 0, 0, 0.03);
-}
-
-:root.light-theme .kpi-data .label {
-  color: #64748b;
-}
-
-:root.light-theme .kpi-data .value {
-  color: #0f172a;
-}
-
-:root.light-theme .kpi-data .subtitle {
-  color: #94a3b8;
-}
-
-/* Sections */
+:root.light-theme .kpi-icon { background: rgba(0, 0, 0, 0.03); }
+:root.light-theme .kpi-data .label { color: #64748b; }
+:root.light-theme .kpi-data .value { color: #0f172a; }
+:root.light-theme .kpi-data .subtitle { color: #94a3b8; }
 :root.light-theme .section-card {
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 2px 8px rgba(100, 116, 139, 0.08);
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border: 1px solid #e2e8f0;
 }
-
-:root.light-theme .section-header {
-  border-bottom: 1px solid #e2e8f0;
-}
-
-:root.light-theme .section-header h3 {
-  color: #0f172a;
-}
-
-:root.light-theme .chart-body {
-  background: rgba(248, 250, 252, 0.3);
-}
-
-/* Chart labels y grid */
-:root.light-theme .day-label {
-  color: #475569;
-}
-
-:root.light-theme .chart-tooltip {
-  background: rgba(255, 255, 255, 0.98);
-  border: 1px solid #cbd5e1;
-  box-shadow: 0 8px 24px rgba(100, 116, 139, 0.15);
-}
-
-:root.light-theme .tooltip-header {
-  color: #64748b;
-}
-
-/* Distribution */
-:root.light-theme .legend-item {
-  background: rgba(248, 250, 252, 0.8);
-}
-
-:root.light-theme .legend-label {
-  color: #0f172a;
-}
-
-:root.light-theme .legend-value {
-  color: #64748b;
-}
-
-/* Top Lists */
-:root.light-theme .list-item {
-  border-bottom: 1px solid #e2e8f0;
-}
-
-:root.light-theme .list-item:hover {
-  background: rgba(248, 250, 252, 0.8);
-}
-
-:root.light-theme .rank {
-  background: #e2e8f0;
-  color: #64748b;
-}
-
-:root.light-theme .item-name {
-  color: #0f172a;
-}
-
-:root.light-theme .progress-bar {
-  background: rgba(203, 213, 225, 0.3);
-}
-
-:root.light-theme .item-count {
-  color: #0f172a;
-}
-
-/* Date picker */
-:root.light-theme .custom-date-content {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-}
-
-:root.light-theme .date-input-group label {
-  color: #475569;
-}
-
-:root.light-theme .date-input-custom {
-  background: #f8fafc;
-  border: 2px solid #cbd5e1;
-  color: #0f172a;
-}
-
-:root.light-theme .date-input-custom:focus {
-  border-color: #3b82f6;
-  background: #ffffff;
-}
-
-:root.light-theme .date-range-info {
-  background: rgba(248, 250, 252, 0.95);
-  color: #64748b;
-}
-
-:root.light-theme .date-range-info strong {
-  color: #0f172a;
-}
-
-/* Loader */
-:root.light-theme .state-container {
-  color: #64748b;
-}
-
-:root.light-theme .loader {
-  border: 4px solid #e2e8f0;
-  border-top: 4px solid #3b82f6;
-}
-
-:root.light-theme .loading-text {
-  color: #475569;
-}
-
-:root.light-theme .error-content h3 {
-  color: #0f172a;
-}
-
-/* Section title */
-:root.light-theme .section-title {
-  color: #0f172a;
-}
-
-:root.light-theme .chart-legend {
-  color: #64748b;
-}
-
-:root.light-theme .no-data {
-  color: #94a3b8;
-}
-
-/* Chart info */
-:root.light-theme .chart-info {
-  color: #64748b;
-}
+:root.light-theme .section-header { border-bottom: 1px solid #e2e8f0; }
+:root.light-theme .section-header h3 { color: #0f172a; }
+:root.light-theme .day-label { color: #475569; }
+:root.light-theme .chart-tooltip { background: rgba(255, 255, 255, 0.98); border: 1px solid #cbd5e1; }
+:root.light-theme .tooltip-header { color: #64748b; }
+:root.light-theme .list-item { border-bottom: 1px solid #e2e8f0; }
+:root.light-theme .rank { background: #e2e8f0; color: #64748b; }
+:root.light-theme .item-name { color: #0f172a; }
+:root.light-theme .item-count { color: #0f172a; }
+:root.light-theme .custom-date-content { background: #ffffff; border: 1px solid #e2e8f0; }
+:root.light-theme .date-input-group label { color: #475569; }
+:root.light-theme .date-input-custom { background: #f8fafc; border: 2px solid #cbd5e1; color: #0f172a; }
+:root.light-theme .date-range-info { background: rgba(248, 250, 252, 0.95); color: #64748b; }
 </style>

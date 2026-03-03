@@ -183,6 +183,14 @@ class RegistrarPagoLiquidacionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        # 🛑 CHEQUEO DE CAJA
+        sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+        if not sesion_abierta:
+            return Response(
+                {"error": "Debe abrir una caja antes de pagar liquidaciones."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         data = request.data
         empleado_id = data.get('empleado_id')
         inicio = data.get('fecha_inicio')
@@ -218,6 +226,16 @@ class RegistrarPagoLiquidacionView(APIView):
         )
         
         liquidacion.turnos_pagados.set(turnos)
+
+        # 💵 REGISTRAR EGRESO DE CAJA
+        MovimientoCaja.objects.create(
+            sesion_caja=sesion_abierta,
+            tipo='EGRESO',
+            metodo_pago='EFECTIVO',
+            concepto='LIQUIDACION_SUELDO',
+            monto=total,
+            descripcion=f"Liquidación a {empleado.nombre} {empleado.apellido} (Periodo: {inicio} al {fin})"
+        )
 
         return Response({"status": "ok", "id": liquidacion.id, "mensaje": "Pago registrado correctamente"})
 

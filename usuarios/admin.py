@@ -65,7 +65,10 @@ MODELOS = [
     PedidoWeb, DetallePedidoWeb,
     
     # Auditoría y Sistema
-    Auditoria, HistorialStock, ConfiguracionSistema
+    Auditoria, HistorialStock, ConfiguracionSistema,
+
+    # 💰 MÓDULO DE CAJA (NUEVO)
+    Caja, SesionCaja, MovimientoCaja
 ]
 
 for modelo in MODELOS:

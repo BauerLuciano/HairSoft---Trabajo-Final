@@ -1120,7 +1120,7 @@ class PedidoWeb(models.Model):
     datos_entrega_interna = models.CharField(max_length=255, null=True, blank=True, help_text="Nombre del cadete")
 
     def __str__(self):
-        return f"Pedido Web #{self.id} - {self.cliente.username}"
+        return f"Pedido Web #{self.id} - {self.cliente.nombre} {self.cliente.apellido}"
 
     def calcular_total(self):
         total_productos = sum(item.cantidad * item.precio_unitario for item in self.detalles.all())
@@ -1368,3 +1368,80 @@ class HistorialStock(models.Model):
 
     def diferencia(self):
         return self.cantidad_nueva - self.cantidad_anterior
+
+# --- MÓDULO DE CAJAS ---
+class Caja(models.Model):
+    nombre = models.CharField(max_length=50, unique=True, help_text="Ej: Caja Principal, Caja Mostrador")
+    activa = models.BooleanField(default=True, help_text="Si es False, la caja está inhabilitada")
+    motivo_inactividad = models.TextField(blank=True, null=True, help_text="Razón si se deshabilita la caja")
+    
+    def __str__(self):
+        return f"{self.nombre} - {'Activa' if self.activa else 'Inactiva'}"
+
+class SesionCaja(models.Model):
+    caja = models.ForeignKey(Caja, on_delete=models.PROTECT, related_name='sesiones')
+    usuario_apertura = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='cajas_abiertas')
+    usuario_cierre = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='cajas_cerradas', null=True, blank=True)
+    
+    fecha_apertura = models.DateTimeField(auto_now_add=True)
+    fecha_cierre = models.DateTimeField(null=True, blank=True)
+    
+    saldo_inicial_efectivo = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    
+    # Saldos reales (lo que el recepcionista cuenta y declara al cerrar)
+    saldo_final_efectivo_real = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    saldo_final_mp_real = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    saldo_final_transf_real = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    observaciones = models.TextField(blank=True, null=True)
+
+    @property
+    def esta_abierta(self):
+        return self.fecha_cierre is None
+
+    def __str__(self):
+        estado = "Abierta" if self.esta_abierta else "Cerrada"
+        return f"Sesión {self.id} | {self.caja.nombre} ({estado})"
+
+
+class MovimientoCaja(models.Model):
+    TIPO_CHOICES = [
+        ('INGRESO', 'Ingreso'),
+        ('EGRESO', 'Egreso'),
+    ]
+    
+    METODO_CHOICES = [
+        ('EFECTIVO', 'Efectivo'),
+        ('MERCADO_PAGO', 'Mercado Pago'),
+        ('TRANSFERENCIA', 'Transferencia'),
+    ]
+
+    CONCEPTO_CHOICES = [
+        ('TURNO_PRESENCIAL', 'Cobro de Turno Presencial'),
+        ('TURNO_WEB', 'Cobro de Turno Web'),
+        ('VENTA', 'Venta de Productos'),
+        ('PEDIDO_WEB', 'Pedido Web'),
+        ('PAGO_PROVEEDOR', 'Pago a Proveedor'),
+        ('LIQUIDACION_SUELDO', 'Liquidación de Sueldos'),
+        ('GASTO_OPERATIVO', 'Gasto Operativo (Yerba, etc)'),
+        ('RETIRO_SOCIO', 'Retiro de Socio/Dueño'),
+        ('OTROS', 'Otros / Ajustes'),
+    ]
+
+    sesion_caja = models.ForeignKey(SesionCaja, on_delete=models.PROTECT, related_name='movimientos', null=True, blank=True)
+    
+    tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
+    metodo_pago = models.CharField(max_length=20, choices=METODO_CHOICES)
+    concepto = models.CharField(max_length=30, choices=CONCEPTO_CHOICES)
+    
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    descripcion = models.CharField(max_length=255, blank=True, null=True, help_text="Detalle extra del gasto o ingreso")
+    fecha = models.DateTimeField(auto_now_add=True)
+    
+    turno_relacionado = models.ForeignKey('Turno', on_delete=models.SET_NULL, null=True, blank=True)
+    venta_relacionada = models.ForeignKey('Venta', on_delete=models.SET_NULL, null=True, blank=True)
+    pedido_proveedor_relacionado = models.ForeignKey('Pedido', on_delete=models.SET_NULL, null=True, blank=True)
+
+    def __str__(self):
+        estado = "Pendiente" if not self.sesion_caja else f"Caja {self.sesion_caja.id}"
+        return f"{self.tipo} | {self.get_concepto_display()} | ${self.monto} ({estado})"

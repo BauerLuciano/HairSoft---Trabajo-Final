@@ -44,7 +44,10 @@ from .views import (
     gestionar_cotizacion_externa,
     SolicitudPresupuestoViewSet,
     contar_interesados,
-    validar_cupon
+    validar_cupon,
+    CajaViewSet,
+    SesionCajaViewSet,
+    MovimientoCajaViewSet,
 )
 
 # ================================
@@ -53,8 +56,10 @@ from .views import (
 router = DefaultRouter()
 router.register(r'auditoria', AuditoriaViewSet, basename='auditoria')
 router.register(r'web/pedidos', PedidoWebViewSet, basename='pedidos-web')
-# 👇👇👇 AGREGADO PARA QUE FUNCIONEN LAS SILLAS 👇👇👇
 router.register(r'sillas', SillaViewSet, basename='silla') 
+router.register(r'cajas', CajaViewSet, basename='caja')
+router.register(r'sesiones-caja', SesionCajaViewSet, basename='sesion-caja')
+router.register(r'movimientos-caja', MovimientoCajaViewSet, basename='movimiento-caja')
 
 venta_list = VentaViewSet.as_view({
     'get': 'list',

@@ -841,7 +841,7 @@ const calcularSena = () => (calcularTotal() / 2).toFixed(2)
 const crearTurno = async () => {
   if (form.value.medio_pago !== 'EFECTIVO' && !form.value.codigo_transaccion) {
     errorValidacion.value = true
-    Swal.fire({ icon: 'error', title: 'Error', text: 'Falta el código de transacción', confirmButtonText: 'Entendido' })
+    Sw.fire({ icon: 'error', title: 'Error', text: 'Falta el código de transacción', confirmButtonText: 'Entendido' })
     return
   }
   
@@ -903,15 +903,20 @@ const crearTurno = async () => {
       limpiarContexto()
       router.push('/turnos')
     } else {
+      // 🔥 ACÁ ESTÁ LA CORRECCIÓN: Parseamos el error lindo, especialmente el de caja
       let errorMsg = "Error al crear turno"
-      if (data.message) errorMsg = data.message
-      if (data.errors) {
+      if (data.error) {
+        errorMsg = data.error // Este es el que manda Django ("Debe abrir una caja...")
+      } else if (data.message) {
+        errorMsg = data.message
+      } else if (data.errors) {
         errorMsg = Object.entries(data.errors).map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`).join('; ')
       }
-      await Swal.fire({ icon: 'error', title: 'Error', text: errorMsg, confirmButtonText: 'Entendido' })
+      
+      await Swal.fire({ icon: 'warning', title: 'Atención', text: errorMsg, confirmButtonText: 'Entendido' })
     }
   } catch (e) {
-    await Swal.fire({ icon: 'error', title: 'Error de conexión', text: e.message, confirmButtonText: 'Entendido' })
+    await Swal.fire({ icon: 'error', title: 'Error de conexión', text: "No se pudo conectar con el servidor.", confirmButtonText: 'Entendido' })
   } finally {
     procesando.value = false
   }

@@ -1098,3 +1098,68 @@ class NotaCreditoSerializer(serializers.ModelSerializer):
             return ", ".join([f"{d.producto.nombre if d.producto else 'Turno/Servicio'} x{d.cantidad}" for d in detalles])
         except Exception:
             return "Detalles no disponibles"
+
+#Caja
+# ----------------------------------------------------------------------
+# MÓDULO DE CAJA
+# ----------------------------------------------------------------------
+
+class CajaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Caja
+        fields = '__all__'
+
+class MovimientoCajaSerializer(serializers.ModelSerializer):
+    # Estos campos "display" agarran el texto legible de los choices del modelo
+    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
+    metodo_pago_display = serializers.CharField(source='get_metodo_pago_display', read_only=True)
+    concepto_display = serializers.CharField(source='get_concepto_display', read_only=True)
+    
+    # Datos extra de trazabilidad para mostrar en la tabla de Vue sin hacer joins extra
+    turno_info = serializers.CharField(source='turno_relacionado.__str__', read_only=True)
+    venta_info = serializers.CharField(source='venta_relacionada.__str__', read_only=True)
+
+    class Meta:
+        model = MovimientoCaja
+        fields = '__all__'
+
+class SesionCajaSerializer(serializers.ModelSerializer):
+    caja_nombre = serializers.CharField(source='caja.nombre', read_only=True)
+    usuario_apertura_nombre = serializers.CharField(source='usuario_apertura.nombre', read_only=True)
+    usuario_cierre_nombre = serializers.CharField(source='usuario_cierre.nombre', read_only=True)
+    esta_abierta = serializers.ReadOnlyField()
+    
+    # Campos para auditoría de historial
+    diferencia_detalle = serializers.SerializerMethodField()
+    total_esperado_cierre = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SesionCaja
+        fields = [
+            'id', 'caja', 'caja_nombre', 'usuario_apertura', 'usuario_apertura_nombre',
+            'usuario_cierre', 'usuario_cierre_nombre', 'fecha_apertura', 'fecha_cierre',
+            'saldo_inicial_efectivo', 'saldo_final_efectivo_real', 'saldo_final_mp_real',
+            'saldo_final_transf_real', 'observaciones', 'esta_abierta',
+            'diferencia_detalle', 'total_esperado_cierre'
+        ]
+        read_only_fields = ['fecha_apertura', 'fecha_cierre', 'usuario_apertura', 'usuario_cierre']
+
+    def get_total_esperado_cierre(self, obj):
+        """Calcula la Verdad Contable: Inicial + Ingresos - Egresos"""
+        if obj.esta_abierta: return None
+        movs = obj.movimientos.all()
+        # Sumamos montos positivos y restamos negativos
+        total_movs = Decimal('0.00')
+        for m in movs:
+            if m.tipo == 'INGRESO':
+                total_movs += m.monto
+            else:
+                total_movs -= m.monto
+        return float(obj.saldo_inicial_efectivo + total_movs)
+
+    def get_diferencia_detalle(self, obj):
+        """Diferencia = Lo declarado - Lo esperado contablemente"""
+        if obj.esta_abierta: return 0
+        esperado = Decimal(str(self.get_total_esperado_cierre(obj)))
+        real = obj.saldo_final_efectivo_real + obj.saldo_final_mp_real + obj.saldo_final_transf_real
+        return float(real - esperado)

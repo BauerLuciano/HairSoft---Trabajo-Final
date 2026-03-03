@@ -770,20 +770,38 @@ export default {
             };
         },
 
+        // 🔥 ACÁ ESTÁ LA CORRECCIÓN DEL MANEJO DE ERRORES
         manejarErrorVenta(err) {
             Swal.close();
             let errorMessage = 'Error desconocido al registrar venta.';
+            
             if (err.response) {
                 if (err.response.status === 401) {
                     errorMessage = 'Permiso denegado. Debe iniciar sesión.';
                 } else if (err.response.data) {
-                    errorMessage = JSON.stringify(err.response.data);
+                    // Si el backend manda un JSON con { error: "Debe abrir una caja..." }
+                    if (err.response.data.error) {
+                        errorMessage = err.response.data.error;
+                    } 
+                    // Si manda message
+                    else if (err.response.data.message) {
+                        errorMessage = err.response.data.message;
+                    }
+                    // Fallback para otros formatos de error
+                    else {
+                         try {
+                            const data = err.response.data;
+                            errorMessage = Object.entries(data).map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`).join('; ');
+                         } catch (e) {
+                             errorMessage = JSON.stringify(err.response.data);
+                         }
+                    }
                 }
             }
             
             Swal.fire({
-                icon: 'error',
-                title: 'Error al Registrar Venta',
+                icon: 'warning',
+                title: 'Atención',
                 text: errorMessage,
                 confirmButtonColor: '#ef4444'
             });

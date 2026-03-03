@@ -78,7 +78,6 @@ const cargarBranding = async () => {
     const res = await axios.get('/api/configuracion/');
     const data = res.data;
     
-    // ✅ CORRECCIÓN: Si la URL es relativa (/media/...), le agregamos el dominio del backend
     if (data.logo && !data.logo.startsWith('http')) {
         const API_BASE = 'http://127.0.0.1:8000'; // Ajustá esto a tu puerto de Django
         data.logo = `${API_BASE}${data.logo}`;
@@ -95,6 +94,7 @@ const menuData = {
     title: 'Gestión Comercial',
     icon: 'ri-store-2-line',
     items: [
+      { name: 'Caja Diaria', path: '/caja', icon: 'ri-bank-card-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] }, // ✅ NUEVO
       { name: 'Ventas', path: '/ventas', icon: 'ri-bar-chart-2-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] },
       { name: 'Pedidos Web', path: '/pedidos-web-admin', icon: 'ri-global-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] }, 
       { name: 'Turnos', path: '/turnos', icon: 'ri-calendar-event-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA', 'PELUQUERO'] },
