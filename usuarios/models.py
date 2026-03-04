@@ -1387,6 +1387,8 @@ class SesionCaja(models.Model):
     fecha_cierre = models.DateTimeField(null=True, blank=True)
     
     saldo_inicial_efectivo = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    # 🔥 NUEVO CAMPO: Para guardar el fondo inicial de Mercado Pago
+    saldo_inicial_mp = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     
     # Saldos reales (lo que el recepcionista cuenta y declara al cerrar)
     saldo_final_efectivo_real = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)

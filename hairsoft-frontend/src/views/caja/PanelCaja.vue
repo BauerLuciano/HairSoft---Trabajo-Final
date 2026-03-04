@@ -36,10 +36,9 @@
                   <th>Apertura</th>
                   <th>Cierre</th>
                   <th>Usuario Cierre</th>
-                  <th class="text-right">Fondo Inicial</th>
+                  <th class="text-right">Fondo Inicial (Efvo / MP)</th>
                   <th class="text-right">Físico Contado</th>
                   <th class="text-right">Mercado Pago</th>
-                  <th class="text-right">Transferencias</th>
                   <th class="text-right" style="color: var(--accent-color);">Total Final</th>
                   <th class="text-center">Estado</th>
                   <th class="text-center">Acciones</th>
@@ -47,7 +46,7 @@
               </thead>
               <tbody>
                 <tr v-if="historialCajas.length === 0">
-                  <td colspan="11" class="no-results">
+                  <td colspan="10" class="no-results">
                     <i class="ri-history-line no-results-icon" style="font-size: 2rem;"></i>
                     <p>No hay cajas cerradas registradas.</p>
                   </td>
@@ -57,10 +56,11 @@
                   <td>{{ formatearFechaCorta(caja.fecha_apertura) }}</td>
                   <td>{{ caja.fecha_cierre ? formatearFechaCorta(caja.fecha_cierre) : '-' }}</td>
                   <td>{{ caja.usuario_cierre_nombre || '-' }}</td>
-                  <td class="text-right" style="color: var(--text-secondary);">{{ formatearMoneda(caja.saldo_inicial_efectivo) }}</td>
+                  <td class="text-right" style="color: var(--text-secondary);">
+                    {{ formatearMoneda(caja.saldo_inicial_efectivo) }} / {{ formatearMoneda(caja.saldo_inicial_mp) }}
+                  </td>
                   <td class="text-right"><strong>{{ formatearMoneda(caja.saldo_final_efectivo_real) }}</strong></td>
                   <td class="text-right">{{ formatearMoneda(caja.saldo_final_mp_real) }}</td>
-                  <td class="text-right">{{ formatearMoneda(caja.saldo_final_transf_real) }}</td>
                   <td class="text-right">
                     <strong :style="{ color: calcularTotalRealDeclarado(caja) < 0 ? '#ef4444' : 'var(--accent-color)' }">
                       {{ caja.esta_abierta ? '-' : formatearMoneda(calcularTotalRealDeclarado(caja)) }}
@@ -125,10 +125,27 @@
                 </div>
 
                 <div class="filter-group" style="margin-top: 15px;">
+                  <label>Tipo de Fondo Inicial</label>
+                  <select v-model="formApertura.tipoFondo" class="filter-select">
+                    <option value="EFECTIVO">Solo Efectivo</option>
+                    <option value="MERCADO_PAGO">Solo Mercado Pago</option>
+                    <option value="AMBOS">Efectivo y Mercado Pago</option>
+                  </select>
+                </div>
+
+                <div v-if="['EFECTIVO', 'AMBOS'].includes(formApertura.tipoFondo)" class="filter-group" style="margin-top: 15px;">
                   <label>Fondo de Caja (Efectivo Inicial)</label>
                   <div class="input-money-wrapper">
                     <span class="currency-symbol">$</span>
                     <input type="number" v-model="formApertura.saldo_inicial_efectivo" step="0.01" min="0" required class="filter-input input-money">
+                  </div>
+                </div>
+
+                <div v-if="['MERCADO_PAGO', 'AMBOS'].includes(formApertura.tipoFondo)" class="filter-group" style="margin-top: 15px;">
+                  <label>Fondo Inicial (Mercado Pago)</label>
+                  <div class="input-money-wrapper">
+                    <span class="currency-symbol">$</span>
+                    <input type="number" v-model="formApertura.saldo_inicial_mp" step="0.01" min="0" required class="filter-input input-money">
                   </div>
                 </div>
 
@@ -163,12 +180,13 @@
                 </div>
               </div>
 
-              <div class="balances-grid">
+              <div class="balances-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
                 <div class="balance-card">
                   <div class="b-icon"><i class="ri-wallet-3-line"></i></div>
                   <div class="b-data">
-                    <p>Fondo Inicial (Efectivo)</p>
-                    <h3>{{ formatearMoneda(balance.saldo_inicial_efectivo) }}</h3>
+                    <p>Fondo Inicial</p>
+                    <h3 style="font-size: 1.2rem;">{{ formatearMoneda(balance.saldo_inicial_efectivo) }}</h3>
+                    <h3 style="font-size: 1.2rem;">{{ formatearMoneda(balance.saldo_inicial_mp) }}</h3>
                   </div>
                 </div>
                 <div class="balance-card highlight">
@@ -183,13 +201,6 @@
                   <div class="b-data">
                     <p>Saldo (Mercado Pago)</p>
                     <h3>{{ formatearMoneda(balance.esperado_mp) }}</h3>
-                  </div>
-                </div>
-                <div class="balance-card transfer">
-                  <div class="b-icon"><i class="ri-bank-line"></i></div>
-                  <div class="b-data">
-                    <p>Saldo (Transferencia)</p>
-                    <h3>{{ formatearMoneda(balance.esperado_transf) }}</h3>
                   </div>
                 </div>
               </div>
@@ -270,12 +281,12 @@
             
             <div class="alerta-cierre">
               <i class="ri-information-line"></i>
-              <p>Por favor, ingresá la plata <strong>real</strong> que estás viendo en tu cajón y en tus cuentas para detectar si falta o sobra dinero.</p>
+              <p>Verificá los valores cargados. Si coinciden con el sistema, la caja cerrará sin diferencias.</p>
             </div>
 
             <div class="resumen-esperado" v-if="balance">
               <h4>Según el sistema, deberías tener:</h4>
-              <div class="resumen-grid">
+              <div class="resumen-grid" style="grid-template-columns: 1fr 1fr;">
                 <div class="resumen-item">
                   <span style="color: #10b981;"><i class="ri-cash-line"></i> Efectivo:</span>
                   <strong>{{ formatearMoneda(balance.esperado_efectivo) }}</strong>
@@ -284,33 +295,22 @@
                   <span style="color: #00a1f1;"><i class="ri-qr-scan-2-line"></i> Mercado Pago:</span>
                   <strong>{{ formatearMoneda(balance.esperado_mp) }}</strong>
                 </div>
-                <div class="resumen-item">
-                  <span style="color: #8b5cf6;"><i class="ri-bank-line"></i> Banco/Transf:</span>
-                  <strong>{{ formatearMoneda(balance.esperado_transf) }}</strong>
-                </div>
               </div>
             </div>
 
             <div class="filters-grid" style="grid-template-columns: 1fr;">
               <div class="filter-group">
-                <label>Billetes en el Cajón (Efectivo):</label>
+                <label>Dinero en el Cajón (Efectivo):</label>
                 <div class="input-money-wrapper">
                   <span class="currency-symbol">$</span>
                   <input type="number" v-model="formCierre.saldo_final_efectivo_real" step="0.01" min="0" required class="filter-input input-money">
                 </div>
               </div>
               <div class="filter-group">
-                <label>Plata cobrada hoy en Mercado Pago:</label>
+                <label>Dinero en Mercado Pago:</label>
                 <div class="input-money-wrapper">
                   <span class="currency-symbol">$</span>
                   <input type="number" v-model="formCierre.saldo_final_mp_real" step="0.01" min="0" required class="filter-input input-money">
-                </div>
-              </div>
-              <div class="filter-group">
-                <label>Plata cobrada hoy en Transferencias (Banco):</label>
-                <div class="input-money-wrapper">
-                  <span class="currency-symbol">$</span>
-                  <input type="number" v-model="formCierre.saldo_final_transf_real" step="0.01" min="0" required class="filter-input input-money">
                 </div>
               </div>
 
@@ -357,7 +357,9 @@
                 <select v-model="formGasto.concepto" required class="filter-select custom-select">
                   <option value="GASTO_OPERATIVO">Gasto Local (Limpieza, Yerba, etc)</option>
                   <option value="RETIRO_SOCIO">Retiro de Dueño</option>
+                  <option value="LIQUIDACION_SUELDO">Liquidación de Sueldos</option>
                   <option value="PAGO_PROVEEDOR">Pago a Proveedor</option>
+                  <option value="PAGO_EMPLEADO">Pago a Peluquero / Empleado</option>
                   <option value="OTROS">Otros / Ajuste</option>
                 </select>
               </div>
@@ -366,7 +368,6 @@
                 <select v-model="formGasto.metodo_pago" required class="filter-select custom-select">
                   <option value="EFECTIVO">Efectivo (Del Cajón)</option>
                   <option value="MERCADO_PAGO">Mercado Pago</option>
-                  <option value="TRANSFERENCIA">Transferencia Bancaria</option>
                 </select>
               </div>
               <div class="filter-group">
@@ -402,7 +403,7 @@
                   Fecha: {{ formatearFechaCorta(cajaSeleccionada?.fecha_apertura) }}
                 </p>
                 <p style="margin:0; font-size: 0.9rem; color: var(--text-secondary);">
-                  Fondo de Apertura: <strong>{{ formatearMoneda(cajaSeleccionada?.saldo_inicial_efectivo) }}</strong>
+                  Fondo Inicial (Efvo/MP): <strong>{{ formatearMoneda(cajaSeleccionada?.saldo_inicial_efectivo) }} / {{ formatearMoneda(cajaSeleccionada?.saldo_inicial_mp) }}</strong>
                 </p>
              </div>
              <div v-if="cajaSeleccionada?.diferencia_detalle !== 0" :style="{ color: cajaSeleccionada?.diferencia_detalle < 0 ? '#ef4444' : '#10b981', fontWeight: 'bold' }">
@@ -498,222 +499,242 @@ const cajaSeleccionada = ref(null);
 const movimientosHistorial = ref([]);
 const cargandoMovimientosHistorial = ref(false);
 
-const formApertura = ref({ caja: '', saldo_inicial_efectivo: 0 });
-const formCierre = ref({ saldo_final_efectivo_real: 0, saldo_final_mp_real: 0, saldo_final_transf_real: 0, observaciones: '' });
+const formApertura = ref({ 
+  caja: '', 
+  tipoFondo: 'EFECTIVO', 
+  saldo_inicial_efectivo: 0,
+  saldo_inicial_mp: 0 
+});
+const formCierre = ref({ saldo_final_efectivo_real: 0, saldo_final_mp_real: 0, observaciones: '' });
 const formGasto = ref({ tipo: 'EGRESO', concepto: 'GASTO_OPERATIVO', metodo_pago: 'EFECTIVO', monto: '', descripcion: '' });
 
 let pollingInterval = null;
 const itemsPerPage = 9;
 
-// 🔥 CÁLCULO DE DIFERENCIAS EN TIEMPO REAL: CONTADO - ESPERADO
 const diferenciaCierre = computed(() => {
-  if (!balance.value) return 0;
-  const esperado = parseFloat(balance.value.esperado_efectivo) + 
-                   parseFloat(balance.value.esperado_mp) + 
-                   parseFloat(balance.value.esperado_transf);
-  const real = parseFloat(formCierre.value.saldo_final_efectivo_real || 0) + 
-               parseFloat(formCierre.value.saldo_final_mp_real || 0) + 
-               parseFloat(formCierre.value.saldo_final_transf_real || 0);
-  
-  return real - esperado; 
+  if (!balance.value) return 0;
+  const esperado = parseFloat(balance.value.esperado_efectivo) + parseFloat(balance.value.esperado_mp);
+  const real = parseFloat(formCierre.value.saldo_final_efectivo_real || 0) + parseFloat(formCierre.value.saldo_final_mp_real || 0);
+  
+  return real - esperado; 
 });
 
 const hayDiferencia = computed(() => {
-  return Math.abs(diferenciaCierre.value) > 0.01;
+  return Math.abs(diferenciaCierre.value) > 0.01;
 });
 
 const tipoDiferencia = computed(() => {
-  if (!balance.value) return '';
-  const esperado = parseFloat(balance.value.esperado_efectivo) + 
-                   parseFloat(balance.value.esperado_mp) + 
-                   parseFloat(balance.value.esperado_transf);
+  if (!balance.value) return '';
+  const esperado = parseFloat(balance.value.esperado_efectivo) + parseFloat(balance.value.esperado_mp);
 
-  // Si declaraste menos de lo esperado, siempre es faltante
   if (diferenciaCierre.value < 0) {
       if (esperado < 0 && parseFloat(formCierre.value.saldo_final_efectivo_real || 0) === 0) {
           return 'FALTANTE: Fondos Insuficientes para cubrir deuda';
       }
       return 'FALTANTE';
   }
-  return 'SOBRANTE';
+  return 'SOBRANTE';
 });
 
-// 🔥 TOTAL REAL DECLARADO (Lo que el cajero dice que hay físicamente)
 const calcularTotalRealDeclarado = (caja) => {
-  return parseFloat(caja.saldo_final_efectivo_real || 0) + 
-         parseFloat(caja.saldo_final_mp_real || 0) + 
-         parseFloat(caja.saldo_final_transf_real || 0);
+  return parseFloat(caja.saldo_final_efectivo_real || 0) + parseFloat(caja.saldo_final_mp_real || 0);
 };
 
-// 🔥 SALDO NETO DE LA SESIÓN (VEC + DIFERENCIA)
 const calcularTotalCaja = (caja) => {
-  if (caja.esta_abierta) return 0;
-  const contable = parseFloat(caja.total_esperado_cierre || 0);
-  const diferencia = parseFloat(caja.diferencia_detalle || 0);
-  // La verdad contable de la sesión: lo que debió haber + lo que faltó/sobró.
-  return contable + diferencia;
+  if (caja.esta_abierta) return 0;
+  return parseFloat(caja.saldo_final_efectivo_real || 0) + parseFloat(caja.saldo_final_mp_real || 0);
 };
 
-// 🔥 FIX FORMATO: Maneja el signo menos correctamente
 const formatearMoneda = (valor) => {
-  const n = parseFloat(valor || 0);
-  const signo = n < 0 ? '-' : '';
-  const formateado = Math.abs(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `${signo}$ ${formateado}`;
+  const n = parseFloat(valor || 0);
+  const signo = n < 0 ? '-' : '';
+  const formateado = Math.abs(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `$ ${signo}${formateado}`;
 };
 
 const currentPageCajas = ref(1);
 const paginatedCajas = computed(() => {
-  const start = (currentPageCajas.value - 1) * itemsPerPage;
-  return historialCajas.value.slice(start, start + itemsPerPage);
+  const start = (currentPageCajas.value - 1) * itemsPerPage;
+  return historialCajas.value.slice(start, start + itemsPerPage);
 });
 const totalPagesCajas = computed(() => Math.ceil(historialCajas.value.length / itemsPerPage));
 
 const currentPageMovs = ref(1);
 const paginatedMovs = computed(() => {
-  const start = (currentPageMovs.value - 1) * itemsPerPage;
-  return movimientos.value.slice(start, start + itemsPerPage);
+  const start = (currentPageMovs.value - 1) * itemsPerPage;
+  return movimientos.value.slice(start, start + itemsPerPage);
 });
 const totalPagesMovs = computed(() => Math.ceil(movimientos.value.length / itemsPerPage));
 
 const currentPageModalMovs = ref(1);
 const paginatedModalMovs = computed(() => {
-  const start = (currentPageModalMovs.value - 1) * itemsPerPage;
-  return movimientosHistorial.value.slice(start, start + itemsPerPage);
+  const start = (currentPageModalMovs.value - 1) * itemsPerPage;
+  return movimientosHistorial.value.slice(start, start + itemsPerPage);
 });
 const totalPagesModalMovs = computed(() => Math.ceil(movimientosHistorial.value.length / itemsPerPage));
 
 const inicializar = async () => {
-  loading.value = true;
-  try {
-    try {
-      const resSesion = await cajaService.getSesionActual();
-      sesionActual.value = resSesion.data;
-      await cargarDatosCajaAbierta(sesionActual.value.id);
-      iniciarRadar();
-    } catch (e) {
-      if (e.response && e.response.status === 404) {
-        sesionActual.value = null;
-        await cargarDatosApertura();
-      }
-    }
-    await cargarHistorial();
-  } catch (error) {
-    console.error(error);
-  } finally {
-    loading.value = false;
-  }
+  loading.value = true;
+  try {
+    try {
+      const resSesion = await cajaService.getSesionActual();
+      sesionActual.value = resSesion.data;
+      await cargarDatosCajaAbierta(sesionActual.value.id);
+      iniciarRadar();
+    } catch (e) {
+      if (e.response && e.response.status === 404) {
+        sesionActual.value = null;
+        await cargarDatosApertura();
+      }
+    }
+    await cargarHistorial();
+  } catch (error) {
+    console.error(error);
+  } finally {
+    loading.value = false;
+  }
 };
 
 const cargarDatosApertura = async () => {
-  const [resCajas, resPendientes] = await Promise.all([
-    cajaService.getCajas(),
-    cajaService.getPendientes()
-  ]);
-  cajasDisponibles.value = resCajas.data.filter(c => c.activa);
-  if (cajasDisponibles.value.length > 0) {
-    formApertura.value.caja = cajasDisponibles.value[0].id;
-  }
-  pendientesInfo.value = resPendientes.data;
+  const [resCajas, resPendientes] = await Promise.all([
+    cajaService.getCajas(),
+    cajaService.getPendientes()
+  ]);
+  cajasDisponibles.value = resCajas.data.filter(c => c.activa);
+  if (cajasDisponibles.value.length > 0) {
+    formApertura.value.caja = cajasDisponibles.value[0].id;
+  }
+  pendientesInfo.value = resPendientes.data;
 };
 
 const cargarDatosCajaAbierta = async (sesionId) => {
-  const [resBalance, resMovs] = await Promise.all([
-    cajaService.getBalance(sesionId),
-    cajaService.getMovimientos(sesionId)
-  ]);
-  balance.value = resBalance.data;
-  movimientos.value = resMovs.data;
-  currentPageMovs.value = 1; 
-  
-  formCierre.value.saldo_final_efectivo_real = Math.max(0, parseFloat(balance.value.esperado_efectivo));
-  formCierre.value.saldo_final_mp_real = Math.max(0, parseFloat(balance.value.esperado_mp));
-  formCierre.value.saldo_final_transf_real = Math.max(0, parseFloat(balance.value.esperado_transf));
-  formCierre.value.observaciones = ''; 
+  const [resBalance, resMovs] = await Promise.all([
+    cajaService.getBalance(sesionId),
+    cajaService.getMovimientos(sesionId)
+  ]);
+  balance.value = resBalance.data;
+  movimientos.value = resMovs.data;
+  currentPageMovs.value = 1; 
+  
+  formCierre.value.saldo_final_efectivo_real = Math.max(0, parseFloat(balance.value.esperado_efectivo));
+  formCierre.value.saldo_final_mp_real = Math.max(0, parseFloat(balance.value.esperado_mp)); 
+  formCierre.value.observaciones = ''; 
 };
 
 const checkNuevosMovimientos = async () => {
-  if (!sesionActual.value || mostrarHistorial.value) return;
-  try {
-    const resMovs = await cajaService.getMovimientos(sesionActual.value.id);
-    if (resMovs.data.length > movimientos.value.length) {
-      movimientos.value = resMovs.data;
-      const resBalance = await cajaService.getBalance(sesionActual.value.id);
-      balance.value = resBalance.data;
-      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `¡Nuevos pagos ingresados!`, showConfirmButton: false, timer: 3000 });
-    }
-  } catch (error) { console.error(error); }
+  if (!sesionActual.value || mostrarHistorial.value) return;
+  try {
+    const resMovs = await cajaService.getMovimientos(sesionActual.value.id);
+    if (resMovs.data.length > movimientos.value.length) {
+      movimientos.value = resMovs.data;
+      const resBalance = await cajaService.getBalance(sesionActual.value.id);
+      balance.value = resBalance.data;
+      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `¡Nuevos pagos ingresados!`, showConfirmButton: false, timer: 3000 });
+    }
+  } catch (error) { console.error(error); }
 };
 
 const iniciarRadar = () => {
-  if (pollingInterval) clearInterval(pollingInterval);
-  pollingInterval = setInterval(checkNuevosMovimientos, 15000);
+  if (pollingInterval) clearInterval(pollingInterval);
+  pollingInterval = setInterval(checkNuevosMovimientos, 15000);
 };
 
 const detenerRadar = () => { if (pollingInterval) clearInterval(pollingInterval); };
 
 const cargarHistorial = async () => {
-  try {
-    const token = localStorage.getItem('token');
-    const res = await fetch('http://localhost:8000/api/sesiones-caja/', {
-      headers: { 'Authorization': `Token ${token}` }
-    });
-    const data = await res.json();
-    historialCajas.value = data;
-  } catch (e) { console.error(e); }
+  try {
+    const token = localStorage.getItem('token');
+    const res = await fetch('http://localhost:8000/api/sesiones-caja/', {
+      headers: { 'Authorization': `Token ${token}` }
+    });
+    const data = await res.json();
+    historialCajas.value = data;
+  } catch (e) { console.error(e); }
 }
 
 const abrirCaja = async () => {
-  try {
-    await cajaService.abrirCaja(formApertura.value);
-    inicializar(); 
-  } catch (error) { Swal.fire('Error', 'No se pudo abrir', 'error'); }
+  try {
+    const payload = {
+      caja: formApertura.value.caja,
+      saldo_inicial_efectivo: ['EFECTIVO', 'AMBOS'].includes(formApertura.value.tipoFondo) ? formApertura.value.saldo_inicial_efectivo : 0,
+      saldo_inicial_mp: ['MERCADO_PAGO', 'AMBOS'].includes(formApertura.value.tipoFondo) ? formApertura.value.saldo_inicial_mp : 0,
+    };
+
+    await cajaService.abrirCaja(payload);
+    inicializar(); 
+  } catch (error) { Swal.fire('Error', 'No se pudo abrir', 'error'); }
 };
 
 const cerrarCaja = async () => {
-  if (hayDiferencia.value && !formCierre.value.observaciones.trim()) {
-      Swal.fire({ icon: 'warning', title: 'Justificación Requerida', text: `Debe justificar la diferencia de ${formatearMoneda(Math.abs(diferenciaCierre.value))} (${tipoDiferencia.value})` });
-      return;
-  }
-  Swal.fire({
-      title: '¿Cerrar caja?',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Sí, cerrar'
-  }).then(async (result) => {
-      if (result.isConfirmed) {
-          try {
-            await cajaService.cerrarCaja(sesionActual.value.id, formCierre.value);
-            detenerRadar();
-            mostrarModalCierre.value = false;
-            inicializar();
-          } catch (error) { Swal.fire('Error', 'Error al cerrar', 'error'); }
-      }
-  });
+  if (hayDiferencia.value && !formCierre.value.observaciones.trim()) {
+      Swal.fire({ icon: 'warning', title: 'Justificación Requerida', text: `Debe justificar la diferencia de ${formatearMoneda(Math.abs(diferenciaCierre.value))} (${tipoDiferencia.value})` });
+      return;
+  }
+  Swal.fire({
+      title: '¿Cerrar caja?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, cerrar'
+  }).then(async (result) => {
+      if (result.isConfirmed) {
+          try {
+            await cajaService.cerrarCaja(sesionActual.value.id, formCierre.value);
+            detenerRadar();
+            mostrarModalCierre.value = false;
+            inicializar();
+          } catch (error) { Swal.fire('Error', 'Error al cerrar', 'error'); }
+      }
+  });
 };
 
 const registrarGastoManual = async () => {
-  try {
-    await cajaService.crearMovimientoManual(formGasto.value);
-    mostrarModalGasto.value = false;
-    formGasto.value = { tipo: 'EGRESO', concepto: 'GASTO_OPERATIVO', metodo_pago: 'EFECTIVO', monto: '', descripcion: '' };
-    cargarDatosCajaAbierta(sesionActual.value.id);
-  } catch (error) { Swal.fire('Error', 'Error al registrar', 'error'); }
+  // 🔥 VALIDACIÓN DE FONDOS INSUFICIENTES
+  if (formGasto.value.tipo === 'EGRESO') {
+      const montoEgreso = parseFloat(formGasto.value.monto);
+      let saldoDisponible = 0;
+      let metodoNombre = '';
+
+      if (formGasto.value.metodo_pago === 'EFECTIVO') {
+          saldoDisponible = parseFloat(balance.value.esperado_efectivo);
+          metodoNombre = 'Efectivo';
+      } else if (formGasto.value.metodo_pago === 'MERCADO_PAGO') {
+          saldoDisponible = parseFloat(balance.value.esperado_mp);
+          metodoNombre = 'Mercado Pago';
+      }
+
+      if (montoEgreso > saldoDisponible) {
+          Swal.fire({
+              icon: 'error',
+              title: 'Fondos Insuficientes',
+              html: `Estás intentando registrar un egreso de <b>${formatearMoneda(montoEgreso)}</b>, pero el saldo actual en <b>${metodoNombre}</b> es de solo <b>${formatearMoneda(saldoDisponible)}</b>.<br><br>Si el dueño aportó dinero extra, registrá primero un <i>Ingreso Manual</i> por la diferencia.`,
+              confirmButtonColor: '#ef4444',
+              confirmButtonText: 'Entendido'
+          });
+          return; // Detiene la ejecución, no envía el gasto
+      }
+  }
+
+  try {
+    await cajaService.crearMovimientoManual(formGasto.value);
+    mostrarModalGasto.value = false;
+    formGasto.value = { tipo: 'EGRESO', concepto: 'GASTO_OPERATIVO', metodo_pago: 'EFECTIVO', monto: '', descripcion: '' };
+    cargarDatosCajaAbierta(sesionActual.value.id);
+  } catch (error) { Swal.fire('Error', 'Error al registrar', 'error'); }
 };
 
 const verDetalleCajaCerrada = async (caja) => {
-  cajaSeleccionada.value = caja;
-  mostrarModalDetalleHistorial.value = true;
-  cargandoMovimientosHistorial.value = true;
-  try {
-    const res = await cajaService.getMovimientos(caja.id);
-    movimientosHistorial.value = res.data;
-  } catch (error) { console.error(error); } finally { cargandoMovimientosHistorial.value = false; }
+  cajaSeleccionada.value = caja;
+  mostrarModalDetalleHistorial.value = true;
+  cargandoMovimientosHistorial.value = true;
+  try {
+    const res = await cajaService.getMovimientos(caja.id);
+    movimientosHistorial.value = res.data;
+  } catch (error) { console.error(error); } finally { cargandoMovimientosHistorial.value = false; }
 };
 
 const calcularTotalActual = (bal) => {
-  if (!bal) return 0;
-  return parseFloat(bal.esperado_efectivo) + parseFloat(bal.esperado_mp) + parseFloat(bal.esperado_transf);
+  if (!bal) return 0;
+  return parseFloat(bal.esperado_efectivo) + parseFloat(bal.esperado_mp);
 };
 
 const formatearFecha = (f) => f ? new Date(f).toLocaleString('es-AR') : '';
@@ -727,7 +748,7 @@ onUnmounted(() => detenerRadar());
 <style scoped>
 /* HEREDANDO LOS ESTILOS DEL SISTEMA */
 .list-container { padding: 32px; max-width: 1600px; margin: 0 auto; min-height: 100vh; font-family: 'Inter', sans-serif; }
-.list-card { background: var(--bg-secondary); color: var(--text-primary); border-radius: 24px; padding: 40px; width: 100%; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; transition: all 0.4s ease; border: 1px solid var(--border-color); }
+.list-card { background: var(--bg-secondary); color: var(--text-primary); border-radius: 24px; padding: 40px; width: 90%; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; transition: all 0.4s ease; border: 1px solid var(--border-color); }
 .list-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9); border-radius: 24px 24px 0 0; }
 
 .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; flex-wrap: wrap; gap: 20px; border-bottom: 2px solid var(--border-color); padding-bottom: 25px; }

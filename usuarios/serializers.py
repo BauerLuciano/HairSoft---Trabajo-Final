@@ -1138,24 +1138,23 @@ class SesionCajaSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'caja', 'caja_nombre', 'usuario_apertura', 'usuario_apertura_nombre',
             'usuario_cierre', 'usuario_cierre_nombre', 'fecha_apertura', 'fecha_cierre',
-            'saldo_inicial_efectivo', 'saldo_final_efectivo_real', 'saldo_final_mp_real',
+            'saldo_inicial_efectivo', 'saldo_inicial_mp', 'saldo_final_efectivo_real', 'saldo_final_mp_real',
             'saldo_final_transf_real', 'observaciones', 'esta_abierta',
             'diferencia_detalle', 'total_esperado_cierre'
         ]
         read_only_fields = ['fecha_apertura', 'fecha_cierre', 'usuario_apertura', 'usuario_cierre']
 
     def get_total_esperado_cierre(self, obj):
-        """Calcula la Verdad Contable: Inicial + Ingresos - Egresos"""
+        """Calcula la Verdad Contable: Inicial (Efvo + MP) + Ingresos - Egresos"""
         if obj.esta_abierta: return None
         movs = obj.movimientos.all()
-        # Sumamos montos positivos y restamos negativos
         total_movs = Decimal('0.00')
         for m in movs:
             if m.tipo == 'INGRESO':
                 total_movs += m.monto
             else:
                 total_movs -= m.monto
-        return float(obj.saldo_inicial_efectivo + total_movs)
+        return float(obj.saldo_inicial_efectivo + obj.saldo_inicial_mp + total_movs)
 
     def get_diferencia_detalle(self, obj):
         """Diferencia = Lo declarado - Lo esperado contablemente"""

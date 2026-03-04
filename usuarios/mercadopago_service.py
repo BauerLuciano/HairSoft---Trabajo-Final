@@ -13,8 +13,8 @@ class MercadoPagoService:
         """
         CREA PAGO PARA SEÑA DE TURNOS - 100% MODO SANDBOX
         """
-        tunnel_url = getattr(settings, 'TUNNEL_URL', '').rstrip('/')
-        base_url = tunnel_url if tunnel_url else "http://127.0.0.1:8000"
+        # 🔥 CORTA: Clavamos tu URL fija de Ngrok acá y nos olvidamos del localtunnel
+        base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
 
         back_urls_dict = {
             "success": f"{base_url}/api/mercadopago/pago-exitoso/", 
@@ -48,10 +48,9 @@ class MercadoPagoService:
             "external_reference": f"TURNO_{turno_id}",
             "binary_mode": True,
             "statement_descriptor": self.statement_descriptor,
+            # 🔥 Le pasamos el webhook directo con tu ngrok
+            "notification_url": f"{base_url}/api/mercadopago/webhook/"
         }
-
-        if tunnel_url and "localhost" not in tunnel_url:
-            preference_data["notification_url"] = f"{tunnel_url}/mercadopago/webhook/"
 
         try:
             result = self.sdk.preference().create(preference_data)
@@ -70,8 +69,8 @@ class MercadoPagoService:
         """
         CREA PAGO PARA CARRITO - 100% MODO SANDBOX
         """
-        tunnel_url = getattr(settings, 'TUNNEL_URL', '').rstrip('/')
-        base_url = tunnel_url if tunnel_url else "http://127.0.0.1:8000"
+        # 🔥 CORTA: Clavamos tu URL fija de Ngrok acá también
+        base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
 
         back_urls_dict = {
             "success": f"{base_url}/api/mercadopago/pago-exitoso/", 
@@ -109,11 +108,10 @@ class MercadoPagoService:
             "auto_return": "approved",
             "external_reference": f"PEDIDO_{pedido.id}",
             "binary_mode": True,
-            "statement_descriptor": self.statement_descriptor, # Añadido por consistencia
+            "statement_descriptor": self.statement_descriptor,
+            # 🔥 Le pasamos el webhook directo con tu ngrok
+            "notification_url": f"{base_url}/api/mercadopago/webhook/"
         }
-
-        if tunnel_url and "localhost" not in tunnel_url:
-            preference_data["notification_url"] = f"{tunnel_url}/mercadopago/webhook/"
 
         try:
             res_sdk = self.sdk.preference().create(preference_data)

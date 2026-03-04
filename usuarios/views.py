@@ -6085,7 +6085,6 @@ class CajaViewSet(viewsets.ModelViewSet):
     serializer_class = CajaSerializer
     permission_classes = [IsAuthenticated]
 
-
 class SesionCajaViewSet(viewsets.ModelViewSet):
     queryset = SesionCaja.objects.all().order_by('-id')
     serializer_class = SesionCajaSerializer
@@ -6096,17 +6095,27 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         sesion = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
         if sesion:
             return Response(self.get_serializer(sesion).data)
-        return Response({'mensaje': 'No hay ninguna caja abierta.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'mensaje': 'No hay ninguna caja abierta en este momento.'}, status=status.HTTP_404_NOT_FOUND)
 
     @action(detail=False, methods=['POST'])
     @transaction.atomic
     def abrir(self, request):
         if SesionCaja.objects.filter(fecha_cierre__isnull=True).exists():
-            return Response({'error': 'Ya existe una caja abierta.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Ya existe una caja abierta. Cierrela antes de abrir otra.'}, status=status.HTTP_400_BAD_REQUEST)
+        
         caja_id = request.data.get('caja')
-        saldo_inicial = Decimal(str(request.data.get('saldo_inicial_efectivo', 0.00)))
+        saldo_inicial_efvo = Decimal(str(request.data.get('saldo_inicial_efectivo', 0.00)))
+        # 🔥 RECIBIMOS EL SALDO DE MP
+        saldo_inicial_mp = Decimal(str(request.data.get('saldo_inicial_mp', 0.00)))
+        
         caja = get_object_or_404(Caja, id=caja_id, activa=True)
-        sesion = SesionCaja.objects.create(caja=caja, usuario_apertura=request.user, saldo_inicial_efectivo=saldo_inicial)
+        sesion = SesionCaja.objects.create(
+            caja=caja, 
+            usuario_apertura=request.user, 
+            saldo_inicial_efectivo=saldo_inicial_efvo,
+            saldo_inicial_mp=saldo_inicial_mp
+        )
+        
         MovimientoCaja.objects.filter(sesion_caja__isnull=True).update(sesion_caja=sesion)
         return Response({'mensaje': 'Caja abierta correctamente.', 'sesion': self.get_serializer(sesion).data}, status=status.HTTP_201_CREATED)
 
@@ -6121,7 +6130,8 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         movs = sesion.movimientos.all()
         ingresos = movs.filter(tipo='INGRESO').aggregate(t=Sum('monto'))['t'] or Decimal('0')
         egresos = movs.filter(tipo='EGRESO').aggregate(t=Sum('monto'))['t'] or Decimal('0')
-        total_esperado = sesion.saldo_inicial_efectivo + ingresos - egresos
+        # 🔥 El total esperado es la suma de los fondos iniciales + movs
+        total_esperado = sesion.saldo_inicial_efectivo + sesion.saldo_inicial_mp + ingresos - egresos
 
         # 2. Capturar Real declarado por el cajero
         real_ef = Decimal(str(request.data.get('saldo_final_efectivo_real', 0)))
@@ -6131,9 +6141,10 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         
         observaciones = request.data.get('observaciones', '').strip()
 
-        # 3. Validar Descuadre (Si Real != Esperado, requiere justificación)
-        if abs(total_real - total_esperado) > Decimal('0.01') and not observaciones:
-            return Response({'error': f'Hay una diferencia de ${abs(total_real - total_esperado)}. Ingrese el motivo obligatoriamente.'}, status=status.HTTP_400_BAD_REQUEST)
+        # 3. Validar Descuadre
+        diferencia = total_real - total_esperado
+        if abs(diferencia) > Decimal('0.01') and not observaciones:
+            return Response({'error': f'Hay una diferencia de ${abs(diferencia)}. Ingrese el motivo obligatoriamente.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # 4. Guardar
         sesion.saldo_final_efectivo_real = real_ef
@@ -6150,12 +6161,18 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         sesion = self.get_object()
         movs = sesion.movimientos.all()
         def sum_m(metodo, tipo): return movs.filter(metodo_pago=metodo, tipo=tipo).aggregate(t=Sum('monto'))['t'] or Decimal('0')
+        
         esp_ef = sesion.saldo_inicial_efectivo + sum_m('EFECTIVO', 'INGRESO') - sum_m('EFECTIVO', 'EGRESO')
-        esp_mp = sum_m('MERCADO_PAGO', 'INGRESO') - sum_m('MERCADO_PAGO', 'EGRESO')
+        # 🔥 Ahora Mercado Pago suma el saldo inicial al balance
+        esp_mp = sesion.saldo_inicial_mp + sum_m('MERCADO_PAGO', 'INGRESO') - sum_m('MERCADO_PAGO', 'EGRESO')
         esp_tr = sum_m('TRANSFERENCIA', 'INGRESO') - sum_m('TRANSFERENCIA', 'EGRESO')
+        
         return Response({
             'saldo_inicial_efectivo': sesion.saldo_inicial_efectivo,
-            'esperado_efectivo': esp_ef, 'esperado_mp': esp_mp, 'esperado_transf': esp_tr
+            'saldo_inicial_mp': sesion.saldo_inicial_mp,
+            'esperado_efectivo': esp_ef, 
+            'esperado_mp': esp_mp, 
+            'esperado_transf': esp_tr
         })
 
 class MovimientoCajaViewSet(viewsets.ModelViewSet):
