@@ -130,27 +130,56 @@ const guardarCaja = async () => {
   guardando.value = true;
   try {
     const token = localStorage.getItem('token');
-    const headers = { 'Authorization': `Token ${token}` };
+    const headers = { 
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json' 
+    };
+    
+    let response;
     
     if (modoEdicion.value) {
-      await fetch(`http://localhost:8000/api/cajas/${formCaja.value.id}/`, {
+      response = await fetch(`http://localhost:8000/api/cajas/${formCaja.value.id}/`, {
         method: 'PUT',
-        headers: { ...headers, 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify(formCaja.value)
       });
     } else {
-      await fetch(`http://localhost:8000/api/cajas/`, {
+      response = await fetch(`http://localhost:8000/api/cajas/`, {
         method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify(formCaja.value)
       });
     }
     
+    // 🔥 ACÁ ESTÁ LA MAGIA: Verificamos si Django nos tiró un error (ej. 400)
+    if (!response.ok) {
+        const errorData = await response.json();
+        
+        // Buscamos si el error viene en el campo "nombre"
+        let mensajeError = 'Verifique los datos ingresados.';
+        if (errorData.nombre) {
+            mensajeError = errorData.nombre[0]; // Ej: "caja con este nombre ya existe."
+        }
+        
+        // Tiramos el cartel de error y CORTAMOS la función con el return
+        Swal.fire({ 
+            icon: 'warning', 
+            title: 'Error de validación', 
+            text: mensajeError, 
+            background: '#0f172a', 
+            color: '#f8fafc' 
+        });
+        return; 
+    }
+    
+    // Si llega hasta acá, es porque salió todo bien (response.ok es true)
     Swal.fire({ icon: 'success', title: 'Guardado', timer: 1500, showConfirmButton: false, background: '#0f172a', color: '#f8fafc' });
     cerrarModal();
     cargarCajas();
+    
   } catch (error) {
-    Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo guardar la caja', background: '#0f172a', color: '#f8fafc' });
+    // Esto solo salta si se cae el servidor o no hay internet
+    Swal.fire({ icon: 'error', title: 'Error de conexión', text: 'No se pudo contactar al servidor', background: '#0f172a', color: '#f8fafc' });
   } finally {
     guardando.value = false;
   }

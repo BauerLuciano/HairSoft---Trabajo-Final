@@ -1080,6 +1080,25 @@ class SillaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Silla
         fields = '__all__' # Devuelve id, nombre, activa, orden
+        extra_kwargs = {
+            'nombre': {
+                'validators': [] # 🔥 APAGA EL VALIDADOR POR DEFECTO DE DJANGO
+            }
+        }
+
+    def validate_nombre(self, value):
+        """
+        Validación que ignora mayúsculas y minúsculas.
+        """
+        sillas_repetidas = Silla.objects.filter(nombre__iexact=value)
+        
+        if self.instance:
+            sillas_repetidas = sillas_repetidas.exclude(id=self.instance.id)
+            
+        if sillas_repetidas.exists():
+            raise serializers.ValidationError("Ya existe una silla registrada con este nombre.")
+            
+        return value
 
 class NotaCreditoSerializer(serializers.ModelSerializer):
     usuario_nombre = serializers.CharField(source='usuario.nombre', read_only=True)
@@ -1099,15 +1118,37 @@ class NotaCreditoSerializer(serializers.ModelSerializer):
         except Exception:
             return "Detalles no disponibles"
 
-#Caja
 # ----------------------------------------------------------------------
 # MÓDULO DE CAJA
 # ----------------------------------------------------------------------
-
 class CajaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Caja
         fields = '__all__'
+        extra_kwargs = {
+            'nombre': {
+                # 🔥 ESTO APAGA EL VALIDADOR EN INGLÉS DE DJANGO
+                'validators': [] 
+            }
+        }
+
+    def validate_nombre(self, value):
+        """
+        Al apagar el validador por defecto, esta función ahora ataja TODO:
+        nombres exactos, en minúsculas, en mayúsculas... todo.
+        """
+        # Buscamos si ya existe el nombre (sin importar mayúsculas/minúsculas)
+        cajas_repetidas = Caja.objects.filter(nombre__iexact=value)
+        
+        # Si estamos editando, nos excluimos a nosotros mismos
+        if self.instance:
+            cajas_repetidas = cajas_repetidas.exclude(id=self.instance.id)
+            
+        if cajas_repetidas.exists():
+            # ÚNICO mensaje de error que va a salir al frontend
+            raise serializers.ValidationError("Ya existe una caja registrada con este nombre.")
+            
+        return value
 
 class MovimientoCajaSerializer(serializers.ModelSerializer):
     # Estos campos "display" agarran el texto legible de los choices del modelo

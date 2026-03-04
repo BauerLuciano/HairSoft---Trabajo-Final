@@ -25,9 +25,40 @@
 
       <div v-else>
         
+        <!-- HISTORIAL CON FILTROS -->
         <div v-if="mostrarHistorial">
           <h2 style="margin-bottom: 20px; color: var(--text-primary);">Historial de Sesiones Anteriores</h2>
-          
+
+          <!-- Filtros -->
+          <div class="filters-grid" style="grid-template-columns: 1fr 1fr 1fr auto; margin-bottom: 25px; align-items: end;">
+            <div class="filter-group">
+              <label>Usuario que cerró</label>
+              <select v-model="filterUser" class="filter-select">
+                <option value="">Todos los usuarios</option>
+                <option v-for="user in uniqueUsers" :key="user" :value="user">
+                  {{ user }}
+                </option>
+              </select>
+            </div>
+
+            <div class="filter-group">
+              <label>Fecha desde</label>
+              <input type="date" v-model="filterDateFrom" class="filter-input">
+            </div>
+
+            <div class="filter-group">
+              <label>Fecha hasta</label>
+              <input type="date" v-model="filterDateTo" class="filter-input">
+            </div>
+
+            <div>
+              <button class="clear-filters-btn" @click="limpiarFiltros" style="height: 46px;">
+                <i class="ri-eraser-line"></i> Limpiar
+              </button>
+            </div>
+          </div>
+
+          <!-- Tabla de historial -->
           <div class="table-container">
             <table class="users-table">
               <thead>
@@ -45,10 +76,10 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-if="historialCajas.length === 0">
+                <tr v-if="filteredCajas.length === 0">
                   <td colspan="10" class="no-results">
                     <i class="ri-history-line no-results-icon" style="font-size: 2rem;"></i>
-                    <p>No hay cajas cerradas registradas.</p>
+                    <p>No hay cajas que coincidan con los filtros.</p>
                   </td>
                 </tr>
                 <tr v-for="caja in paginatedCajas" :key="caja.id">
@@ -91,6 +122,7 @@
           </div>
         </div>
 
+        <!-- CAJA ACTUAL (sin cambios) -->
         <div v-else>
           
           <div v-if="!sesionActual" class="caja-cerrada-wrapper">
@@ -217,7 +249,7 @@
               <div class="list-header" style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: none;">
                 <h3 style="margin: 0; color: var(--text-primary); font-size: 1.3rem;">Historial de Movimientos</h3>
                 <button @click="mostrarModalGasto = true" class="register-button">
-                  <i class="ri-add-line"></i> Gasto Manual
+                  <i class="ri-add-line"></i> Movimiento Manual
                 </button>
               </div>
 
@@ -275,6 +307,7 @@
       </div>
     </div>
 
+    <!-- Modal Cierre -->
     <div v-if="mostrarModalCierre" class="modal-overlay" @click.self="mostrarModalCierre = false">
       <div class="modal-content modal-cierre">
         <div class="historial-header">
@@ -341,6 +374,7 @@
       </div>
     </div>
 
+    <!-- Modal Gasto -->
     <div v-if="mostrarModalGasto" class="modal-overlay" @click.self="mostrarModalGasto = false">
       <div class="modal-content modal-cierre">
         <div class="historial-header">
@@ -399,6 +433,7 @@
       </div>
     </div>
 
+    <!-- Modal Detalle Historial -->
     <div v-if="mostrarModalDetalleHistorial" class="modal-overlay" @click.self="mostrarModalDetalleHistorial = false">
       <div class="modal-content modal-historial-amplio">
         <div class="historial-header">
@@ -487,7 +522,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import cajaService from '@/services/cajaService';
 import Swal from 'sweetalert2';
 
@@ -517,6 +552,67 @@ const formGasto = ref({ tipo: 'EGRESO', concepto: 'GASTO_OPERATIVO', metodo_pago
 
 let pollingInterval = null;
 const itemsPerPage = 9;
+
+// ----- FILTROS -----
+const filterUser = ref('');
+const filterDateFrom = ref('');
+const filterDateTo = ref('');
+
+const uniqueUsers = computed(() => {
+  const users = historialCajas.value
+    .map(c => c.usuario_cierre_nombre)
+    .filter(u => u && u.trim() !== '');
+  return [...new Set(users)];
+});
+
+const filteredCajas = computed(() => {
+  return historialCajas.value.filter(caja => {
+    // Filtro por usuario
+    if (filterUser.value && caja.usuario_cierre_nombre !== filterUser.value) return false;
+
+    // Filtro fecha desde (usamos fecha_apertura)
+    if (filterDateFrom.value) {
+      const fechaCaja = new Date(caja.fecha_apertura);
+      fechaCaja.setHours(0, 0, 0, 0);
+      const desde = new Date(filterDateFrom.value);
+      desde.setHours(0, 0, 0, 0);
+      if (fechaCaja < desde) return false;
+    }
+
+    // Filtro fecha hasta
+    if (filterDateTo.value) {
+      const fechaCaja = new Date(caja.fecha_apertura);
+      fechaCaja.setHours(0, 0, 0, 0);
+      const hasta = new Date(filterDateTo.value);
+      hasta.setHours(0, 0, 0, 0);
+      if (fechaCaja > hasta) return false;
+    }
+
+    return true;
+  });
+});
+
+// Paginación del historial
+const currentPageCajas = ref(1);
+const paginatedCajas = computed(() => {
+  const start = (currentPageCajas.value - 1) * itemsPerPage;
+  return filteredCajas.value.slice(start, start + itemsPerPage);
+});
+const totalPagesCajas = computed(() => Math.ceil(filteredCajas.value.length / itemsPerPage));
+
+// Reiniciar página al cambiar filtros
+watch([filterUser, filterDateFrom, filterDateTo], () => {
+  currentPageCajas.value = 1;
+});
+
+const limpiarFiltros = () => {
+  filterUser.value = '';
+  filterDateFrom.value = '';
+  filterDateTo.value = '';
+  currentPageCajas.value = 1;
+};
+
+// ----- FIN FILTROS -----
 
 const diferenciaCierre = computed(() => {
   if (!balance.value) return 0;
@@ -559,13 +655,7 @@ const formatearMoneda = (valor) => {
   return `$ ${signo}${formateado}`;
 };
 
-const currentPageCajas = ref(1);
-const paginatedCajas = computed(() => {
-  const start = (currentPageCajas.value - 1) * itemsPerPage;
-  return historialCajas.value.slice(start, start + itemsPerPage);
-});
-const totalPagesCajas = computed(() => Math.ceil(historialCajas.value.length / itemsPerPage));
-
+// Paginación de movimientos actuales
 const currentPageMovs = ref(1);
 const paginatedMovs = computed(() => {
   const start = (currentPageMovs.value - 1) * itemsPerPage;
@@ -573,6 +663,7 @@ const paginatedMovs = computed(() => {
 });
 const totalPagesMovs = computed(() => Math.ceil(movimientos.value.length / itemsPerPage));
 
+// Paginación de movimientos del modal de historial
 const currentPageModalMovs = ref(1);
 const paginatedModalMovs = computed(() => {
   const start = (currentPageModalMovs.value - 1) * itemsPerPage;
@@ -713,7 +804,7 @@ const registrarGastoManual = async () => {
           Swal.fire({
               icon: 'error',
               title: 'Fondos Insuficientes',
-              html: `Estás intentando registrar un egreso de <b>${formatearMoneda(montoEgreso)}</b>, pero el saldo actual en <b>${metodoNombre}</b> es de solo <b>${formatearMoneda(saldoDisponible)}</b>.<br><br>Si el dueño aportó dinero extra, registrá primero un <i>Ingreso Manual</i> por la diferencia.`,
+              html: `Estás intentando registrar un egreso de <b>${formatearMoneda(montoEgreso)}</b>, pero el saldo actual en <b>${metodoNombre}</b> es de solo <b>${formatearMoneda(saldoDisponible)}</b>.<br><br>Si se agregó dinero adicional a la caja, registrá primero un <i>Ingreso Manual</i> por la diferencia.`,
               confirmButtonColor: '#ef4444',
               confirmButtonText: 'Entendido'
           });
@@ -755,7 +846,7 @@ onUnmounted(() => detenerRadar());
 <style scoped>
 /* HEREDANDO LOS ESTILOS DEL SISTEMA */
 .list-container { padding: 32px; max-width: 1600px; margin: 0 auto; min-height: 100vh; font-family: 'Inter', sans-serif; }
-.list-card { background: var(--bg-secondary); color: var(--text-primary); border-radius: 24px; padding: 40px; width: 90%; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; transition: all 0.4s ease; border: 1px solid var(--border-color); }
+.list-card { background: var(--bg-secondary); color: var(--text-primary); border-radius: 24px; padding: 40px; width: 100%; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; transition: all 0.4s ease; border: 1px solid var(--border-color); }
 .list-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9); border-radius: 24px 24px 0 0; }
 
 .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; flex-wrap: wrap; gap: 20px; border-bottom: 2px solid var(--border-color); padding-bottom: 25px; }
@@ -904,6 +995,13 @@ onUnmounted(() => detenerRadar());
 .pagination button:hover:not(:disabled) { background: var(--hover-bg); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
 .pagination button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 .pagination span { font-weight: bold; color: var(--text-secondary); }
+
+/* Ajuste para columna de fondo inicial (opcional) */
+.users-table td:nth-child(5) {
+  white-space: normal;
+  word-break: break-word;
+  min-width: 140px;
+}
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 

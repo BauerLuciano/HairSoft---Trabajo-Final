@@ -128,7 +128,20 @@ const abrirModalCrear = async () => {
       const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true });
       Toast.fire({ icon: 'success', title: 'Silla creada con éxito' });
     } catch (e) {
-      Swal.fire('Error', 'No se pudo crear la silla, ya existe una silla con ese nombre', 'error');
+      // 🔥 ACÁ CAPTURAMOS EL ERROR DE DJANGO PARA MOSTRAR LA ALERTA
+      let mensajeError = 'No se pudo crear la silla. Verifique los datos.';
+      
+      if (e.response && e.response.data && e.response.data.nombre) {
+        mensajeError = e.response.data.nombre[0];
+      }
+
+      Swal.fire({
+        title: 'Error de validación',
+        text: mensajeError,
+        icon: 'warning',
+        background: '#0f172a', 
+        color: '#f8fafc' 
+      });
     }
   }
 };
