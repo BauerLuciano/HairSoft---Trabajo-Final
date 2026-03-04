@@ -105,11 +105,18 @@
                 <i class="ri-notification-3-line"></i>
                 <div class="alerta-content">
                   <strong>Cobros Web Pendientes</strong>
+
                   <p>
-                    {{ pendientesInfo.cantidad === 1 ? 'Ingresó 1 pago' : `Ingresaron ${pendientesInfo.cantidad} pagos` }} 
-                    mientras la caja estaba cerrada 
-                    <p><strong>Total: {{ formatearMoneda(pendientesInfo.total_dinero) }}</strong> </p> 
+                    {{ pendientesInfo.cantidad === 1 
+                      ? 'Ingresó 1 pago' 
+                      : `Ingresaron ${pendientesInfo.cantidad} pagos` }} 
+                    mientras la caja estaba cerrada.
                   </p>
+
+                  <p>
+                    <strong>Total: {{ formatearMoneda(pendientesInfo.total_dinero) }}</strong>
+                  </p>
+
                 </div>
               </div>
 
