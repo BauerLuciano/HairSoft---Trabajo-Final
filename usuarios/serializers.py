@@ -760,10 +760,14 @@ class PedidoWebSerializer(serializers.ModelSerializer):
             'fecha_creacion', 'estado', 'estado_display', 
             'tipo_entrega', 'direccion_envio', 'costo_envio', 
             'total', 'detalles',
-            'datos_entrega_interna', # ✅ CORRECCIÓN: Ahora el dato viaja al Front
-            'mp_payment_id'
+            'datos_entrega_interna',
+            'mp_payment_id',
+            # 🔥 AGREGAMOS ESTOS DOS PARA QUE VIAJEN AL FRONTEND:
+            'motivo_cancelacion',
+            'obs_cancelacion'
         ]
-        read_only_fields = ['cliente', 'fecha_creacion', 'estado', 'total', 'mp_payment_id']
+        # ✅ Los marcamos como read_only porque se cargan vía el action 'cambiar_estado'
+        read_only_fields = ['cliente', 'fecha_creacion', 'estado', 'total', 'mp_payment_id', 'motivo_cancelacion', 'obs_cancelacion']
 
     def get_cliente_nombre(self, obj):
         if obj.cliente:

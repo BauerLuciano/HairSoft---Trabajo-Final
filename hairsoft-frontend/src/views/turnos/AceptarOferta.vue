@@ -5,8 +5,8 @@
       <div class="card-header">
         <div class="brand-tag">✨ OPORTUNIDAD EXCLUSIVA</div>
         <h1>¡Turno Disponible!</h1>
-        <p class="subtitle" v-if="info.porcentaje_aplicado">
-          Se liberó un espacio y tenés el {{ info.porcentaje_aplicado }}% de descuento!
+        <p class="subtitle" v-if="info.descuento_porcentaje">
+          Se liberó un espacio y tenés el {{ info.descuento_porcentaje }}% de descuento!
         </p>
         <p class="subtitle" v-else>
           ¡Se liberó un espacio exclusivo para vos!
@@ -57,8 +57,8 @@
             </div>
           </div>
 
-          <div class="offer-box">
-            <div class="offer-badge">-{{ info.porcentaje_aplicado }}% OFF</div>
+          <div class="offer-box" v-if="info.descuento_porcentaje">
+            <div class="offer-badge">-{{ info.descuento_porcentaje }}% OFF</div>
             <div class="price-compare">
               <div class="p-old">
                 <span>Precio Regular</span>

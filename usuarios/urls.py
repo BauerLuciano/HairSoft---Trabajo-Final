@@ -190,7 +190,7 @@ urlpatterns = [
     path('api/mercadopago/pago-exitoso/', func_views.pago_exitoso, name='mp_pago_exitoso'),
     path('api/mercadopago/pago-error/', func_views.pago_error, name='mp_pago_error'),
     path('api/mercadopago/pago-pendiente/', func_views.pago_pendiente, name='mp_pago_pendiente'),
-    path('mercadopago/webhook/', func_views.mercadopago_webhook, name='mercadopago_webhook'),
+    path('api/mercadopago/webhook/', func_views.mercadopago_webhook, name='mercadopago_webhook'),
 
     # ================================
     # Proveedores

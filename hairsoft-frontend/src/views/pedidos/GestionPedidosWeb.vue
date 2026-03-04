@@ -177,8 +177,10 @@ const cargarPedidos = async () => {
 
 const cambiarEstado = async (pedido, nuevoEstado) => {
   let repartidor = '';
+  let motivoCancelacion = '';
+  let obsCancelacion = '';
   
-  // 🛵 DESPACHO MOTO: Si es MOTO y va a EN_CAMINO, pedimos nombre
+  // 🛵 CASO 1: DESPACHO MOTO
   if (nuevoEstado === 'EN_CAMINO' && pedido.tipo_entrega === 'MOTO') {
       const { value: nombre } = await Swal.fire({
           title: 'Despacho de Moto',
@@ -191,33 +193,79 @@ const cambiarEstado = async (pedido, nuevoEstado) => {
           background: '#1e293b',
           color: '#fff'
       });
-      
-      if (nombre === undefined) return; // Canceló el modal
+      if (nombre === undefined) return; 
       repartidor = nombre || 'Moto Mandado'; 
   }
 
-  const result = await Swal.fire({
-    title: '¿Confirmar cambio?',
-    text: `Pasar pedido #${pedido.id} al estado: ${nuevoEstado}`,
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonColor: '#3b82f6',
-    background: '#1e293b',
-    color: '#fff'
-  });
+  // 🚫 CASO 2: CANCELACIÓN CON MOTIVOS (NUEVO)
+  if (nuevoEstado === 'CANCELADO') {
+    const { value: formValues } = await Swal.fire({
+      title: '🚫 Cancelar Pedido Web',
+      html: `
+        <div style="text-align: left; font-family: 'Inter', sans-serif;">
+          <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 15px;">
+            Atención: El pedido #${pedido.id} será anulado y el stock regresará al inventario.
+          </p>
+          <label style="color: #f8fafc; font-weight: 700; display: block; margin-bottom: 5px;">Motivo:</label>
+          <select id="swal-motivo" class="swal2-input" style="width: 100%; margin: 0 0 15px 0; background: #0f172a; color: white; border: 1px solid #334155;">
+            <option value="ERROR_STOCK">Falta de Stock (Error sistema)</option>
+            <option value="PEDIDO_DUPLICADO">Pedido Duplicado</option>
+            <option value="SOLICITUD_CLIENTE">Solicitud del Cliente</option>
+            <option value="PROBLEMA_LOGISTICO">Problema con la Entrega</option>
+            <option value="PAGO_DISPUTA">Problema con Mercado Pago</option>
+            <option value="OTRO">Otro motivo</option>
+          </select>
+          <label style="color: #f8fafc; font-weight: 700; display: block; margin-bottom: 5px;">Observaciones:</label>
+          <textarea id="swal-obs" class="swal2-textarea" style="width: 100%; margin: 0; background: #0f172a; color: white; border: 1px solid #334155; height: 80px;" placeholder="Explique brevemente..."></textarea>
+        </div>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'Confirmar Cancelación',
+      confirmButtonColor: '#ef4444',
+      background: '#1e293b',
+      color: '#fff',
+      preConfirm: () => {
+        return {
+          motivo: document.getElementById('swal-motivo').value,
+          obs: document.getElementById('swal-obs').value
+        }
+      }
+    });
 
-  if (result.isConfirmed) {
-    try {
-      const token = localStorage.getItem('token');
-      await axios.post(`${API_URL}${pedido.id}/cambiar_estado/`, 
-        { estado: nuevoEstado, repartidor: repartidor },
-        { headers: { 'Authorization': `Token ${token}` } }
-      );
-      Swal.fire({ title: '¡Éxito!', icon: 'success', timer: 1000, showConfirmButton: false });
-      cargarPedidos();
-    } catch (e) {
-      Swal.fire('Error', 'No se pudo actualizar el estado.', 'error');
-    }
+    if (!formValues) return; // Canceló el modal
+    motivoCancelacion = formValues.motivo;
+    obsCancelacion = formValues.obs;
+  } else {
+    // Confirmación simple para otros estados
+    const result = await Swal.fire({
+      title: '¿Confirmar cambio?',
+      text: `Pasar pedido #${pedido.id} al estado: ${nuevoEstado}`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#3b82f6',
+      background: '#1e293b',
+      color: '#fff'
+    });
+    if (!result.isConfirmed) return;
+  }
+
+  // Ejecutar petición
+  try {
+    const token = localStorage.getItem('token');
+    await axios.post(`${API_URL}${pedido.id}/cambiar_estado/`, 
+      { 
+        estado: nuevoEstado, 
+        repartidor: repartidor,
+        motivo_cancelacion: motivoCancelacion,
+        obs_cancelacion: obsCancelacion
+      },
+      { headers: { 'Authorization': `Token ${token}` } }
+    );
+    Swal.fire({ title: '¡Éxito!', icon: 'success', timer: 1000, showConfirmButton: false });
+    cargarPedidos();
+  } catch (e) {
+    Swal.fire('Error', 'No se pudo actualizar el pedido.', 'error');
   }
 };
 
@@ -229,11 +277,22 @@ const verDetalle = (p) => {
         </div>
     `).join('');
 
+    // Recuadro de cancelación si corresponde
+    const cancelBox = p.estado === 'CANCELADO' ? `
+      <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
+        <h4 style="color: #fca5a5; margin: 0 0 8px 0; text-transform: uppercase; font-size: 0.8rem; font-weight: 900;">🚫 Información de Cancelación</h4>
+        <p style="margin: 0; color: #f8fafc;"><strong>Motivo:</strong> ${p.motivo_cancelacion || 'No especificado'}</p>
+        <p style="margin: 4px 0 0 0; color: #fca5a5; font-style: italic;">"${p.obs_cancelacion || 'Sin observaciones'}"</p>
+      </div>
+    ` : '';
+
     Swal.fire({
         title: `<span style="font-weight: 800; color: #e2e8f0;">Detalle Pedido #${p.id}</span>`,
         html: `
             <div style="text-align: left; font-size: 0.95rem; color: #94a3b8; line-height: 1.6; font-family: 'Inter', sans-serif;">
                 
+                ${cancelBox}
+
                 <div style="background: rgba(15, 23, 42, 0.6); padding: 18px; border-radius: 14px; margin-bottom: 15px; border: 1px solid #334155;">
                     <h4 style="color: #38bdf8; margin: 0 0 12px 0; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px;">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
@@ -245,14 +304,12 @@ const verDetalle = (p) => {
 
                 <div style="background: rgba(15, 23, 42, 0.6); padding: 18px; border-radius: 14px; margin-bottom: 15px; border: 1px solid #334155;">
                     <h4 style="color: #38bdf8; margin: 0 0 12px 0; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px;">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
                       Logística y Entrega
                     </h4>
                     <p style="margin: 4px 0;"><strong style="color:#f8fafc;">Método:</strong> ${p.tipo_entrega}</p>
                     <p style="margin: 4px 0;"><strong style="color:#f8fafc;">Dirección:</strong> ${p.direccion_envio || 'Retiro en Local'}</p>
-                    <p style="margin: 4px 0;"><strong style="color:#f8fafc;">Repartidor/Chofer:</strong> 
-                        <span style="color: #10b981; font-weight: 800; background: rgba(16, 185, 129, 0.1); padding: 2px 8px; border-radius: 6px;">${p.datos_entrega_interna || 'Aún no asignado'}</span>
-                    </p>
+                    <p style="margin: 4px 0;"><strong style="color:#f8fafc;">Chofer:</strong> ${p.datos_entrega_interna || 'Aún no asignado'}</p>
                 </div>
 
                 <div style="background: rgba(15, 23, 42, 0.6); padding: 18px; border-radius: 14px; margin-bottom: 15px; border: 1px solid #334155;">
@@ -261,9 +318,18 @@ const verDetalle = (p) => {
                       Productos Comprados
                     </h4>
                     ${itemsHTML}
-                    <div style="margin-top:15px; text-align:right; font-size:1.2rem; background: #0f172a; padding: 10px; border-radius: 8px;">
-                        <span style="color:#94a3b8; font-size: 0.9rem; text-transform: uppercase; font-weight: 700; margin-right: 10px;">Total Pagado:</span> 
-                        <strong style="color:#10b981;"> $${Number(p.total).toLocaleString('es-AR')}</strong>
+                    
+                    <div style="margin-top:15px; display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 12px; border-radius: 8px;">
+                        
+                        <div style="font-size: 0.75rem; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; padding: 4px 8px; border-radius: 6px; display: flex; align-items: center; gap: 6px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
+                            ${p.mp_payment_id ? 'MP: ' + p.mp_payment_id : 'Sin MP ID'}
+                        </div>
+
+                        <div style="font-size:1.2rem; text-align:right;">
+                            <span style="color:#94a3b8; font-size: 0.9rem; text-transform: uppercase; font-weight: 700; margin-right: 10px;">Total:</span> 
+                            <strong style="color:#10b981;"> $${Number(p.total).toLocaleString('es-AR')}</strong>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -276,44 +342,27 @@ const verDetalle = (p) => {
     });
 };
 
-// Computed y formateadores
 const pedidosFiltrados = computed(() => {
   if (filtroActual.value === 'TODOS') return pedidos.value;
   if (filtroActual.value === 'ACTIVOS') return pedidos.value.filter(p => !['ENTREGADO', 'CANCELADO'].includes(p.estado));
   return pedidos.value.filter(p => p.estado === filtroActual.value);
 });
 
-// 🔥 FUNCIONES DE PAGINACIÓN
 const totalPaginas = computed(() => Math.max(1, Math.ceil(pedidosFiltrados.value.length / itemsPorPagina)));
 const pedidosPaginados = computed(() => {
   const inicio = (paginaActual.value - 1) * itemsPorPagina;
   return pedidosFiltrados.value.slice(inicio, inicio + itemsPorPagina);
 });
 
-const paginaAnterior = () => {
-  if (paginaActual.value > 1) paginaActual.value--;
-};
-const paginaSiguiente = () => {
-  if (paginaActual.value < totalPaginas.value) paginaActual.value++;
-};
+const paginaAnterior = () => { if (paginaActual.value > 1) paginaActual.value--; };
+const paginaSiguiente = () => { if (paginaActual.value < totalPaginas.value) paginaActual.value++; };
 
-const cambiarFiltro = (k) => { 
-  filtroActual.value = k; 
-  paginaActual.value = 1; // Reseteamos página al cambiar de filtro
-};
+const cambiarFiltro = (k) => { filtroActual.value = k; paginaActual.value = 1; };
 
 const contarPorEstado = (k) => k === 'TODOS' ? pedidos.value.length : (k === 'ACTIVOS' ? pedidos.value.filter(p => !['ENTREGADO', 'CANCELADO'].includes(p.estado)).length : pedidos.value.filter(p => p.estado === k).length);
 
 const getEstadoClass = (e) => {
-  const mapa = { 
-    'PENDIENTE_PAGO': 'estado-secondary', 
-    'PAGADO': 'estado-info', 
-    'EN_PREPARACION': 'estado-warning', 
-    'LISTO_RETIRO': 'estado-success', 
-    'EN_CAMINO': 'estado-success', 
-    'ENTREGADO': 'estado-completado', 
-    'CANCELADO': 'estado-cancelado' 
-  };
+  const mapa = { 'PAGADO': 'estado-info', 'EN_PREPARACION': 'estado-warning', 'LISTO_RETIRO': 'estado-success', 'EN_CAMINO': 'estado-success', 'ENTREGADO': 'estado-completado', 'CANCELADO': 'estado-cancelado' };
   return mapa[e] || 'estado-secondary';
 };
 

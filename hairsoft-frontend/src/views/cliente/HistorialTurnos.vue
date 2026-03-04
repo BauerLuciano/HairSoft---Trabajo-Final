@@ -114,6 +114,7 @@
             </div>
             
             <div class="turno-acciones">
+              <!-- ✅ SIEMPRE SE MUESTRA EL BOTÓN DE CANCELAR PARA TURNOS RESERVADO -->
               <button 
                 v-if="turno.estado === 'RESERVADO'" 
                 @click="cancelarTurno(turno)" 
@@ -146,27 +147,64 @@
       <div class="paginacion-info">
         <span>Página {{ pagina }} de {{ totalPaginas }}</span>
       </div>
+      
       <div class="paginacion-controles">
-        <button @click="paginaAnterior" :disabled="pagina === 1" class="btn-pagina prev">
+        <button 
+          @click="paginaAnterior" 
+          :disabled="pagina === 1" 
+          class="btn-pagina prev"
+        >
           <ChevronLeft :size="16" />
         </button>
+        
         <div class="paginacion-numeros">
-          <button v-for="num in paginasVisibles" :key="num" :class="{ active: num === pagina, dots: num === '...' }" @click="num !== '...' && cambiarPagina(num)" :disabled="num === '...'">
+          <button
+            v-for="num in paginasVisibles"
+            :key="num"
+            :class="{ active: num === pagina, dots: num === '...' }"
+            @click="num !== '...' && cambiarPagina(num)"
+            :disabled="num === '...'"
+          >
             {{ num }}
           </button>
         </div>
-        <button @click="paginaSiguiente" :disabled="pagina === totalPaginas" class="btn-pagina next">
+        
+        <button 
+          @click="paginaSiguiente" 
+          :disabled="pagina === totalPaginas" 
+          class="btn-pagina next"
+        >
           <ChevronRight :size="16" />
         </button>
       </div>
     </div>
 
+    <div v-if="!cargando && turnosFiltrados.length > 0" class="turnos-estadisticas">
+      <div class="estadistica-item">
+        <Calendar :size="18" />
+        <div class="estadistica-info">
+          <span class="estadistica-valor">{{ turnosFiltrados.length }}</span>
+          <span class="estadistica-label">
+            {{ tabActiva === 'proximos' ? 'turnos programados' : 'turnos en historial' }}
+          </span>
+        </div>
+      </div>
+      
+      <div v-if="tabActiva === 'proximos'" class="estadistica-item">
+        <Clock :size="18" />
+        <div class="estadistica-info">
+          <span class="estadistica-valor">{{ proximoEnDias }} días</span>
+          <span class="estadistica-label">para tu próximo turno</span>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import axios from 'axios'
 import Swal from 'sweetalert2'
 import api from '@/services/api'
 import {
@@ -183,6 +221,8 @@ const cargando = ref(true)
 const tabActiva = ref('proximos')
 const pagina = ref(1)
 const itemsPorPagina = 6
+const tabProximos = ref(null)
+const tabHistorial = ref(null)
 
 const cargarMisTurnos = async () => {
   try {
@@ -190,21 +230,41 @@ const cargarMisTurnos = async () => {
     turnos.value = response.data
   } catch (error) {
     console.error('Error cargando turnos:', error)
-    Swal.fire({ icon: 'error', title: 'Error', text: 'No pudimos cargar tus turnos', confirmButtonColor: '#0ea5e9' })
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'No pudimos cargar tus turnos',
+      confirmButtonColor: '#0ea5e9'
+    })
   } finally {
     cargando.value = false
   }
 }
 
-const formatFecha = (f) => f ? f.split('-').reverse().join('/') : ''
+const formatFecha = (f) => {
+  if (!f) return ''
+  const [y, m, d] = f.split('-')
+  return `${d}/${m}/${y}`
+}
+
 const formatPrecio = (p) => parseFloat(p).toLocaleString('es-AR', { minimumFractionDigits: 2 })
 
-const estadoTexto = (estado) => ({ 'RESERVADO': 'Reservado', 'CANCELADO': 'Cancelado', 'COMPLETADO': 'Completado' }[estado] || estado)
-const claseEstado = (estado) => ({ 'RESERVADO': 'reservado', 'CANCELADO': 'cancelado', 'COMPLETADO': 'completado' }[estado] || 'default')
+// 🔥 ESTADOS ACTUALIZADOS (Chau Confirmado)
+const estadoTexto = (estado) => {
+  const map = { 'RESERVADO': 'Reservado', 'CANCELADO': 'Cancelado', 'COMPLETADO': 'Completado' }
+  return map[estado] || estado
+}
 
+const claseEstado = (estado) => {
+  const map = { 'RESERVADO': 'reservado', 'CANCELADO': 'cancelado', 'COMPLETADO': 'completado' }
+  return map[estado] || 'default'
+}
+
+// 💳 MEDIOS DE PAGO PARA EL DETALLE
 const getMedioPagoTexto = (medio, entidad = null) => {
   if (medio === 'TRANSFERENCIA' && entidad) return entidad
-  return { 'MERCADO_PAGO': 'Mercado Pago', 'EFECTIVO': 'Efectivo', 'TRANSFERENCIA': 'Transferencia' }[medio] || medio
+  const map = { 'MERCADO_PAGO': 'Mercado Pago', 'EFECTIVO': 'Efectivo', 'TRANSFERENCIA': 'Transferencia' }
+  return map[medio] || medio
 }
 
 const cancelarTurno = async (turno) => {
@@ -229,7 +289,7 @@ const cancelarTurno = async (turno) => {
           <div style="font-size: 1.2rem;">${hayReembolso ? '✅' : '⚠️'}</div>
           <div>
             <div style="font-weight: 700; color: ${hayReembolso ? '#166534' : '#92400e'}; font-size: 0.9rem;">${hayReembolso ? 'Reembolso disponible' : 'Sin reembolso'}</div>
-            <div style="color: ${hayReembolso ? '#16a34a' : '#b45309'}; font-size: 0.8rem;">Anticipación: ${Math.floor(horasFaltantes)}hs (Política local: ${margenConfig}hs).</div>
+            <div style="color: ${hayReembolso ? '#16a34a' : '#b45309'}; font-size: 0.8rem;">Anticipación: ${Math.floor(horasFaltantes)}hs (Mínimo requerido: ${margenConfig}hs).</div>
           </div>
         </div>
         <div style="background: #f8fafc; padding: 1rem; border-radius: 12px; border: 1px solid #e2e8f0;">
@@ -237,6 +297,7 @@ const cancelarTurno = async (turno) => {
           <select id="motivo" class="swal2-input" style="width: 100%; margin: 0 0 15px 0;">
             <option value="PERSONAL">Motivos personales</option>
             <option value="SALUD">Problema de salud</option>
+            <option value="ERROR">Error al reservar</option>
             <option value="HORARIO">Cambio de planes</option>
           </select>
           <label style="display:block; margin-bottom:5px; font-weight:bold;">Observaciones:</label>
@@ -256,54 +317,175 @@ const cancelarTurno = async (turno) => {
       const response = await api.post(`/turnos/cancelar-propio/${turno.id}/`, formValues);
       await Swal.fire({ icon: response.data.reembolso_ok ? 'success' : 'warning', title: 'Turno Cancelado', text: response.data.message });
       cargarMisTurnos();
-    } catch (error) { Swal.fire('Error', 'No se pudo cancelar el turno.', 'error') }
+    } catch (error) {
+      const mensaje = error.response?.data?.error || 'No se pudo cancelar el turno.';
+      Swal.fire('Error', mensaje, 'error');
+    }
   }
 }
 
+// 🔥 VERSIÓN UNIFICADA (ESTILO ADMIN) PARA EL CLIENTE
 const verDetalles = async (turno) => {
   try {
+    // 1. Buscamos los datos completos del turno a la API
     const response = await api.get(`/api/turnos/${turno.id}/`);
     const t = response.data;
 
-    let serviciosHTML = (t.servicios || []).map(s => `
-      <tr style="border-bottom: 1px solid #f1f5f9;">
-        <td style="padding: 12px; font-weight: 500; color: #1e293b;">${s.nombre}</td>
-        <td style="padding: 12px; text-align: right;">${s.duracion}m</td>
-        <td style="padding: 12px; text-align: right; font-weight: 700;">$${formatPrecio(s.precio)}</td>
-      </tr>
-    `).join('') || '<tr><td colspan="3" style="padding: 15px; text-align: center;">Sin servicios</td></tr>';
+    // 2. Armamos la tablita de servicios
+    let serviciosHTML = '';
+    if (t.servicios && t.servicios.length > 0) {
+      serviciosHTML = t.servicios.map(s => `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 12px; font-weight: 500; color: #1e293b; font-size: 0.95rem;">${s.nombre}</td>
+          <td style="padding: 12px; text-align: right; color: #64748b; font-size: 0.9rem;">${s.duracion}m</td>
+          <td style="padding: 12px; text-align: right; font-weight: 700; color: #0f172a;">$${formatPrecio(s.precio)}</td>
+        </tr>
+      `).join('');
+    } else {
+      serviciosHTML = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #94a3b8;">Sin servicios detallados</td></tr>`;
+    }
 
-    const montoAbonado = t.tipo_pago === 'TOTAL' ? t.monto_total : t.monto_seña;
+    // 3. Cálculos de dinero (usando la lógica que corregimos hoy)
     const faltaPagar = t.tipo_pago === 'TOTAL' ? 0 : (parseFloat(t.monto_total) - parseFloat(t.monto_seña));
+    const montoAbonado = t.tipo_pago === 'TOTAL' ? t.monto_total : t.monto_seña;
+
+    // 4. Identificamos los comprobantes
+    const transactionId1 = t.codigo_transaccion || t.mp_payment_id || 'EFECTIVO';
 
     Swal.fire({
-      title: 'Detalle de tu Turno',
-      width: '650px',
+      title: `<div style="display: flex; align-items: center; justify-content: center; gap: 10px; color: #0f172a;">
+                <span style="font-size: 1.6rem; font-weight: 800; letter-spacing: -0.5px;">Detalle de tu Turno</span>
+              </div>`,
+      width: '700px',
+      background: '#ffffff',
       showConfirmButton: false,
       showCloseButton: true,
       html: `
-        <div style="text-align: left; font-family: sans-serif;">
-          <div style="margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
-            <b>Peluquero:</b> ${t.peluquero_nombre}<br>
-            <b>Fecha:</b> ${formatFecha(t.fecha)} - ${t.hora}hs
+        <div style="font-family: 'Inter', sans-serif; text-align: left;">
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
+            <span class="estado-badge ${claseEstado(t.estado)}" style="padding: 8px 16px; border-radius: 30px; font-weight: 700; font-size: 0.9rem;">
+              ${estadoTexto(t.estado)}
+            </span>
+            <div style="font-weight: 600; color: #64748b;">
+              📅 ${formatFecha(t.fecha)} - ${t.hora}hs
+            </div>
           </div>
-          <table style="width: 100%; margin-bottom: 20px;">
-            <thead><tr style="background: #f8fafc;"><th style="text-align:left; padding:8px;">Servicio</th><th style="text-align:right; padding:8px;">Tiempo</th><th style="text-align:right; padding:8px;">Precio</th></tr></thead>
-            <tbody>${serviciosHTML}</tbody>
-          </table>
-          <div style="background: #1e293b; color: white; padding: 15px; border-radius: 12px;">
-            <div style="display:flex; justify-content:space-between;"><span>Abonado:</span> <b>$${formatPrecio(montoAbonado)}</b></div>
-            <div style="display:flex; justify-content:space-between;"><span>Pendiente:</span> <b>$${formatPrecio(faltaPagar)}</b></div>
-            <hr style="opacity:0.2;">
-            <div style="display:flex; justify-content:space-between; font-size:1.2rem;"><span>TOTAL:</span> <b>$${formatPrecio(t.monto_total)}</b></div>
+
+          ${t.estado === 'CANCELADO' ? `
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
+              <div style="color: #991b1b; font-weight: 700; font-size: 0.85rem; text-transform: uppercase;">Motivo de Cancelación</div>
+              <div style="color: #7f1d1d; font-size: 1.1rem; font-weight: 600;">${t.motivo_cancelacion || 'No especificado'}</div>
+              ${t.obs_cancelacion ? `<div style="color: #b91c1c; font-size: 0.9rem; margin-top: 5px; font-style: italic;">"${t.obs_cancelacion}"</div>` : ''}
+            </div>
+          ` : ''}
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px;">
+            <div style="background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;">
+              <div style="font-weight: 700; color: #475569; font-size: 0.8rem; text-transform: uppercase; margin-bottom: 5px;">Profesional</div>
+              <div style="font-size: 1.1rem; font-weight: 700; color: #0f172a;">${t.peluquero_nombre}</div>
+            </div>
+            <div style="background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;">
+              <div style="font-weight: 700; color: #475569; font-size: 0.8rem; text-transform: uppercase; margin-bottom: 5px;">Duración Total</div>
+              <div style="font-size: 1.1rem; font-weight: 700; color: #0f172a;">${t.duracion_total || t.duracion || 30} min</div>
+            </div>
           </div>
+
+          <div style="margin-bottom: 25px;">
+            <h4 style="font-size: 0.85rem; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 10px;">Servicios Contratados</h4>
+            <div style="border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <thead style="background: #f1f5f9;">
+                  <tr>
+                    <th style="padding: 10px; text-align: left; font-size: 0.8rem;">Servicio</th>
+                    <th style="padding: 10px; text-align: right; font-size: 0.8rem;">Tiempo</th>
+                    <th style="padding: 10px; text-align: right; font-size: 0.8rem;">Precio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${serviciosHTML}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="background: linear-gradient(145deg, #1e293b, #0f172a); padding: 20px; border-radius: 16px; color: white;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+              <h4 style="margin:0; font-size: 0.9rem; font-weight: 600; color: #94a3b8;">Resumen Económico</h4>
+              <span style="color: #4ade80; font-weight: 800; font-size: 1.2rem;">Total: $${formatPrecio(t.monto_total)}</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 15px;">
+              <div>
+                <span style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Has Abonado</span>
+                <div style="font-size: 1.4rem; font-weight: 700; color: #4ade80;">$${formatPrecio(montoAbonado)}</div>
+              </div>
+              <div>
+                <span style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Saldo Pendiente</span>
+                <div style="font-size: 1.4rem; font-weight: 700; color: ${faltaPagar > 0 ? '#fbbf24' : '#ffffff'};">$${formatPrecio(faltaPagar)}</div>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div>
+                <span style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; font-weight: 700;">${t.medio_pago_restante ? 'Primer Pago (Seña)' : 'Detalle de Pago'}</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                  <span style="font-size: 0.85rem;">💳 ${getMedioPagoTexto(t.medio_pago, t.entidad_pago)}</span>
+                  <span style="font-family: monospace; font-size: 0.85rem; color: #a5f3fc;">Ref: ${transactionId1}</span>
+                </div>
+              </div>
+
+              ${t.medio_pago_restante ? `
+                <div style="border-top: 1px dashed #334155; pt: 8px; margin-top: 5px;">
+                  <span style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Segundo Pago (Saldo en Local)</span>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                    <span style="font-size: 0.85rem;">💵 ${getMedioPagoTexto(t.medio_pago_restante, t.entidad_pago_restante)}</span>
+                    <span style="font-family: monospace; font-size: 0.85rem; color: #a5f3fc;">Ref: ${t.codigo_transaccion_restante || 'PRESENCIAL'}</span>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          ${t.notas ? `
+            <div style="margin-top: 20px; padding: 12px; background: #fffbeb; border-radius: 10px; border-left: 4px solid #f59e0b; color: #92400e; font-size: 0.9rem;">
+              <strong>Nota del Peluquero:</strong> ${t.notas}
+            </div>
+          ` : ''}
+
         </div>
       `
     });
-  } catch (error) { console.error(error) }
+  } catch (error) {
+    console.error(error);
+    Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo cargar el detalle del turno.', confirmButtonColor: '#0ea5e9' });
+  }
 };
 
-onMounted(cargarMisTurnos)
+const mostrarAlertaFelicidades = async (turnoId) => {
+  try {
+    const res = await api.get(`/api/turnos/${turnoId}/`);
+    const t = res.data;
+    Swal.fire({
+      title: '¡Felicidades! 🎉',
+      html: `<div style="text-align: left; background: #f0f9ff; padding: 1.2rem; border-radius: 12px; border: 1px solid #bae6fd;">
+          <p style="font-size: 1.1rem; margin-bottom: 1rem;">Tu reserva ha sido confirmada con éxito.</p>
+          <p>📅 <b>Día:</b> ${formatFecha(t.fecha)}</p><p>⏰ <b>Hora:</b> ${t.hora} hs</p><p>💇‍♂️ <b>Profesional:</b> ${t.peluquero_nombre}</p><p>💰 <b>Monto:</b> $${t.monto_total}</p>
+        </div>`,
+      icon: 'success', confirmButtonColor: '#0ea5e9'
+    });
+    router.replace({ query: {} });
+  } catch (e) { console.error(e) }
+}
+
+onMounted(async () => {
+  await cargarMisTurnos()
+  const query = route.query;
+  if (query.pago_exitoso === 'true') {
+    if (query.tipo !== 'pedido') mostrarAlertaFelicidades(query.turno_id); 
+    router.replace({ query: {} }); 
+  }
+})
 
 const turnosFiltrados = computed(() => {
   const hoy = new Date().toISOString().split('T')[0]

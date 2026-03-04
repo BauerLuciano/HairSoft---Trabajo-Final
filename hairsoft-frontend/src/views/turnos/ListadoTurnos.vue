@@ -63,7 +63,6 @@
               <td>
                 <strong>{{ formatFecha(turno.fecha) }}</strong><br>
                 <small>{{ formatHora(turno.hora) }}hs</small><br>
-                <small class="text-muted">{{ getDuracion(turno) }}</small>
               </td>
               <td>
                 <strong>{{ turno.cliente_nombre }} {{ turno.cliente_apellido }}</strong><br>
@@ -91,13 +90,23 @@
                 </div>
                 
                 <div v-if="turno.estado === 'CANCELADO'">
-                  <div v-if="turno.reembolso_estado === 'NO_APLICA'" style="margin-top: 5px;">
+                  <!-- Caso: fue un canje (NO_APLICA y además cumple esTurnoPorCanje) -->
+                  <div v-if="turno.reembolso_estado === 'NO_APLICA' && esTurnoPorCanje(turno)" style="margin-top: 5px;">
                     <span class="badge-reembolso-no-aplica">
                       <i class="bi bi-arrow-left-right me-1"></i>
                       Canje - No aplica reembolso
                     </span>
                   </div>
                   
+                  <!-- Caso: cancelación tardía sin reembolso (NO_APLICA pero no es canje) -->
+                  <div v-else-if="turno.reembolso_estado === 'NO_APLICA'" style="margin-top: 5px;">
+                    <span class="badge-reembolso-no-aplica">
+                      <i class="bi bi-clock me-1"></i>
+                      Sin reembolso (cancelación tardía)
+                    </span>
+                  </div>
+                  
+                  <!-- Caso: reembolso pendiente -->
                   <div v-if="turno.reembolso_estado === 'PENDIENTE'" style="margin-top: 5px;">
                     <span class="badge-reembolso-pendiente">
                       <i class="bi bi-cash-coin me-1"></i>
@@ -105,6 +114,7 @@
                     </span>
                   </div>
                   
+                  <!-- Caso: reembolso completado -->
                   <div v-if="turno.reembolso_estado === 'COMPLETADO'" style="margin-top: 5px;">
                     <span class="badge-reembolso-completado">
                       <i class="bi bi-check-circle me-1"></i>
@@ -345,10 +355,27 @@ const calcularMontoReembolso = (turno) => {
 }
 
 const esTurnoPorCanje = (turno) => {
-  return turno.obs_cancelacion && 
-         (turno.obs_cancelacion.includes('Canjeado') || 
-          turno.obs_cancelacion.includes('Reoferta') ||
-          turno.obs_cancelacion.includes('Origen: Turno Viejo'))
+  // Para turnos cancelados: buscar en motivo_cancelacion (principal) y obs_cancelacion (backup)
+  if (turno.estado === 'CANCELADO') {
+    if (turno.motivo_cancelacion && 
+        (turno.motivo_cancelacion.includes('Turno por canje') ||
+         turno.motivo_cancelacion.includes('Canjeado') ||
+         turno.motivo_cancelacion.includes('Reoferta'))) {
+      return true;
+    }
+    if (turno.obs_cancelacion && 
+        (turno.obs_cancelacion.includes('Canjeado') || 
+         turno.obs_cancelacion.includes('Reoferta') ||
+         turno.obs_cancelacion.includes('Origen: Turno Viejo'))) {
+      return true;
+    }
+  } else {
+    // Para turnos activos: buscar la marca específica en obs_cancelacion
+    if (turno.obs_cancelacion && turno.obs_cancelacion.includes('Turno obtenido por canje')) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const esTurnoConDescuento = (turno) => {
@@ -547,7 +574,8 @@ const cancelarTurno = async (turno) => {
         }
         await cargarTurnos();
       } catch (error) {
-        Swal.fire('Error', 'Error de conexión', 'error');
+        const mensaje = error.response?.data?.error || 'Error de conexión';
+        Swal.fire('Error', mensaje, 'error');
       } finally {
         loading.value = false;
       }
@@ -746,7 +774,6 @@ const verDetalleTurno = async (turno) => {
     const transactionId = turnoDetalle.codigo_transaccion || turnoDetalle.mp_payment_id;
 
     Swal.fire({
-      // 🔥 CORREGIDO: Se quitó el precio del título para que no se repita
       title: `<div style="display: flex; align-items: center; gap: 10px; color: #0f172a;">
                 <span style="background: #0ea5e9; color: white; padding: 6px 14px; border-radius: 40px; font-size: 0.9rem; font-weight: 600;">Turno #${turnoDetalle.id}</span>
               </div>`,

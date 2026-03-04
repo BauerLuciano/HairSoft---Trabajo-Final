@@ -419,6 +419,10 @@ class Turno(models.Model):
         return f"{self.fecha} {self.hora} - {nombre_cli}"
     
     def puede_ser_cancelado(self):
+        """
+        ✅ NUEVA LÓGICA: siempre se puede cancelar (si el turno está activo).
+        El reembolso depende del margen de cancelación.
+        """
         if self.estado in ['COMPLETADO', 'CANCELADO']:
             return False, False, "El turno ya no está activo."
         
@@ -442,6 +446,7 @@ class Turno(models.Model):
         else:
             msg = f"Fuera de término para reembolso (faltan {round(horas_restantes, 1)}hs)"
         
+        # ✅ SIEMPRE puede cancelar si el estado lo permite
         puede_cancelar = True if self.estado in ['RESERVADO', 'DISPONIBLE'] else False
         
         return puede_cancelar, hay_reembolso, msg
@@ -1115,6 +1120,8 @@ class PedidoWeb(models.Model):
     
     mp_payment_id = models.CharField(max_length=100, null=True, blank=True, help_text="ID de pago de MercadoPago")
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Total productos + envío")
+    motivo_cancelacion = models.CharField(max_length=100, blank=True, null=True)
+    obs_cancelacion = models.TextField(blank=True, null=True)
 
     # ✅ Campo para trazabilidad de la moto
     datos_entrega_interna = models.CharField(max_length=255, null=True, blank=True, help_text="Nombre del cadete")
@@ -1304,7 +1311,6 @@ class Liquidacion(models.Model):
     def __str__(self):
         return f"Pago a {self.empleado} - ${self.total_pagado} ({self.fecha_pago.date()})"
 
-# para reportes!
 class ConfiguracionSistema(models.Model):
     razon_social = models.CharField(max_length=255, default="Los Últimos Serán Los Primeros")
     cuil_cuit = models.CharField(max_length=20, default="27-23456789-3") 

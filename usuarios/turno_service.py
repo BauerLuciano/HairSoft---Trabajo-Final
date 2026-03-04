@@ -5,7 +5,7 @@ from decimal import Decimal
 import logging
 import uuid
 from django.core.exceptions import ValidationError # <--- IMPORTANTE PARA VALIDAR
-from .models import Turno, Silla, ConfiguracionSistema # <--- AGREGADA IMPORTACIÓN DE SILLA Y CONFIG
+from .models import Turno, Silla # <--- AGREGADA IMPORTACIÓN DE SILLA
 from .tasks import procesar_reoferta_masiva  # Importar la tarea de Celery
 
 logger = logging.getLogger(__name__)
@@ -121,17 +121,17 @@ class TurnoService:
     @staticmethod
     def procesar_cancelacion_automatica(turno_id, usuario_cancelacion=None, motivo="", observacion=""):
         """
-        🔥 VERSIÓN FINAL CORREGIDA - Reembolso SIEMPRE PENDIENTE (nunca automático)
+        🔥 VERSIÓN FINAL CORREGIDA - Reembolso determinado por el margen de cancelación
         """
-        print(f"🔄 CANCELANDO TURNO {turno_id} - REEMBOLSO SIEMPRE PENDIENTE")
+        print(f"🔄 CANCELANDO TURNO {turno_id} - REEMBOLSO SEGÚN MARGEN")
         
         try:
             from django.db.models import Q
-            from .models import InteresTurnoLiberado
+            from .models import InteresTurnoLiberado, ConfiguracionSistema  # <-- IMPORTAMOS CONFIG
             
             print(f"\n🔥 INICIANDO CANCELACIÓN TURNO {turno_id}")
-            print(f"  Motivo: {motivo}")
-            print(f"  Observación: {observacion}")
+            print(f"   Motivo: {motivo}")
+            print(f"   Observación: {observacion}")
             
             with transaction.atomic():
                 # 1. OBTENER Y CANCELAR TURNO
@@ -140,8 +140,7 @@ class TurnoService:
                 if turno.estado == 'CANCELADO':
                     return False, "El turno ya está cancelado"
                 
-                # 2. ✅ USAR LA LÓGICA DE REEMBOLSO QUE YA TENÉS EN VIEWS.PY
-                # Pero primero verificar el tiempo
+                # Verificar que no haya pasado
                 ahora = timezone.now()
                 fecha_turno = timezone.make_aware(datetime.combine(turno.fecha, turno.hora))
                 tiempo_restante = fecha_turno - ahora
@@ -149,65 +148,41 @@ class TurnoService:
                 if tiempo_restante.total_seconds() <= 0:
                     return False, "No se puede cancelar un turno que ya pasó"
                 
-                # 3. ✅ DETERMINAR SI ES CANCELACIÓN DEL CLIENTE (no reoferta)
+                # 2. DETERMINAR SI ES CANCELACIÓN DEL CLIENTE (no reoferta)
                 es_cancelacion_cliente = True  # Asumir que es el cliente
                 
-                # 4. ✅ GENERAR TOKEN SIEMPRE
+                # 3. GENERAR TOKEN SIEMPRE
                 turno.token_reoferta = str(uuid.uuid4())
                 print(f"🔑 TOKEN GENERADO EN SERVICE: {turno.token_reoferta}")
                 
-                # 5. ✅ CANCELAR TURNO PERO DEJAR REEMBOLSO PENDIENTE
+                # 4. CANCELAR TURNO (sin tocar reembolso aún)
                 turno.estado = 'CANCELADO'
                 turno.fecha_modificacion = ahora
                 turno.motivo_cancelacion = motivo or "Cancelado por el sistema"
                 turno.obs_cancelacion = observacion
-                
-                # ✅ CORRECCIÓN CRÍTICA: INICIALIZAR REEMBOLSO COMO "PENDIENTE" 
-                # La función procesar_reembolso_si_corresponde lo ajustará después
-                if es_cancelacion_cliente:
-                    # ✅ SIEMPRE empezar como PENDIENTE si el cliente pagó algo
-                    if turno.monto_seña > 0 or turno.tipo_pago == 'TOTAL':
-                        turno.reembolso_estado = 'PENDIENTE'
-                    else:
-                        turno.reembolso_estado = 'NO_APLICA'
-                else:
-                    # Si es por reoferta/aceptación de oferta, NO APLICA reembolso
-                    turno.reembolso_estado = 'NO_APLICA'
-                
-                # ✅ NO marcar como reembolsado automáticamente NUNCA
-                turno.reembolsado = False
-                
-                # 6. ✅ AHORA SÍ LLAMAR A TU FUNCIÓN DE REEMBOLSO
-                # Pero primero guardamos el turno para tener ID
+                turno.reembolsado = False  # nunca se marca automáticamente
                 turno.save()
                 
-                # Importar tu función desde views.py
+                # 5. LLAMAR A LA FUNCIÓN DE REEMBOLSO PARA QUE DETERMINE EL ESTADO
                 from usuarios.views import procesar_reembolso_si_corresponde
-                
-                # Determinar si corresponde devolución usando la lógica del modelo
-                puede_cancelar, hay_reembolso, msg_tiempo = turno.puede_ser_cancelado()
-                
-                if hay_reembolso and es_cancelacion_cliente:
-                    # ✅ Llamar a tu función para que determine el estado del reembolso
-                    # PERO IMPORTANTE: Esta función NO debe marcar automáticamente como COMPLETADO
+                if es_cancelacion_cliente:
                     procesado, mensaje_reembolso = procesar_reembolso_si_corresponde(turno)
-                    
-                    # ✅ CORRECCIÓN: Si la función lo marca como COMPLETADO, forzar a PENDIENTE
+                    # Si por error la función marcara COMPLETADO, lo forzamos a PENDIENTE
                     if turno.reembolso_estado == 'COMPLETADO':
                         print(f"⚠️  ATENCIÓN: La función marcó reembolso como COMPLETADO, forzando a PENDIENTE")
                         turno.reembolso_estado = 'PENDIENTE'
                         turno.reembolsado = False
-                        mensaje_reembolso = "Reembolso pendiente de procesar manually"
-                    
-                    # Guardar cambios del reembolso
+                        mensaje_reembolso = "Reembolso pendiente de procesar manualmente"
                     turno.save()
-                    print(f"💰 Estado reembolso después de procesar: {turno.reembolso_estado}")
                 else:
-                    mensaje_reembolso = "No corresponde reembolso"
+                    # Cancelación por reoferta: no aplica reembolso
+                    turno.reembolso_estado = 'NO_APLICA'
+                    turno.save()
+                    mensaje_reembolso = "Cancelación por aceptación de oferta - no aplica reembolso."
                 
                 print(f"💾 Turno {turno_id} guardado. Reembolso: {turno.reembolso_estado}, Reembolsado: {turno.reembolsado}")
             
-            # 7. 🔥 BUSCAR INTERESADOS (EXCLUIR AL CLIENTE QUE CANCELÓ)
+            # 6. 🔥 BUSCAR INTERESADOS (EXCLUIR AL CLIENTE QUE CANCELÓ)
             print(f"🔍 Buscando interesados (excluyendo cliente que canceló)...")
             
             interesados = InteresTurnoLiberado.objects.filter(
@@ -221,19 +196,18 @@ class TurnoService:
             
             print(f"👥 Interesados encontrados (sin cliente que canceló): {interesados.count()}")
             
-            # 8. 🔥 ENVIAR WHATSAPP A TODOS LOS INTERESADOS (excepto el que canceló)
-            # 🔧 MODIFICADO: Agrupar por cliente para enviar UN SOLO mensaje por persona
+            # 7. 🔥 ENVIAR WHATSAPP A TODOS LOS INTERESADOS (excepto el que canceló)
             whatsapp_enviados = 0
             if interesados.exists():
                 print(f"📡 Enviando WhatsApps a nuevos interesados (agrupados por cliente)...")
                 
-                # Importar función de WhatsApp y configuración
+                # Importar función de WhatsApp
                 from .tasks import enviar_whatsapp_oferta
-                # 🔥 CAMBIO 1: USAR PORCENTAJE_DESCUENTO_REOFERTA
-                config = ConfiguracionSistema.get_solo()
-                descuento = getattr(config, 'porcentaje_descuento_reoferta', 15)
-
                 base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
+                
+                # 🔥 OBTENER DESCUENTO DE CONFIGURACIÓN
+                config = ConfiguracionSistema.get_solo()
+                descuento = config.porcentaje_descuento_reoferta  # Valor por defecto 15
                 
                 # Agrupar intereses por cliente_id
                 from collections import defaultdict
@@ -254,7 +228,7 @@ class TurnoService:
                         f"Hola {cliente.nombre}, se liberó un lugar:\n\n"
                         f"📅 {turno.fecha}\n"
                         f"⏰ {turno.hora}\n\n"
-                        f"👇 Tocá el link para reservar con un {descuento}% de descuento!:\n"
+                        f"👇 Tocá el link para reservar con un {descuento}% de descuento!:\n"  # <-- USAMOS VARIABLE
                         f"{link}\n\n"
                         f"Los Últimos Serán Los Primeros"
                     )
@@ -279,18 +253,18 @@ class TurnoService:
                 
                 print(f"✅ {whatsapp_enviados} WhatsApps enviados exitosamente (para {len(intereses_por_cliente)} clientes)")
             
-            # 9. ✅ MENSAJE FINAL - REEMBOLSO SIEMPRE PENDIENTE
-            mensaje = 'Turno cancelado exitosamente'
+            # 8. ✅ MENSAJE FINAL - INCLUYE INFORMACIÓN DEL REEMBOLSO
+            mensaje = 'Turno cancelado exitosamente.'
             
             if es_cancelacion_cliente:
                 if turno.reembolso_estado == 'PENDIENTE':
-                    mensaje += '. Reembolso pendiente de procesar manualmente.'
+                    mensaje += ' Reembolso pendiente de procesar manualmente.'
                 elif turno.reembolso_estado == 'NO_APLICA':
-                    mensaje += '. No corresponde reembolso.'
+                    mensaje += ' No corresponde reembolso (cancelación tardía).'
                 else:
-                    mensaje += f'. Estado reembolso: {turno.reembolso_estado}'
+                    mensaje += f' Estado reembolso: {turno.reembolso_estado}'
             else:
-                mensaje += '. Cancelación por aceptación de oferta - no aplica reembolso.'
+                mensaje += ' Cancelación por aceptación de oferta - no aplica reembolso.'
             
             if whatsapp_enviados > 0:
                 mensaje += f' Se notificó a {whatsapp_enviados} interesados.'
@@ -494,12 +468,12 @@ class ReofertaAutomaticaService:
             total_bruto = sum(Decimal(str(i.servicio.precio)) for i in intereses_cliente)
             nombres_servicios = ", ".join([i.servicio.nombre for i in intereses_cliente])
             
-            # 3. 🔥 CAMBIO 2: USAR PORCENTAJE_DESCUENTO_REOFERTA
+            # 🔥 OBTENER DESCUENTO DE CONFIGURACIÓN
             config = ConfiguracionSistema.get_solo()
-            porcentaje_desc = Decimal(str(getattr(config, 'porcentaje_descuento_reoferta', 15)))
-            multiplicador = Decimal('1') - (porcentaje_desc / Decimal('100'))
+            descuento = config.porcentaje_descuento_reoferta  # Ej: 15
             
-            precio_oferta = total_bruto * multiplicador
+            # 3. Cálculo de oferta (con el % de configuración)
+            precio_oferta = total_bruto * (Decimal('100') - Decimal(descuento)) / Decimal('100')
             
             # 4. Cálculo de saldo con el turno que el cliente ya tenía
             turno_anterior = Turno.objects.filter(
@@ -509,7 +483,7 @@ class ReofertaAutomaticaService:
             
             pagado_anterior = Decimal('0.00')
             if turno_anterior:
-                 pagado_anterior = turno_anterior.monto_total if turno_anterior.tipo_pago == 'TOTAL' else turno_anterior.monto_seña
+                pagado_anterior = turno_anterior.monto_total if turno_anterior.tipo_pago == 'TOTAL' else turno_anterior.monto_seña
             
             saldo = max(Decimal('0.00'), pagado_anterior - precio_oferta)
             monto_final = max(Decimal('0.00'), precio_oferta - pagado_anterior)
@@ -527,7 +501,7 @@ class ReofertaAutomaticaService:
                 "cliente_id": interes_principal.cliente.id,
                 "turno_liberado_id": turno_liberado_id,
                 "token": token,
-                "porcentaje_aplicado": float(porcentaje_desc)
+                "descuento_porcentaje": descuento,  # <-- NUEVO CAMPO
             }, None
         except Exception as e:
             return None, str(e)
@@ -538,7 +512,7 @@ class ReofertaAutomaticaService:
         🔥 VERSIÓN CORREGIDA: Ahora el motivo del turno anterior es 'Turno por canje'.
         """
         print("🔥 EJECUTANDO ejecutar_canje - Método alcanzado")
-        from .models import Turno, InteresTurnoLiberado, ConfiguracionSistema
+        from .models import Turno, InteresTurnoLiberado
         from django.db import transaction
         from decimal import Decimal
         try:
@@ -592,13 +566,9 @@ class ReofertaAutomaticaService:
                     turno_anterior.reembolso_estado = 'NO_APLICA'
                     turno_anterior.save()
 
-                # 🔥 CAMBIO 3: USAR PORCENTAJE_DESCUENTO_REOFERTA
-                config = ConfiguracionSistema.get_solo()
-                porcentaje_desc = Decimal(str(getattr(config, 'porcentaje_descuento_reoferta', 15)))
-                multiplicador = Decimal('1') - (porcentaje_desc / Decimal('100'))
-
+                # Calcular precios
                 total_bruto = sum(Decimal(str(i.servicio.precio)) for i in lista_intereses)
-                precio_con_desc = total_bruto * multiplicador
+                precio_con_desc = total_bruto * Decimal('0.85')
 
                 # Determinar tipo de pago
                 if pagado_previo < precio_con_desc:
@@ -624,7 +594,8 @@ class ReofertaAutomaticaService:
                     monto_total=precio_con_desc,
                     monto_seña=monto_seña,
                     oferta_activa=True,
-                    motivo_cancelacion=""
+                    motivo_cancelacion="",
+                    obs_cancelacion="Turno obtenido por canje"
                 )
 
                 for item in lista_intereses:

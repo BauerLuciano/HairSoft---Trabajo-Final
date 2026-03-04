@@ -354,23 +354,34 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
     def cambiar_estado(self, request, pk=None):
         pedido = self.get_object()
         nuevo_estado = request.data.get('estado')
-        repartidor = request.data.get('repartidor') # Nombre de la moto
+        repartidor = request.data.get('repartidor')
+        
+        # ✅ CAPTURAR MOTIVOS DE CANCELACIÓN
+        motivo = request.data.get('motivo_cancelacion')
+        observacion = request.data.get('obs_cancelacion')
         
         # Seguridad de permisos
         if not (request.user.rol and request.user.rol.nombre in ['Administrador', 'Recepcionista']):
              return Response({'error': 'No tienes permisos'}, status=status.HTTP_403_FORBIDDEN)
 
-        # Si se cancela, devolvemos stock
-        if nuevo_estado == PedidoWeb.ESTADO_CANCELADO and pedido.estado != PedidoWeb.ESTADO_CANCELADO:
+        # 🔥 LÓGICA DE CANCELACIÓN MEJORADA
+        if nuevo_estado == 'CANCELADO' and pedido.estado != 'CANCELADO':
             with transaction.atomic():
+                # 1. Devolver stock de los productos
                 for detalle in pedido.detalles.all():
                     detalle.producto.stock_actual += detalle.cantidad
                     detalle.producto.save()
-        
+                
+                # 2. Guardar motivos en el modelo
+                # Asegúrate de que estos campos existan en tu modelo PedidoWeb
+                pedido.motivo_cancelacion = motivo
+                pedido.obs_cancelacion = observacion
+                print(f"🚫 Pedido #{pedido.id} cancelado por: {motivo}")
+
         # ✅ GUARDAR REPARTIDOR SIEMPRE QUE VENGA
         if repartidor:
             pedido.datos_entrega_interna = repartidor
-            print(f"📦 Asignando repartidor: {repartidor} al pedido {pedido.id}") # Debug en consola
+            print(f"📦 Asignando repartidor: {repartidor} al pedido {pedido.id}")
 
         pedido.estado = nuevo_estado
         pedido.save()
@@ -378,7 +389,8 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
         return Response({
             'status': 'Estado actualizado', 
             'nuevo_estado': pedido.get_estado_display(),
-            'repartidor': pedido.datos_entrega_interna
+            'repartidor': pedido.datos_entrega_interna,
+            'motivo': motivo
         })
 
 class SillaViewSet(viewsets.ModelViewSet):

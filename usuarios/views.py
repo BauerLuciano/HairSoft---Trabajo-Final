@@ -2628,7 +2628,6 @@ def procesar_reembolso_si_corresponde(turno):
     turno.reembolso_estado = 'PENDIENTE'
     turno.save()
     return True, "⏳ Reembolso marcado como PENDIENTE para gestión manual."
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def me_api_view(request):
@@ -3697,8 +3696,6 @@ def enviar_pedido_proveedor(request, pedido_id):
     except Exception as e:
         return Response({'error': str(e)}, status=500)
 
-
-    
 # ==============================================================================
 # GESTIÓN EXTERNA DE PEDIDOS (PARA EL PROVEEDOR) - SIN LOGIN REQUERIDO
 # ==============================================================================
@@ -5632,22 +5629,44 @@ def mercadopago_webhook(request):
         return HttpResponse(status=405)
 
     try:
-        data = json.loads(request.body.decode('utf-8')) if request.body else {}
+        # 1. LOG INICIAL
+        print(f"\n--- 🔔 WEBHOOK DE MERCADO PAGO RECIBIDO ---")
+        print(f"GET params: {request.GET}")
         
+        data = {}
+        if request.body:
+            try:
+                data = json.loads(request.body.decode('utf-8'))
+                print(f"JSON Body: {data}")
+            except Exception as e:
+                print(f"Error decodificando body: {e}")
+        
+        # Ignorar las notificaciones de merchant_order (solo nos importan los payments)
         topic = request.GET.get('topic') or data.get('type')
         if topic == 'merchant_order':
+            print("Ignorando merchant_order (solo queremos el payment)")
             return HttpResponse(status=200)
 
-        payment_id = request.GET.get('data.id') or request.GET.get('id') or data.get('data', {}).get('id')
-        
+        # 2. CAPTURA A PRUEBA DE BALAS DEL PAYMENT_ID
+        payment_id = None
+        if 'data.id' in request.GET:
+            payment_id = request.GET.get('data.id')
+        elif 'id' in request.GET:
+            payment_id = request.GET.get('id')
+        elif 'data' in data and 'id' in data['data']:
+            payment_id = data['data']['id']
+        elif 'id' in data:
+            payment_id = data['id']
+
         if not payment_id:
+            print("❌ No se encontró payment_id en la petición.")
             return HttpResponse(status=200)
 
-        print(f"\n--- 🔔 LLEGÓ WEBHOOK DE MERCADO PAGO ---")
-        print(f"🔎 ID del pago a consultar: {payment_id}")
+        print(f"🔎 ID del pago a consultar en MP: {payment_id}")
 
-        # 1. Consultar a Mercado Pago
-        mp_service = MercadoPagoService()
+        from .mercadopago_service import MercadoPagoService 
+        mp_service = MercadoPagoService()   
+             
         payment_info = mp_service.sdk.payment().get(payment_id)
         
         if payment_info['status'] != 200:
@@ -5659,31 +5678,38 @@ def mercadopago_webhook(request):
         monto = payment_data.get('transaction_amount')
         referencia = payment_data.get('external_reference', '') 
 
-        # ESTE PRINT ES LA CLAVE: Te va a decir si MP lo tiene en pending o approved
         print(f"📌 Estado en MP: {estado.upper()} | Ref: {referencia} | Monto: ${monto}")
 
         if estado == 'approved':
             id_obj = referencia.split('_')[1] if '_' in referencia else None
             
             if not id_obj:
+                print("❌ No hay referencia válida para asociar el pago.")
                 return HttpResponse(status=200)
 
             concepto_caja = 'OTROS'
             descripcion_mov = f"Cobro Web #{id_obj} (MP: {payment_id})" 
             turno_rel = None
+            pedido_rel = None
 
+            # Actualizar Turno
             if 'TURNO' in referencia.upper():
                 concepto_caja = 'TURNO_WEB'
                 descripcion_mov = f"Pago Turno Web #{id_obj} (MP: {payment_id})"
+                from usuarios.models import Turno
                 turno_rel = Turno.objects.filter(id=id_obj).first()
                 if turno_rel:
                     turno_rel.mp_payment_id = payment_id
+                    if turno_rel.estado == 'PENDIENTE': 
+                        turno_rel.estado = 'RESERVADO'
                     turno_rel.save()
                     print(f"✅ Turno {id_obj} actualizado en BD.")
 
+            # Actualizar Pedido Web
             elif 'PEDIDO' in referencia.upper():
                 concepto_caja = 'PEDIDO_WEB'
                 descripcion_mov = f"Pago Pedido Web #{id_obj} (MP: {payment_id})"
+                from usuarios.models import PedidoWeb
                 pedido_rel = PedidoWeb.objects.filter(id=id_obj).first()
                 if pedido_rel:
                     pedido_rel.estado = 'PAGADO'
@@ -5691,12 +5717,15 @@ def mercadopago_webhook(request):
                     pedido_rel.save()
                     print(f"✅ Pedido {id_obj} actualizado en BD.")
 
-            # 🔥 Filtro anti-duplicados 
+            # 4. CREACIÓN DEL MOVIMIENTO DE CAJA
+            from usuarios.models import MovimientoCaja, SesionCaja
+            
+            # Filtro anti-duplicados 
             if MovimientoCaja.objects.filter(descripcion=descripcion_mov).exists():
                 print(f"⚠️ El pago ya está en la caja. Ignorando duplicado.")
                 return HttpResponse(status=200)
 
-            # 🌟 ¿Hay caja abierta en este momento?
+            # Buscamos caja abierta
             sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
 
             MovimientoCaja.objects.create(
@@ -5706,19 +5735,22 @@ def mercadopago_webhook(request):
                 concepto=concepto_caja,
                 monto=monto,
                 descripcion=descripcion_mov,
-                turno_relacionado=turno_rel
+                turno_relacionado=turno_rel,
+                # pedido_proveedor_relacionado=pedido_rel  <-- Lo dejo comentado por si no tenés este campo en el modelo para pedidos web
             )
             
-            estado_caja = f"en Caja #{sesion_abierta.id}" if sesion_abierta else "como HUÉRFANO"
+            estado_caja = f"en Caja #{sesion_abierta.id}" if sesion_abierta else "como HUÉRFANO (caja cerrada)"
             print(f"💰 ¡PAGO APROBADO! ${monto} guardado {estado_caja}")
+            
         else:
-            # SI LLEGA PENDING, TE AVISA:
-            print(f"⏳ El pago está '{estado}'. Tu caja se actualizará recién cuando MP lo marque como 'approved'.")
+            print(f"⏳ El pago está '{estado}'. Esperando que MP lo marque como 'approved'.")
 
         print("------------------------------------------\n")
 
     except Exception as e:
-        print(f"❌ Error webhook: {e}")
+        print(f"❌ Error webhook crítico: {e}")
+        import traceback
+        print(traceback.format_exc())
         
     return HttpResponse(status=200)
 
