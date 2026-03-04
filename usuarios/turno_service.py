@@ -5,7 +5,7 @@ from decimal import Decimal
 import logging
 import uuid
 from django.core.exceptions import ValidationError # <--- IMPORTANTE PARA VALIDAR
-from .models import Turno, Silla # <--- AGREGADA IMPORTACIÓN DE SILLA
+from .models import Turno, Silla, ConfiguracionSistema # <--- AGREGADA IMPORTACIÓN DE SILLA Y CONFIG
 from .tasks import procesar_reoferta_masiva  # Importar la tarea de Celery
 
 logger = logging.getLogger(__name__)
@@ -130,8 +130,8 @@ class TurnoService:
             from .models import InteresTurnoLiberado
             
             print(f"\n🔥 INICIANDO CANCELACIÓN TURNO {turno_id}")
-            print(f"   Motivo: {motivo}")
-            print(f"   Observación: {observacion}")
+            print(f"  Motivo: {motivo}")
+            print(f"  Observación: {observacion}")
             
             with transaction.atomic():
                 # 1. OBTENER Y CANCELAR TURNO
@@ -197,7 +197,7 @@ class TurnoService:
                         print(f"⚠️  ATENCIÓN: La función marcó reembolso como COMPLETADO, forzando a PENDIENTE")
                         turno.reembolso_estado = 'PENDIENTE'
                         turno.reembolsado = False
-                        mensaje_reembolso = "Reembolso pendiente de procesar manualmente"
+                        mensaje_reembolso = "Reembolso pendiente de procesar manually"
                     
                     # Guardar cambios del reembolso
                     turno.save()
@@ -227,8 +227,12 @@ class TurnoService:
             if interesados.exists():
                 print(f"📡 Enviando WhatsApps a nuevos interesados (agrupados por cliente)...")
                 
-                # Importar función de WhatsApp
+                # Importar función de WhatsApp y configuración
                 from .tasks import enviar_whatsapp_oferta
+                # 🔥 CAMBIO 1: USAR PORCENTAJE_DESCUENTO_REOFERTA
+                config = ConfiguracionSistema.get_solo()
+                descuento = getattr(config, 'porcentaje_descuento_reoferta', 15)
+
                 base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
                 
                 # Agrupar intereses por cliente_id
@@ -250,7 +254,7 @@ class TurnoService:
                         f"Hola {cliente.nombre}, se liberó un lugar:\n\n"
                         f"📅 {turno.fecha}\n"
                         f"⏰ {turno.hora}\n\n"
-                        f"👇 Tocá el link para reservar con un 15% de descuento!:\n"
+                        f"👇 Tocá el link para reservar con un {descuento}% de descuento!:\n"
                         f"{link}\n\n"
                         f"Los Últimos Serán Los Primeros"
                     )
@@ -456,7 +460,7 @@ class ReofertaAutomaticaService:
         """
         ✅ RESTAURADO: Agrupa servicios, calcula saldos y respeta toda tu lógica.
         """
-        from .models import Turno, InteresTurnoLiberado
+        from .models import Turno, InteresTurnoLiberado, ConfiguracionSistema
         from decimal import Decimal
         try:
             turno_liberado = Turno.objects.get(id=turno_liberado_id)
@@ -490,8 +494,12 @@ class ReofertaAutomaticaService:
             total_bruto = sum(Decimal(str(i.servicio.precio)) for i in intereses_cliente)
             nombres_servicios = ", ".join([i.servicio.nombre for i in intereses_cliente])
             
-            # 3. Cálculo de oferta (15% desc)
-            precio_oferta = total_bruto * Decimal('0.85')
+            # 3. 🔥 CAMBIO 2: USAR PORCENTAJE_DESCUENTO_REOFERTA
+            config = ConfiguracionSistema.get_solo()
+            porcentaje_desc = Decimal(str(getattr(config, 'porcentaje_descuento_reoferta', 15)))
+            multiplicador = Decimal('1') - (porcentaje_desc / Decimal('100'))
+            
+            precio_oferta = total_bruto * multiplicador
             
             # 4. Cálculo de saldo con el turno que el cliente ya tenía
             turno_anterior = Turno.objects.filter(
@@ -518,7 +526,8 @@ class ReofertaAutomaticaService:
                 "hora": turno_liberado.hora.strftime("%H:%M"),
                 "cliente_id": interes_principal.cliente.id,
                 "turno_liberado_id": turno_liberado_id,
-                "token": token
+                "token": token,
+                "porcentaje_aplicado": float(porcentaje_desc)
             }, None
         except Exception as e:
             return None, str(e)
@@ -529,7 +538,7 @@ class ReofertaAutomaticaService:
         🔥 VERSIÓN CORREGIDA: Ahora el motivo del turno anterior es 'Turno por canje'.
         """
         print("🔥 EJECUTANDO ejecutar_canje - Método alcanzado")
-        from .models import Turno, InteresTurnoLiberado
+        from .models import Turno, InteresTurnoLiberado, ConfiguracionSistema
         from django.db import transaction
         from decimal import Decimal
         try:
@@ -583,9 +592,13 @@ class ReofertaAutomaticaService:
                     turno_anterior.reembolso_estado = 'NO_APLICA'
                     turno_anterior.save()
 
-                # Calcular precios
+                # 🔥 CAMBIO 3: USAR PORCENTAJE_DESCUENTO_REOFERTA
+                config = ConfiguracionSistema.get_solo()
+                porcentaje_desc = Decimal(str(getattr(config, 'porcentaje_descuento_reoferta', 15)))
+                multiplicador = Decimal('1') - (porcentaje_desc / Decimal('100'))
+
                 total_bruto = sum(Decimal(str(i.servicio.precio)) for i in lista_intereses)
-                precio_con_desc = total_bruto * Decimal('0.85')
+                precio_con_desc = total_bruto * multiplicador
 
                 # Determinar tipo de pago
                 if pagado_previo < precio_con_desc:

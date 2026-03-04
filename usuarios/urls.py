@@ -17,7 +17,8 @@ from .api_views import (
     ReporteLiquidacionPDFView,
     RegistrarPagoLiquidacionView,
     HistorialLiquidacionesView,
-    SillaViewSet  # <--- ESTO YA LO TENÍAS IMPORTADO, JOYA
+    SillaViewSet,
+    ConfigWebView
 )
 
 from .views import (
@@ -298,6 +299,7 @@ urlpatterns = [
 
     #Silla
     path('api/turnos/ocupacion-grilla/', func_views.obtener_ocupacion_grilla, name='obtener-ocupacion-grilla'),
-]
+
+    path('api/web/configuracion/', ConfigWebView.as_view(), name='configuracion-web'),]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

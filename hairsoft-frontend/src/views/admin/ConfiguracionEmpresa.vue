@@ -88,13 +88,23 @@
           <div class="vertical-stack">
             
             <div class="process-group">
-              
               <div class="filter-group">
                 <label style="color: #0ea5e9;">Automatización: Cancelaciones y Reembolsos</label>
                 <div style="display: flex; align-items: center; gap: 15px;">
                   <input v-model.number="config.margen_horas_cancelacion" type="number" class="filter-input input-short" min="1" />
                   <span class="badge-estado estado-info">Horas antes del turno</span>
                 </div>
+              </div>
+
+              <div class="filter-group mt-3">
+                <label style="color: #0ea5e9;">Descuento por Reoferta (Lista de espera)</label>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                  <input v-model.number="config.porcentaje_descuento_reoferta" type="number" class="filter-input input-short" min="0" max="100" />
+                  <span class="badge-estado estado-info" style="font-size: 1.2rem;">%</span>
+                </div>
+                <small style="color: var(--text-secondary); margin-top: 8px;">
+                  * Descuento ofrecido a los clientes en lista de espera cuando se libera un turno.
+                </small>
               </div>
 
               <div class="filter-group mt-3">
@@ -106,7 +116,6 @@
                   placeholder="Escribí aquí lo que el cliente leerá antes de pagar la seña..."
                 ></textarea>
               </div>
-
             </div>
 
             <hr class="divider">
@@ -122,6 +131,29 @@
                   * Al superar estos días, se envía un WhatsApp automático con promo.
                 </small>
               </div>
+
+              <div class="filter-group mt-3">
+                <label style="color: #f97316;">Descuento por Reactivación</label>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                  <input v-model.number="config.porcentaje_descuento_promo" type="number" class="filter-input input-short" min="0" max="100" />
+                  <span class="badge-estado estado-alert" style="font-size: 1.2rem;">%</span>
+                </div>
+              </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="process-group">
+              <div class="filter-group">
+                <label style="color: #10b981;">Logística: Tarifa de Moto Mandado</label>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                  <span style="font-weight: bold; color: var(--text-secondary); font-size: 1.2rem;">$</span>
+                  <input v-model.number="config.costo_envio_moto" type="number" class="filter-input input-short" min="0" step="100" />
+                </div>
+                <small style="color: var(--text-secondary); margin-top: 8px;">
+                  * Este es el precio fijo que pagará el cliente si elige envío a domicilio.
+                </small>
+              </div>
             </div>
 
           </div>
@@ -129,9 +161,10 @@
 
         <div style="margin-top: 40px; display: flex; flex-direction: column; gap: 20px;">
            <GestionSillas />
-           <GestionCajas />  </div>
-
+           <GestionCajas />  
         </div>
+
+      </div>
     </div>
   </div>
 </template>
@@ -142,7 +175,7 @@ import axios from '../../utils/axiosConfig'
 import { Building2, Clock, Save, Loader2, Info } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 import GestionSillas from '@/components/GestionSillas.vue'; 
-import GestionCajas from '@/components/GestionCajas.vue'; // <-- IMPORTACIÓN NUEVA
+import GestionCajas from '@/components/GestionCajas.vue';
 
 const config = ref({
   razon_social: '',
@@ -151,9 +184,12 @@ const config = ref({
   telefono: '',
   email: '',
   margen_horas_cancelacion: 3,
+  porcentaje_descuento_reoferta: 15, // 🔥 Inicializado
   dias_inactividad_clientes: 60,
+  porcentaje_descuento_promo: 15,
   politica_senia: '',
-  logo: null
+  logo: null,
+  costo_envio_moto: 1500 
 })
 
 const cargando = ref(true)
@@ -169,6 +205,10 @@ const obtenerConfig = async () => {
     if (data.logo) {
       data.logo = `${data.logo}?t=${new Date().getTime()}`;
     }
+    
+    if(data.costo_envio_moto === undefined) data.costo_envio_moto = 1500;
+    if(data.porcentaje_descuento_promo === undefined) data.porcentaje_descuento_promo = 15;
+    if(data.porcentaje_descuento_reoferta === undefined) data.porcentaje_descuento_reoferta = 15;
 
     config.value = data
   } catch (e) {
@@ -185,12 +225,11 @@ const obtenerConfig = async () => {
   }
 }
 
-// ✅ Manejo de selección de archivo
 const handleFileUpload = (event) => {
   const file = event.target.files[0]
   if (file) {
     logoFile.value = file
-    previewLogo.value = URL.createObjectURL(file) // Crear URL temporal para previsualización
+    previewLogo.value = URL.createObjectURL(file)
   }
 }
 
@@ -202,6 +241,9 @@ const validarFormulario = () => {
   if (config.value.telefono.length > 15) return "El teléfono no puede superar los 15 dígitos.";
   if (!config.value.email.includes('@')) return "El email debe ser válido.";
   if (config.value.dias_inactividad_clientes < 1) return "Los días de inactividad deben ser al menos 1.";
+  if (config.value.costo_envio_moto < 0) return "El costo de envío no puede ser negativo.";
+  if (config.value.porcentaje_descuento_promo < 0 || config.value.porcentaje_descuento_promo > 100) return "El descuento de promo debe ser entre 0 y 100.";
+  if (config.value.porcentaje_descuento_reoferta < 0 || config.value.porcentaje_descuento_reoferta > 100) return "El descuento de reoferta debe ser entre 0 y 100.";
 
   return null; 
 }
@@ -220,7 +262,6 @@ const guardarCambios = async () => {
 
   guardando.value = true
 
-  // ✅ Uso de FormData para enviar archivo de imagen + textos
   const formData = new FormData();
   formData.append('razon_social', config.value.razon_social);
   formData.append('cuil_cuit', config.value.cuil_cuit);
@@ -228,10 +269,12 @@ const guardarCambios = async () => {
   formData.append('telefono', config.value.telefono);
   formData.append('email', config.value.email);
   formData.append('margen_horas_cancelacion', config.value.margen_horas_cancelacion);
+  formData.append('porcentaje_descuento_reoferta', config.value.porcentaje_descuento_reoferta); // 🔥
   formData.append('dias_inactividad_clientes', config.value.dias_inactividad_clientes);
+  formData.append('porcentaje_descuento_promo', config.value.porcentaje_descuento_promo);
   formData.append('politica_senia', config.value.politica_senia);
+  formData.append('costo_envio_moto', config.value.costo_envio_moto); 
   
-  // Si el usuario seleccionó un archivo nuevo, lo adjuntamos
   if (logoFile.value) {
     formData.append('logo', logoFile.value);
   }
@@ -253,7 +296,6 @@ const guardarCambios = async () => {
       color: '#f8fafc'
     })
 
-    // ✅ Forzar recarga para que el Sidebar actualice el logo
     window.location.reload();
 
   } catch (e) {
@@ -274,22 +316,15 @@ onMounted(obtenerConfig)
 </script>
 
 <style scoped>
-/* ========================================
-   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE 
-   ======================================== */
-
+/* Los estilos se mantienen intactos */
 .list-container { padding: 32px; max-width: 1200px; margin: 0 auto; min-height: 100vh; font-family: 'Inter', sans-serif; }
 .list-card { background: var(--bg-secondary); color: var(--text-primary); border-radius: 24px; padding: 40px; width: 100%; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; border: 1px solid var(--border-color); }
 .list-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9); }
-
 .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; border-bottom: 2px solid var(--border-color); padding-bottom: 25px; }
 .header-content h1 { margin: 0; font-size: 2.2rem; background: linear-gradient(135deg, var(--text-primary), #0ea5e9); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
 .header-content p { color: var(--text-secondary); font-weight: 500; margin-top: 8px; }
-
 .register-button { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; border: none; padding: 14px 28px; border-radius: 12px; font-weight: 800; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; display: flex; align-items: center; gap: 10px; box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35); }
 .register-button:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(14, 165, 233, 0.5); }
-
-/* SECCIÓN UPLOAD LOGO */
 .logo-upload-section { display: flex; align-items: center; gap: 30px; }
 .logo-preview-container { width: 120px; height: 120px; border: 2px dashed var(--border-color); border-radius: 18px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--bg-primary); }
 .logo-img-preview { width: 100%; height: 100%; object-fit: cover; }
@@ -297,7 +332,6 @@ onMounted(obtenerConfig)
 .upload-btn { background: var(--bg-tertiary); color: white; padding: 10px 20px; border-radius: 10px; border: 1px solid var(--border-color); cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 8px; transition: 0.3s; font-size: 0.9rem; }
 .upload-btn:hover { background: var(--hover-bg); transform: translateY(-2px); border-color: #0ea5e9; }
 .upload-hint { font-size: 0.8rem; color: var(--text-tertiary); margin-top: 8px; font-style: italic; }
-
 .filters-container { margin-bottom: 30px; background: var(--hover-bg); padding: 30px; border-radius: 16px; border: 1px solid var(--border-color); }
 .vertical-stack { display: flex; flex-direction: column; gap: 25px; }
 .row-2-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
@@ -306,22 +340,18 @@ onMounted(obtenerConfig)
 .filter-input { padding: 14px; border: 2px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); color: var(--text-primary); font-size: 1rem; transition: all 0.3s; width: 100%; }
 .input-short { width: 120px !important; text-align: center; font-weight: bold; }
 .filter-input:focus { outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 4px var(--accent-light); }
-
 .usuarios-count { display: flex; justify-content: space-between; align-items: center; margin: 40px 0 20px; padding: 15px 25px; background: var(--bg-primary); border-radius: 12px; border-left: 5px solid var(--accent-color); }
 .usuarios-count p { color: #fff; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 10px; font-size: 1.1rem; }
-
 .badge-estado { padding: 8px 16px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; }
 .estado-info { background: rgba(14, 165, 233, 0.1); color: #0ea5e9; border: 2px solid #0ea5e9; }
 .estado-alert { background: rgba(249, 115, 22, 0.1); color: #f97316; border: 2px solid #f97316; }
 .divider { border: 0; height: 1px; background: var(--border-color); margin: 15px 0; opacity: 0.3; }
-
 .animate-spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .no-results { text-align: center; padding: 100px 0; color: var(--text-secondary); }
 .no-results-icon { margin-bottom: 20px; color: var(--accent-color); }
 .fade-in { animation: fadeIn 0.4s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
 @media (max-width: 768px) {
   .row-2-cols { grid-template-columns: 1fr; }
   .logo-upload-section { flex-direction: column; text-align: center; }

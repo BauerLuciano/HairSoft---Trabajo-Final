@@ -3697,6 +3697,8 @@ def enviar_pedido_proveedor(request, pedido_id):
     except Exception as e:
         return Response({'error': str(e)}, status=500)
 
+
+    
 # ==============================================================================
 # GESTIÓN EXTERNA DE PEDIDOS (PARA EL PROVEEDOR) - SIN LOGIN REQUERIDO
 # ==============================================================================

@@ -1,4 +1,3 @@
-# usuarios/tasks.py
 from celery import shared_task
 from django.utils import timezone
 from datetime import datetime, timedelta
@@ -29,14 +28,11 @@ logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, max_retries=3)
 def enviar_whatsapp_oferta(self, numero, mensaje):
-    """
-    Envía WhatsApp vía Twilio con mejor manejo de errores y logging
-    """
     try:
         from twilio.rest import Client
         
         if not numero.startswith('+'):
-            numero = f"+54{numero.lstrip('0')}"  # +5491134567890
+            numero = f"+54{numero.lstrip('0')}"
         
         if len(numero) < 12:
             logger.error(f"❌ Número inválido: {numero}")
@@ -48,9 +44,6 @@ def enviar_whatsapp_oferta(self, numero, mensaje):
         to_whatsapp_number = f'whatsapp:{numero}'
         
         logger.info(f"📲 Intentando enviar WhatsApp a {numero}")
-        logger.info(f"   FROM: {from_whatsapp_number}")
-        logger.info(f"   TO: {to_whatsapp_number}")
-        logger.info(f"   MSG: {mensaje[:50]}...")
         
         if not account_sid or not auth_token:
             logger.error("❌ Credenciales Twilio no configuradas")
@@ -65,30 +58,17 @@ def enviar_whatsapp_oferta(self, numero, mensaje):
         )
         
         logger.info(f"✅ WhatsApp ENVIADO - SID: {message.sid}")
-        logger.info(f"   Estado: {message.status}")
-        
-        return {
-            'success': True,
-            'message_sid': message.sid,
-            'status': message.status,
-            'to': numero
-        }
+        return {'success': True, 'message_sid': message.sid, 'status': message.status, 'to': numero}
         
     except Exception as e:
         logger.error(f"❌ Error Twilio: {str(e)}", exc_info=True)
-        
         if any(err in str(e).lower() for err in ['timeout', 'connection', 'network']):
             try:
                 self.retry(exc=e, countdown=60)
             except Exception as retry_error:
                 logger.error(f"❌ Falló reintento: {retry_error}")
-        
-        return {
-            'success': False,
-            'error': str(e),
-            'to': numero
-        }
-    
+        return {'success': False, 'error': str(e), 'to': numero}
+
 @shared_task
 def enviar_email_oferta(email, mensaje, fecha, hora):
     try:
@@ -114,21 +94,14 @@ Estimado {cotizacion.proveedor.nombre},
 Requerimos presupuesto para: {cotizacion.solicitud.producto.nombre} (Cant: {cotizacion.solicitud.cantidad_requerida}).
 Ingrese su oferta aquí: {link}
         """
-        send_mail(
-            f"Solicitud de Cotización #{cotizacion.solicitud.id}", 
-            mensaje, 
-            settings.DEFAULT_FROM_EMAIL, 
-            [cotizacion.proveedor.email], 
-            fail_silently=False
-        )
-        logger.info(f"📧 Email enviado a proveedor {cotizacion.proveedor.nombre}")
+        send_mail(f"Solicitud de Cotización #{cotizacion.solicitud.id}", mensaje, settings.DEFAULT_FROM_EMAIL, [cotizacion.proveedor.email], fail_silently=False)
         return True
     except Exception as e:
         logger.error(f"❌ Error email proveedor: {str(e)}")
         return False
 
 # ==============================================================================
-# 2. TAREAS DE NEGOCIO - VERSIÓN CORREGIDA
+# 2. TAREAS DE NEGOCIO
 # ==============================================================================
 @shared_task
 def procesar_reoferta_masiva(turno_id):
@@ -142,7 +115,7 @@ def procesar_reoferta_masiva(turno_id):
             logger.warning(f"⚠️ Turno {turno_id} no está cancelado.")
             return False
         
-        # Asegurar token del turno (aunque usaremos el del interés por seguridad)
+        # Asegurar token del turno
         if not turno.token_reoferta:
             turno.token_reoferta = str(uuid.uuid4())
             Turno.objects.filter(id=turno.id).update(token_reoferta=turno.token_reoferta)
@@ -156,14 +129,18 @@ def procesar_reoferta_masiva(turno_id):
         if not interesados.exists():
             logger.info(f"📭 No hay interesados para turno {turno_id}")
             return True
-        
-        # 🔄 AGRUPAR POR CLIENTE (La magia está acá)
+            
+        # 🔥 ACÁ LEEMOS EL DESCUENTO DE REOFERTA
+        config = ConfiguracionSistema.get_solo()
+        descuento = getattr(config, 'porcentaje_descuento_reoferta', 15)
+
+        # 🔄 AGRUPAR POR CLIENTE
         clientes_map = {}
         for interes in interesados:
             cid = interes.cliente.id
             if cid not in clientes_map:
                 clientes_map[cid] = {
-                    'principal': interes, # Guardamos uno de referencia
+                    'principal': interes,
                     'servicios': [],
                     'registros': []
                 }
@@ -175,33 +152,30 @@ def procesar_reoferta_masiva(turno_id):
 
         logger.info(f"📨 Procesando {len(clientes_map)} clientes interesados...")
 
-        # Enviar 1 mensaje por cliente
         for cid, data in clientes_map.items():
             try:
                 interes = data['principal']
                 lista_servicios = data['servicios']
                 registros = data['registros']
                 
-                # Texto de servicios: "Corte, Barba y Lavado"
                 servicios_str = ", ".join(lista_servicios)
 
-                # Actualizar estado A TODOS los registros de este cliente
                 for reg in registros:
                     reg.estado_oferta = 'enviada'
                     reg.turno_liberado = turno
                     reg.fecha_envio_oferta = timezone.now()
                     reg.save(update_fields=['estado_oferta', 'turno_liberado', 'fecha_envio_oferta'])
 
-                # 🔥 LINK CON TOKEN ESPECÍFICO DEL INTERÉS (Más seguro y directo)
                 link = f"{base_url}/aceptar-oferta/{turno.id}/{interes.token_oferta}"
 
+                # 🔥 Y ACA SE USA EN EL MENSAJE:
                 msg = (
                     f"¡TURNO DISPONIBLE! 🎁\n"
                     f"Hola {interes.cliente.nombre}, se liberó un lugar para:\n"
                     f"✂️ *{servicios_str}*\n\n"
                     f"📅 {turno.fecha}\n"
                     f"⏰ {turno.hora}\n\n"
-                    f"👇 Tocá para reservar con 15% OFF:\n"
+                    f"👇 Tocá para reservar con {descuento}% OFF:\n"
                     f"{link}\n\n"
                     f"Los Últimos Serán Los Primeros"
                 )
@@ -221,23 +195,20 @@ def procesar_reoferta_masiva(turno_id):
     except Exception as e:
         logger.error(f"❌ Error crítico en reoferta: {e}", exc_info=True)
         return False
-
+    
 @shared_task
 def notificar_turno_asignado(turno_id):
     try:
         turno = Turno.objects.get(id=turno_id)
-        # Ajustado filtro para usar estado_oferta si existe, sino lo que tenías
         perdieron = InteresTurnoLiberado.objects.filter(turno_liberado=turno).exclude(cliente=turno.cliente)
         msg = f"❌ El turno del {turno.fecha} ya fue tomado."
         for p in perdieron:
-            # Asumiendo métodos, si no existen los comentamos o ajustamos
             if hasattr(p, 'rechazar_oferta'): 
                 p.rechazar_oferta()
             if p.cliente.telefono: 
                 enviar_whatsapp_oferta.delay(p.cliente.telefono, msg)
         return True
     except Exception as e:
-        logger.error(f"❌ Error notificando turno asignado: {e}")
         return False
 
 # ==============================================================================
@@ -245,253 +216,145 @@ def notificar_turno_asignado(turno_id):
 # ==============================================================================
 @shared_task
 def procesar_reactivacion_clientes_inactivos():
-    """VERSIÓN PARAMETRIZABLE - Lee desde la Base de Datos"""
-    
-    # 1. LEER CONFIGURACIÓN (Acá es donde ocurre la magia)
     try:
         config = ConfiguracionSistema.get_solo()
         DIAS_INACTIVIDAD = config.dias_inactividad_clientes
+        descuento_promo = config.porcentaje_descuento_promo 
     except Exception:
-        DIAS_INACTIVIDAD = 60 # Fallback por si explota la DB
-        logger.warning("⚠️ No se pudo leer la configuración. Usando 60 por defecto.")
-
-    # --- EL CHIVATO GRITÓN ---
-    logger.info("="*50)
-    logger.info(f"📢 EL SISTEMA ESTÁ USANDO: {DIAS_INACTIVIDAD} DÍAS COMO LÍMITE")
-    logger.info("="*50)
-    
+        DIAS_INACTIVIDAD = 60 
+        descuento_promo = 15
+        
     try:
         DIAS_COOLDOWN = 90
         hoy = timezone.now()
-        
         from django.db.models import Exists, OuterRef
         
-        # Buscamos clientes que tengan al menos un turno en su historia
         clientes_con_turnos = Usuario.objects.filter(
-            rol__nombre__iexact='Cliente',
-            telefono__isnull=False,
+            rol__nombre__iexact='Cliente', telefono__isnull=False,
         ).exclude(telefono='').annotate(
-            tiene_turnos=Exists(
-                Turno.objects.filter(
-                    cliente=OuterRef('pk'),
-                    fecha__lt=hoy.date()
-                )
-            )
+            tiene_turnos=Exists(Turno.objects.filter(cliente=OuterRef('pk'), fecha__lt=hoy.date()))
         ).filter(tiene_turnos=True)
         
-        if clientes_con_turnos.count() == 0:
-            logger.info("ℹ️ No hay clientes con historial para procesar.")
-            return "0 procesados"
+        if clientes_con_turnos.count() == 0: return "0 procesados"
         
         clientes_inactivos = []
         for cliente in clientes_con_turnos:
-            # Buscar EL ÚLTIMO turno real (Completado o Reservado)
-            ultimo_turno = Turno.objects.filter(
-                cliente=cliente,
-                estado__in=['COMPLETADO', 'RESERVADO']
-            ).order_by('-fecha', '-hora').first()
-            
+            ultimo_turno = Turno.objects.filter(cliente=cliente, estado__in=['COMPLETADO', 'RESERVADO']).order_by('-fecha', '-hora').first()
             if not ultimo_turno: continue
             
-            # Calcular hace cuánto fue
             fecha_turno_naive = datetime.combine(ultimo_turno.fecha, ultimo_turno.hora)
             fecha_ultimo_turno = timezone.make_aware(fecha_turno_naive)
             dias_inactivo = (hoy - fecha_ultimo_turno).days
             
-            # --- DEBUG POR CLIENTE ---
-            # Esto te va a decir por qué acepta o rechaza a cada uno
+            if dias_inactivo <= DIAS_INACTIVIDAD: continue
             
-            # Condición Matemática
-            if dias_inactivo <= DIAS_INACTIVIDAD: 
-                logger.info(f"❌ {cliente.nombre}: Hace {dias_inactivo} días (Faltan {DIAS_INACTIVIDAD - dias_inactivo} para disparar)")
-                continue
-            
-            # Condición de Cooldown
             fecha_cooldown = hoy - timedelta(days=DIAS_COOLDOWN)
-            if PromocionReactivacion.objects.filter(cliente=cliente, fecha_creacion__gte=fecha_cooldown).exists():
-                logger.info(f"🛡️ {cliente.nombre}: Hace {dias_inactivo} días (Cumple), PERO ya se le envió promo hace poco.")
-                continue
+            if PromocionReactivacion.objects.filter(cliente=cliente, fecha_creacion__gte=fecha_cooldown).exists(): continue
             
-            # Si pasa, es candidato
-            logger.info(f"✅ {cliente.nombre}: Hace {dias_inactivo} días -> ¡SE LE ENVÍA!")
-            
-            clientes_inactivos.append({
-                'cliente': cliente,
-                'dias_inactivo': dias_inactivo
-            })
+            clientes_inactivos.append({'cliente': cliente, 'dias_inactivo': dias_inactivo})
         
-        # 3. ENVIAR (Límite para no saturar Twilio en pruebas)
         clientes_a_enviar = clientes_inactivos[:5] 
         enviados = 0
-        base_url = 'https://brandi-palmar-pickily.ngrok-free.dev' # Tu Ngrok
+        base_url = 'https://brandi-palmar-pickily.ngrok-free.dev'
         
         for info in clientes_a_enviar:
             cliente = info['cliente']
             dias = info['dias_inactivo']
-            
             try:
                 codigo = f"VOLVE{secrets.token_hex(3).upper()}"
-                telefono = str(cliente.telefono).strip()
-                if not telefono.startswith('+'):
-                    if telefono.startswith('0'): telefono = telefono[1:]
-                    telefono = f"+54{telefono}"
                 
                 link = f"{base_url}/turnos/crear-web?cup={codigo}"
                 
                 mensaje = (
                     f"✂️ *¡TE EXTRAÑAMOS!* 💈\n\n"
                     f"Hola {cliente.nombre}, hace *{dias} días* que no venís.\n"
-                    f"🎁 *15% OFF* reservando acá:\n{link}\n"
+                    f"🎁 *{descuento_promo}% OFF* reservando acá:\n{link}\n"
                     f"🎫 Cupón: *{codigo}*"
                     f"\n⏰ Vence en 7 días\n"
                 )
                 
-                # Twilio (Descomentar para envío real)
-                from twilio.rest import Client
-                client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-                m = client.messages.create(
-                   body=mensaje,
-                   from_=settings.TWILIO_WHATSAPP_NUMBER,
-                   to=f'whatsapp:{telefono}'
-                )
+                # 🔥 ACÁ ESTÁ LA MAGIA: Usamos tu función que YA SABEMOS que anda
+                if cliente.telefono:
+                    enviar_whatsapp_oferta.delay(cliente.telefono, mensaje)
                 
                 PromocionReactivacion.objects.create(
                     cliente=cliente,
                     codigo=codigo,
-                    descuento_porcentaje=15,
+                    descuento_porcentaje=descuento_promo,
                     fecha_vencimiento=hoy + timedelta(days=7),
-                    mensaje_sid=m.sid,
+                    mensaje_sid="ENVIO_VIA_CELERY_UNIFICADO",
                     canal_envio='WHATSAPP'
                 )
                 
                 enviados += 1
                 time.sleep(1)
-                
             except Exception as e:
-                logger.error(f"Error enviando a {cliente.nombre}: {e}")
+                logger.error(f"Error enviando a {cliente.nombre}: {str(e)}")
                 continue
-        
-        return f"{enviados} mensajes enviados (Límite configurado: {DIAS_INACTIVIDAD} días)"
-        
+                
+        return f"{enviados} mensajes enviados"
     except Exception as e:
-        logger.error(f"Error fatal: {e}")
         return str(e)
     
-#PROBANDO
 @shared_task
 def simular_reactivacion_clientes_inactivos():
-    """VERSIÓN SIMULACIÓN - Muestra en terminal sin enviar mensajes reales"""
     logger.info("🎭 [SIMULACIÓN] Iniciando proceso SIN envíos reales")
-    
     try:
+        config = ConfiguracionSistema.get_solo()
+        DIAS_INACTIVIDAD = config.dias_inactividad_clientes
+        descuento_promo = config.porcentaje_descuento_promo
+    except Exception:
         DIAS_INACTIVIDAD = 60
+        descuento_promo = 15
+
+    try:
         DIAS_COOLDOWN = 90
         hoy = timezone.now()
-        
         from django.db.models import Exists, OuterRef
         
-        # Clientes con turnos en el pasado
         clientes_con_turnos = Usuario.objects.filter(
-            rol__nombre__iexact='Cliente',
-            telefono__isnull=False,
+            rol__nombre__iexact='Cliente', telefono__isnull=False,
         ).exclude(telefono='').annotate(
-            tiene_turnos=Exists(
-                Turno.objects.filter(
-                    cliente=OuterRef('pk'),
-                    fecha__lt=hoy.date()
-                )
-            )
+            tiene_turnos=Exists(Turno.objects.filter(cliente=OuterRef('pk'), fecha__lt=hoy.date()))
         ).filter(tiene_turnos=True)
         
-        print(f"🎭 SIMULACIÓN - Clientes con turnos en el pasado: {clientes_con_turnos.count()}")
+        if clientes_con_turnos.count() == 0: return "0 clientes identificados"
         
-        if clientes_con_turnos.count() == 0:
-            print("❌ No hay clientes con turnos en el pasado")
-            return "0 clientes identificados"
-        
-        # Identificar inactivos
         clientes_inactivos = []
-        
         for cliente in clientes_con_turnos:
-            ultimo_turno = Turno.objects.filter(
-                cliente=cliente,
-                estado__in=['COMPLETADO', 'RESERVADO']
-            ).order_by('-fecha', '-hora').first()
-            
-            if not ultimo_turno:
-                continue
+            ultimo_turno = Turno.objects.filter(cliente=cliente, estado__in=['COMPLETADO', 'RESERVADO']).order_by('-fecha', '-hora').first()
+            if not ultimo_turno: continue
             
             fecha_turno_naive = datetime.combine(ultimo_turno.fecha, ultimo_turno.hora)
             fecha_ultimo_turno = timezone.make_aware(fecha_turno_naive)
             dias_inactivo = (hoy - fecha_ultimo_turno).days
             
-            if dias_inactivo <= DIAS_INACTIVIDAD:
-                continue
+            if dias_inactivo <= DIAS_INACTIVIDAD: continue
             
             fecha_cooldown = hoy - timedelta(days=DIAS_COOLDOWN)
-            if PromocionReactivacion.objects.filter(
-                cliente=cliente,
-                fecha_creacion__gte=fecha_cooldown
-            ).exists():
-                print(f"   ⏳ {cliente.nombre}: Ya recibió promoción reciente")
-                continue
+            if PromocionReactivacion.objects.filter(cliente=cliente, fecha_creacion__gte=fecha_cooldown).exists(): continue
             
-            clientes_inactivos.append({
-                'cliente': cliente,
-                'dias_inactivo': dias_inactivo,
-                'ultima_visita': ultimo_turno.fecha
-            })
+            clientes_inactivos.append({'cliente': cliente, 'dias_inactivo': dias_inactivo, 'ultima_visita': ultimo_turno.fecha})
         
-        print(f"🎭 SIMULACIÓN - Clientes INACTIVOS identificados: {len(clientes_inactivos)}")
-        print("=" * 70)
+        if len(clientes_inactivos) == 0: return "0 clientes identificados"
         
-        if len(clientes_inactivos) == 0:
-            print("✅ No hay clientes que cumplan criterios")
-            return "0 clientes identificados"
-        
-        # Mostrar detalles
         for idx, info in enumerate(clientes_inactivos, 1):
             cliente = info['cliente']
-            print(f"\n{idx}. 👤 {cliente.nombre} {cliente.apellido}")
-            print(f"   📱 Teléfono: {cliente.telefono}")
-            print(f"   📅 Última visita: {info['ultima_visita']}")
-            print(f"   ⏳ Días inactivo: {info['dias_inactivo']} días")
-            
-            # Generar código (solo para mostrar)
             codigo = f"VOLVE{secrets.token_hex(3).upper()}"
-            print(f"   🎟️  Código generado: {codigo}")
-            
-            # Mostrar mensaje que se enviaría
             mensaje = (
                 f"*¡TE EXTRAÑAMOS EN LA PELUQUERÍA!* ✂️💈\n\n"
                 f"Hola {cliente.nombre},\n\n"
                 f"Notamos que hace *{info['dias_inactivo']} días* que no nos visitás.\n\n"
-                f"*🎁 TE REGALAMOS UN 15% DE DESCUENTO* en tu próximo turno.\n\n"
+                f"*🎁 TE REGALAMOS UN {descuento_promo}% DE DESCUENTO* en tu próximo turno.\n\n"
                 f"👉 *CLICK PARA RESERVAR:*\n"
                 f"https://tupeluqueria.com/turnos/crear-web?cup={codigo}\n\n"
                 f"📱 *Código:* {codigo}\n\n"
                 f"⏰ *Válido por 7 días*\n"
-                f"📍 *Peluquería: Los Últimos Serán Los Primeros*"
             )
-            
-            print(f"   📤 MENSAJE QUE SE ENVIARÍA:")
-            print(f"   {'─' * 50}")
-            print(f"   {mensaje[:150]}...")
-            print(f"   {'─' * 50}")
-        
-        print(f"\n🎭 RESUMEN SIMULACIÓN:")
-        print(f"   • Total clientes con turnos: {clientes_con_turnos.count()}")
-        print(f"   • Clientes inactivos (60+ días): {len(clientes_inactivos)}")
-        print(f"   • Mensajes que se enviarían: {len(clientes_inactivos)}")
-        print(f"\n⚠️  NOTA: Esto es una SIMULACIÓN. No se enviaron mensajes reales.")
-        print(f"   Para enviar realmente, usa la función real mañana.")
+            print(mensaje)
         
         return f"SIMULACIÓN: {len(clientes_inactivos)} clientes inactivos identificados"
-        
     except Exception as e:
-        print(f"🚨 ERROR en simulación: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return f"Error: {str(e)}"
 
 # ==============================================================================

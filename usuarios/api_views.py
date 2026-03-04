@@ -385,3 +385,11 @@ class SillaViewSet(viewsets.ModelViewSet):
     queryset = Silla.objects.all().order_by('orden') # Ordenadas por el numerito
     serializer_class = SillaSerializer
     permission_classes = [IsAuthenticated] # Solo usuarios logueados pueden tocar esto
+
+class ConfigWebView(APIView):
+    permission_classes = [AllowAny] # Público, para que lo lea el Checkout
+
+    def get(self, request):
+        config = ConfiguracionWeb.objects.first()
+        precio = config.costo_envio_moto if config else 1500.00
+        return Response({'costo_moto': float(precio)})

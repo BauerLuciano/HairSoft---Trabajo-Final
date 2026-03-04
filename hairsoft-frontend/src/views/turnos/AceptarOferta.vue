@@ -5,7 +5,12 @@
       <div class="card-header">
         <div class="brand-tag">✨ OPORTUNIDAD EXCLUSIVA</div>
         <h1>¡Turno Disponible!</h1>
-        <p class="subtitle">Se liberó un espacio y tenés el 15% de descuento!</p>
+        <p class="subtitle" v-if="info.porcentaje_aplicado">
+          Se liberó un espacio y tenés el {{ info.porcentaje_aplicado }}% de descuento!
+        </p>
+        <p class="subtitle" v-else>
+          ¡Se liberó un espacio exclusivo para vos!
+        </p>
       </div>
 
       <div class="card-body">
@@ -53,7 +58,7 @@
           </div>
 
           <div class="offer-box">
-            <div class="offer-badge">-15% OFF</div>
+            <div class="offer-badge">-{{ info.porcentaje_aplicado }}% OFF</div>
             <div class="price-compare">
               <div class="p-old">
                 <span>Precio Regular</span>
@@ -142,11 +147,9 @@ const formatPrecio = (v) => {
   return isNaN(num) ? '0.00' : num.toFixed(2);
 };
 
-// 🔥 ARREGLO COMPLETO DE FECHA
 const formatFecha = (f) => { 
   if(!f) return '-'; 
   
-  // Si es un string ISO
   if (typeof f === 'string' && f.includes('-')) {
     try {
       const [year, month, day] = f.split('-');
@@ -156,7 +159,6 @@ const formatFecha = (f) => {
     }
   }
   
-  // Si es un objeto Date
   if (f instanceof Date || (typeof f === 'string' && Date.parse(f))) {
     try {
       const dateObj = new Date(f);
@@ -174,7 +176,6 @@ const formatFecha = (f) => {
 const formatHora = (h) => { 
   if(!h) return '-';
   if (typeof h === 'string') {
-    // Extraer solo HH:MM
     const match = h.match(/(\d{1,2}):(\d{2})/);
     if (match) {
       return `${match[1].padStart(2, '0')}:${match[2]}`;
@@ -209,7 +210,6 @@ const confirmarOferta = async () => {
     const { data } = await axios.post(`/api/turnos/${turnoId}/aceptar-oferta/${token}/`);
     
     if (data.success || data.status === 'ok') {
-      // Mostrar saldo a favor si existe
       const saldoMsg = data.saldo_a_favor > 0 ? 
         `<br><strong>💚 Saldo a favor: $${formatPrecio(data.saldo_a_favor)}</strong>` : '';
       

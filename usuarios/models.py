@@ -1140,7 +1140,7 @@ class DetallePedidoWeb(models.Model):
     @property
     def subtotal(self):
         return self.cantidad * self.precio_unitario  
-     
+
 # ==============================================================================
 # MÓDULO INTELIGENTE: REABASTECIMIENTO AUTOMÁTICO (PROVEEDORES)
 # ==============================================================================
@@ -1316,10 +1316,17 @@ class ConfiguracionSistema(models.Model):
     
     margen_horas_cancelacion = models.PositiveIntegerField(default=3) 
     
+    # 🔥 NUEVO CAMPO: Descuento para Lista de Espera (Reoferta)
+    porcentaje_descuento_reoferta = models.PositiveIntegerField(default=15, help_text="Descuento para turnos liberados (Lista de espera)")
+    
     dias_inactividad_clientes = models.PositiveIntegerField(default=60, help_text="Días sin venir para considerar al cliente inactivo y enviarle promo.")
     
+    # Este ya lo teníamos para Reactivaciones
+    porcentaje_descuento_promo = models.PositiveIntegerField(default=15, help_text="Porcentaje de descuento para enviar a clientes inactivos")
+    
     politica_senia = models.TextField(default="Política de señas: Reembolso total si cancelas con tiempo.")
-
+    costo_envio_moto = models.DecimalField(max_digits=10, decimal_places=2, default=1500.00)
+    
     class Meta:
         verbose_name = "Configuración del Sistema"
 
@@ -1419,14 +1426,21 @@ class MovimientoCaja(models.Model):
     ]
 
     CONCEPTO_CHOICES = [
+        # Automáticos / Web
         ('TURNO_PRESENCIAL', 'Cobro de Turno Presencial'),
         ('TURNO_WEB', 'Cobro de Turno Web'),
         ('VENTA', 'Venta de Productos'),
         ('PEDIDO_WEB', 'Pedido Web'),
+        # Egresos Manuales
         ('PAGO_PROVEEDOR', 'Pago a Proveedor'),
         ('LIQUIDACION_SUELDO', 'Liquidación de Sueldos'),
         ('GASTO_OPERATIVO', 'Gasto Operativo (Yerba, etc)'),
         ('RETIRO_SOCIO', 'Retiro de Socio/Dueño'),
+        # Ingresos Manuales 
+        ('FONDO_CAJA', 'Fondo de Caja (Sencillo)'),
+        ('APORTE_SOCIO', 'Aporte del Dueño'),
+        ('COBRO_DEUDA', 'Cobro de Deuda'),
+        ('AJUSTE_SOBRANTE', 'Ajuste por Sobrante de Caja'),
         ('OTROS', 'Otros / Ajustes'),
     ]
 

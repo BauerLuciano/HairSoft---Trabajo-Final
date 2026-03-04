@@ -33,7 +33,7 @@ class PromocionReactivacionAdmin(NoLogAdmin):
     actions = [limpiar_historial_promociones]
 
 @admin.register(Silla)
-class SillaAdmin(NoLogAdmin): # Le agregué el NoLogAdmin acá también por consistencia
+class SillaAdmin(NoLogAdmin):
     list_display = ('nombre', 'orden', 'activa')
     list_editable = ('orden', 'activa')
     ordering = ('orden',)
@@ -67,7 +67,7 @@ MODELOS = [
     # Auditoría y Sistema
     Auditoria, HistorialStock, ConfiguracionSistema,
 
-    # 💰 MÓDULO DE CAJA (NUEVO)
+    # 💰 MÓDULO DE CAJA
     Caja, SesionCaja, MovimientoCaja
 ]
 

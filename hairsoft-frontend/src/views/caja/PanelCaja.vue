@@ -25,11 +25,9 @@
 
       <div v-else>
         
-        <!-- HISTORIAL CON FILTROS -->
         <div v-if="mostrarHistorial">
           <h2 style="margin-bottom: 20px; color: var(--text-primary);">Historial de Sesiones Anteriores</h2>
 
-          <!-- Filtros -->
           <div class="filters-grid" style="grid-template-columns: 1fr 1fr 1fr auto; margin-bottom: 25px; align-items: end;">
             <div class="filter-group">
               <label>Usuario que cerró</label>
@@ -58,7 +56,6 @@
             </div>
           </div>
 
-          <!-- Tabla de historial -->
           <div class="table-container">
             <table class="users-table">
               <thead>
@@ -122,7 +119,6 @@
           </div>
         </div>
 
-        <!-- CAJA ACTUAL (sin cambios) -->
         <div v-else>
           
           <div v-if="!sesionActual" class="caja-cerrada-wrapper">
@@ -307,7 +303,6 @@
       </div>
     </div>
 
-    <!-- Modal Cierre -->
     <div v-if="mostrarModalCierre" class="modal-overlay" @click.self="mostrarModalCierre = false">
       <div class="modal-content modal-cierre">
         <div class="historial-header">
@@ -374,7 +369,6 @@
       </div>
     </div>
 
-    <!-- Modal Gasto -->
     <div v-if="mostrarModalGasto" class="modal-overlay" @click.self="mostrarModalGasto = false">
       <div class="modal-content modal-cierre">
         <div class="historial-header">
@@ -386,6 +380,7 @@
         <div class="historial-body">
           <form @submit.prevent="registrarGastoManual">
             <div class="filters-grid" style="grid-template-columns: 1fr;">
+              
               <div class="filter-group">
                 <label>Tipo de Movimiento</label>
                 <select v-model="formGasto.tipo" required class="filter-select custom-select">
@@ -393,17 +388,25 @@
                   <option value="INGRESO">Entrada de Plata (Ingreso)</option>
                 </select>
               </div>
+
               <div class="filter-group">
                 <label>Categoría / Concepto</label>
-                <select v-model="formGasto.concepto" required class="filter-select custom-select">
-                  <option value="GASTO_OPERATIVO">Gasto Local (Limpieza, Yerba, etc)</option>
+                
+                <select v-if="formGasto.tipo === 'EGRESO'" v-model="formGasto.concepto" required class="filter-select custom-select">
+                  <option value="GASTO_OPERATIVO">Gasto Local </option>
                   <option value="RETIRO_SOCIO">Retiro de Dueño</option>
                   <option value="LIQUIDACION_SUELDO">Liquidación de Sueldos</option>
                   <option value="PAGO_PROVEEDOR">Pago a Proveedor</option>
-                  <option value="PAGO_EMPLEADO">Pago a Peluquero / Empleado</option>
+                  <option value="OTROS">Otros / Ajuste</option>
+                </select>
+
+                <select v-else v-model="formGasto.concepto" required class="filter-select custom-select">
+                  <option value="APORTE_SOCIO">Aporte del dueño</option>
+                  <option value="COBRO_DEUDA">Cobro de Deuda</option>
                   <option value="OTROS">Otros / Ajuste</option>
                 </select>
               </div>
+
               <div class="filter-group">
                 <label>Medio de Pago</label>
                 <select v-model="formGasto.metodo_pago" required class="filter-select custom-select">
@@ -411,6 +414,7 @@
                   <option value="MERCADO_PAGO">Mercado Pago</option>
                 </select>
               </div>
+
               <div class="filter-group">
                 <label>Monto</label>
                 <div class="input-money-wrapper">
@@ -418,10 +422,12 @@
                   <input type="number" v-model="formGasto.monto" step="0.01" min="1" required class="filter-input input-money">
                 </div>
               </div>
+
               <div class="filter-group">
                 <label>Descripción Breve</label>
-                <input type="text" v-model="formGasto.descripcion" required class="filter-input" placeholder="Ej: Compra de café...">
+                <input type="text" v-model="formGasto.descripcion" required class="filter-input" placeholder="Ej: Compra de café, aporte del dueño...">
               </div>
+
             </div>
             
             <div style="display: flex; gap: 10px; margin-top: 25px;">
@@ -433,7 +439,6 @@
       </div>
     </div>
 
-    <!-- Modal Detalle Historial -->
     <div v-if="mostrarModalDetalleHistorial" class="modal-overlay" @click.self="mostrarModalDetalleHistorial = false">
       <div class="modal-content modal-historial-amplio">
         <div class="historial-header">
@@ -548,7 +553,17 @@ const formApertura = ref({
   saldo_inicial_mp: 0 
 });
 const formCierre = ref({ saldo_final_efectivo_real: 0, saldo_final_mp_real: 0, observaciones: '' });
+
+// Asegurarnos que empiece limpio
 const formGasto = ref({ tipo: 'EGRESO', concepto: 'GASTO_OPERATIVO', metodo_pago: 'EFECTIVO', monto: '', descripcion: '' });
+
+watch(() => formGasto.value.tipo, (nuevoTipo) => {
+  if (nuevoTipo === 'EGRESO') {
+    formGasto.value.concepto = 'GASTO_OPERATIVO';
+  } else {
+    formGasto.value.concepto = 'APORTE_SOCIO';
+  }
+});
 
 let pollingInterval = null;
 const itemsPerPage = 9;
@@ -567,10 +582,8 @@ const uniqueUsers = computed(() => {
 
 const filteredCajas = computed(() => {
   return historialCajas.value.filter(caja => {
-    // Filtro por usuario
     if (filterUser.value && caja.usuario_cierre_nombre !== filterUser.value) return false;
 
-    // Filtro fecha desde (usamos fecha_apertura)
     if (filterDateFrom.value) {
       const fechaCaja = new Date(caja.fecha_apertura);
       fechaCaja.setHours(0, 0, 0, 0);
@@ -579,7 +592,6 @@ const filteredCajas = computed(() => {
       if (fechaCaja < desde) return false;
     }
 
-    // Filtro fecha hasta
     if (filterDateTo.value) {
       const fechaCaja = new Date(caja.fecha_apertura);
       fechaCaja.setHours(0, 0, 0, 0);
@@ -786,7 +798,7 @@ const cerrarCaja = async () => {
 };
 
 const registrarGastoManual = async () => {
-  // 🔥 VALIDACIÓN DE FONDOS INSUFICIENTES
+  // 🔥 VALIDACIÓN DE FONDOS INSUFICIENTES (solo si es EGRESO)
   if (formGasto.value.tipo === 'EGRESO') {
       const montoEgreso = parseFloat(formGasto.value.monto);
       let saldoDisponible = 0;

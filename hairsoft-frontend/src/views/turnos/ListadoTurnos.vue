@@ -86,7 +86,7 @@
                 <div v-else-if="turno.descuento_aplicado && turno.descuento_aplicado > 0" style="margin-top: 5px;">
                   <span class="badge-fidelizacion">
                     <i class="bi bi-gift me-1"></i>
-                    15% Fidelización
+                    {{ turno.descuento_aplicado }}% Fidelización
                   </span>
                 </div>
                 
@@ -155,12 +155,12 @@
                     <span class="text-pagado">Pagado total: ${{ formatPrecio(turno.monto_total) }}</span>
                   </div>
                   
-                  <div v-if="(turno.info_descuento) || (turno.descuento_aplicado && turno.descuento_aplicado > 0)" class="descuento-info">
-                    <span class="badge-descuento-fidelizacion">
-                      <i class="bi bi-percent me-1"></i>
-                      15% OFF aplicado
-                    </span>
-                  </div>
+                <div v-else-if="turno.descuento_aplicado && turno.descuento_aplicado > 0" style="margin-top: 5px;">
+                  <span class="badge-fidelizacion">
+                    <i class="bi bi-gift me-1"></i>
+                    {{ turno.descuento_aplicado }}% Fidelización
+                  </span>
+                </div>
 
                   <div v-if="esTurnoPorCanje(turno) && extraerSaldoAFavor(turno) > 0" class="saldo-favor-info">
                     <span class="badge-saldo-favor">
