@@ -9,7 +9,7 @@ import logging, uuid
 from .models import (
     Turno, Producto, Auditoria, Usuario, Venta, Pedido, Rol,
     Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago,
-    InteresTurnoLiberado, PromocionReactivacion
+    InteresTurnoLiberado, PromocionReactivacion, SesionCaja, MovimientoCaja
 )
 from .middleware import get_current_request_data
 from .tasks import procesar_reactivacion_clientes_inactivos # ✅ IMPORTANTE: Importar la task
@@ -41,7 +41,8 @@ def disparar_analisis_fidelizacion(sender, instance, **kwargs):
 
 MODELOS_A_AUDITAR = [
     Usuario, Producto, Turno, Venta, Pedido, Rol,
-    Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago
+    Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago,
+    SesionCaja, MovimientoCaja
 ]
 
 def serializar(valor):
@@ -96,7 +97,26 @@ def auditar_cambios(sender, instance, created, **kwargs):
             
             nombre_modelo = sender.__name__
             datos_nuevos = obtener_datos(instance)
+            
+            # Acción por defecto
             accion = 'CREAR' if created else 'EDITAR'
+            
+            # 🔥 LÓGICA PERSONALIZADA PARA CAJA
+            if nombre_modelo == 'SesionCaja':
+                if created:
+                    accion = 'APERTURA_CAJA'
+                elif hasattr(instance, '_estado_anterior'):
+                    # Si antes NO tenía fecha de cierre, y ahora SÍ tiene, significa que cerró la caja
+                    datos_viejos = instance._estado_anterior
+                    if not datos_viejos.get('fecha_cierre') and datos_nuevos.get('fecha_cierre'):
+                        accion = 'CIERRE_CAJA'
+                        
+            elif nombre_modelo == 'MovimientoCaja' and created:
+                # Dependiendo del tipo de movimiento le ponemos el nombre
+                if getattr(instance, 'tipo', '') == 'INGRESO':
+                    accion = 'INGRESO_MANUAL'
+                elif getattr(instance, 'tipo', '') == 'EGRESO':
+                    accion = 'EGRESO_MANUAL'
             
             reporte = {}
             hay_cambios = False
@@ -118,6 +138,16 @@ def auditar_cambios(sender, instance, created, **kwargs):
                         }
             
             if hay_cambios:
+                # 🔥 CAPTURAMOS LOS DATOS TÉCNICOS DEL MIDDLEWARE
+                req_data = get_current_request_data()
+                
+                # Agregamos la información del navegador al JSON de detalles
+                # para que el Serializer y Vue puedan mostrar los iconos.
+                reporte['__meta__'] = {
+                    'navegador': req_data.get('navegador', 'Desconocido'),
+                    'ip': req_data.get('ip', '127.0.0.1')
+                }
+
                 Auditoria.objects.create(
                     usuario=usuario_db, 
                     modelo_afectado=nombre_modelo, 

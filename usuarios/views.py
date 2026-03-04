@@ -913,6 +913,24 @@ def crear_turno(request):
         
         if not servicios.exists():
             return Response({'status': 'error', 'message': "Servicios no válidos"}, status=400)
+            
+        # ---------------------------------------------------------
+        # 2.5. 🔥 VALIDACIÓN: EL CLIENTE YA TIENE TURNO A ESTA HORA?
+        # ---------------------------------------------------------
+        ya_tiene_turno = Turno.objects.filter(
+            fecha=fecha_obj,
+            hora=hora_obj,
+            cliente=cliente,
+            estado__in=['RESERVADO', 'CONFIRMADO', 'PENDIENTE', 'PAGADO', 'SENADO']
+        ).exists()
+        
+        if ya_tiene_turno:
+            print(f"❌ Bloqueado: El cliente {cliente.nombre} ya tiene un turno a las {hora_str}")
+            return Response({
+                'status': 'error', 
+                'error': "Ya tienes un turno reservado para esta misma fecha y hora.",
+                'message': "Ya tienes un turno reservado para esta misma fecha y hora."
+            }, status=400)
         
         # ---------------------------------------------------------
         # 3. VALIDACIÓN DE DISPONIBILIDAD DEL PELUQUERO
@@ -5666,7 +5684,7 @@ def mercadopago_webhook(request):
 
         from .mercadopago_service import MercadoPagoService 
         mp_service = MercadoPagoService()   
-             
+
         payment_info = mp_service.sdk.payment().get(payment_id)
         
         if payment_info['status'] != 200:

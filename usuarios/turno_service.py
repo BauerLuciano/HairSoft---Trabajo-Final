@@ -48,8 +48,27 @@ class TurnoService:
         """
         Crea el turno validando peluquero y asignando silla (Manual o Automática).
         """
-        # Validaciones básicas (puedes agregar más si tenés validaciones de peluquero acá)
+        from rest_framework.exceptions import ValidationError
+
+        # 🔥 CORRECCIÓN CLAVE: Buscamos 'cliente_id' (que es lo que manda Vue) o 'cliente'
+        cliente_id = datos.get('cliente_id') or datos.get('cliente')
         
+        if hasattr(cliente_id, 'id'):
+            cliente_id = cliente_id.id
+            
+        if cliente_id:
+            ya_tiene_turno = Turno.objects.filter(
+                fecha=datos['fecha'],
+                hora=datos['hora'],
+                cliente_id=cliente_id,
+                estado__in=['RESERVADO', 'CONFIRMADO', 'PENDIENTE', 'PAGADO', 'SENADO']
+            ).exists()
+            
+            if ya_tiene_turno:
+                # Lo mandamos como diccionario para que Vue lo atrape en error.response.data.error
+                raise ValidationError({"error": "No puedes reservar. Ya tienes un turno para esta misma fecha y hora con otro profesional."})
+
+        # Lógica de asignación de silla
         silla_asignada = None
 
         # CASO A: Asignación Manual (El recepcionista eligió una silla)
@@ -58,11 +77,9 @@ class TurnoService:
             try:
                 silla_elegida = Silla.objects.get(id=silla_id)
                 
-                # Verificar si está activa
                 if not silla_elegida.activa:
-                    raise ValidationError(f"La {silla_elegida.nombre} está fuera de servicio.")
+                    raise ValidationError({"error": f"La {silla_elegida.nombre} está fuera de servicio."})
 
-                # Verificar si está ocupada
                 esta_ocupada = Turno.objects.filter(
                     fecha=datos['fecha'],
                     hora=datos['hora'],
@@ -71,31 +88,38 @@ class TurnoService:
                 ).exists()
 
                 if esta_ocupada:
-                    raise ValidationError(f"La {silla_elegida.nombre} ya está ocupada en ese horario.")
+                    raise ValidationError({"error": f"La {silla_elegida.nombre} ya está ocupada en ese horario."})
                 
                 silla_asignada = silla_elegida
 
             except Silla.DoesNotExist:
-                raise ValidationError("La silla seleccionada no existe.")
+                raise ValidationError({"error": "La silla seleccionada no existe."})
 
         # CASO B: Asignación Automática (Vino null o no vino)
         else:
             silla_asignada = TurnoService._asignar_silla_disponible(datos['fecha'], datos['hora'])
             
             if not silla_asignada:
-                raise ValidationError("No hay puestos de trabajo disponibles en este horario (Local lleno).")
+                raise ValidationError({"error": "No hay puestos de trabajo disponibles en este horario (Local lleno)."})
 
         # Crear el turno con la silla definida
         try:
+            # Para el create de Django, necesitamos pasar la clave que espera el modelo.
+            # Asegurarnos de que asigne el cliente correctamente.
+            cliente_instancia = datos.get('cliente')
+            if not cliente_instancia and cliente_id:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                cliente_instancia = User.objects.get(id=cliente_id)
+
             turno = Turno.objects.create(
                 fecha=datos['fecha'],
                 hora=datos['hora'],
-                cliente=datos['cliente'],
+                cliente=cliente_instancia,
                 peluquero=datos['peluquero'],
-                servicio=datos.get('servicio'), # Puede venir o agregarse después
-                silla=silla_asignada, # <--- ACÁ LA GUARDAMOS
-                estado='RESERVADO', # O el estado inicial que uses
-                # Campos opcionales según tu modelo:
+                servicio=datos.get('servicio'), 
+                silla=silla_asignada, 
+                estado='RESERVADO', 
                 canal=datos.get('canal', 'PRESENCIAL'),
                 monto_total=datos.get('monto_total', 0),
                 monto_seña=datos.get('monto_seña', 0),
@@ -103,14 +127,14 @@ class TurnoService:
                 medio_pago=datos.get('medio_pago', 'EFECTIVO')
             )
             
-            # Si el servicio viene como lista de IDs (many-to-many)
             if 'servicios' in datos and datos['servicios']:
                 turno.servicios.set(datos['servicios'])
-            # Si es un solo servicio y ya lo pasaste en el create, joya.
 
             return turno
 
         except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
             logger.error(f"Error creando turno: {e}")
             raise e
 

@@ -479,7 +479,8 @@ const cargandoHorarios = ref(false)
 const errorValidacion = ref(false)
 const cargandoDatos = ref(true) 
 
-const intervaloMinutos = 20
+// 🔥 FIX: INTERVALO DE 10 MINUTOS
+const intervaloMinutos = 10
 const STORAGE_KEY = 'turno_presencial_context'
 
 watch(() => form.value.servicios_ids, () => {
@@ -548,7 +549,9 @@ const horariosGenerados = computed(() => {
         horariosBase.push(horaStr)
       }
     }
-    horariosBase.push(`${String(b.fin).padStart(2, '0')}:00`)
+    // Aseguramos incluir las 20:00 y las 12:00
+    if(b.fin === 20) horariosBase.push('20:00');
+    else if(b.fin === 12) horariosBase.push('12:00');
   })
 
   return horariosBase
@@ -597,7 +600,7 @@ const obtenerDetalleOcupacion = (horaSeleccionada) => {
         return acc + (s ? parseInt(s.duracion) : 0)
       }, 0)
   }
-  if (duracionTotal === 0) duracionTotal = 20;
+  if (duracionTotal === 0) duracionTotal = 10; // Asumimos mínimo 10 min si no hay servicios
   
   const [h, m] = horaSeleccionada.split(':').map(Number)
   const inicioMinutos = h * 60 + m
@@ -605,8 +608,11 @@ const obtenerDetalleOcupacion = (horaSeleccionada) => {
   
   const hoy = new Date()
   const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+  
+  // 🔥 FIX: Validamos que la hora seleccionada ya haya pasado, sin sumarle tiempo fantasma
   if (form.value.fecha === hoyFormateado) {
-    if (inicioMinutos < (hoy.getHours() * 60 + hoy.getMinutes())) {
+    const minutosActuales = hoy.getHours() * 60 + hoy.getMinutes();
+    if (inicioMinutos <= minutosActuales) {
       return 'PASADO'
     }
   }
@@ -841,7 +847,7 @@ const calcularSena = () => (calcularTotal() / 2).toFixed(2)
 const crearTurno = async () => {
   if (form.value.medio_pago !== 'EFECTIVO' && !form.value.codigo_transaccion) {
     errorValidacion.value = true
-    Sw.fire({ icon: 'error', title: 'Error', text: 'Falta el código de transacción', confirmButtonText: 'Entendido' })
+    Swal.fire({ icon: 'error', title: 'Error', text: 'Falta el código de transacción', confirmButtonText: 'Entendido' })
     return
   }
   

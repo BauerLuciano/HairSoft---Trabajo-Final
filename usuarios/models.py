@@ -1253,6 +1253,10 @@ class Auditoria(models.Model):
         ('LOGOUT', 'Cierre de Sesión'),
         ('ANULAR_VENTA', 'Anulación de Venta'),
         ('AJUSTE_STOCK', 'Ajuste de Stock'),
+        ('APERTURA_CAJA', 'Apertura de Caja'),
+        ('CIERRE_CAJA', 'Cierre de Caja'),
+        ('INGRESO_MANUAL', 'Ingreso a Caja'),
+        ('EGRESO_MANUAL', 'Egreso de Caja'),
     )
 
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)

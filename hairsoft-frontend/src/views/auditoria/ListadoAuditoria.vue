@@ -24,6 +24,10 @@
               <option value="ELIMINAR">Eliminación</option>
               <option value="ANULAR_VENTA">Anulación Venta</option>
               <option value="AJUSTE_STOCK">Ajuste de Stock</option>
+              <option value="APERTURA_CAJA">Apertura de Caja</option>
+              <option value="CIERRE_CAJA">Cierre de Caja</option>
+              <option value="INGRESO_MANUAL">Ingreso Manual</option>
+              <option value="EGRESO_MANUAL">Egreso Manual</option>
             </select>
           </div>
           <div class="filter-group">
@@ -61,7 +65,7 @@
                 <div style="font-weight:600;">{{ log.usuario_nombre || 'Sistema' }}</div>
                 <div style="font-size:0.75em; opacity:0.8;">{{ log.usuario_rol }}</div>
               </td>
-              <td><span class="badge-estado" :class="getClaseAccion(log.accion)">{{ log.accion.replace('_', ' ') }}</span></td>
+              <td><span class="badge-estado" :class="getClaseAccion(log.accion)">{{ log.accion.replace(/_/g, ' ') }}</span></td>
               <td>
                 <strong>{{ log.modelo_afectado }}</strong>
                 <span style="font-size:0.8em; margin-left:5px;">#{{ log.objeto_id }}</span>
@@ -106,7 +110,7 @@
         <button class="modal-close" @click="cerrarModal">&times;</button>
         
         <div class="modal-header-custom" :class="getClaseAccion(logSeleccionado?.accion)">
-          <h2>Reporte #{{ logSeleccionado?.id }} - {{ logSeleccionado?.accion.replace('_', ' ') }}</h2>
+          <h2>Reporte #{{ logSeleccionado?.id }} - {{ logSeleccionado?.accion.replace(/_/g, ' ') }}</h2>
           <p class="modal-subtitle">Objeto: {{ logSeleccionado?.modelo_afectado }} #{{ logSeleccionado?.objeto_id }}</p>
         </div>
 
@@ -224,13 +228,20 @@ const getColorNavegador = (navegadorInfo) => {
 }
 
 const getNombreNavegador = (navegadorInfo) => {
-  if (!navegadorInfo) return '-';
+  if (!navegadorInfo || navegadorInfo === 'Desconocido' || navegadorInfo === 'Sistema' || navegadorInfo === '-') {
+    return 'Sistema';
+  }
+
   const navLower = navegadorInfo.toLowerCase();
-  if (navLower.includes('edge')) return 'Edge';
+
+  if (navLower.includes('edge') || navLower.includes('edg')) return 'Edge';
+  if (navLower.includes('brave')) return 'Brave';
   if (navLower.includes('opera') || navLower.includes('opr')) return 'Opera';
-  if (navLower.includes('chrome')) return 'Chrome';
   if (navLower.includes('firefox')) return 'Firefox';
+  if (navLower.includes('chrome')) return 'Chrome';
   if (navLower.includes('safari')) return 'Safari';
+
+  // Si no es ninguno de los anteriores, devolvemos la primera palabra o un genérico
   return navegadorInfo.split(' ')[0] || 'Navegador';
 }
 
@@ -244,34 +255,29 @@ const parseDetalles = (detalles) => {
   
   const adaptado = {}
 
-  // 🚨 CASO 1: El JSON entero es UN SOLO CAMBIO suelto (el viejo formato que me pasaste)
-  // Ej: {"tipo":"CAMBIO", "nuevo":"Juanitardo", "anterior":"Juanito"}
   if (d.anterior !== undefined && d.nuevo !== undefined) {
-      return {
-        "Modificación": { tipo: 'CAMBIO', anterior: d.anterior, nuevo: d.nuevo }
-      }
+      return { "Modificación": { tipo: 'CAMBIO', anterior: d.anterior, nuevo: d.nuevo } }
   }
   
-  // 🚨 CASO 2: Es el formato nuevo ordenado (Tiene la caja "cambios")
   if (d.cambios) {
     for (const [k, v] of Object.entries(d.cambios)) {
       adaptado[k] = { tipo: 'CAMBIO', anterior: v.anterior, nuevo: v.nuevo }
     }
   }
 
-  // 🚨 CASO 3: Recorremos todo lo demás (valores sueltos o cambios anidados)
   for (const [key, value] of Object.entries(d)) {
     if (key === 'cambios' || key === '__meta__') continue;
 
-    // Si detecta un objeto anidado que tiene anterior y nuevo
     if (value && typeof value === 'object' && value.anterior !== undefined && value.nuevo !== undefined) {
       adaptado[key] = { tipo: 'CAMBIO', anterior: value.anterior, nuevo: value.nuevo }
     } 
-    // Si viene directo con el tipo seteado
     else if (value && typeof value === 'object' && value.tipo === 'CAMBIO') {
        adaptado[key] = value; 
     }
-    // Si es un valor suelto normal (ej: motivo_anulacion, monto_devuelto, etc.)
+    // 🔥 FIX: AHORA SI DETECTA LOS "VALORES" DE LA CAJA PERFECTAMENTE
+    else if (value && typeof value === 'object' && value.tipo === 'VALOR') {
+      adaptado[key] = value;
+    }
     else {
       adaptado[key] = { tipo: 'VALOR', valor: value }
     }
@@ -282,11 +288,21 @@ const parseDetalles = (detalles) => {
 
 const isEmpty = (d) => Object.keys(parseDetalles(d)).length === 0
 
+// 🔥 FIX: FORMATEO DE VALORES Y FECHAS LARGAS FEAS
 const formatValue = (val) => {
-  if (val === null || val === undefined) return '-'
+  if (val === null || val === undefined || val === '') return '-'
   if (val === true) return 'Sí'
   if (val === false) return 'No'
   if (Array.isArray(val)) return val.join(' | ')
+  
+  // Si es un string y parece una fecha ISO fea ("2026-03-04T22:33:40.023289+00:00")
+  if (typeof val === 'string' && val.includes('T') && val.includes('-') && val.length > 15) {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ' hs';
+    }
+  }
+  
   if (typeof val === 'object') return JSON.stringify(val)
   return val
 }
@@ -300,14 +316,13 @@ const formatFecha = (f) => (f ? new Date(f).toLocaleDateString('es-AR') : '-')
 const formatHora = (f) => f ? new Date(f).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : ''
 
 const getClaseAccion = (accion) => {
-  const map = {
-    CREAR: 'estado-success',
-    EDITAR: 'estado-info',
-    ELIMINAR: 'estado-danger',
-    ANULAR_VENTA: 'estado-danger', 
-    AJUSTE_STOCK: 'estado-warning' 
-  }
-  return map[accion] || 'estado-secondary'
+  if (!accion) return 'estado-secondary';
+  const a = accion.toUpperCase();
+  if (a.includes('CREAR') || a.includes('INGRESO') || a.includes('APERTURA')) return 'estado-success';
+  if (a.includes('EDITAR')) return 'estado-info';
+  if (a.includes('ELIMINAR') || a.includes('ANULAR') || a.includes('CIERRE') || a.includes('EGRESO')) return 'estado-danger';
+  if (a.includes('AJUSTE')) return 'estado-warning';
+  return 'estado-secondary';
 }
 
 const cargarAuditoria = async () => {
@@ -404,7 +419,7 @@ onMounted(() => { cargarAuditoria() })
 .modal-content { background: var(--bg-secondary); width: 850px; max-width: 95vw; border-radius: 16px; border: 1px solid var(--border-color); position: relative; max-height: 90vh; display: flex; flex-direction: column; }
 .modal-close { position: absolute; top: 15px; right: 15px; background: transparent; border: none; font-size: 1.5rem; color: var(--text-secondary); cursor: pointer; }
 .modal-header-custom { padding: 25px; border-bottom: 1px solid var(--border-color); background: var(--bg-primary); border-radius: 16px 16px 0 0; }
-.modal-header-custom h2 { margin: 0; color: var(--text-primary); }
+.modal-header-custom h2 { margin: 0; color: var(--text-primary); text-transform: uppercase; }
 .modal-subtitle { color: var(--text-secondary); margin-top: 5px; font-size: 0.9rem; }
 .modal-body-custom { padding: 25px; overflow-y: auto; }
 .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }

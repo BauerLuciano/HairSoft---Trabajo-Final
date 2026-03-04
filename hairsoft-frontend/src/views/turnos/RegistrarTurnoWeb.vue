@@ -674,7 +674,6 @@ const validarCuponBackend = async (codigo) => {
   }
 }
 
-// 🔥 CORREGIR: onMounted para validar cupón automáticamente
 onMounted(async () => {
   await cargarDatosIniciales()
   
@@ -873,6 +872,7 @@ const cambiarMes = (delta) => {
   currentDate.value = n
 }
 
+// 🔥 FIX: Eliminado el buffer de 30 minutos para que muestre la hora real
 const esHorarioDisponibleUI = (h) => {
   if (!form.value.fecha || !form.value.peluquero) return true
   
@@ -885,13 +885,17 @@ const esHorarioDisponibleUI = (h) => {
   const hoy = new Date()
   const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
   
+  // 🔥 FIX: Si es hoy, solo bloquea las horas que YA PASARON estrictamente
   if (form.value.fecha === hoyF) {
-    return (hS * 60 + mS) > (hoy.getHours() * 60 + hoy.getMinutes() + 30)
+    const minutosActuales = hoy.getHours() * 60 + hoy.getMinutes();
+    const minutosTurno = hS * 60 + mS;
+    return minutosTurno > minutosActuales;
   }
   
   return true
 }
 
+// 🔥 FIX: Lo mismo aquí, eliminado el buffer de 30 minutos
 const esHorarioDisponibleCompleto = (horaSeleccionada) => {
   if (!form.value.fecha || !form.value.peluquero) return false
   
@@ -916,8 +920,10 @@ const esHorarioDisponibleCompleto = (horaSeleccionada) => {
   const hoy = new Date()
   const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
   
+  // 🔥 FIX: Solo bloquea si el inicio del turno ya pasó
   if (form.value.fecha === hoyFormateado) {
-    if (inicioMinutos < (hoy.getHours() * 60 + hoy.getMinutes() + 30)) {
+    const minutosActuales = hoy.getHours() * 60 + hoy.getMinutes();
+    if (inicioMinutos <= minutosActuales) {
       return false
     }
   }
@@ -925,18 +931,31 @@ const esHorarioDisponibleCompleto = (horaSeleccionada) => {
   return true
 }
 
+// 🔥 FIX: HORARIOS GENERADOS CADA 10 MINUTOS
+const generarHorariosBase = () => {
+  const horarios = []
+  const bloques = [
+    { inicio: 8, fin: 12 }, 
+    { inicio: 15, fin: 20 }
+  ]
+  bloques.forEach(b => {
+    for (let h = b.inicio; h < b.fin; h++) {
+      for (let m = 0; m < 60; m += 10) { // <--- ACÁ ESTÁ EL CAMBIO A 10 MIN
+        horarios.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+      }
+    }
+    if(b.fin === 20) horarios.push('20:00'); // Añadimos el último turno
+    else if(b.fin === 12) horarios.push('12:00');
+  })
+  return horarios
+}
+
 const horariosDisponibles = computed(() => 
-  ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40',
-   '11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40',
-   '17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00']
-  .filter(h => esHorarioDisponibleCompleto(h))
+  generarHorariosBase().filter(h => esHorarioDisponibleCompleto(h))
 )
 
 const horariosOcupadosParaMostrar = computed(() => 
-  ['08:00','08:20','08:40','09:00','09:20','09:40','10:00','10:20','10:40',
-   '11:00','11:20','11:40','15:00','15:20','15:40','16:00','16:20','16:40',
-   '17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40','20:00']
-  .filter(h => !esHorarioDisponibleCompleto(h))
+  generarHorariosBase().filter(h => !esHorarioDisponibleCompleto(h))
 )
 
 const seleccionarPeluquero = (id) => { 
@@ -1029,7 +1048,6 @@ const cargarTurnosOcupados = async (f) => {
   }
 }
 
-// 🔥 CORREGIR: crearPagoMercadoPago para incluir cupón
 const crearPagoMercadoPago = async () => {
   if (!formularioValido.value) {
     Swal.fire({
@@ -1053,16 +1071,13 @@ const crearPagoMercadoPago = async () => {
       tipo_pago: form.value.tipo_pago,
       medio_pago: 'MERCADO_PAGO',
       monto_total: parseFloat(calcularTotalConDescuento()),
-      cup_codigo: form.value.cup_codigo,  // 🔥 ENVIAR CUPÓN AL BACKEND
+      cup_codigo: form.value.cup_codigo,  
       duracion_total: calcularDuracionTotalServicios()
     }
-    
-    console.log('📤 Enviando payload con cupón:', payload.cup_codigo)
     
     const res = await api.post('/api/turnos/crear/', payload)
     
     if (res.data.status === 'ok') {
-      // 🔥 MOSTRAR INFORMACIÓN DE DESCUENTO APLICADO
       if (res.data.descuento && res.data.descuento.aplicado) {
         Swal.fire({
           title: '¡Descuento Aplicado!',
@@ -1076,7 +1091,6 @@ const crearPagoMercadoPago = async () => {
       
       const mpUrl = res.data?.mp_data?.init_point
       if (mpUrl) {
-        // Redirigir a Mercado Pago
         window.location.href = mpUrl
       } else {
         Swal.fire({
@@ -1095,12 +1109,14 @@ const crearPagoMercadoPago = async () => {
     console.error('Error creando turno:', error)
     
     let errorMsg = 'Error al crear el turno.'
-    if (error.response?.data?.message) {
-      errorMsg = error.response.data.message
+    if (error.response?.data?.error || error.response?.data?.message) {
+      errorMsg = error.response.data.error || error.response.data.message
+    } else if (error.message) {
+      errorMsg = error.message
     }
     
     Swal.fire({
-      title: 'Error',
+      title: 'No se pudo reservar',
       text: errorMsg,
       icon: 'error',
       confirmButtonText: 'Entendido'

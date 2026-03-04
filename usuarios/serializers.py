@@ -970,31 +970,42 @@ class AuditoriaSerializer(serializers.ModelSerializer):
         fields = '__all__'
     
     def get_navegador_info(self, obj):
-        """Extrae información del navegador de los detalles"""
         if not obj.detalles:
-            return ''
+            return 'Desconocido'
         
         detalles = obj.detalles
         if isinstance(detalles, str):
-            try:
-                detalles = json.loads(detalles)
-            except:
-                return ''
+            try: detalles = json.loads(detalles)
+            except: return 'Desconocido'
+
+        # 1. Buscamos en el formato nuevo que armamos recién
+        ua = detalles.get('__meta__', {}).get('navegador', '')
         
-        if not isinstance(detalles, dict):
-            return ''
+        # 2. Si no está ahí, buscamos en cualquier otra clave posible (formato viejo)
+        if not ua:
+            for key in ['user_agent', 'browser', 'navegador', 'ua']:
+                if key in detalles:
+                    ua = detalles[key]
+                    break
         
-        # Buscar en diferentes ubicaciones posibles
-        if '__meta__' in detalles and 'navegador' in detalles['__meta__']:
-            return detalles['__meta__']['navegador']
+        if not ua or ua == 'Desconocido':
+            return 'Sistema' # O 'Navegador'
+
+        ua_lower = str(ua).lower()
         
-        # También podría estar en otras ubicaciones
-        for key in ['user_agent', 'browser', 'navegador', 'ua']:
-            if key in detalles:
-                return detalles[key]
+        # Lógica de detección precisa
+        if 'brave' in ua_lower: return 'Brave'
+        if 'edg/' in ua_lower: return 'Edge'
+        if 'opr/' in ua_lower or 'opera' in ua_lower: return 'Opera'
+        if 'firefox' in ua_lower: return 'Firefox'
+        # Importante: Chrome está en casi todos los UA, por eso Edge y Brave van antes
+        if 'chrome' in ua_lower: return 'Chrome'
+        if 'safari' in ua_lower and 'chrome' not in ua_lower: return 'Safari'
+        if 'iphone' in ua_lower or 'ipad' in ua_lower: return 'iOS Device'
+        if 'android' in ua_lower: return 'Android'
         
-        return ''
-    
+        return 'Navegador Web'
+
     def get_sistema_operativo(self, obj):
         """Extrae información del sistema operativo"""
         if not obj.detalles:
