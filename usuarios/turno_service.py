@@ -188,15 +188,23 @@ class TurnoService:
                 turno.save()
                 
                 # 5. LLAMAR A LA FUNCIÓN DE REEMBOLSO PARA QUE DETERMINE EL ESTADO
-                from usuarios.views import procesar_reembolso_si_corresponde
                 if es_cancelacion_cliente:
-                    procesado, mensaje_reembolso = procesar_reembolso_si_corresponde(turno)
-                    # Si por error la función marcara COMPLETADO, lo forzamos a PENDIENTE
-                    if turno.reembolso_estado == 'COMPLETADO':
-                        print(f"⚠️  ATENCIÓN: La función marcó reembolso como COMPLETADO, forzando a PENDIENTE")
+                    from .models import ConfiguracionSistema
+                    config = ConfiguracionSistema.get_solo()
+                    margen = config.margen_horas_cancelacion
+                    horas_restantes = tiempo_restante.total_seconds() / 3600
+
+                    # Verificar si pagó algo
+                    puso_plata = (turno.monto_seña > 0 or turno.tipo_pago == 'TOTAL')
+
+                    if horas_restantes >= margen and puso_plata:
                         turno.reembolso_estado = 'PENDIENTE'
-                        turno.reembolsado = False
-                        mensaje_reembolso = "Reembolso pendiente de procesar manualmente"
+                        mensaje_reembolso = "Reembolso pendiente de procesar manualmente."
+                    else:
+                        turno.reembolso_estado = 'NO_APLICA'
+                        mensaje_reembolso = "No corresponde reembolso (cancelación tardía o sin pago)."
+                    
+                    turno.reembolsado = False
                     turno.save()
                 else:
                     # Cancelación por reoferta: no aplica reembolso

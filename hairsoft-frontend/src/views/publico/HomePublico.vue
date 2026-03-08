@@ -13,9 +13,7 @@
         </h1>
         
         <p class="hero-description">
-          Tu estilo, nuestra pasión. Reserva tu cita online en segundos y descubre la mejor experiencia de belleza.
-        </p>
-        
+        Reservá turnos o realizá pedidos de productos de forma online. </p>
         <div class="hero-actions">
           <button @click="intentarReservar" class="btn-cta primary">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -30,10 +28,6 @@
         </div>
         
         <div class="hero-stats">
-          <div class="stat-item">
-            <span class="stat-number">12</span>
-            <span class="stat-label">Años de Experiencia</span>
-          </div>
         </div>
       </div>
     </div>

@@ -6265,3 +6265,4 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
             raise serializers.ValidationError({"error": "No puede registrar movimientos manuales si la caja está cerrada."})
         
         serializer.save(sesion_caja=sesion_abierta)
+

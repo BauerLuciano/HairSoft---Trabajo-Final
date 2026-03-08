@@ -1078,7 +1078,6 @@ class ConfiguracionReoferta(models.Model):
         return config
 
 class PedidoWeb(models.Model):
-    # Opciones de Estado del Pedido
     ESTADO_PENDIENTE_PAGO = 'PENDIENTE_PAGO'
     ESTADO_PAGADO = 'PAGADO'
     ESTADO_PREPARACION = 'EN_PREPARACION'

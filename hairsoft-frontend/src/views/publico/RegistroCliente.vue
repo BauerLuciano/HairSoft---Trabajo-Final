@@ -2,7 +2,7 @@
   <div class="modern-form">
     <div class="form-header">
       <h1>Crear Cuenta</h1>
-      <p class="subtitle">Únete a HairSoft y reserva tus turnos online</p>
+      <p class="subtitle">Reserva tus turnos online</p>
     </div>
 
     <form @submit.prevent="crearUsuario" class="form-content" autocomplete="off">
