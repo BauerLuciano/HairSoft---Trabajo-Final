@@ -7,7 +7,7 @@
           <div class="gradient-overlay"></div>
           <div class="content-block">
             <h1>Los Últimos<br/>Serán Los Primeros</h1>
-            <p>Tu estilo, nuestra pasión. Gestioná tus turnos y descubrí la mejor experiencia en gestión de peluquería.</p>
+            <p>Gestioná tus turnos y descubrí la mejor experiencia en gestión de peluquería.</p>
           </div>
         </div>
       </div>
@@ -263,16 +263,54 @@ const handleLogin = async () => {
   }
 };
 
-const handleForgotPassword = () => {
-  Swal.fire({
+const handleForgotPassword = async () => {
+  const { value: email } = await Swal.fire({
     title: 'Recuperar contraseña',
     input: 'email',
-    inputLabel: 'Ingresa tu correo electrónico',
-    inputValue: credentials.value.username,
+    inputLabel: 'Ingresá tu correo electrónico',
+    inputValue: credentials.value.username, // Usa el del form si ya lo escribió
     showCancelButton: true,
-    confirmButtonText: 'Enviar',
-    cancelButtonText: 'Cancelar'
+    confirmButtonText: 'Enviar enlace',
+    cancelButtonText: 'Cancelar',
+    inputValidator: (value) => {
+      if (!value) {
+        return '¡Necesitás ingresar un correo!';
+      }
+    }
   });
+
+  if (email) {
+    try {
+      Swal.fire({
+        title: 'Enviando...',
+        text: 'Por favor, esperá un momento.',
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      const RESET_API_URL = `${DOMAIN}/api/password-reset/solicitar/`; 
+      
+      await axios.post(RESET_API_URL, { email: email });
+
+      Swal.fire({
+        title: '¡Correo enviado!',
+        text: 'Si el correo existe en nuestro sistema, recibirás un enlace para restablecer tu contraseña.',
+        icon: 'success',
+        confirmButtonColor: '#007bff'
+      });
+
+    } catch (error) {
+      console.error("❌ Error enviando correo:", error);
+      Swal.fire({
+        title: 'Error',
+        text: 'Hubo un problema al intentar enviar el correo. Intentá de nuevo más tarde.',
+        icon: 'error',
+        confirmButtonColor: '#007bff'
+      });
+    }
+  }
 };
 </script>
 
