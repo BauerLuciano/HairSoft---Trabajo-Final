@@ -3,7 +3,7 @@
     <div class="catalogo-header">
       <div class="header-content">
         <h1>Nuestros Productos</h1>
-        <p class="subtitulo">Descubre nuestra línea premium para el cuidado masculino</p>
+        <p class="subtitulo">Descubrí nuestra línea premium para el cuidado masculino</p>
       </div>
       <div class="header-estadisticas">
         <div class="estadistica-item">
@@ -19,7 +19,7 @@
           <Search :size="18" class="search-icon" />
           <input 
             v-model="filtros.busqueda" 
-            placeholder="Buscar productos por nombre" 
+            placeholder="Buscar productos por nombre..." 
             class="search-input"
           />
           <button v-if="filtros.busqueda" @click="filtros.busqueda = ''" class="clear-search">
@@ -132,7 +132,7 @@
     <div v-else class="sin-resultados">
       <PackageSearch :size="64" />
       <h3>No encontramos productos</h3>
-      <p>Prueba con otros términos de búsqueda o selecciona diferentes filtros</p>
+      <p>Probá con otros términos de búsqueda o cambiá los filtros.</p>
       <button @click="limpiarFiltros" class="btn-limpiar-todos">
         <Trash2 :size="16" />
         Limpiar todos los filtros
@@ -156,15 +156,8 @@
           </button>
           
           <div class="paginacion-numeros">
-            <span 
-              v-if="pagina > 3" 
-              class="paginacion-puntos"
-              @click="cambiarPagina(1)"
-            >1</span>
-            <span 
-              v-if="pagina > 4" 
-              class="paginacion-puntos"
-            >...</span>
+            <span v-if="pagina > 3" class="paginacion-puntos" @click="cambiarPagina(1)">1</span>
+            <span v-if="pagina > 4" class="paginacion-puntos">...</span>
             
             <button 
               v-for="num in getPaginasVisibles" 
@@ -176,15 +169,8 @@
               {{ num }}
             </button>
             
-            <span 
-              v-if="pagina < totalPaginas - 3" 
-              class="paginacion-puntos"
-            >...</span>
-            <span 
-              v-if="pagina < totalPaginas - 2" 
-              class="paginacion-puntos"
-              @click="cambiarPagina(totalPaginas)"
-            >{{ totalPaginas }}</span>
+            <span v-if="pagina < totalPaginas - 3" class="paginacion-puntos">...</span>
+            <span v-if="pagina < totalPaginas - 2" class="paginacion-puntos" @click="cambiarPagina(totalPaginas)">{{ totalPaginas }}</span>
           </div>
           
           <button 
@@ -213,12 +199,6 @@
       </div>
     </div>
 
-    <div v-if="hayFiltrosActivos && productosFiltrados.length > 0" class="filtros-activos-bar">
-      <button @click="limpiarFiltros" class="btn-limpiar-todos-chips">
-        <Trash2 :size="14" /> Limpiar todo
-      </button>
-    </div>
-
     <Transition name="modal-fade">
       <div v-if="mostrarModal && productoSeleccionado" class="modal-backdrop" @click="cerrarModal">
         <div class="modal-card" @click.stop>
@@ -228,7 +208,6 @@
           </button>
 
           <div class="modal-layout">
-            
             <div class="modal-image-col">
               <img 
                 :src="getImageUrl(productoSeleccionado.imagen)" 
@@ -311,10 +290,9 @@
 
   </div>
 </template>
-
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import api from '@/services/api' // ✅ Sincronizado
+import api from '@/services/api'
 import { useCartStore } from '@/stores/cart'
 import { 
   Package, PackageSearch, Search, X, 
@@ -332,18 +310,19 @@ const inputPagina = ref(1)
 const mostrarModal = ref(false)
 const productoSeleccionado = ref(null)
 
-// --- DETECCIÓN DE ENTORNO PARA IMÁGENES ---
-const isProduction = window.location.hostname.includes('vercel.app');
+// --- CONFIGURACIÓN DE RUTAS ---
+const isProduction = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('railway.app');
 const MEDIA_BASE = isProduction 
   ? 'https://web-production-ac47c.up.railway.app' 
   : 'http://127.0.0.1:8000';
 
 const getImageUrl = (img) => {
   if (!img) return '/placeholder.png'; 
-  if (img.startsWith('http')) return img; // Cloudinary o URL completa
-  return `${MEDIA_BASE}${img}`; // ✅ YA NO ES MÁS 127.0.0.1 FIJO
+  if (img.startsWith('http')) return img;
+  return `${MEDIA_BASE}${img}`; 
 }
 
+// --- ACCIONES CARRO Y MODAL ---
 const agregarAlCarrito = (producto) => {
   if (producto && producto.stock_actual > 0) {
     cartStore.agregarProducto(producto);
@@ -364,37 +343,43 @@ const cerrarModal = () => {
   document.body.style.overflow = ''
 }
 
+// --- LLAMADAS A LA API ---
 const cargarProductos = async () => {
   try {
+    // 💡 IMPORTANTE: Como tu backend ya tiene SearchFilter, 
+    // podríamos pasarle ?search=... pero para no complicar 
+    // traemos todo y filtramos en el Front que es más rápido.
     const res = await api.get('/catalogo/')
     productos.value = Array.isArray(res.data) ? res.data : (res.data.results || [])
-  } catch (err) { console.error(err) }
+  } catch (err) { console.error("Error cargando catálogo:", err) }
 }
 
 const cargarCategorias = async () => {
   try {
     const res = await api.get('/categorias/productos/')
     categorias.value = Array.isArray(res.data) ? res.data : (res.data.results || [])
-  } catch (err) { console.error(err) }
+  } catch (err) { console.error("Error cargando categorías:", err) }
 }
 
 const cargarMarcas = async () => {
   try {
     const res = await api.get('/marcas/')
     marcas.value = Array.isArray(res.data) ? res.data : (res.data.results || [])
-  } catch (err) { console.error(err) }
+  } catch (err) { console.error("Error cargando marcas:", err) }
 }
 
+// --- AYUDANTES PARA NOMBRES (Sincronizados con tu Serializer) ---
 const getCategoriaNombre = (producto) => {
+  // Si el backend ya manda el nombre, lo usamos. 
+  // Si no, lo buscamos en la lista de categorias.
   if (producto.categoria_nombre) return producto.categoria_nombre
   const cat = categorias.value.find(c => c.id == producto.categoria)
   return cat ? cat.nombre : 'General'
 }
 
 const getMarcaNombre = (producto) => {
-  if (producto.marca_nombre) return producto.marca_nombre
-  const m = marcas.value.find(m => m.id == producto.marca)
-  return m ? m.nombre : 'Genérico'
+  // ⚡️ CORRECCIÓN: Tu Serializer manda 'marca_nombre'
+  return producto.marca_nombre || 'Genérico'
 }
 
 onMounted(async () => {
@@ -402,24 +387,35 @@ onMounted(async () => {
 })
 
 const productosFiltrados = computed(() => {
-  const lista = Array.isArray(productos.value) ? productos.value : []
-  let filtrados = lista.filter(p => {
-    if (!p) return false
-    const busca = filtros.value.busqueda.toLowerCase()
-    const matchBusqueda = !busca || (p.nombre?.toLowerCase().includes(busca) || p.descripcion?.toLowerCase().includes(busca))
-    const matchCategoria = !filtros.value.categoria || p.categoria == filtros.value.categoria
-    const matchMarca = !filtros.value.marca || p.marca == filtros.value.marca
-    return matchBusqueda && matchCategoria && matchMarca
-  })
-
-  if (filtros.value.orden === 'precio_asc') filtrados.sort((a, b) => Number(a.precio) - Number(b.precio))
-  else if (filtros.value.orden === 'precio_desc') filtrados.sort((a, b) => Number(b.precio) - Number(a.precio))
-  else filtrados.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+  const lista = Array.isArray(productos.value) ? productos.value : [];
   
-  return filtrados
-})
+  return lista.filter(p => {
+    if (!p) return false;
+    
+    const busca = (filtros.value.busqueda || '').toLowerCase().trim();
+    const matchBusqueda = !busca || 
+      (p.nombre || '').toLowerCase().includes(busca) || 
+      (p.descripcion || '').toLowerCase().includes(busca) ||
+      (p.marca_nombre || '').toLowerCase().includes(busca);
 
+    const matchCategoria = !filtros.value.categoria || p.categoria == filtros.value.categoria;
+
+    const matchMarca = !filtros.value.marca || 
+                       p.marca == filtros.value.marca || 
+                       (p.marca_nombre && marcas.value.find(m => m.id == filtros.value.marca)?.nombre === p.marca_nombre);
+
+    return matchBusqueda && matchCategoria && matchMarca;
+  }).sort((a, b) => {
+    // 4. Ordenamiento
+    if (filtros.value.orden === 'precio_asc') return Number(a.precio || 0) - Number(b.precio || 0);
+    if (filtros.value.orden === 'precio_desc') return Number(b.precio || 0) - Number(a.precio || 0);
+    return (a.nombre || '').localeCompare(b.nombre || '');
+  });
+});
+
+// --- PAGINACIÓN ---
 const totalPaginas = computed(() => Math.max(1, Math.ceil(productosFiltrados.value.length / itemsPorPagina)))
+
 const productosPaginados = computed(() => {
   const inicio = (pagina.value - 1) * itemsPorPagina
   return productosFiltrados.value.slice(inicio, inicio + itemsPorPagina)
@@ -437,11 +433,24 @@ const getPaginasVisibles = computed(() => {
 });
 
 const hayFiltrosActivos = computed(() => filtros.value.busqueda || filtros.value.categoria || filtros.value.marca)
+
 const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 const cambiarPagina = (num) => { pagina.value = num }
-const limpiarFiltros = () => { filtros.value = { busqueda: '', categoria: '', marca: '', orden: 'nombre' }; pagina.value = 1 }
 
+const irAPaginaEspecifica = () => {
+  let num = parseInt(inputPagina.value);
+  if (isNaN(num) || num < 1) num = 1;
+  if (num > totalPaginas.value) num = totalPaginas.value;
+  pagina.value = num;
+}
+
+const limpiarFiltros = () => { 
+  filtros.value = { busqueda: '', categoria: '', marca: '', orden: 'nombre' }; 
+  pagina.value = 1;
+}
+
+watch(pagina, (newVal) => { inputPagina.value = newVal })
 watch(filtros, () => { pagina.value = 1 }, { deep: true })
 </script>
 

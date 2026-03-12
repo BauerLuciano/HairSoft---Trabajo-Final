@@ -365,64 +365,85 @@ def logout_view(request):
     except Exception as e:
         return Response({'error': str(e)}, status=500)
     
-@api_view(['POST', 'PATCH', 'PUT']) # ✅ Usamos el decorador de DRF para manejar métodos fácil
-@permission_classes([IsAuthenticated]) # ✅ Solo gente logueada
+@api_view(['POST', 'PATCH', 'PUT'])
+@permission_classes([IsAuthenticated])
 def editar_usuario(request, pk):
     try:
-        # 1. Seguridad: Obtener usuario y validar permisos
+        # 1. Seguridad: Obtener usuario
         usuario = Usuario.objects.get(pk=pk)
         
-        # Regla: Solo puedes editar tu propio usuario, a menos que seas Admin/Staff
-        if request.user.id != usuario.id and not request.user.is_staff:
-             # Opcional: Chequear rol específico si is_staff no es suficiente
-             es_admin = request.user.rol and request.user.rol.nombre.upper() in ['ADMINISTRADOR', 'ADMIN']
-             if not es_admin:
-                return JsonResponse({'status': 'error', 'message': 'No tienes permiso para editar este usuario'}, status=403)
+        # Saber si el que está haciendo la petición es un Administrador
+        es_admin = request.user.is_staff or (request.user.rol and request.user.rol.nombre.upper() in ['ADMINISTRADOR', 'ADMIN'])
+        
+        # Regla: Solo puedes editar tu propio usuario, a menos que seas Admin
+        if request.user.id != usuario.id and not es_admin:
+            return JsonResponse({'status': 'error', 'message': 'No tenés permiso para editar este usuario'}, status=403)
 
         # 2. Parsear datos
         if request.content_type == 'application/json':
             data = json.loads(request.body)
         else:
-            data = request.POST.copy() # Soporte para form-data
+            data = request.POST.copy() 
 
-        print(f"🔄 Editando Usuario {pk}. Datos:", data)
+        print(f"🔄 Editando Usuario {pk}. Datos recibidos:", data)
 
-        # 3. LOGICA CAMBIO DE CONTRASEÑA (Segura)
+        # 3. LOGICA CAMBIO DE CONTRASEÑA
         contrasena_nueva = data.get('contrasena_nueva')
         contrasena_actual = data.get('contrasena_actual')
 
         if contrasena_nueva:
             if not contrasena_actual:
-                return JsonResponse({'status': 'error', 'message': 'Para cambiar la contraseña, debes ingresar la actual.'}, status=400)
+                return JsonResponse({'status': 'error', 'message': 'Para cambiar la contraseña, debés ingresar la actual.'}, status=400)
             
-            # Verificar que la actual sea correcta
             from django.contrib.auth.hashers import check_password, make_password
             if not check_password(contrasena_actual, usuario.contrasena):
                 return JsonResponse({'status': 'error', 'message': 'La contraseña actual es incorrecta.'}, status=400)
             
-            # Si pasa, hasheamos la nueva y la guardamos en data para el form/objeto
             usuario.contrasena = make_password(contrasena_nueva)
-            # No pasamos la contraseña al form normal para que no la re-hashee mal o la valide como texto plano
 
-        if 'telefono' in data:
-            usuario.telefono = data['telefono']
+        # 4. CAMPOS PÚBLICOS (Cualquiera puede editar su propia data)
+        if 'nombre' in data: usuario.nombre = data['nombre']
+        if 'apellido' in data: usuario.apellido = data['apellido']
+        if 'telefono' in data: usuario.telefono = data['telefono']
+        if 'dni' in data: usuario.dni = data['dni']
+        if 'correo' in data: usuario.correo = data['correo']
         
-        # Si es Admin, puede cambiar más cosas
-        if request.user.is_staff or (request.user.rol and request.user.rol.nombre.upper() == 'ADMINISTRADOR'):
-            if 'nombre' in data: usuario.nombre = data['nombre']
-            if 'apellido' in data: usuario.apellido = data['apellido']
+        # 5. CAMPOS RESTRINGIDOS (Solo Admin)
+        if es_admin:
             if 'rol' in data: usuario.rol_id = data['rol']
             if 'estado' in data: usuario.estado = data['estado']
 
         usuario.save()
-        return JsonResponse({'status': 'ok', 'id': usuario.id, 'message': 'Perfil actualizado correctamente'})
+        
+        # Truco: Si el cliente se cambió el nombre, actualizamos la respuesta para que el Front lo sepa
+        return JsonResponse({
+            'status': 'ok', 
+            'id': usuario.id, 
+            'message': 'Perfil actualizado correctamente',
+            'user': {
+                'nombre': usuario.nombre,
+                'apellido': usuario.apellido,
+                'correo': usuario.correo
+            }
+        })
 
     except Usuario.DoesNotExist:
         return JsonResponse({'status': 'error', 'message': 'Usuario no encontrado'}, status=404)
+        
+    # ATENCIÓN ACÁ: Atajamos si ponen un Correo o DNI repetido
+    except IntegrityError as e:
+        error_str = str(e).lower()
+        print(f"⚠️ Error de Integridad BD: {error_str}")
+        if 'correo' in error_str or 'email' in error_str:
+            return JsonResponse({'status': 'error', 'message': 'Ese correo ya está registrado por otro usuario.'}, status=400)
+        elif 'dni' in error_str:
+            return JsonResponse({'status': 'error', 'message': 'Ese DNI ya está registrado en el sistema.'}, status=400)
+        else:
+            return JsonResponse({'status': 'error', 'message': 'El DNI o Correo ingresado ya existe.'}, status=400)
+            
     except Exception as e:
         print(f"❌ Error editar_usuario: {e}")
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-
+        return JsonResponse({'status': 'error', 'message': 'Ocurrió un error en el servidor'}, status=500)
 
 @csrf_exempt
 def eliminar_usuario(request, pk):
@@ -2705,7 +2726,6 @@ class ProveedorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
         instance.estado = 'INACTIVO'
         instance.save()
 
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def obtener_usuario_por_id(request, user_id):
@@ -2729,9 +2749,6 @@ def obtener_usuario_por_id(request, user_id):
         print(f"Error obteniendo usuario: {e}")
         return Response({'error': str(e)}, status=500)
     
-# =================================
-# VENTAS
-# =================================
 # =================================
 # VENTAS
 # =================================

@@ -95,16 +95,13 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     telefono = models.CharField(max_length=20)
     correo = models.EmailField(unique=True)
     
-    # ✅ CAMPOS REQUERIDOS PARA AbstractBaseUser
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)
     
-    # ✅ CONFIGURACIÓN PARA USER MODEL
     USERNAME_FIELD = 'correo'
     REQUIRED_FIELDS = ['nombre', 'apellido', 'dni']
     
-    # ✅ MANAGER PERSONALIZADO
     objects = UsuarioManager()
     
     rol = models.ForeignKey('Rol', on_delete=models.SET_NULL, null=True)
@@ -119,7 +116,6 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
         help_text="Usar solo para empleados con fijo (ej. Recepción)"
     )
 
-    # ✅ MÉTODOS COMPATIBILIDAD
     def get_username(self):
         return self.correo
 

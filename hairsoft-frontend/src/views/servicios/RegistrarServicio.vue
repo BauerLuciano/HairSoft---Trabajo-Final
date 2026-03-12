@@ -375,7 +375,6 @@ const guardarServicio = async () => {
         timer: 1500 
       })
     } else {
-      // ✅ CORRECCIÓN: URL CORREGIDA - REMOVER "/usuarios"
       await axios.post(`${API_BASE}/api/servicios/crear/`, payload)
       Swal.fire({ 
         icon: 'success', 

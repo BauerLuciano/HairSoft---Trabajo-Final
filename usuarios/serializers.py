@@ -137,10 +137,11 @@ class CategoriaProductoSerializer(serializers.ModelSerializer):
 # ---------------------------------------------------------------------
 class ProductoCatalogoSerializer(serializers.ModelSerializer):
     marca_nombre = serializers.CharField(source='marca.nombre', read_only=True, default="Genérico")
+    categoria_nombre = serializers.CharField(source='categoria.nombre', read_only=True, default="General")
 
     class Meta:
         model = Producto
-        fields = ['id', 'nombre', 'marca_nombre', 'descripcion', 'precio', 'imagen', 'stock_actual']
+        fields = ['id', 'nombre', 'marca_nombre', 'categoria', 'categoria_nombre', 'descripcion', 'precio', 'imagen', 'stock_actual']
 
 
 # ----------------------------------------------------------------------
@@ -543,8 +544,6 @@ class MetodoPagoSerializer(serializers.ModelSerializer):
 # ----------------------------------------------------------------------
 # PEDIDOS
 # ----------------------------------------------------------------------
-# usuarios/serializers.py
-
 class DetallePedidoSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.ReadOnlyField(source='producto.nombre')
     producto_codigo = serializers.CharField(source='producto.codigo', read_only=True)
