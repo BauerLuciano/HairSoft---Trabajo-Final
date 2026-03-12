@@ -1,63 +1,60 @@
 <template>
-  <div class="gestion-cajas-container">
-    <div class="usuarios-count">
-      <p><i class="ri-bank-card-line"></i> Gestión de Cajas Físicas</p>
+  <div class="sub-module-container">
+    <div class="section-header">
+      <h3><i class="ri-bank-card-line icon-header"></i> Cajas</h3>
       <button @click="abrirModalCrear" class="register-button sm-btn">
         <i class="ri-add-line"></i> Nueva Caja
       </button>
     </div>
 
-    <div class="filters-container">
-      <div v-if="cargando" class="no-results" style="padding: 40px 0;">
-        <i class="ri-loader-4-line animate-spin no-results-icon" style="font-size: 2rem;"></i>
-        <p>Cargando cajas disponibles...</p>
-      </div>
+    <div v-if="cargando" class="loading-state">
+      <i class="ri-loader-4-line animate-spin"></i> Cargando cajas...
+    </div>
 
-      <div v-else class="cajas-grid">
-        <div v-if="cajas.length === 0" class="no-cajas-wrapper">
-          <p class="upload-hint">No hay cajas configuradas. Deberías agregar al menos una.</p>
+    <div v-else class="item-grid">
+      <div v-if="cajas.length === 0" class="empty-state">
+        <p>No hay cajas configuradas. Deberías agregar al menos una.</p>
+      </div>
+      
+      <div v-for="caja in cajas" :key="caja.id" class="item-card" :class="{'inactiva': !caja.activa}">
+        <div class="card-header">
+          <div class="card-title">
+            <i class="ri-mac-line card-icon"></i>
+            <h4>{{ caja.nombre }}</h4>
+          </div>
+          <span :class="['badge-estado', caja.activa ? 'estado-success' : 'estado-danger']">
+            {{ caja.activa ? 'Operativa' : 'Inactiva' }}
+          </span>
         </div>
         
-        <div v-for="caja in cajas" :key="caja.id" class="caja-card" :class="{'inactiva': !caja.activa}">
-          <div class="caja-header">
-            <div class="caja-title">
-              <i class="ri-mac-line icon-caja"></i>
-              <h4>{{ caja.nombre }}</h4>
-            </div>
-            <span :class="['badge-estado', caja.activa ? 'estado-success' : 'estado-danger']">
-              {{ caja.activa ? 'Operativa' : 'Inactiva' }}
-            </span>
-          </div>
-          
-          <div v-if="!caja.activa && caja.motivo_inactividad" class="motivo-inactividad">
-            <i class="ri-error-warning-line"></i>
-            <small>{{ caja.motivo_inactividad }}</small>
-          </div>
+        <div v-if="!caja.activa && caja.motivo_inactividad" class="motivo-box">
+          <i class="ri-error-warning-line"></i>
+          <small>{{ caja.motivo_inactividad }}</small>
+        </div>
 
-          <div class="caja-acciones">
-            <button @click="abrirModalEditar(caja)" class="action-button edit" title="Editar Nombre">
-              <i class="ri-pencil-line"></i>
-            </button>
-            <button @click="toggleEstado(caja)" :class="['action-button', caja.activa ? 'delete' : 'success']" :title="caja.activa ? 'Desactivar Caja' : 'Reactivar Caja'">
-              <i :class="caja.activa ? 'ri-shut-down-line' : 'ri-restart-line'"></i>
-            </button>
-          </div>
+        <div class="card-actions">
+          <button @click="abrirModalEditar(caja)" class="action-btn edit" title="Editar Nombre">
+            <i class="ri-pencil-line"></i>
+          </button>
+          <button @click="toggleEstado(caja)" :class="['action-btn', caja.activa ? 'delete' : 'success']" :title="caja.activa ? 'Desactivar Caja' : 'Reactivar Caja'">
+            <i :class="caja.activa ? 'ri-shut-down-line' : 'ri-restart-line'"></i>
+          </button>
         </div>
       </div>
     </div>
 
     <div v-if="mostrarModal" class="modal-overlay" @click.self="cerrarModal">
       <div class="modal-content fade-in">
-        <div class="historial-header">
+        <div class="modal-header">
           <h2>{{ modoEdicion ? 'Editar Caja' : 'Nueva Caja' }}</h2>
           <button class="modal-close" @click="cerrarModal"><i class="ri-close-line"></i></button>
         </div>
         
-        <div class="historial-body">
+        <div class="modal-body">
           <form @submit.prevent="guardarCaja" class="vertical-stack">
             <div class="filter-group">
               <label>Nombre del Punto de Cobro</label>
-              <input type="text" v-model="formCaja.nombre" required class="filter-input" placeholder="Ej: Mostrador Principal, Caja Peluquería 2...">
+              <input type="text" v-model="formCaja.nombre" required class="filter-input" placeholder="Ej: Mostrador Principal, Caja 2...">
             </div>
             
             <div class="filter-group" v-if="!formCaja.activa">
@@ -65,9 +62,9 @@
               <input type="text" v-model="formCaja.motivo_inactividad" class="filter-input" placeholder="Ej: PC en reparación...">
             </div>
 
-            <div style="display: flex; gap: 15px; margin-top: 10px;">
-              <button type="button" @click="cerrarModal" class="clear-filters-btn" style="flex: 1; justify-content: center;">Cancelar</button>
-              <button type="submit" class="register-button" style="flex: 1; justify-content: center;" :disabled="guardando">
+            <div class="modal-footer-btns">
+              <button type="button" @click="cerrarModal" class="btn-outline">Cancelar</button>
+              <button type="submit" class="register-button" :disabled="guardando">
                 <i class="ri-save-line"></i> {{ guardando ? 'Guardando...' : 'Guardar Caja' }}
               </button>
             </div>
@@ -101,7 +98,6 @@ const cargarCajas = async () => {
   cargando.value = true;
   try {
     const res = await cajaService.getCajas();
-    // Ordenamos para que las activas queden arriba
     cajas.value = res.data.sort((a, b) => b.activa - a.activa);
   } catch (error) {
     console.error("Error al cargar cajas", error);
@@ -151,17 +147,13 @@ const guardarCaja = async () => {
       });
     }
     
-    // 🔥 ACÁ ESTÁ LA MAGIA: Verificamos si Django nos tiró un error (ej. 400)
     if (!response.ok) {
         const errorData = await response.json();
-        
-        // Buscamos si el error viene en el campo "nombre"
         let mensajeError = 'Verifique los datos ingresados.';
         if (errorData.nombre) {
-            mensajeError = errorData.nombre[0]; // Ej: "caja con este nombre ya existe."
+            mensajeError = errorData.nombre[0];
         }
         
-        // Tiramos el cartel de error y CORTAMOS la función con el return
         Swal.fire({ 
             icon: 'warning', 
             title: 'Error de validación', 
@@ -172,13 +164,11 @@ const guardarCaja = async () => {
         return; 
     }
     
-    // Si llega hasta acá, es porque salió todo bien (response.ok es true)
     Swal.fire({ icon: 'success', title: 'Guardado', timer: 1500, showConfirmButton: false, background: '#0f172a', color: '#f8fafc' });
     cerrarModal();
     cargarCajas();
     
   } catch (error) {
-    // Esto solo salta si se cae el servidor o no hay internet
     Swal.fire({ icon: 'error', title: 'Error de conexión', text: 'No se pudo contactar al servidor', background: '#0f172a', color: '#f8fafc' });
   } finally {
     guardando.value = false;
@@ -199,7 +189,7 @@ const toggleEstado = async (caja) => {
       background: '#0f172a',
       color: '#f8fafc'
     });
-    if (texto === undefined) return; // Canceló
+    if (texto === undefined) return; 
     motivo = texto;
   } else {
     const confirm = await Swal.fire({
@@ -228,78 +218,73 @@ const toggleEstado = async (caja) => {
   }
 };
 
-onMounted(() => {
-  cargarCajas();
-});
+onMounted(cargarCajas);
 </script>
 
 <style scoped>
-/* HEREDANDO EL ESTILO MASCULINO ELEGANTE DE AJUSTES DEL LOCAL */
-.gestion-cajas-container { margin-top: 10px; }
+/* ESTILOS COMPARTIDOS ENTRE CAJAS Y SILLAS */
+.sub-module-container { width: 100%; }
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid var(--border-color); }
+.section-header h3 { margin: 0; color: var(--text-primary); font-size: 1.3rem; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+.icon-header { color: #0ea5e9; font-size: 1.5rem; }
 
-.usuarios-count { display: flex; justify-content: space-between; align-items: center; margin: 40px 0 20px; padding: 15px 25px; background: var(--bg-primary); border-radius: 12px; border-left: 5px solid var(--accent-color); }
-.usuarios-count p { color: #fff; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 10px; font-size: 1.1rem; }
+.item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
+.item-card { background: var(--bg-primary); border: 2px solid var(--border-color); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 15px; transition: all 0.3s ease; position: relative; overflow: hidden; min-height: 160px; }
+.item-card:hover { transform: translateY(-4px); box-shadow: 0 8px 20px rgba(0,0,0,0.15); border-color: var(--accent-color); }
+.item-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent-color); opacity: 0; transition: 0.3s; }
+.item-card:hover::before { opacity: 1; }
+.item-card.inactiva { opacity: 0.7; filter: grayscale(30%); border-color: var(--border-color) !important; }
+.item-card.inactiva:hover::before { background: var(--error-color); }
 
-.filters-container { background: var(--hover-bg); padding: 30px; border-radius: 16px; border: 1px solid var(--border-color); }
+.card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.card-title { display: flex; align-items: center; gap: 12px; }
+.card-icon { font-size: 1.8rem; color: var(--text-secondary); background: var(--bg-secondary); padding: 8px; border-radius: 10px; border: 1px solid var(--border-color); }
+.card-title h4 { margin: 0; color: var(--text-primary); font-size: 1.1rem; font-weight: 700; word-break: break-word;}
 
-.cajas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
-.caja-card { background: var(--bg-primary); border: 2px solid var(--border-color); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 15px; transition: all 0.3s ease; position: relative; overflow: hidden;}
-.caja-card:hover { transform: translateY(-4px); box-shadow: 0 8px 20px rgba(0,0,0,0.15); border-color: var(--accent-color); }
-.caja-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent-color); opacity: 0; transition: 0.3s; }
-.caja-card:hover::before { opacity: 1; }
-.caja-card.inactiva { opacity: 0.6; filter: grayscale(50%); border-color: var(--border-color) !important; }
-.caja-card.inactiva:hover::before { background: var(--error-color); }
-
-.caja-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.caja-title { display: flex; align-items: center; gap: 10px; }
-.icon-caja { font-size: 1.8rem; color: var(--text-secondary); background: var(--bg-secondary); padding: 8px; border-radius: 10px; border: 1px solid var(--border-color); }
-.caja-title h4 { margin: 0; color: var(--text-primary); font-size: 1.1rem; font-weight: 800; word-break: break-word;}
-
-.badge-estado { padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
+.badge-estado { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
 .estado-success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
 .estado-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
 
-.motivo-inactividad { background: rgba(239, 68, 68, 0.1); padding: 10px 12px; border-radius: 8px; color: #ef4444; display: flex; gap: 8px; align-items: flex-start; border: 1px dashed rgba(239, 68, 68, 0.3); }
-.motivo-inactividad i { font-size: 1rem; margin-top: 2px; }
+.motivo-box { background: rgba(239, 68, 68, 0.1); padding: 10px 12px; border-radius: 8px; color: #ef4444; display: flex; gap: 8px; align-items: flex-start; border: 1px dashed rgba(239, 68, 68, 0.3); font-size: 0.85rem; }
+.motivo-box i { font-size: 1rem; margin-top: 2px; }
 
-.caja-acciones { display: flex; gap: 10px; justify-content: flex-end; border-top: 1px solid var(--border-color); padding-top: 15px; margin-top: auto; }
-.action-button { padding: 8px; border: none; border-radius: 10px; font-size: 1rem; cursor: pointer; transition: 0.2s; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; }
-.action-button.edit { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }
-.action-button.edit:hover { background: var(--hover-bg); transform: translateY(-2px); border-color: var(--accent-color); color: var(--accent-color); }
-.action-button.delete { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444; }
-.action-button.delete:hover { background: #ef4444; color: white; transform: translateY(-2px); }
-.action-button.success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid #10b981; }
-.action-button.success:hover { background: #10b981; color: white; transform: translateY(-2px); }
+.card-actions { display: flex; gap: 10px; justify-content: flex-end; border-top: 1px solid var(--border-color); padding-top: 15px; margin-top: auto; }
+.action-btn { padding: 8px; border: none; border-radius: 10px; font-size: 1.1rem; cursor: pointer; transition: 0.2s; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+.action-btn.edit { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }
+.action-btn.edit:hover { background: var(--hover-bg); transform: translateY(-2px); border-color: var(--accent-color); color: var(--accent-color); }
+.action-btn.delete { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+.action-btn.delete:hover { background: #ef4444; color: white; transform: translateY(-2px); }
+.action-btn.success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+.action-btn.success:hover { background: #10b981; color: white; transform: translateY(-2px); }
 
-/* BOTONES Y FORMULARIOS */
-.register-button { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: 800; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; display: flex; align-items: center; gap: 8px; box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35); font-size: 0.9rem;}
+/* BOTONES GLOBALES */
+.register-button { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; border: none; padding: 12px 24px; border-radius: 12px; font-weight: 800; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35); font-size: 0.9rem;}
 .register-button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(14, 165, 233, 0.5); }
 .sm-btn { padding: 8px 16px; font-size: 0.85rem; box-shadow: none; }
+.btn-outline { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 12px 24px; border-radius: 12px; cursor: pointer; font-weight: 700; text-transform: uppercase; transition: 0.3s; display: flex; align-items: center; justify-content: center; font-size: 0.9rem;}
+.btn-outline:hover { background: var(--hover-bg); border-color: var(--text-secondary); }
 
-.clear-filters-btn { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 10px 18px; border-radius: 12px; cursor: pointer; font-weight: 700; text-transform: uppercase; transition: 0.3s; display: flex; align-items: center; font-size: 0.9rem;}
-.clear-filters-btn:hover { background: var(--hover-bg); border-color: var(--text-secondary); }
+/* UTILIDADES Y MODAL */
+.loading-state, .empty-state { width: 100%; text-align: center; padding: 40px 0; color: var(--text-secondary); font-style: italic; }
+.animate-spin { animation: spin 1s linear infinite; display: inline-block; font-size: 1.5rem; margin-right: 10px; vertical-align: middle;}
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(8px); display: flex; justify-content: center; align-items: center; z-index: 1000; animation: fadeInModal 0.2s ease; }
+@keyframes fadeInModal { from { opacity: 0; } to { opacity: 1; } }
+.modal-content { max-width: 450px; width: 90%; background: var(--bg-secondary); border-radius: 16px; border: 1px solid var(--border-color); overflow: hidden; box-shadow: var(--shadow-lg);}
+.fade-in { animation: slideUp 0.3s ease; }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+.modal-header { padding: 20px 25px; background: var(--bg-primary); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+.modal-header h2 { margin: 0; color: var(--text-primary); font-size: 1.2rem; font-weight: 800;}
+.modal-close { background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-secondary); width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; cursor: pointer; transition: 0.2s; }
+.modal-close:hover { background: var(--error-color); color: white; border-color: var(--error-color); transform: rotate(90deg); }
+.modal-body { padding: 25px; }
 
 .vertical-stack { display: flex; flex-direction: column; gap: 20px; }
 .filter-group { display: flex; flex-direction: column; text-align: left;}
 .filter-group label { font-weight: 700; margin-bottom: 10px; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; }
-.filter-input { padding: 12px 14px; border: 2px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); color: var(--text-primary); font-size: 1rem; transition: all 0.3s; width: 100%; box-sizing: border-box; outline: none;}
+.filter-input { padding: 14px; border: 2px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); color: var(--text-primary); font-size: 1rem; transition: all 0.3s; width: 100%; box-sizing: border-box; outline: none;}
 .filter-input:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px var(--accent-light); }
-
-/* UTILIDADES Y MODAL */
-.no-cajas-wrapper { width: 100%; text-align: center; padding: 30px 0; }
-.upload-hint { font-size: 0.9rem; color: var(--text-tertiary); font-style: italic; }
-.animate-spin { animation: spin 1s linear infinite; display: inline-block; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px); display: flex; justify-content: center; align-items: center; z-index: 1000; animation: fadeInModal 0.2s ease; }
-@keyframes fadeInModal { from { opacity: 0; } to { opacity: 1; } }
-.modal-content { max-width: 450px; width: 90%; background: var(--bg-primary); border-radius: 16px; border: 1px solid var(--border-color); overflow: hidden; box-shadow: var(--shadow-lg);}
-.fade-in { animation: slideUp 0.3s ease; }
-@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-.historial-header { padding: 25px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
-.historial-header h2 { margin: 0; color: var(--text-primary); font-size: 1.3rem; font-weight: 900;}
-.modal-close { background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-secondary); width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; cursor: pointer; transition: 0.2s; }
-.modal-close:hover { background: var(--error-color); color: white; border-color: var(--error-color); transform: rotate(90deg); }
-.historial-body { padding: 25px; }
-
+.modal-footer-btns { display: flex; gap: 15px; margin-top: 10px; }
+.modal-footer-btns > * { flex: 1; }
 </style>

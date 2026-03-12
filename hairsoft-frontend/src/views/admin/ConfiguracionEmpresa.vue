@@ -159,12 +159,20 @@
           </div>
         </div>
 
-        <div style="margin-top: 40px; display: flex; flex-direction: column; gap: 20px;">
-           <GestionSillas />
-           <GestionCajas />  
+        <div class="usuarios-count">
+          <p><Store :size="20" /> Infraestructura del Local</p>
         </div>
 
-      </div>
+        <div class="filters-container">
+          <div style="display: flex; flex-direction: column; gap: 30px;">
+            <GestionSillas />
+            
+            <hr class="divider">
+            
+            <GestionCajas />  
+          </div>
+        </div>
+        </div>
     </div>
   </div>
 </template>
@@ -172,7 +180,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from '../../utils/axiosConfig'
-import { Building2, Clock, Save, Loader2, Info } from 'lucide-vue-next'
+import { Building2, Clock, Save, Loader2, Info, Store } from 'lucide-vue-next' // Agregué el ícono Store
 import Swal from 'sweetalert2'
 import GestionSillas from '@/components/GestionSillas.vue'; 
 import GestionCajas from '@/components/GestionCajas.vue';
@@ -184,7 +192,7 @@ const config = ref({
   telefono: '',
   email: '',
   margen_horas_cancelacion: 3,
-  porcentaje_descuento_reoferta: 15, // 🔥 Inicializado
+  porcentaje_descuento_reoferta: 15,
   dias_inactividad_clientes: 60,
   porcentaje_descuento_promo: 15,
   politica_senia: '',
@@ -269,7 +277,7 @@ const guardarCambios = async () => {
   formData.append('telefono', config.value.telefono);
   formData.append('email', config.value.email);
   formData.append('margen_horas_cancelacion', config.value.margen_horas_cancelacion);
-  formData.append('porcentaje_descuento_reoferta', config.value.porcentaje_descuento_reoferta); // 🔥
+  formData.append('porcentaje_descuento_reoferta', config.value.porcentaje_descuento_reoferta);
   formData.append('dias_inactividad_clientes', config.value.dias_inactividad_clientes);
   formData.append('porcentaje_descuento_promo', config.value.porcentaje_descuento_promo);
   formData.append('politica_senia', config.value.politica_senia);
@@ -316,7 +324,6 @@ onMounted(obtenerConfig)
 </script>
 
 <style scoped>
-/* Los estilos se mantienen intactos */
 .list-container { padding: 32px; max-width: 1200px; margin: 0 auto; min-height: 100vh; font-family: 'Inter', sans-serif; }
 .list-card { background: var(--bg-secondary); color: var(--text-primary); border-radius: 24px; padding: 40px; width: 100%; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; border: 1px solid var(--border-color); }
 .list-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9); }

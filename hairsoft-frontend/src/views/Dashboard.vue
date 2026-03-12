@@ -4,7 +4,7 @@
     <header class="dashboard-header">
       <div class="header-left">
         <h1 class="dashboard-title">Dashboard - Reporte Comercial</h1>
-        <p class="dashboard-subtitle">Análisis integral de ventas y servicios</p>
+        <p class="dashboard-subtitle">Análisis integral de ventas y caja</p>
       </div>
       
       <div class="header-right">
@@ -178,8 +178,10 @@
       </div>
 
       <div class="top-section">
-        <h3 class="section-title"><i class="fas fa-trophy"></i> Desempeño Comercial</h3>
+        <h3 class="section-title" style="margin-bottom: 1.5rem;"><i class="fas fa-trophy"></i> Desempeño y Medios de Pago</h3>
+        
         <div class="top-grid">
+          
           <div class="section-card top-card">
             <div class="section-header"><h3><i class="fas fa-star"></i> Servicios Top</h3></div>
             <div class="list-body">
@@ -188,8 +190,10 @@
                 <div class="item-content"><div class="item-name">{{ s.nombre }}</div></div>
                 <div class="item-count">{{ s.cantidad }}</div>
               </div>
+              <div v-if="!dashboardData.serviciosTop.length" class="empty-state">Sin servicios en este período</div>
             </div>
           </div>
+          
           <div class="section-card top-card">
             <div class="section-header"><h3><i class="fas fa-fire"></i> Productos Top</h3></div>
             <div class="list-body">
@@ -198,8 +202,32 @@
                 <div class="item-content"><div class="item-name">{{ p.nombre }}</div></div>
                 <div class="item-count">{{ p.cantidad }}</div>
               </div>
+              <div v-if="!dashboardData.productosTop.length" class="empty-state">Sin productos vendidos</div>
             </div>
           </div>
+
+          <div class="section-card top-card">
+            <div class="section-header"><h3><i class="fas fa-wallet"></i> Ingresos por Medio</h3></div>
+            <div class="list-body medios-pago-body">
+              
+              <div v-for="(medio, index) in dashboardData.ingresosPorMedio" :key="index" class="medio-item">
+                <div class="medio-info">
+                  <div class="medio-dot" :style="{ backgroundColor: getMedioColor(index) }"></div>
+                  <span class="medio-name">{{ medio.medio }}</span>
+                </div>
+                <div class="medio-amount">${{ formatNumber(medio.total) }}</div>
+                <div class="medio-progress-bg">
+                  <div class="medio-progress-fill" :style="{ width: getPorcentajeMedio(medio.total) + '%', backgroundColor: getMedioColor(index) }"></div>
+                </div>
+              </div>
+
+              <div v-if="!dashboardData.ingresosPorMedio || !dashboardData.ingresosPorMedio.length" class="empty-state">
+                No hay cobros registrados
+              </div>
+              
+            </div>
+          </div>
+
         </div>
       </div>
     </main>
@@ -250,7 +278,9 @@
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+      <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #0ea5e9; padding-left: 10px; margin-bottom: 20px; color: #0f172a;">2. Análisis Detallado</h3>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px;">
+        
         <div>
           <h4 style="font-size: 12px; color: #475569; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">Top Servicios</h4>
           <table style="width: 100%; border-collapse: collapse;">
@@ -260,6 +290,7 @@
             </tr>
           </table>
         </div>
+        
         <div>
           <h4 style="font-size: 12px; color: #475569; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">Top Productos</h4>
           <table style="width: 100%; border-collapse: collapse;">
@@ -269,6 +300,20 @@
             </tr>
           </table>
         </div>
+
+        <div>
+          <h4 style="font-size: 12px; color: #475569; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">Ingresos por Medio</h4>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr v-for="(m, index) in dashboardData.ingresosPorMedio" :key="m.medio" style="border-bottom: 1px solid #f1f5f9;">
+              <td style="padding: 10px 0; font-size: 12px;">
+                <span :style="{ color: getMedioColor(index), fontWeight: 'bold', marginRight: '5px' }">●</span>
+                {{ m.medio }}
+              </td>
+              <td style="padding: 10px 0; font-size: 12px; text-align: right; font-weight: bold;">${{ formatNumber(m.total) }}</td>
+            </tr>
+          </table>
+        </div>
+
       </div>
 
       <div style="position: absolute; bottom: 50px; right: 60px; text-align: right;">
@@ -296,6 +341,7 @@ const tooltip = ref({ visible: false, x: 0, y: 0, value: 0, date: '', index: 0 }
 const dashboardData = ref({
   ingresosTotales: 0, egresosTotales: 0, serviciosRealizados: 0, productosVendidos: 0,
   ventasPorDia: [], labelsDias: [], serviciosTop: [], productosTop: [],
+  ingresosPorMedio: [], // 🔥 ARRAY NUEVO
   usuario_emisor: '', empresa: null, cajaAbierta: true, pendientesInfo: { cantidad: 0, total_dinero: 0 }
 })
 
@@ -324,6 +370,15 @@ const getPeriodDisplay = computed(() => {
   const p = periods.find(p => p.value === selectedPeriod.value)
   return p ? p.label : 'Período'
 })
+
+// 🔥 COLORES PARA LOS MEDIOS DE PAGO
+const medioColors = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899'];
+const getMedioColor = (index) => medioColors[index % medioColors.length];
+
+const getPorcentajeMedio = (monto) => {
+  if (!dashboardData.value.ingresosTotales) return 0;
+  return (monto / dashboardData.value.ingresosTotales) * 100;
+}
 
 const convertToBase64 = async (url) => {
   if (!url) return null
@@ -649,12 +704,23 @@ onMounted(() => fetchDashboardData())
 }
 
 /* TOP LISTS */
-.top-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1.5rem; }
+.top-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
 .list-item { display: flex; align-items: center; gap: 1rem; padding: 1.2rem 1.5rem; border-bottom: 1px solid #334155; }
 .rank { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; background: #334155; color: #94a3b8; }
 .item-content { flex: 1; }
 .item-name { font-weight: 700; color: #f1f5f9; margin-bottom: 5px; }
 .item-count { font-weight: 900; color: #f1f5f9; font-size: 1.1rem; }
+.empty-state { padding: 2rem; text-align: center; color: #64748b; font-style: italic; }
+
+/* BARRAS MEDIO DE PAGO */
+.medios-pago-body { padding: 1rem 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+.medio-item { display: flex; flex-direction: column; gap: 8px; }
+.medio-info { display: flex; align-items: center; gap: 10px; }
+.medio-dot { width: 12px; height: 12px; border-radius: 50%; }
+.medio-name { font-weight: 600; color: #e2e8f0; font-size: 0.95rem; }
+.medio-amount { text-align: right; font-weight: 800; font-size: 1.1rem; color: #f8fafc; margin-top: -20px; }
+.medio-progress-bg { width: 100%; height: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; overflow: hidden; }
+.medio-progress-fill { height: 100%; border-radius: 4px; transition: width 1s ease-in-out; }
 
 /* DATE PICKER & LOADER */
 .custom-date-panel { margin-bottom: 2rem; }
@@ -746,4 +812,7 @@ onMounted(() => fetchDashboardData())
 :root.light-theme .date-input-group label { color: #475569; }
 :root.light-theme .date-input-custom { background: #f8fafc; border: 2px solid #cbd5e1; color: #0f172a; }
 :root.light-theme .date-range-info { background: rgba(248, 250, 252, 0.95); color: #64748b; }
+:root.light-theme .medio-name { color: #0f172a; }
+:root.light-theme .medio-amount { color: #0f172a; }
+:root.light-theme .medio-progress-bg { background: #e2e8f0; }
 </style>

@@ -312,10 +312,7 @@ class CotizacionProveedor(models.Model):
     solicitud = models.ForeignKey(SolicitudReabastecimiento, related_name='cotizaciones', on_delete=models.CASCADE)
     proveedor = models.ForeignKey(Proveedor, on_delete=models.CASCADE)
     
-    # EL SECRETO: Token único para que entre sin loguearse
     token_acceso = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
-    
-    # Datos que completa el proveedor
     precio_ofrecido = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     dias_entrega = models.PositiveIntegerField(null=True, blank=True, help_text="Días hábiles para entregar")
     comentarios = models.TextField(blank=True, null=True)
@@ -323,14 +320,10 @@ class CotizacionProveedor(models.Model):
     respondió = models.BooleanField(default=False)
     fecha_respuesta = models.DateTimeField(null=True, blank=True)
 
-    # Lógica Inteligente: Calcular cuál es mejor
     @property
     def puntaje_sistema(self):
         if not self.precio_ofrecido or not self.dias_entrega:
             return 0
-        # Ejemplo de algoritmo: Menor precio suma más, menor tiempo suma más.
-        # Esto es simple, se puede complicar todo lo que quieras.
-        # Asumimos peso: 70% precio, 30% tiempo. (Valores inversos porque menor es mejor)
         score_precio = 10000 / float(self.precio_ofrecido) 
         score_tiempo = 100 / float(self.dias_entrega)
         return (score_precio * 0.7) + (score_tiempo * 0.3)
@@ -338,7 +331,7 @@ class CotizacionProveedor(models.Model):
 class Silla(models.Model):
     nombre = models.CharField(max_length=50, unique=True, help_text="Ej: Silla 1, Puesto Ventana, Lavacabezas")
     activa = models.BooleanField(default=True, help_text="Desmarcar si la silla está rota o fuera de servicio")
-    orden = models.PositiveIntegerField(default=1, help_text="Número para ordenar visualmente (1, 2, 3...)")
+    orden = models.PositiveIntegerField(unique=True, help_text="Número para ordenar visualmente (1, 2, 3...)") 
     motivo_inactividad = models.CharField(max_length=100, null=True, blank=True, help_text="Razón por la cual no se usa")
 
     class Meta:

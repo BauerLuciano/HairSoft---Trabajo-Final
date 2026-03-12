@@ -57,14 +57,24 @@
         </div>
       </template>
     </div>
+
+    <div class="sidebar-footer">
+      <button @click="cerrarSesion" class="logout-btn">
+        <i class="ri-logout-box-r-line logout-icon"></i>
+        <span>Cerrar Sesión</span>
+      </button>
+    </div>
   </nav>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import axios from '@/utils/axiosConfig';
 import logoEstatico from '@/assets/logo.jpg';
+import Swal from 'sweetalert2';
 
+const router = useRouter();
 const openSection = ref('comercial'); 
 const userRol = localStorage.getItem('user_rol'); 
 
@@ -79,7 +89,7 @@ const cargarBranding = async () => {
     const data = res.data;
     
     if (data.logo && !data.logo.startsWith('http')) {
-        const API_BASE = 'http://127.0.0.1:8000'; // Ajustá esto a tu puerto de Django
+        const API_BASE = 'http://127.0.0.1:8000'; 
         data.logo = `${API_BASE}${data.logo}`;
     }
     
@@ -89,12 +99,36 @@ const cargarBranding = async () => {
   }
 };
 
+const cerrarSesion = async () => {
+  const result = await Swal.fire({
+    title: '¿Cerrar Sesión?',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#3b82f6',
+    confirmButtonText: 'Sí, salir',
+    cancelButtonText: 'Cancelar',
+    background: '#0f172a',
+    color: '#f8fafc'
+  });
+
+  if (result.isConfirmed) {
+    // Limpiamos los tokens y variables de sesión del navegador
+    localStorage.removeItem('token');
+    localStorage.removeItem('user_rol');
+    localStorage.removeItem('user_id');
+    
+    // Redirigimos al inicio/login
+    router.push('/login');
+  }
+};
+
 const menuData = {
   comercial: {
     title: 'Gestión Comercial',
     icon: 'ri-store-2-line',
     items: [
-      { name: 'Caja Diaria', path: '/caja', icon: 'ri-bank-card-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] }, // ✅ NUEVO
+      { name: 'Caja Diaria', path: '/caja', icon: 'ri-bank-card-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] },
       { name: 'Ventas', path: '/ventas', icon: 'ri-bar-chart-2-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] },
       { name: 'Pedidos Web', path: '/pedidos-web-admin', icon: 'ri-global-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] }, 
       { name: 'Turnos', path: '/turnos', icon: 'ri-calendar-event-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA', 'PELUQUERO'] },
@@ -159,28 +193,7 @@ onMounted(cargarBranding);
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
   z-index: 100;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.sidebar::-webkit-scrollbar {
-  width: 6px;
-}
-
-.sidebar::-webkit-scrollbar-track {
-  background: rgba(17, 24, 39, 0.5);
-  border-radius: 10px;
-  margin: 8px 0;
-}
-
-.sidebar::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #374151, #1f2937);
-  border-radius: 10px;
-  transition: background 0.3s ease;
-}
-
-.sidebar::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #4b5563, #374151);
+  /* Se elimina el overflow de acá para que el scroll solo pase en el menú */
 }
 
 .sidebar-header {
@@ -188,6 +201,7 @@ onMounted(cargarBranding);
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   border-bottom: 1px solid rgba(59, 130, 246, 0.15);
   position: relative;
+  flex-shrink: 0; /* Evita que el logo se achique */
 }
 
 .sidebar-header::after {
@@ -248,29 +262,29 @@ onMounted(cargarBranding);
   object-fit: cover;
 }
 
-.brand-info {
-  text-align: center;
-}
-
-.brand-name {
-  font-size: 1.9rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, #fff 0%, #e0e7ff 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  display: block;
-  text-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
-}
-
+/* Acá movimos el scroll, solo scrollea la parte de los links */
 .nav-section {
   flex: 1;
+  overflow-y: auto;
   padding: 24px 16px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* Estilos para el scrollbar de la nav-section */
+.nav-section::-webkit-scrollbar {
+  width: 5px;
+}
+.nav-section::-webkit-scrollbar-track {
+  background: transparent;
+}
+.nav-section::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.3);
+  border-radius: 10px;
+}
+.nav-section::-webkit-scrollbar-thumb:hover {
+  background: rgba(59, 130, 246, 0.6);
 }
 
 .section-title {
@@ -571,6 +585,49 @@ onMounted(cargarBranding);
   font-weight: 600;
 }
 
+/* 👇 NUEVOS ESTILOS PARA EL FOOTER FIJO (LOGOUT) 👇 */
+.sidebar-footer {
+  padding: 20px 16px;
+  border-top: 1px solid rgba(59, 130, 246, 0.15);
+  background: linear-gradient(180deg, transparent 0%, rgba(15, 23, 42, 0.8) 100%);
+  flex-shrink: 0;
+}
+
+.logout-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  padding: 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+  transition: all 0.3s ease;
+}
+
+.logout-icon {
+  font-size: 1.3rem;
+  transition: transform 0.3s ease;
+}
+
+.logout-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
+  transform: translateY(-2px);
+}
+
+.logout-btn:hover .logout-icon {
+  transform: translateX(-3px); /* Hace un pequeño efectito de salir */
+}
+/* 👆 FIN ESTILOS LOGOUT 👆 */
+
+
 @media (max-width: 1024px) {
   .sidebar {
     width: 270px;
@@ -585,10 +642,6 @@ onMounted(cargarBranding);
   .logo-container {
     width: 75px;
     height: 75px;
-  }
-  
-  .brand-name {
-    font-size: 1.6rem;
   }
 }
 

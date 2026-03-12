@@ -2,18 +2,17 @@
   <div class="home-publico">
     
     <div class="hero-section">
-      <div class="hero-background">
-        <div class="hero-gradient"></div>
-      </div>
       
-      <div class="hero-content">  
+      <div class="hero-content fade-in">  
         <h1 class="hero-title">
-          <span class="title-main">Los Ultimos</span>
-          <span class="title-accent">Serán Los Primeros</span>
+          <span class="title-main">{{ tituloPartes.main }}</span>
+          <span class="title-accent">{{ tituloPartes.accent }}</span>
         </h1>
         
         <p class="hero-description">
-        Reservá turnos o realizá pedidos de productos de forma online. </p>
+          Reservá turnos o realizá pedidos de productos de forma rápida y online.
+        </p>
+
         <div class="hero-actions">
           <button @click="intentarReservar" class="btn-cta primary">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -24,10 +23,6 @@
             </svg>
             <span>Reservar Ahora</span>
           </button>
-          
-        </div>
-        
-        <div class="hero-stats">
         </div>
       </div>
     </div>
@@ -45,16 +40,15 @@
       <div class="video-text">
         <h2>Conocé nuestro espacio</h2>
         <p>
-          Ubicados en el corazón de la ciudad, te ofrecemos un ambiente moderno 
-          y relajado.
+          Te ofrecemos un ambiente moderno, relajado y la mejor atención profesional.
         </p>
       </div>
     </div>
 
-    <div class="features-section">
+    <div class="features-section fade-in">
       <div class="section-header">
-        <h2 class="section-title">Descubre Nuestros Servicios</h2>
-        <p class="section-subtitle">Todo lo que necesitas para lucir espectacular</p>
+        <h2 class="section-title">Todo lo que necesitás</h2>
+        <p class="section-subtitle">Servicios profesionales y productos de alta gama</p>
       </div>
       
       <div class="features-grid">
@@ -67,23 +61,20 @@
               </svg>
             </div>
           </div>
-          
           <div class="card-content">
             <h3 class="card-title">Nuestros Servicios</h3>
             <p class="card-description">
-              Cortes modernos, coloración profesional y tratamientos capilares de primera calidad con productos premium.
+              Cortes modernos, coloración profesional y tratamientos capilares de primera calidad.
             </p>
-            
             <div class="card-features">
               <span class="feature-tag">Cortes</span>
               <span class="feature-tag">Coloración</span>
-              <span class="feature-tag">Tratamientos</span>
+              <span class="feature-tag">Barbería</span>
             </div>
           </div>
-          
           <div class="card-footer">
             <span class="link-text">
-              Ver catálogo completo
+              Ver catálogo de servicios
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <polyline points="9 18 15 12 9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
@@ -99,23 +90,20 @@
               </svg>
             </div>
           </div>
-          
           <div class="card-content">
             <h3 class="card-title">Productos Premium</h3>
             <p class="card-description">
-              Las mejores marcas profesionales para el cuidado y mantenimiento de tu cabello en casa.
+              Las mejores marcas profesionales para el cuidado y mantenimiento de tu estilo en casa.
             </p>
-            
             <div class="card-features">
               <span class="feature-tag">Shampoos</span>
               <span class="feature-tag">Tratamientos</span>
               <span class="feature-tag">Styling</span>
             </div>
           </div>
-          
           <div class="card-footer">
             <span class="link-text">
-              Explorar tienda
+              Explorar tienda web
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <polyline points="9 18 15 12 9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
@@ -143,9 +131,13 @@
                   <circle cx="12" cy="10" r="3" stroke="currentColor" stroke-width="2"/>
                 </svg>
                 <div>
+                  <p class="info-label">Ciudad:</p>
+                  <p class="info-value">{{"San Vicente - Misiones"}}</p>
                   <p class="info-label">Dirección</p>
-                  <p class="info-value">Avenida Libertador 600</p>
-                  <p class="info-value-sub">San Vicente - Misiones</p>
+                  <p class="info-value">{{ configLocal.direccion.split(',')[0] || 'Cargando...' }}</p>
+                  <p class="info-value-sub" v-if="configLocal.direccion.includes(',')">
+                    {{ configLocal.direccion.split(',')[1].trim() }}
+                  </p>
                 </div>
               </div>
               
@@ -153,18 +145,16 @@
               
               <div class="info-item">
                 <svg class="info-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-                  <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
                 <div>
-                  <p class="info-label">Horarios</p>
-                  <p class="info-value horario">Lun - Sáb: 9:00 - 20:00</p>
-                  <p class="info-value-sub">Domingos cerrado</p>
+                  <p class="info-label">Contacto</p>
+                  <p class="info-value horario">{{ configLocal.telefono }}</p>
+                  <p class="info-value-sub">{{ configLocal.email }}</p>
                 </div>
               </div>
             </div>
           </div>
-          
         </div>
 
       </div>
@@ -173,10 +163,47 @@
 </template>
 
 <script setup>
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
+import axios from '@/utils/axiosConfig';
 import Swal from 'sweetalert2';
 
 const router = useRouter();
+
+// Estado con los datos por defecto hasta que cargue la API
+const configLocal = ref({
+  razon_social: 'HairSoft Salón',
+  direccion: 'Cargando ubicación...',
+  telefono: 'Cargando...',
+  email: 'Cargando...'
+});
+
+// Obtener datos del backend público
+const cargarDatosConfiguracion = async () => {
+  try {
+    const res = await axios.get('/api/web/configuracion/');
+    configLocal.value = res.data;
+  } catch (error) {
+    console.error("No se pudo cargar la configuración de la peluquería", error);
+  }
+};
+
+// Computada inteligente: Corta el nombre de la peluquería en 2 líneas para que quede lindo
+const tituloPartes = computed(() => {
+  const nombreCompleto = configLocal.value.razon_social || '';
+  const palabras = nombreCompleto.split(' ');
+  
+  if (palabras.length <= 2) {
+    return { main: nombreCompleto, accent: '' };
+  }
+  
+  // Dividimos a la mitad (Ej: "Los Últimos" / "Serán Los Primeros")
+  const mitad = Math.floor(palabras.length / 2);
+  return {
+    main: palabras.slice(0, mitad).join(' '),
+    accent: palabras.slice(mitad).join(' ')
+  };
+});
 
 const intentarReservar = () => {
   const token = localStorage.getItem('token');
@@ -196,8 +223,8 @@ const intentarReservar = () => {
       cancelButtonText: 'Ver Servicios primero',
       confirmButtonColor: '#3b82f6',
       cancelButtonColor: '#6b7280',
-      background: '#1e293b',
-      color: '#f8fafc'
+      background: 'var(--bg-primary)',
+      color: 'var(--text-primary)'
     }).then((result) => {
       if (result.isConfirmed) {
         router.push('/login');
@@ -207,14 +234,20 @@ const intentarReservar = () => {
     });
   }
 };
+
+onMounted(() => {
+  cargarDatosConfiguracion();
+});
 </script>
 
 <style scoped>
+/* AHORA USAMOS LAS VARIABLES GLOBALES DE TU PROYECTO */
 .home-publico {
   min-height: 100vh;
-  background: #0f172a;
-  color: #f8fafc;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   padding-bottom: 3rem;
+  transition: background 0.3s, color 0.3s;
 }
 
 /* ============================================
@@ -223,7 +256,7 @@ const intentarReservar = () => {
 .hero-section {
   position: relative;
   padding: 5rem 2rem;
-  min-height: 70vh;
+  min-height: 60vh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -231,20 +264,8 @@ const intentarReservar = () => {
 
 .hero-background {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  top: 0; left: 0; right: 0; bottom: 0;
   z-index: 0;
-}
-
-.hero-gradient {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #1e293b 100%);
 }
 
 .hero-content {
@@ -264,10 +285,7 @@ const intentarReservar = () => {
 
 .title-main {
   display: block;
-  background: linear-gradient(135deg, #fff 0%, #e0e7ff 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--text-primary);
 }
 
 .title-accent {
@@ -281,7 +299,7 @@ const intentarReservar = () => {
 
 .hero-description {
   font-size: 1.25rem;
-  color: #94a3b8;
+  color: var(--text-secondary);
   line-height: 1.8;
   max-width: 700px;
   margin: 0 auto 3rem;
@@ -292,7 +310,6 @@ const intentarReservar = () => {
   gap: 1rem;
   justify-content: center;
   flex-wrap: wrap;
-  margin-bottom: 4rem;
 }
 
 .btn-cta {
@@ -306,10 +323,18 @@ const intentarReservar = () => {
   border-radius: 12px;
   cursor: pointer;
   letter-spacing: 0.3px;
+  transition: all 0.3s ease;
 }
 
-.btn-cta:hover {
-  opacity: 0.9;
+.btn-cta.primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
+}
+
+.btn-cta.primary:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px rgba(59, 130, 246, 0.4);
 }
 
 .btn-cta svg {
@@ -317,57 +342,57 @@ const intentarReservar = () => {
   flex-shrink: 0;
 }
 
-.btn-cta.primary {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+/* ============================================
+   VIDEO SECTION
+   ============================================ */
+.video-showcase {
+  max-width: 1000px;
+  margin: 40px auto 80px;
+  padding: 0 20px;
+  text-align: center;
 }
 
-.btn-cta.secondary {
-  background: rgba(31, 41, 55, 0.8);
-  color: #e2e8f0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+.video-container {
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  line-height: 0; 
 }
 
-.hero-stats {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 3rem;
-  flex-wrap: wrap;
+.institutional-video {
+  width: 100%;
+  height: auto;
+  max-height: 500px;
+  object-fit: cover;
+  display: block;
 }
 
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
+.video-text {
+  margin-top: 25px;
 }
 
-.stat-number {
-  font-size: 2.5rem;
+.video-text h2 {
+  font-size: 2rem;
+  color: var(--text-primary);
   font-weight: 800;
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  line-height: 1;
+  margin-bottom: 10px;
 }
 
-.stat-label {
-  font-size: 0.9rem;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-weight: 600;
+.video-text p {
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
 /* ============================================
    FEATURES SECTION
    ============================================ */
 .features-section {
-  padding: 4rem 2rem;
-  max-width: 1400px;
+  padding: 0 2rem 5rem;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
@@ -377,34 +402,33 @@ const intentarReservar = () => {
 }
 
 .section-title {
-  font-size: 3rem;
+  font-size: 2.5rem;
   font-weight: 800;
-  margin-bottom: 1rem;
-  background: linear-gradient(135deg, #fff 0%, #e0e7ff 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
 }
 
 .section-subtitle {
-  font-size: 1.2rem;
-  color: #94a3b8;
+  font-size: 1.1rem;
+  color: var(--text-secondary);
 }
 
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 2rem;
 }
 
 .feature-card {
-  background: linear-gradient(145deg, #1e293b, #0f172a);
-  border: 1px solid rgba(59, 130, 246, 0.1);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 20px;
   padding: 2.5rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-sm);
 }
 
 .feature-card.clickable {
@@ -412,50 +436,43 @@ const intentarReservar = () => {
 }
 
 .feature-card.clickable:hover {
-  border-color: rgba(59, 130, 246, 0.4);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  border-color: #3b82f6;
+  box-shadow: var(--shadow-md);
+  transform: translateY(-5px);
+}
+
+.card-icon-wrapper {
+  display: inline-block;
 }
 
 .card-icon {
-  width: 80px;
-  height: 80px;
+  width: 70px;
+  height: 70px;
   border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.card-icon.blue {
-  background: linear-gradient(135deg, #1e40af, #3b82f6);
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
-}
-
-.card-icon.purple {
-  background: linear-gradient(135deg, #7c3aed, #a78bfa);
-  box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
-}
-
-.card-icon.green {
-  background: linear-gradient(135deg, #059669, #10b981);
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
-}
+.card-icon.blue { background: linear-gradient(135deg, #1e40af, #3b82f6); box-shadow: 0 0 20px rgba(59, 130, 246, 0.2); }
+.card-icon.purple { background: linear-gradient(135deg, #7c3aed, #a78bfa); box-shadow: 0 0 20px rgba(139, 92, 246, 0.2); }
+.card-icon.green { background: linear-gradient(135deg, #059669, #10b981); box-shadow: 0 0 20px rgba(16, 185, 129, 0.2); }
 
 .card-icon svg {
   stroke: white;
 }
 
 .card-title {
-  font-size: 1.8rem;
+  font-size: 1.6rem;
   font-weight: 700;
   margin-bottom: 1rem;
-  color: #fff;
-  letter-spacing: 0.3px;
+  color: var(--text-primary);
 }
 
 .card-description {
-  color: #94a3b8;
-  line-height: 1.8;
-  font-size: 1rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  font-size: 0.95rem;
   margin-bottom: 1.5rem;
 }
 
@@ -467,11 +484,11 @@ const intentarReservar = () => {
 
 .feature-tag {
   padding: 6px 14px;
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: var(--hover-bg);
+  border: 1px solid var(--border-color);
   border-radius: 20px;
-  font-size: 0.85rem;
-  color: #60a5fa;
+  font-size: 0.8rem;
+  color: #3b82f6;
   font-weight: 600;
 }
 
@@ -481,20 +498,19 @@ const intentarReservar = () => {
   gap: 8px;
   color: #60a5fa;
   font-weight: 700;
-  font-size: 1rem;
-}
-
-.link-text svg {
-  stroke: currentColor;
+  font-size: 0.95rem;
+  transition: color 0.3s ease;
 }
 
 .feature-card.clickable:hover .link-text {
   color: #3b82f6;
 }
 
-/* Card Info */
+/* Card Info (Visítanos) */
 .feature-card.info:hover {
-  border-color: rgba(16, 185, 129, 0.3);
+  border-color: #10b981;
+  box-shadow: var(--shadow-md);
+  transform: translateY(-5px);
 }
 
 .info-section {
@@ -516,175 +532,64 @@ const intentarReservar = () => {
 }
 
 .info-label {
-  font-size: 0.8rem;
-  color: #64748b;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 1px;
-  font-weight: 600;
+  font-weight: 700;
   margin-bottom: 4px;
 }
 
 .info-value {
   font-size: 1rem;
-  color: #e2e8f0;
-  font-weight: 600;
-  line-height: 1.6;
+  color: var(--text-primary);
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .info-value.horario {
   color: #10b981;
-  font-weight: 700;
 }
 
 .info-value-sub {
   font-size: 0.9rem;
-  color: #94a3b8;
-  margin-top: 2px;
+  color: var(--text-secondary);
+  margin-top: 4px;
 }
 
 .info-divider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--border-color);
 }
 
-.contact-badges {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.contact-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.2);
-  border-radius: 8px;
-  color: #10b981;
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.contact-badge:hover {
-  background: rgba(16, 185, 129, 0.15);
-}
-
-.contact-badge svg {
-  stroke: currentColor;
+.fade-in { animation: fadeIn 0.8s ease-out forwards; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ============================================
    RESPONSIVE
    ============================================ */
-@media (max-width: 1024px) {
-  .features-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (max-width: 768px) {
   .hero-section {
     padding: 4rem 1.5rem;
-    min-height: 60vh;
+    min-height: 50vh;
   }
 
-  .hero-title {
-    font-size: 3rem;
-  }
+  .hero-title { font-size: 3rem; }
+  .hero-description { font-size: 1.1rem; }
+  
+  .video-showcase { margin: 20px auto 60px; }
+  .video-text h2 { font-size: 1.5rem; }
 
-  .hero-description {
-    font-size: 1.1rem;
-  }
-
-  .hero-actions {
-    flex-direction: column;
-    width: 100%;
-  }
-
-  .btn-cta {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .section-title {
-    font-size: 2.2rem;
-  }
-
-  .features-section {
-    padding: 3rem 1.5rem;
-  }
+  .section-title { font-size: 2rem; }
 }
 
 @media (max-width: 480px) {
-  .hero-title {
-    font-size: 2.5rem;
-  }
-
-  .btn-cta {
-    padding: 14px 24px;
-    font-size: 1rem;
-  }
-
-  .card-icon {
-    width: 70px;
-    height: 70px;
-  }
-
-  .card-title {
-    font-size: 1.5rem;
-  }
-}
-
-/* ============================================
-   ESTILOS NUEVOS PARA EL VIDEO
-   ============================================ */
-.video-showcase {
-  max-width: 1200px;
-  margin: 60px auto;
-  padding: 0 20px;
-  text-align: center;
-}
-
-.video-container {
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.4);
-  border: 1px solid rgba(255,255,255,0.1);
-  background: #000;
-  line-height: 0; /* Elimina espacio fantasma abajo del video */
-}
-
-.institutional-video {
-  width: 100%;
-  height: auto;
-  max-height: 600px; /* Para que no ocupe toda la pantalla en monitores gigantes */
-  object-fit: cover;
-  display: block;
-}
-
-.video-text {
-  margin-top: 30px;
-}
-
-.video-text h2 {
-  font-size: 2rem;
-  background: linear-gradient(135deg, #fff, #94a3b8);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  margin-bottom: 10px;
-}
-
-.video-text p {
-  color: #94a3b8;
-  font-size: 1.1rem;
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-/* Ajuste Mobile para Video */
-@media (max-width: 768px) {
-  .video-showcase { margin: 40px auto; }
-  .video-text h2 { font-size: 1.5rem; }
+  .hero-title { font-size: 2.2rem; }
+  .feature-card { padding: 1.5rem; }
+  .card-icon { width: 60px; height: 60px; }
+  .card-title { font-size: 1.3rem; }
 }
 </style>

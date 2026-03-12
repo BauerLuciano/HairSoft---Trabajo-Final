@@ -2732,6 +2732,9 @@ def obtener_usuario_por_id(request, user_id):
 # =================================
 # VENTAS
 # =================================
+# =================================
+# VENTAS
+# =================================
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def registrar_venta(request):
@@ -2834,11 +2837,16 @@ def registrar_venta(request):
             Venta.objects.filter(id=venta.id).update(total=total_acumulado)
 
             # 💵 2. REGISTRAR EL MOVIMIENTO DE CAJA
-            metodo_pago_caja = 'EFECTIVO'
-            if medio_pago.tipo == 'MERCADO_PAGO':
+            # 🔥 CORRECCIÓN: Lógica más robusta para detectar Mercado Pago
+            tipo_mp = str(medio_pago.tipo).upper()
+            nombre_mp = str(medio_pago.nombre).upper()
+
+            if tipo_mp == 'MERCADO_PAGO' or 'MERCADO' in nombre_mp:
                 metodo_pago_caja = 'MERCADO_PAGO'
-            elif medio_pago.tipo == 'TRANSFERENCIA':
+            elif tipo_mp == 'TRANSFERENCIA' or 'TRANSF' in nombre_mp:
                 metodo_pago_caja = 'TRANSFERENCIA'
+            else:
+                metodo_pago_caja = 'EFECTIVO'
 
             MovimientoCaja.objects.create(
                 sesion_caja=sesion_abierta,
@@ -4386,10 +4394,14 @@ def dashboard_data(request):
     try:
         from django.db.models import Sum, Count, Q, F
         from .models import Venta, Turno, Producto, DetalleVenta, ConfiguracionSistema, MovimientoCaja, SesionCaja
+        # Aseguramos importaciones necesarias de tiempo
+        from datetime import datetime, time, timedelta
         
         period = request.GET.get('period', 'semana')
         date_from_str = request.GET.get('date_from')
         date_to_str = request.GET.get('date_to')
+        
+        # OJO: Se asume que ARG_TZ ya está importado arriba en tu api_views.py
         ahora_arg = datetime.now(ARG_TZ)
         hoy_date = ahora_arg.date()
         start_date, end_date = None, None
@@ -4414,18 +4426,38 @@ def dashboard_data(request):
                 start_date = datetime.combine(start_date_d, time.min).replace(tzinfo=ARG_TZ)
                 end_date = datetime.combine(hoy_date, time.max).replace(tzinfo=ARG_TZ)
 
+        # ==========================================
+        # 1. MÉTRICAS OPERATIVAS (Para cantidades y Tops)
+        # ==========================================
         ventas_periodo = Venta.objects.filter(fecha__range=(start_date, end_date), anulada=False)
         turnos_periodo = Turno.objects.filter(fecha__range=(start_date, end_date), estado='COMPLETADO')
         
-        ingresos_totales = ventas_periodo.aggregate(total=Sum('total'))['total'] or 0
         servicios_realizados = turnos_periodo.count()
         productos_vendidos = DetalleVenta.objects.filter(venta__in=ventas_periodo, producto__isnull=False).aggregate(total=Sum('cantidad'))['total'] or 0
 
-        egresos_totales = MovimientoCaja.objects.filter(
-            tipo='EGRESO', 
-            fecha__range=(start_date, end_date)
-        ).aggregate(total=Sum('monto'))['total'] or 0
+        # ==========================================
+        # 2. MÉTRICAS FINANCIERAS (🔥 AHORA DESDE LA CAJA 🔥)
+        # ==========================================
+        movimientos_ingreso = MovimientoCaja.objects.filter(tipo='INGRESO', fecha__range=(start_date, end_date))
+        movimientos_egreso = MovimientoCaja.objects.filter(tipo='EGRESO', fecha__range=(start_date, end_date))
 
+        # Ingresos y Egresos Reales
+        ingresos_totales = movimientos_ingreso.aggregate(total=Sum('monto'))['total'] or 0
+        egresos_totales = movimientos_egreso.aggregate(total=Sum('monto'))['total'] or 0
+
+        # 🔥 Ingresos agrupados por Medio de Pago (Efectivo, Mercado Pago, etc.)
+        ingresos_por_medio_query = movimientos_ingreso.values('metodo_pago').annotate(total=Sum('monto')).order_by('-total')
+        
+        # Mapeamos los choices ('MERCADO_PAGO' -> 'Mercado Pago') para que quede lindo en el front
+        dict_medios = dict(MovimientoCaja.METODO_CHOICES)
+        ingresos_por_medio = [
+            {'medio': dict_medios.get(m['metodo_pago'], m['metodo_pago']), 'total': float(m['total'])} 
+            for m in ingresos_por_medio_query
+        ]
+
+        # ==========================================
+        # 3. DATOS DE LA CAJA ACTUAL Y HUÉRFANOS
+        # ==========================================
         caja_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).exists()
         pendientes_data = {'cantidad': 0, 'total_dinero': 0}
         
@@ -4434,22 +4466,31 @@ def dashboard_data(request):
             pendientes_data['cantidad'] = huerfanos.count()
             pendientes_data['total_dinero'] = float(huerfanos.aggregate(t=Sum('monto'))['t'] or 0)
 
+        # ==========================================
+        # 4. GRÁFICO DIARIO (🔥 AHORA BASADO EN CAJA 🔥)
+        # ==========================================
         labels_dias, ventas_por_dia = [], []
         delta_days = (end_date.date() - start_date.date()).days
         for i in range(delta_days + 1):
             curr = start_date.date() + timedelta(days=i)
             l_s = datetime.combine(curr, time.min).replace(tzinfo=ARG_TZ)
             l_e = datetime.combine(curr, time.max).replace(tzinfo=ARG_TZ)
-            tot = Venta.objects.filter(fecha__range=(l_s, l_e), anulada=False).aggregate(t=Sum('total'))['t'] or 0
+            
+            # Calculamos la plata real que entró ese día en la caja
+            tot = MovimientoCaja.objects.filter(tipo='INGRESO', fecha__range=(l_s, l_e)).aggregate(t=Sum('monto'))['t'] or 0
             labels_dias.append(f"{curr.day}/{curr.month}")
             ventas_por_dia.append(float(tot))
 
+        # ==========================================
+        # 5. TOPS
+        # ==========================================
         top_s = turnos_periodo.values('servicios__nombre').annotate(c=Count('id')).order_by('-c')[:5]
         servicios_top = [{'nombre': s['servicios__nombre'] or 'Sin nombre', 'cantidad': s['c']} for s in top_s]
         
         top_p = DetalleVenta.objects.filter(venta__in=ventas_periodo, producto__isnull=False).values('producto__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:5]
         productos_top = [{'nombre': p['producto__nombre'], 'cantidad': p['c']} for p in top_p]
 
+        # Info de la empresa
         config = ConfiguracionSistema.get_solo()
         if request.user.is_authenticated:
             usuario_emisor = f"{request.user.nombre} {request.user.apellido}".strip() or request.user.username
@@ -4458,13 +4499,14 @@ def dashboard_data(request):
 
         return Response({
             'ingresosTotales': float(ingresos_totales),
-            'egresosTotales': float(egresos_totales), # 🔥 Enviamos egresos
+            'egresosTotales': float(egresos_totales), 
             'serviciosRealizados': servicios_realizados,
             'productosVendidos': productos_vendidos,
             'ventasPorDia': ventas_por_dia,
             'labelsDias': labels_dias,
             'serviciosTop': servicios_top,
             'productosTop': productos_top,
+            'ingresosPorMedio': ingresos_por_medio, # Ahora 100% exacto
             'usuario_emisor': usuario_emisor,
             'cajaAbierta': caja_abierta,       
             'pendientesInfo': pendientes_data, 
@@ -5489,44 +5531,58 @@ def mis_turnos(request):
 @permission_classes([IsAuthenticated])
 def listar_turnos_general(request):
     try:
+        user = request.user
+        # Obtenemos el rol de forma segura y limpia
+        rol_nombre = user.rol.nombre.strip().upper() if user.rol else ''
+        
+        # 1. Queryset base con relaciones optimizadas
         turnos = Turno.objects.all().select_related(
             'cliente', 'peluquero', 'silla'
         ).prefetch_related('servicios').order_by('-fecha', '-hora')
-        
-        user = request.user
-        rol_nombre = user.rol.nombre.upper() if user.rol else ''
-        
-        if rol_nombre == 'PELUQUERO':
+
+        # 🛑 FILTRO DE PRIVACIDAD: Si es Peluquero, forzamos a que solo vea lo suyo
+        # Usamos 'IN' por si el rol se llama 'PELUQUERO' o 'PELUQUEROS'
+        if 'PELUQUERO' in rol_nombre:
+            print(f"🔒 Filtrando turnos para el peluquero: {user.nombre}")
             turnos = turnos.filter(peluquero=user)
 
-        # Filtros
+        # 2. Captura de parámetros de filtro desde la URL
         peluquero_id = request.GET.get('peluquero') or request.GET.get('peluquero_id')
         fecha_desde = request.GET.get('fecha_desde')
         fecha_hasta = request.GET.get('fecha_hasta')
         estado = request.GET.get('estado')
         canal = request.GET.get('canal')
         incluir_cancelados = request.GET.get('incluir_cancelados')
-        
-        if peluquero_id and peluquero_id != 'undefined' and rol_nombre != 'PELUQUERO':
-            turnos = turnos.filter(peluquero_id=peluquero_id)
+
+        # 3. Aplicación de filtros adicionales
+        # Solo permitimos filtrar por "otro" peluquero si quien pide NO es peluquero
+        if 'PELUQUERO' not in rol_nombre:
+            if peluquero_id and peluquero_id != 'undefined' and peluquero_id != 'null':
+                turnos = turnos.filter(peluquero_id=peluquero_id)
 
         if fecha_desde:
             turnos = turnos.filter(fecha__gte=fecha_desde)
+        
         if fecha_hasta:
             turnos = turnos.filter(fecha__lte=fecha_hasta)
+            
         if estado and estado != 'Todos':
             turnos = turnos.filter(estado=estado)
-        elif not incluir_cancelados:
+        elif not incluir_cancelados or incluir_cancelados == 'false':
             turnos = turnos.exclude(estado='CANCELADO')
+            
         if canal and canal != 'Todos':
             turnos = turnos.filter(canal=canal)
 
+        # 4. Serialización y respuesta
         serializer = TurnoSerializer(turnos, many=True)
         return Response(serializer.data)
 
     except Exception as e:
-        print(f"❌ Error listar_turnos_general: {e}")
-        return Response({'error': str(e)}, status=500)
+        print(f"❌ Error listar_turnos_general: {str(e)}")
+        import traceback
+        traceback.print_exc() # Esto te dirá en la terminal exactamente dónde falló
+        return Response({'error': 'Error al obtener el listado de turnos.'}, status=500)
     
 @api_view(['GET'])
 @permission_classes([AllowAny]) # Cambialo a IsAuthenticated cuando quieras cerrar el grifo
@@ -6182,21 +6238,37 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         movs = sesion.movimientos.all()
         ingresos = movs.filter(tipo='INGRESO').aggregate(t=Sum('monto'))['t'] or Decimal('0')
         egresos = movs.filter(tipo='EGRESO').aggregate(t=Sum('monto'))['t'] or Decimal('0')
-        # 🔥 El total esperado es la suma de los fondos iniciales + movs
+        
+        # El total esperado es la suma de los fondos iniciales + ingresos - egresos
         total_esperado = sesion.saldo_inicial_efectivo + sesion.saldo_inicial_mp + ingresos - egresos
 
+        # Función auxiliar segura para parsear decimales evitando el error de string vacio
+        def parse_decimal(val):
+            if val is None or val == '':
+                return Decimal('0.00')
+            try:
+                return Decimal(str(val))
+            except Exception:
+                return Decimal('0.00')
+
         # 2. Capturar Real declarado por el cajero
-        real_ef = Decimal(str(request.data.get('saldo_final_efectivo_real', 0)))
-        real_mp = Decimal(str(request.data.get('saldo_final_mp_real', 0)))
-        real_tr = Decimal(str(request.data.get('saldo_final_transf_real', 0)))
+        real_ef = parse_decimal(request.data.get('saldo_final_efectivo_real'))
+        real_mp = parse_decimal(request.data.get('saldo_final_mp_real'))
+        real_tr = parse_decimal(request.data.get('saldo_final_transf_real'))
+        
         total_real = real_ef + real_mp + real_tr
         
         observaciones = request.data.get('observaciones', '').strip()
 
         # 3. Validar Descuadre
         diferencia = total_real - total_esperado
+        
+        # Usamos 0.01 para evitar problemas de flotantes
         if abs(diferencia) > Decimal('0.01') and not observaciones:
-            return Response({'error': f'Hay una diferencia de ${abs(diferencia)}. Ingrese el motivo obligatoriamente.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': f'Hay una diferencia de ${abs(diferencia):.2f}. Ingrese el motivo obligatoriamente.'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # 4. Guardar
         sesion.saldo_final_efectivo_real = real_ef
@@ -6206,6 +6278,7 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         sesion.fecha_cierre = timezone.now()
         sesion.usuario_cierre = request.user
         sesion.save()
+        
         return Response({'mensaje': 'Caja cerrada correctamente.', 'sesion': self.get_serializer(sesion).data})
 
     @action(detail=True, methods=['GET'])

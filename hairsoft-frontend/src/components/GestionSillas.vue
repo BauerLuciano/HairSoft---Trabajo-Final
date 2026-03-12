@@ -1,66 +1,57 @@
 <template>
-  <div class="sillas-wrapper">
-    <div class="header-sillas">
-      <div class="titulo-icon">
-        <div class="icon-box">🪑</div>
-        <div>
-          <h3>Infraestructura</h3>
-          <p>Gestioná la disponibilidad de tus puestos de trabajo.</p>
-        </div>
-      </div>
-      <button class="btn-neon" @click="abrirModalCrear" :disabled="cargando">
-        <span>+ Nueva Silla</span>
+  <div class="sub-module-container">
+    <div class="section-header">
+      <h3><i class="ri-instance-line icon-header"></i> Puestos de Trabajo (Sillas)</h3>
+      <button class="register-button sm-btn" @click="abrirModalCrear" :disabled="cargando">
+        <i class="ri-add-line"></i> Nueva Silla
       </button>
     </div>
 
     <div v-if="cargando" class="loading-state">
-      <span class="spinner"></span> Sincronizando...
+      <i class="ri-loader-4-line animate-spin"></i> Sincronizando...
     </div>
 
-    <div v-else-if="sillas.length === 0" class="empty-state">
-      <i class="ri-information-line"></i>
-      <p>No hay sillas registradas. Agregá la primera para comenzar.</p>
-    </div>
+    <div v-else class="item-grid">
+      <div v-if="sillas.length === 0" class="empty-state">
+        <p>No hay sillas registradas. Agregá la primera para comenzar.</p>
+      </div>
 
-    <div v-else class="grid-sillas">
       <div 
         v-for="silla in sillas" 
         :key="silla.id" 
-        class="card-silla"
-        :class="silla.activa ? 'status-active' : 'status-inactive'"
+        class="item-card"
+        :class="{'inactiva': !silla.activa}"
       >
         <div class="orden-badge" title="Prioridad de asignación">
           #{{ silla.orden }}
         </div>
 
-        <div class="card-content">
-          <div class="icon-status">
-            <i :class="silla.activa ? 'ri-checkbox-circle-fill' : 'ri-tools-fill'"></i>
+        <div class="card-header">
+          <div class="card-title">
+            <i class="ri-wheelchair-line card-icon"></i>
+            <h4>{{ silla.nombre }}</h4>
           </div>
-          
-          <h4 class="silla-nombre">{{ silla.nombre }}</h4>
-          
-          <div class="status-text">
-            <span v-if="silla.activa" class="text-success">Disponible</span>
-            <span v-else class="text-danger">
-              Fuera de Servicio
-              <br>
-              <small class="motivo-tag">"{{ silla.motivo_inactividad || 'Mantenimiento' }}"</small>
-            </span>
-          </div>
+          <span :class="['badge-estado', silla.activa ? 'estado-success' : 'estado-danger']">
+            {{ silla.activa ? 'Disponible' : 'Fuera de Servicio' }}
+          </span>
+        </div>
+
+        <div v-if="!silla.activa && silla.motivo_inactividad" class="motivo-box">
+          <i class="ri-tools-fill"></i>
+          <small>{{ silla.motivo_inactividad }}</small>
         </div>
 
         <div class="card-actions">
-          <button 
-            class="action-btn"
-            :class="silla.activa ? 'btn-shutdown' : 'btn-powerup'"
-            @click="toggleEstado(silla)"
-          >
-            {{ silla.activa ? 'Deshabilitar' : 'Habilitar' }}
+          <button @click="abrirModalEditar(silla)" class="action-btn edit" title="Editar Nombre y Prioridad">
+            <i class="ri-pencil-line"></i>
           </button>
-          
-          <button class="action-btn btn-delete" @click="eliminar(silla)">
-            <i class="ri-delete-bin-line"></i>
+
+          <button 
+            @click="toggleEstado(silla)" 
+            :class="['action-btn', silla.activa ? 'delete' : 'success']" 
+            :title="silla.activa ? 'Deshabilitar Silla' : 'Habilitar Silla'"
+          >
+            <i :class="silla.activa ? 'ri-shut-down-line' : 'ri-restart-line'"></i>
           </button>
         </div>
       </div>
@@ -84,7 +75,11 @@ const cargarSillas = async () => {
   cargando.value = true;
   try {
     const res = await axios.get('/api/sillas/');
-    sillas.value = res.data;
+    // Ordenamos por activa primero y luego por orden de prioridad
+    sillas.value = res.data.sort((a, b) => {
+        if (a.activa === b.activa) return a.orden - b.orden;
+        return b.activa - a.activa;
+    });
   } catch (error) {
     console.error("Error cargando sillas", error);
   } finally {
@@ -95,25 +90,54 @@ const cargarSillas = async () => {
 const abrirModalCrear = async () => {
   const { value: formValues } = await Swal.fire({
     title: 'Nueva Silla',
-    background: '#1e293b',
-    color: '#fff',
+    background: '#0f172a',
+    color: '#f8fafc',
     html: `
-      <div style="text-align:left">
-        <label class="swal-label">Nombre del Puesto</label>
-        <input id="swal-nombre" class="swal2-input custom-input" placeholder="Ej: Silla Principal">
-        <label class="swal-label">Orden de Prioridad</label>
-        <input id="swal-orden" type="number" class="swal2-input custom-input" placeholder="1" value="${sillas.value.length + 1}">
+      <div style="text-align:left; font-family: 'Inter', sans-serif;">
+        <label style="font-weight: 700; margin-bottom: 10px; display: block; color: #94a3b8; text-transform: uppercase; font-size: 0.75rem;">Nombre del Puesto</label>
+        <input id="swal-nombre" class="swal2-input custom-swal-input" placeholder="Ej: Silla Principal" style="margin: 0 0 20px 0; width: 100%; box-sizing: border-box;">
+        
+        <label style="font-weight: 700; margin-bottom: 10px; display: block; color: #94a3b8; text-transform: uppercase; font-size: 0.75rem;">Orden de Prioridad</label>
+        <input 
+          id="swal-orden" 
+          type="number" 
+          min="1" 
+          step="1" 
+          onkeypress="return event.charCode >= 48 && event.charCode <= 57"
+          class="swal2-input custom-swal-input" 
+          placeholder="1" 
+          value="${sillas.value.length + 1}" 
+          style="margin: 0; width: 100%; box-sizing: border-box;"
+        >
       </div>
     `,
     focusConfirm: false,
     showCancelButton: true,
-    confirmButtonText: 'Crear',
-    confirmButtonColor: '#3b82f6',
+    confirmButtonText: 'Crear Silla',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#0ea5e9',
+    cancelButtonColor: '#334155',
     preConfirm: () => {
-      return {
-        nombre: document.getElementById('swal-nombre').value,
-        orden: document.getElementById('swal-orden').value
+      const nombre = document.getElementById('swal-nombre').value.trim();
+      const orden = parseInt(document.getElementById('swal-orden').value);
+
+      if (!nombre) {
+        Swal.showValidationMessage('El nombre de la silla es obligatorio.');
+        return false;
       }
+
+      if (isNaN(orden) || orden < 1) {
+        Swal.showValidationMessage('El orden debe ser un número válido mayor a 0.');
+        return false;
+      }
+
+      const ordenOcupado = sillas.value.some(s => s.orden === orden);
+      if (ordenOcupado) {
+        Swal.showValidationMessage(`El orden #${orden} ya está ocupado por otra silla.`);
+        return false;
+      }
+
+      return { nombre, orden };
     }
   });
 
@@ -121,33 +145,90 @@ const abrirModalCrear = async () => {
     try {
       await axios.post('/api/sillas/', {
         nombre: formValues.nombre,
-        orden: formValues.orden || 1,
+        orden: formValues.orden,
         activa: true
       });
       cargarSillas();
-      const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true });
-      Toast.fire({ icon: 'success', title: 'Silla creada con éxito' });
+      Swal.fire({ icon: 'success', title: 'Silla creada', timer: 1500, showConfirmButton: false, background: '#0f172a', color: '#f8fafc' });
     } catch (e) {
-      // 🔥 ACÁ CAPTURAMOS EL ERROR DE DJANGO PARA MOSTRAR LA ALERTA
-      let mensajeError = 'No se pudo crear la silla. Verifique los datos.';
-      
-      if (e.response && e.response.data && e.response.data.nombre) {
-        mensajeError = e.response.data.nombre[0];
+      let mensajeError = 'No se pudo crear la silla.';
+      if (e.response && e.response.data && e.response.data.nombre) mensajeError = e.response.data.nombre[0];
+      Swal.fire({ title: 'Error', text: mensajeError, icon: 'warning', background: '#0f172a', color: '#f8fafc' });
+    }
+  }
+};
+
+const abrirModalEditar = async (silla) => {
+  const { value: formValues } = await Swal.fire({
+    title: 'Editar Silla',
+    background: '#0f172a',
+    color: '#f8fafc',
+    html: `
+      <div style="text-align:left; font-family: 'Inter', sans-serif;">
+        <label style="font-weight: 700; margin-bottom: 10px; display: block; color: #94a3b8; text-transform: uppercase; font-size: 0.75rem;">Nombre del Puesto</label>
+        <input id="swal-nombre" class="swal2-input custom-swal-input" value="${silla.nombre}" placeholder="Ej: Silla Principal" style="margin: 0 0 20px 0; width: 100%; box-sizing: border-box;">
+        
+        <label style="font-weight: 700; margin-bottom: 10px; display: block; color: #94a3b8; text-transform: uppercase; font-size: 0.75rem;">Orden de Prioridad</label>
+        <input 
+          id="swal-orden" 
+          type="number" 
+          min="1" 
+          step="1" 
+          onkeypress="return event.charCode >= 48 && event.charCode <= 57"
+          class="swal2-input custom-swal-input" 
+          value="${silla.orden}" 
+          placeholder="1" 
+          style="margin: 0; width: 100%; box-sizing: border-box;"
+        >
+      </div>
+    `,
+    focusConfirm: false,
+    showCancelButton: true,
+    confirmButtonText: 'Guardar Cambios',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#0ea5e9',
+    cancelButtonColor: '#334155',
+    preConfirm: () => {
+      const nombre = document.getElementById('swal-nombre').value.trim();
+      const orden = parseInt(document.getElementById('swal-orden').value);
+
+      if (!nombre) {
+        Swal.showValidationMessage('El nombre de la silla es obligatorio.');
+        return false;
       }
 
-      Swal.fire({
-        title: 'Error de validación',
-        text: mensajeError,
-        icon: 'warning',
-        background: '#0f172a', 
-        color: '#f8fafc' 
+      if (isNaN(orden) || orden < 1) {
+        Swal.showValidationMessage('El orden debe ser un número válido mayor a 0.');
+        return false;
+      }
+
+      const ordenOcupado = sillas.value.some(s => s.orden === orden && s.id !== silla.id);
+      if (ordenOcupado) {
+        Swal.showValidationMessage(`El orden #${orden} ya está ocupado por otra silla.`);
+        return false;
+      }
+
+      return { nombre, orden };
+    }
+  });
+
+  if (formValues && formValues.nombre) {
+    try {
+      await axios.patch(`/api/sillas/${silla.id}/`, {
+        nombre: formValues.nombre,
+        orden: formValues.orden
       });
+      cargarSillas();
+      Swal.fire({ icon: 'success', title: 'Silla actualizada', timer: 1500, showConfirmButton: false, background: '#0f172a', color: '#f8fafc' });
+    } catch (e) {
+      let mensajeError = 'No se pudo actualizar la silla.';
+      if (e.response && e.response.data && e.response.data.nombre) mensajeError = e.response.data.nombre[0];
+      Swal.fire({ title: 'Error', text: mensajeError, icon: 'warning', background: '#0f172a', color: '#f8fafc' });
     }
   }
 };
 
 const toggleEstado = async (silla) => {
-  // Si la silla está ACTIVA, la vamos a DESACTIVAR (Pedir motivo)
   if (silla.activa) {
     const { value: motivo } = await Swal.fire({
       title: 'Deshabilitar Puesto',
@@ -162,18 +243,16 @@ const toggleEstado = async (silla) => {
       showCancelButton: true,
       confirmButtonText: 'Confirmar Baja',
       confirmButtonColor: '#ef4444',
-      background: '#1e293b', // Fondo oscuro del modal
-      color: '#fff', // Texto general blanco
+      cancelButtonColor: '#334155',
+      background: '#0f172a',
+      color: '#f8fafc',
       customClass: {
-        input: 'swal-select-dark' // Clase custom para arreglar el select
+        input: 'swal-select-unified'
       },
       inputValidator: (value) => {
         return new Promise((resolve) => {
-          if (value) {
-            resolve()
-          } else {
-            resolve('Debes seleccionar un motivo')
-          }
+          if (value) resolve()
+          else resolve('Debes seleccionar un motivo')
         })
       }
     });
@@ -183,248 +262,92 @@ const toggleEstado = async (silla) => {
         await axios.patch(`/api/sillas/${silla.id}/`, { activa: false, motivo_inactividad: motivo });
         cargarSillas();
       } catch (e) {
-        Swal.fire('Error', 'No se pudo actualizar', 'error');
+        Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo actualizar', background: '#0f172a', color: '#f8fafc' });
       }
     }
-  } 
-  // Si la silla está INACTIVA, la vamos a ACTIVAR (Borrar motivo)
-  else {
+  } else {
     try {
-      // Mandamos motivo_inactividad: null para limpiar
       await axios.patch(`/api/sillas/${silla.id}/`, { activa: true, motivo_inactividad: null });
       cargarSillas();
-      const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
-      Toast.fire({ icon: 'success', title: 'Puesto habilitado nuevamente' });
+      Swal.fire({ icon: 'success', title: 'Puesto habilitado', timer: 1500, showConfirmButton: false, background: '#0f172a', color: '#f8fafc' });
     } catch (e) {
-      Swal.fire('Error', 'No se pudo activar', 'error');
-    }
-  }
-};
-
-const eliminar = async (silla) => {
-  const result = await Swal.fire({
-    title: '¿Eliminar definitivamente?',
-    text: "Esta acción no se recomienda si ya hay turnos históricos en esta silla.",
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonColor: '#d33',
-    confirmButtonText: 'Sí, eliminar',
-    background: '#1e293b',
-    color: '#fff'
-  });
-
-  if (result.isConfirmed) {
-    try {
-      await axios.delete(`/api/sillas/${silla.id}/`);
-      cargarSillas();
-      Swal.fire({ title: 'Eliminado', icon: 'success', timer: 1500, showConfirmButton: false, background: '#1e293b', color: '#fff' });
-    } catch (e) {
-      Swal.fire('Error', 'No se pudo eliminar', 'error');
+      Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo activar', background: '#0f172a', color: '#f8fafc' });
     }
   }
 };
 </script>
 
 <style scoped>
-/* Contenedor Principal con efecto Glass */
-.sillas-wrapper {
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(59, 130, 246, 0.1);
-  border-radius: 20px;
-  padding: 30px;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-}
+.sub-module-container { width: 100%; }
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid var(--border-color); }
+.section-header h3 { margin: 0; color: var(--text-primary); font-size: 1.3rem; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+.icon-header { color: #0ea5e9; font-size: 1.5rem; }
 
-/* Header */
-.header-sillas {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30px;
-  flex-wrap: wrap;
-  gap: 20px;
-}
+.item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
+.item-card { background: var(--bg-primary); border: 2px solid var(--border-color); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 15px; transition: all 0.3s ease; position: relative; overflow: hidden; min-height: 160px; }
+.item-card:hover { transform: translateY(-4px); box-shadow: 0 8px 20px rgba(0,0,0,0.15); border-color: var(--accent-color); }
+.item-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent-color); opacity: 0; transition: 0.3s; }
+.item-card:hover::before { opacity: 1; }
+.item-card.inactiva { opacity: 0.7; filter: grayscale(30%); border-color: var(--border-color) !important; }
+.item-card.inactiva:hover::before { background: var(--error-color); }
 
-.titulo-icon {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
+.orden-badge { position: absolute; top: 15px; right: 15px; background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 2px 8px; border-radius: 8px; font-size: 0.7rem; font-weight: 800; color: var(--text-secondary); }
 
-.icon-box {
-  background: linear-gradient(135deg, #3b82f6, #06b6d4);
-  width: 50px;
-  height: 50px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.8rem;
-  box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
-}
+.card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-top: 5px; }
+.card-title { display: flex; align-items: center; gap: 12px; }
+.card-icon { font-size: 1.8rem; color: var(--text-secondary); background: var(--bg-secondary); padding: 8px; border-radius: 10px; border: 1px solid var(--border-color); }
+.card-title h4 { margin: 0; color: var(--text-primary); font-size: 1.1rem; font-weight: 700; word-break: break-word;}
 
-.header-sillas h3 { margin: 0; color: #fff; font-weight: 800; font-size: 1.5rem; letter-spacing: -0.5px; }
-.header-sillas p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+.badge-estado { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
+.estado-success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+.estado-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
 
-/* Botón Neon */
-.btn-neon {
-  background: transparent;
-  border: 2px solid #3b82f6;
-  color: #3b82f6;
-  padding: 10px 25px;
-  border-radius: 50px;
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.1);
-}
+.motivo-box { background: rgba(239, 68, 68, 0.1); padding: 10px 12px; border-radius: 8px; color: #ef4444; display: flex; gap: 8px; align-items: flex-start; border: 1px dashed rgba(239, 68, 68, 0.3); font-size: 0.85rem; }
+.motivo-box i { font-size: 1rem; margin-top: 2px; }
 
-.btn-neon:hover:not(:disabled) {
-  background: #3b82f6;
-  color: white;
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.6);
-  transform: translateY(-2px);
-}
+.card-actions { display: flex; gap: 10px; justify-content: flex-end; border-top: 1px solid var(--border-color); padding-top: 15px; margin-top: auto; }
+.action-btn { padding: 8px; border: none; border-radius: 10px; font-size: 1.1rem; cursor: pointer; transition: 0.2s; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
 
-/* Grid */
-.grid-sillas {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 20px;
-}
+/* ESTILO DEL BOTÓN EDITAR QUE AGREGAMOS */
+.action-btn.edit { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }
+.action-btn.edit:hover { background: var(--hover-bg); transform: translateY(-2px); border-color: var(--accent-color); color: var(--accent-color); }
 
-/* Tarjetas */
-.card-silla {
-  background: #1e293b;
-  border-radius: 16px;
-  padding: 20px;
-  position: relative;
-  overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  min-height: 200px;
-  border: 1px solid transparent;
-}
+.action-btn.delete { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+.action-btn.delete:hover { background: #ef4444; color: white; transform: translateY(-2px); }
+.action-btn.success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+.action-btn.success:hover { background: #10b981; color: white; transform: translateY(-2px); }
 
-.card-silla:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 15px 30px rgba(0,0,0,0.4);
-}
+.register-button { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; border: none; padding: 12px 24px; border-radius: 12px; font-weight: 800; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35); font-size: 0.9rem;}
+.register-button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(14, 165, 233, 0.5); }
+.sm-btn { padding: 8px 16px; font-size: 0.85rem; box-shadow: none; }
 
-/* Estados de la tarjeta (Bordes de Neon) */
-.status-active {
-  border-color: rgba(34, 197, 94, 0.3);
-  box-shadow: inset 0 0 20px rgba(34, 197, 94, 0.05);
-}
-.status-active:hover { border-color: #22c55e; }
+.loading-state, .empty-state { width: 100%; text-align: center; padding: 40px 0; color: var(--text-secondary); font-style: italic; }
+.animate-spin { animation: spin 1s linear infinite; display: inline-block; font-size: 1.5rem; margin-right: 10px; vertical-align: middle;}
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-.status-inactive {
-  border-color: rgba(239, 68, 68, 0.3);
-  box-shadow: inset 0 0 20px rgba(239, 68, 68, 0.05);
-  opacity: 0.9;
-}
-.status-inactive:hover { border-color: #ef4444; }
-
-/* Contenido Interno */
-.orden-badge {
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  background: rgba(255,255,255,0.1);
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 800;
-  color: #64748b;
-}
-
-.card-content { text-align: center; margin-top: 10px; }
-
-.icon-status {
-  font-size: 2.5rem;
-  margin-bottom: 10px;
-  transition: 0.3s;
-}
-.status-active .icon-status { color: #22c55e; text-shadow: 0 0 15px rgba(34, 197, 94, 0.5); }
-.status-inactive .icon-status { color: #ef4444; text-shadow: 0 0 15px rgba(239, 68, 68, 0.5); }
-
-.silla-nombre {
-  font-size: 1.2rem;
-  color: #f8fafc;
-  margin: 0 0 5px 0;
-  font-weight: 700;
-}
-
-.motivo-tag {
-  display: inline-block;
-  background: rgba(239, 68, 68, 0.2);
-  color: #fca5a5;
-  padding: 3px 8px;
-  border-radius: 4px;
-  margin-top: 5px;
-  font-style: italic;
-}
-
-/* Botones del Card */
-.card-actions {
-  margin-top: 20px;
-  display: flex;
-  gap: 10px;
-}
-
-.action-btn {
-  flex: 1;
-  border: none;
-  padding: 8px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.9rem;
-  transition: 0.2s;
-}
-
-.btn-shutdown {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.2);
-}
-.btn-shutdown:hover { background: #ef4444; color: white; }
-
-.btn-powerup {
-  background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
-  border: 1px solid rgba(34, 197, 94, 0.2);
-}
-.btn-powerup:hover { background: #22c55e; color: white; }
-
-.btn-delete {
-  flex: 0;
-  min-width: 40px;
-  background: transparent;
-  color: #64748b;
-  border: 1px solid #334155;
-}
-.btn-delete:hover { color: #fff; border-color: #fff; }
-
-/* Helpers */
-.loading-state, .empty-state { text-align: center; padding: 40px; color: #94a3b8; }
-.swal-label { color: #ccc; display: block; margin-top: 10px; margin-bottom: 5px; font-size: 0.9rem; }
-.custom-input { width: 100% !important; margin: 0 !important; background: #0f172a !important; color: white !important; border: 1px solid #334155 !important; }
 </style>
 
 <style>
-/* Estilos globales para SweetAlert que no se pueden scopear */
-.swal2-container .swal-select-dark {
-  background-color: #0f172a !important;
+.swal2-container .custom-swal-input {
+  background-color: var(--bg-primary, #1e293b) !important;
   color: white !important;
-  border: 1px solid #3b82f6 !important;
+  border: 2px solid var(--border-color, #334155) !important;
+  border-radius: 10px !important;
+  padding: 12px 14px !important;
+  transition: all 0.3s;
 }
-.swal2-container .swal-select-dark option {
+.swal2-container .custom-swal-input:focus {
+  border-color: #0ea5e9 !important;
+  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.2) !important;
+}
+
+.swal2-container .swal-select-unified {
+  background-color: var(--bg-primary, #1e293b) !important;
+  color: white !important;
+  border: 2px solid var(--border-color, #334155) !important;
+  border-radius: 10px !important;
+}
+.swal2-container .swal-select-unified option {
   background-color: #0f172a !important;
   color: white !important;
 }

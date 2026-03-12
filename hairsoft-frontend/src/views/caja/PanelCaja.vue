@@ -552,9 +552,14 @@ const formApertura = ref({
   saldo_inicial_efectivo: 0,
   saldo_inicial_mp: 0 
 });
-const formCierre = ref({ saldo_final_efectivo_real: 0, saldo_final_mp_real: 0, observaciones: '' });
 
-// Asegurarnos que empiece limpio
+const formCierre = ref({ 
+  saldo_final_efectivo_real: 0, 
+  saldo_final_mp_real: 0, 
+  saldo_final_transf_real: 0, 
+  observaciones: '' 
+});
+
 const formGasto = ref({ tipo: 'EGRESO', concepto: 'GASTO_OPERATIVO', metodo_pago: 'EFECTIVO', monto: '', descripcion: '' });
 
 watch(() => formGasto.value.tipo, (nuevoTipo) => {
@@ -626,10 +631,17 @@ const limpiarFiltros = () => {
 
 // ----- FIN FILTROS -----
 
+// 🔥 CORRECCIÓN DE NOMBRES DE VARIABLES DE TRANSFERENCIA
 const diferenciaCierre = computed(() => {
   if (!balance.value) return 0;
-  const esperado = parseFloat(balance.value.esperado_efectivo) + parseFloat(balance.value.esperado_mp);
-  const real = parseFloat(formCierre.value.saldo_final_efectivo_real || 0) + parseFloat(formCierre.value.saldo_final_mp_real || 0);
+  
+  const esperado = parseFloat(balance.value.esperado_efectivo || 0) + 
+                   parseFloat(balance.value.esperado_mp || 0) + 
+                   parseFloat(balance.value.esperado_transf || 0); // Era esperado_transf, no transferencia
+
+  const real = parseFloat(formCierre.value.saldo_final_efectivo_real || 0) + 
+               parseFloat(formCierre.value.saldo_final_mp_real || 0) +
+               parseFloat(formCierre.value.saldo_final_transf_real || 0);
   
   return real - esperado; 
 });
@@ -640,7 +652,9 @@ const hayDiferencia = computed(() => {
 
 const tipoDiferencia = computed(() => {
   if (!balance.value) return '';
-  const esperado = parseFloat(balance.value.esperado_efectivo) + parseFloat(balance.value.esperado_mp);
+  const esperado = parseFloat(balance.value.esperado_efectivo || 0) + 
+                   parseFloat(balance.value.esperado_mp || 0) + 
+                   parseFloat(balance.value.esperado_transf || 0);
 
   if (diferenciaCierre.value < 0) {
       if (esperado < 0 && parseFloat(formCierre.value.saldo_final_efectivo_real || 0) === 0) {
@@ -652,12 +666,14 @@ const tipoDiferencia = computed(() => {
 });
 
 const calcularTotalRealDeclarado = (caja) => {
-  return parseFloat(caja.saldo_final_efectivo_real || 0) + parseFloat(caja.saldo_final_mp_real || 0);
+  return parseFloat(caja.saldo_final_efectivo_real || 0) + 
+         parseFloat(caja.saldo_final_mp_real || 0) + 
+         parseFloat(caja.saldo_final_transf_real || 0);
 };
 
 const calcularTotalCaja = (caja) => {
   if (caja.esta_abierta) return 0;
-  return parseFloat(caja.saldo_final_efectivo_real || 0) + parseFloat(caja.saldo_final_mp_real || 0);
+  return calcularTotalRealDeclarado(caja);
 };
 
 const formatearMoneda = (valor) => {
@@ -726,8 +742,10 @@ const cargarDatosCajaAbierta = async (sesionId) => {
   movimientos.value = resMovs.data;
   currentPageMovs.value = 1; 
   
-  formCierre.value.saldo_final_efectivo_real = Math.max(0, parseFloat(balance.value.esperado_efectivo));
-  formCierre.value.saldo_final_mp_real = Math.max(0, parseFloat(balance.value.esperado_mp)); 
+  // Rellenar automáticamente con lo esperado
+  formCierre.value.saldo_final_efectivo_real = Math.max(0, parseFloat(balance.value.esperado_efectivo || 0));
+  formCierre.value.saldo_final_mp_real = Math.max(0, parseFloat(balance.value.esperado_mp || 0)); 
+  formCierre.value.saldo_final_transf_real = Math.max(0, parseFloat(balance.value.esperado_transf || 0)); 
   formCierre.value.observaciones = ''; 
 };
 
@@ -792,13 +810,19 @@ const cerrarCaja = async () => {
             detenerRadar();
             mostrarModalCierre.value = false;
             inicializar();
-          } catch (error) { Swal.fire('Error', 'Error al cerrar', 'error'); }
+          } catch (error) { 
+            // 🔥 AHORA SÍ MOSTRAMOS EL ERROR DEL BACKEND SI OCURRE ALGO
+            let errorMsg = 'Error al cerrar la caja';
+            if (error.response && error.response.data && error.response.data.error) {
+                errorMsg = error.response.data.error;
+            }
+            Swal.fire({ icon: 'error', title: 'Error', text: errorMsg }); 
+          }
       }
   });
 };
 
 const registrarGastoManual = async () => {
-  // 🔥 VALIDACIÓN DE FONDOS INSUFICIENTES (solo si es EGRESO)
   if (formGasto.value.tipo === 'EGRESO') {
       const montoEgreso = parseFloat(formGasto.value.monto);
       let saldoDisponible = 0;
@@ -810,6 +834,9 @@ const registrarGastoManual = async () => {
       } else if (formGasto.value.metodo_pago === 'MERCADO_PAGO') {
           saldoDisponible = parseFloat(balance.value.esperado_mp);
           metodoNombre = 'Mercado Pago';
+      } else if (formGasto.value.metodo_pago === 'TRANSFERENCIA') {
+          saldoDisponible = parseFloat(balance.value.esperado_transf || 0); // También corregido acá
+          metodoNombre = 'Transferencia';
       }
 
       if (montoEgreso > saldoDisponible) {
@@ -820,7 +847,7 @@ const registrarGastoManual = async () => {
               confirmButtonColor: '#ef4444',
               confirmButtonText: 'Entendido'
           });
-          return; // Detiene la ejecución, no envía el gasto
+          return; 
       }
   }
 
@@ -844,7 +871,9 @@ const verDetalleCajaCerrada = async (caja) => {
 
 const calcularTotalActual = (bal) => {
   if (!bal) return 0;
-  return parseFloat(bal.esperado_efectivo) + parseFloat(bal.esperado_mp);
+  return parseFloat(bal.esperado_efectivo || 0) + 
+         parseFloat(bal.esperado_mp || 0) + 
+         parseFloat(bal.esperado_transf || 0);
 };
 
 const formatearFecha = (f) => f ? new Date(f).toLocaleString('es-AR') : '';

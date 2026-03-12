@@ -177,6 +177,7 @@
               <AlertTriangle :size="16" />
               <div>
                 <strong>Esta venta fue anulada</strong>
+                <br>
                 <small>No genera ingresos y el stock fue restaurado</small>
               </div>
             </div>

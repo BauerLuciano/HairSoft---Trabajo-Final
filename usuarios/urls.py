@@ -8,17 +8,14 @@ from . import views as func_views
 from .api_views import (
     AuditoriaViewSet,
     PedidoWebViewSet,
-    # ServicioListAPIView,  <-- YA NO USAMOS ESTAS PARA SERVICIOS
-    # ServicioCreateAPIView, <-- YA NO USAMOS ESTAS PARA SERVICIOS
-    # ServicioUpdateAPIView, <-- YA NO USAMOS ESTAS PARA SERVICIOS
-    # ServicioToggleEstadoView, <-- YA NO USAMOS ESTAS PARA SERVICIOS
     ProductoCatalogoView,
     ReporteLiquidacionView,
     ReporteLiquidacionPDFView,
     RegistrarPagoLiquidacionView,
     HistorialLiquidacionesView,
     SillaViewSet,
-    ConfigWebView
+    ConfigWebView,
+    verificar_estado_caja # 🔥 Agregado acá
 )
 
 from .views import (
@@ -135,7 +132,8 @@ urlpatterns = [
     # ================================
     # Productos
     # ================================
-    path('api/categorias/productos/', func_views.listado_categorias_productos, name='listado_categorias_productos'),    path('api/productos/', ProductoListCreateAPIView.as_view(), name='productos_api'),
+    path('api/categorias/productos/', func_views.listado_categorias_productos, name='listado_categorias_productos'),    
+    path('api/productos/', ProductoListCreateAPIView.as_view(), name='productos_api'),
     path('api/productos/<int:pk>/', ProductoRetrieveUpdateDestroyAPIView.as_view(), name='productos-detail'),
     path('api/metodos-pago/', MetodoPagoListAPIView.as_view(), name='listado_metodos_pago'),
     path('api/catalogo/', ProductoCatalogoView.as_view(), name='catalogo-publico'),
@@ -300,6 +298,11 @@ urlpatterns = [
     #Silla
     path('api/turnos/ocupacion-grilla/', func_views.obtener_ocupacion_grilla, name='obtener-ocupacion-grilla'),
 
-    path('api/web/configuracion/', ConfigWebView.as_view(), name='configuracion-web'),]
+    path('api/web/configuracion/', ConfigWebView.as_view(), name='configuracion-web'),
+    
+    # 🔥 LA RUTA CORREGIDA IMPORTADA DESDE API_VIEWS
+    path('api/estado-caja/', verificar_estado_caja, name='estado_caja'),
+]
+
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

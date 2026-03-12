@@ -754,14 +754,33 @@ const verDetalleTurno = async (turno) => {
     const turnoDetalle = response.data;
 
     let serviciosHTML = '';
+    let totalDuracion = 0;
+    let totalPrecio = 0;
+
     if (turnoDetalle.servicios && turnoDetalle.servicios.length > 0) {
-      serviciosHTML = turnoDetalle.servicios.map(s => `
+      serviciosHTML = turnoDetalle.servicios.map(s => {
+        // Vamos sumando para el total
+        totalDuracion += (s.duracion || 0);
+        totalPrecio += (parseFloat(s.precio) || 0);
+
+        return `
         <tr style="border-bottom: 1px solid #f1f5f9;">
           <td style="padding: 12px; font-weight: 500; color: #1e293b; font-size: 0.95rem;">${s.nombre || 'Sin nombre'}</td>
           <td style="padding: 12px; text-align: right; color: #64748b; font-size: 0.9rem;">${s.duracion || 0}m</td>
           <td style="padding: 12px; text-align: right; font-weight: 700; color: #0f172a;">$${formatPrecio(s.precio || 0)}</td>
         </tr>
-      `).join('');
+      `}).join('');
+
+      // 🔥 AGREGAMOS LA FILA DE TOTAL AL FINAL DE LA TABLA
+      if (turnoDetalle.servicios.length > 1) {
+        serviciosHTML += `
+          <tr style="background-color: #f8fafc; border-top: 2px solid #e2e8f0;">
+            <td style="padding: 12px; font-weight: 800; color: #0f172a; font-size: 1rem;">TOTAL SERVICIOS</td>
+            <td style="padding: 12px; text-align: right; color: #475569; font-weight: 700; font-size: 0.95rem;">${totalDuracion}m</td>
+            <td style="padding: 12px; text-align: right; font-weight: 900; color: #0ea5e9; font-size: 1.1rem;">$${formatPrecio(totalPrecio)}</td>
+          </tr>
+        `;
+      }
     } else {
       serviciosHTML = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #94a3b8;">Sin servicios detallados</td></tr>`;
     }

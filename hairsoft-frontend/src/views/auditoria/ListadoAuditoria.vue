@@ -26,8 +26,8 @@
               <option value="AJUSTE_STOCK">Ajuste de Stock</option>
               <option value="APERTURA_CAJA">Apertura de Caja</option>
               <option value="CIERRE_CAJA">Cierre de Caja</option>
-              <option value="INGRESO_MANUAL">Ingreso Manual</option>
-              <option value="EGRESO_MANUAL">Egreso Manual</option>
+              <option value="INGRESO">Ingreso</option>
+              <option value="EGRESO">Egreso</option>
             </select>
           </div>
           <div class="filter-group">

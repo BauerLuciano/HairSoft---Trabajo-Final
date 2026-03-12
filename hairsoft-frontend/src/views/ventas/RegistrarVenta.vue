@@ -408,6 +408,46 @@ export default {
     },
     
     methods: {
+        // 🔥 NUEVA FUNCIÓN PARA VERIFICAR CAJA
+        async verificarCajaAbierta() {
+            try {
+                const res = await axios.get(`${API_BASE_URL}/api/estado-caja/`);
+                
+                if (!res.data.abierta) {
+                    this.bloquearPantallaYRedirigirACaja();
+                }
+            } catch (err) {
+                console.error("Error al verificar estado de caja:", err);
+                this.bloquearPantallaYRedirigirACaja();
+            }
+        },
+
+        bloquearPantallaYRedirigirACaja() {
+            Swal.fire({
+                icon: 'warning',
+                title: '¡Caja Cerrada!',
+                html: `
+                    <p style="color: #6c757d; margin-bottom: 20px;">
+                        No podés registrar ventas porque <strong>no hay ninguna caja abierta</strong> en este momento.
+                    </p>
+                    <p style="color: #6c757d;">
+                        Por favor, realizá la apertura de caja diaria primero.
+                    </p>
+                `,
+                background: '#0f172a',
+                color: '#f8fafc',
+                confirmButtonText: 'Ir a Caja Diaria',
+                confirmButtonColor: '#3b82f6',
+                allowOutsideClick: false, 
+                allowEscapeKey: false,    
+                showCancelButton: false   
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    this.$router.push('/caja'); 
+                }
+            });
+        },
+
         navegarAListado() {
             if (this.$route.path === '/ventas') {
                 window.location.reload();
@@ -475,11 +515,7 @@ export default {
             });
 
             if (result.isConfirmed) {
-                // 1. Intentamos abrir el PDF con la nueva lógica de Blob
                 await this.abrirComprobante(ventaData.id);
-                
-                // 2. Esperamos 1.5 segundos para asegurar que el navegador procese la descarga/apertura
-                // y luego redirigimos al listado como pediste.
                 setTimeout(() => {
                     this.navegarAListado();
                 }, 1500);
@@ -488,22 +524,16 @@ export default {
             }
         },
 
-        // 🔥 FUNCIÓN CORREGIDA PARA EVITAR PANTALLA BLANCA
         async abrirComprobante(ventaId) {
             try {
-                // Usamos axios para enviar el TOKEN de autenticación
                 const response = await axios.get(
                     `${API_BASE_URL}/usuarios/api/ventas/${ventaId}/comprobante-pdf/`, 
-                    { 
-                        responseType: 'blob' // Importante: pedimos el archivo como binario
-                    }
+                    { responseType: 'blob' }
                 );
                 
-                // Creamos una URL temporal local válida
                 const file = new Blob([response.data], { type: 'application/pdf' });
                 const fileURL = URL.createObjectURL(file);
                 
-                // Abrimos esa URL local (esto no falla por auth)
                 window.open(fileURL, '_blank');
             } catch (error) {
                 console.error("Error al descargar el PDF:", error);
@@ -770,7 +800,6 @@ export default {
             };
         },
 
-        // 🔥 ACÁ ESTÁ LA CORRECCIÓN DEL MANEJO DE ERRORES
         manejarErrorVenta(err) {
             Swal.close();
             let errorMessage = 'Error desconocido al registrar venta.';
@@ -779,15 +808,12 @@ export default {
                 if (err.response.status === 401) {
                     errorMessage = 'Permiso denegado. Debe iniciar sesión.';
                 } else if (err.response.data) {
-                    // Si el backend manda un JSON con { error: "Debe abrir una caja..." }
                     if (err.response.data.error) {
                         errorMessage = err.response.data.error;
                     } 
-                    // Si manda message
                     else if (err.response.data.message) {
                         errorMessage = err.response.data.message;
                     }
-                    // Fallback para otros formatos de error
                     else {
                          try {
                             const data = err.response.data;
@@ -828,6 +854,9 @@ export default {
     },
     
     mounted() {
+        // 🔥 LLAMAMOS A LA VERIFICACIÓN ACÁ APENAS CARGA
+        this.verificarCajaAbierta();
+
         this.cargarProductos();
         this.cargarCategorias();
         this.cargarMetodosPago();

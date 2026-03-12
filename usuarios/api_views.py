@@ -3,11 +3,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.decorators import action
+# 🔥 ACÁ SE IMPORTA api_view y permission_classes CORRECTAMENTE
+from rest_framework.decorators import action, api_view, permission_classes
 from django.db.models import Sum
 from django.db import transaction
 from django.http import HttpResponse
-from .models import Auditoria, Servicio, Turno, Usuario, Producto, Liquidacion, PedidoWeb, ConfiguracionSistema, Silla
+from .models import Auditoria, Servicio, Turno, Usuario, Producto, Liquidacion, PedidoWeb, ConfiguracionSistema, Silla, SesionCaja
 from .serializers import AuditoriaSerializer, ServicioSerializer, TurnoSerializer, UsuarioSerializer, ProductoCatalogoSerializer, LiquidacionSerializer, PedidoWebSerializer, SillaSerializer
 import io
 import datetime
@@ -125,7 +126,6 @@ class ReporteLiquidacionView(APIView):
         reporte = []
 
         for emp in empleados:
-            # CORRECCIÓN: 'COMPLETADO' (Mayúsculas)
             turnos = Turno.objects.filter(
                 peluquero=emp,
                 estado='COMPLETADO', 
@@ -183,7 +183,6 @@ class RegistrarPagoLiquidacionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        # 🛑 CHEQUEO DE CAJA
         sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
         if not sesion_abierta:
             return Response(
@@ -201,7 +200,6 @@ class RegistrarPagoLiquidacionView(APIView):
         except Usuario.DoesNotExist:
             return Response({"error": "Empleado no encontrado"}, status=404)
 
-        # CORRECCIÓN: 'COMPLETADO' (Mayúsculas)
         turnos = Turno.objects.filter(
             peluquero_id=empleado_id, 
             estado='COMPLETADO', 
@@ -227,7 +225,6 @@ class RegistrarPagoLiquidacionView(APIView):
         
         liquidacion.turnos_pagados.set(turnos)
 
-        # 💵 REGISTRAR EGRESO DE CAJA
         MovimientoCaja.objects.create(
             sesion_caja=sesion_abierta,
             tipo='EGRESO',
@@ -247,9 +244,7 @@ class ReporteLiquidacionPDFView(APIView):
         fin = request.query_params.get('fecha_fin')
         peluquero_id = request.query_params.get('peluquero_id')
         
-        # 1. CAPTURAR EL USUARIO QUE IMPRIME (NOMBRE REAL)
         usuario_impresor = f"{request.user.nombre} {request.user.apellido}"
-
         es_historial = request.query_params.get('origen') == 'historial'
 
         empleados = Usuario.objects.filter(is_active=True, rol__nombre='Peluquero')
@@ -294,7 +289,6 @@ class ReporteLiquidacionPDFView(APIView):
                 'turnos': lista_turnos
             })
 
-        # 2. PASAR 'usuario_impresor' A LA FUNCIÓN DEL PDF
         pdf_bytes = generar_liquidacion_pdf(data_empleados, inicio, fin, usuario_impresor, es_pagado=es_historial)
 
         return HttpResponse(pdf_bytes, content_type='application/pdf')
@@ -316,10 +310,8 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        # Admin y Recepcionista ven todo
         if user.rol and user.rol.nombre in ['Administrador', 'Recepcionista']:
             return PedidoWeb.objects.all().order_by('-fecha_creacion')
-        # Cliente ve solo lo suyo
         return PedidoWeb.objects.filter(cliente=user).order_by('-fecha_creacion')
 
     def create(self, request, *args, **kwargs):
@@ -328,11 +320,9 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # ✅ Usamos transaction para asegurar que el pedido y MP se sincronicen
             with transaction.atomic():
                 pedido = serializer.save(cliente=self.request.user, estado='PENDIENTE_PAGO') 
                 
-                # Generar link MP
                 mp_service = MercadoPagoService()
                 detalles = pedido.detalles.all()
                 resultado_mp = mp_service.crear_preferencia_compra_web(pedido, detalles)
@@ -356,29 +346,22 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
         nuevo_estado = request.data.get('estado')
         repartidor = request.data.get('repartidor')
         
-        # ✅ CAPTURAR MOTIVOS DE CANCELACIÓN
         motivo = request.data.get('motivo_cancelacion')
         observacion = request.data.get('obs_cancelacion')
         
-        # Seguridad de permisos
         if not (request.user.rol and request.user.rol.nombre in ['Administrador', 'Recepcionista']):
              return Response({'error': 'No tienes permisos'}, status=status.HTTP_403_FORBIDDEN)
 
-        # 🔥 LÓGICA DE CANCELACIÓN MEJORADA
         if nuevo_estado == 'CANCELADO' and pedido.estado != 'CANCELADO':
             with transaction.atomic():
-                # 1. Devolver stock de los productos
                 for detalle in pedido.detalles.all():
                     detalle.producto.stock_actual += detalle.cantidad
                     detalle.producto.save()
                 
-                # 2. Guardar motivos en el modelo
-                # Asegúrate de que estos campos existan en tu modelo PedidoWeb
                 pedido.motivo_cancelacion = motivo
                 pedido.obs_cancelacion = observacion
                 print(f"🚫 Pedido #{pedido.id} cancelado por: {motivo}")
 
-        # ✅ GUARDAR REPARTIDOR SIEMPRE QUE VENGA
         if repartidor:
             pedido.datos_entrega_interna = repartidor
             print(f"📦 Asignando repartidor: {repartidor} al pedido {pedido.id}")
@@ -394,14 +377,43 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
         })
 
 class SillaViewSet(viewsets.ModelViewSet):
-    queryset = Silla.objects.all().order_by('orden') # Ordenadas por el numerito
+    queryset = Silla.objects.all().order_by('orden')
     serializer_class = SillaSerializer
-    permission_classes = [IsAuthenticated] # Solo usuarios logueados pueden tocar esto
+    permission_classes = [IsAuthenticated]
 
 class ConfigWebView(APIView):
-    permission_classes = [AllowAny] # Público, para que lo lea el Checkout
+    permission_classes = [AllowAny] # Público, para que lo lea el Home y Checkout
 
     def get(self, request):
-        config = ConfiguracionWeb.objects.first()
-        precio = config.costo_envio_moto if config else 1500.00
-        return Response({'costo_moto': float(precio)})
+        config = ConfiguracionSistema.objects.first()
+        if config:
+            return Response({
+                'costo_moto': float(config.costo_envio_moto),
+                'razon_social': config.razon_social,
+                'direccion': config.direccion,
+                'telefono': config.telefono,
+                'email': config.email,
+                # Si en el futuro querés mandar el logo: 'logo': request.build_absolute_uri(config.logo.url) if config.logo else None
+            })
+        else:
+            # Datos por defecto por si aún no cargaron nada en la BD
+            return Response({
+                'costo_moto': 1500.00,
+                'razon_social': 'Los Últimos Serán Los Primeros',
+                'direccion': 'Avenida Libertador 600, San Vicente - Misiones',
+                'telefono': '3755-72716',
+                'email': 'contacto@hairsoft.com'
+            })
+
+# 🔥 EL DECORADOR AHORA ESTÁ BIEN ESCRITO
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def verificar_estado_caja(request):
+    """
+    Verifica si existe al menos una SesionCaja abierta (fecha_cierre es null).
+    """
+    try:
+        caja_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).exists()
+        return Response({'abierta': caja_abierta}, status=200)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)

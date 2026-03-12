@@ -432,9 +432,12 @@ import {
   CalendarDays, ChevronLeft, ChevronRight, Info, Loader2, Receipt, CheckCircle, Armchair, ChevronDown 
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
+// 🔥 AGREGAMOS AXIOS Y API_BASE_URL COMO EN VENTAS
+import axios from '@/utils/axiosConfig'
 
 const router = useRouter()
-const API_URL = "http://localhost:8000/api"
+const API_BASE_URL = 'http://127.0.0.1:8000'; // Mismo que en ventas
+const API_URL = `${API_BASE_URL}/api`;
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token')
@@ -467,7 +470,6 @@ const busquedaCliente = ref("")
 const clientesSugeridos = ref([])
 const categoriasSeleccionadas = ref([])
 
-// 🔥 AHORA ES UN OBJETO DONDE GUARDAMOS EL MOTIVO (EJ: { "15:00": "SILLA" })
 const slotsOcupadosReales = ref({}) 
 
 const currentDate = ref(new Date())
@@ -479,9 +481,48 @@ const cargandoHorarios = ref(false)
 const errorValidacion = ref(false)
 const cargandoDatos = ref(true) 
 
-// 🔥 FIX: INTERVALO DE 10 MINUTOS
 const intervaloMinutos = 10
 const STORAGE_KEY = 'turno_presencial_context'
+
+// 🔥 FUNCIÓN PARA VERIFICAR CAJA IGUAL A LA DE VENTAS
+const verificarCajaAbierta = async () => {
+  try {
+    const res = await axios.get(`${API_BASE_URL}/api/estado-caja/`);
+    
+    if (!res.data.abierta) {
+      bloquearPantallaYRedirigirACaja();
+    }
+  } catch (err) {
+    console.error("Error al verificar estado de caja:", err);
+    bloquearPantallaYRedirigirACaja();
+  }
+};
+
+const bloquearPantallaYRedirigirACaja = () => {
+  Swal.fire({
+    icon: 'warning',
+    title: '¡Caja Cerrada!',
+    html: `
+        <p style="color: #6c757d; margin-bottom: 20px;">
+            No podés registrar turnos presenciales porque <strong>no hay ninguna caja abierta</strong> para recibir la seña.
+        </p>
+        <p style="color: #6c757d;">
+            Por favor, realizá la apertura de caja diaria primero.
+        </p>
+    `,
+    background: '#0f172a',
+    color: '#f8fafc',
+    confirmButtonText: 'Ir a Caja Diaria',
+    confirmButtonColor: '#3b82f6',
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    showCancelButton: false
+  }).then((result) => {
+    if (result.isConfirmed) {
+      router.push('/caja');
+    }
+  });
+};
 
 watch(() => form.value.servicios_ids, () => {
   if (form.value.fecha && form.value.peluquero && form.value.hora) {
@@ -502,7 +543,6 @@ watch(() => form.value.medio_pago, (newVal) => {
   }
 })
 
-// 🔥 OBSERVADOR: Si cambia la silla, recalculamos la grilla
 watch(() => form.value.silla, () => {
   if (form.value.fecha && form.value.peluquero && form.value.peluquero !== form.value.cliente) {
     cargarHorariosOcupados(form.value.fecha)
@@ -549,7 +589,6 @@ const horariosGenerados = computed(() => {
         horariosBase.push(horaStr)
       }
     }
-    // Aseguramos incluir las 20:00 y las 12:00
     if(b.fin === 20) horariosBase.push('20:00');
     else if(b.fin === 12) horariosBase.push('12:00');
   })
@@ -557,12 +596,11 @@ const horariosGenerados = computed(() => {
   return horariosBase
 })
 
-// 🔥 FUNCIÓN ACTUALIZADA: Ahora le pega al endpoint inteligente y recibe un DICCIONARIO
 const cargarHorariosOcupados = async (fecha) => {
   if (!form.value.peluquero || form.value.peluquero === form.value.cliente) return
   
   cargandoHorarios.value = true
-  slotsOcupadosReales.value = {} // 🔥 Reiniciamos a Objeto vacío
+  slotsOcupadosReales.value = {} 
   
   try {
     const sillaParam = form.value.silla ? `&silla_id=${form.value.silla}` : ''
@@ -577,7 +615,6 @@ const cargarHorariosOcupados = async (fecha) => {
     const data = await res.json()
     slotsOcupadosReales.value = data.ocupados || {}
 
-    // Si ya había seleccionado una hora y ahora quedó bloqueada (por ej. por cambiar de silla), se la borramos
     if (form.value.hora && !esHorarioDisponibleCompleto(form.value.hora)) {
       form.value.hora = ""
     }
@@ -589,7 +626,6 @@ const cargarHorariosOcupados = async (fecha) => {
   }
 }
 
-// 🔥 NUEVA FUNCIÓN: Identifica el MOTIVO exacto por el cual está ocupado
 const obtenerDetalleOcupacion = (horaSeleccionada) => {
   if (!form.value.fecha || !form.value.peluquero) return null
 
@@ -600,7 +636,7 @@ const obtenerDetalleOcupacion = (horaSeleccionada) => {
         return acc + (s ? parseInt(s.duracion) : 0)
       }, 0)
   }
-  if (duracionTotal === 0) duracionTotal = 10; // Asumimos mínimo 10 min si no hay servicios
+  if (duracionTotal === 0) duracionTotal = 10; 
   
   const [h, m] = horaSeleccionada.split(':').map(Number)
   const inicioMinutos = h * 60 + m
@@ -609,7 +645,6 @@ const obtenerDetalleOcupacion = (horaSeleccionada) => {
   const hoy = new Date()
   const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
   
-  // 🔥 FIX: Validamos que la hora seleccionada ya haya pasado, sin sumarle tiempo fantasma
   if (form.value.fecha === hoyFormateado) {
     const minutosActuales = hoy.getHours() * 60 + hoy.getMinutes();
     if (inicioMinutos <= minutosActuales) {
@@ -624,16 +659,14 @@ const obtenerDetalleOcupacion = (horaSeleccionada) => {
     const minutoSlot = (i % 60).toString().padStart(2, '0')
     const slotActual = `${horaSlot}:${minutoSlot}`
     
-    // Si encontramos que está ocupado, devolvemos EL MOTIVO ('PELUQUERO', 'SILLA', 'LOCAL_LLENO')
     if (slotsOcupadosReales.value[slotActual]) {
       return slotsOcupadosReales.value[slotActual] 
     }
   }
   
-  return null // null = Está disponible
+  return null 
 }
 
-// Vinculamos la validación a la nueva función
 const esHorarioDisponibleCompleto = (hora) => obtenerDetalleOcupacion(hora) === null
 
 const guardarContexto = () => {
@@ -794,7 +827,7 @@ const seleccionarPeluquero = (id) => {
 const resetFechas = () => {
   form.value.fecha = ""
   form.value.hora = ""
-  slotsOcupadosReales.value = {} // 🔥 Vuelve a ser Objeto
+  slotsOcupadosReales.value = {} 
 }
 
 const cambiarMes = (dir) => {
@@ -909,10 +942,9 @@ const crearTurno = async () => {
       limpiarContexto()
       router.push('/turnos')
     } else {
-      // 🔥 ACÁ ESTÁ LA CORRECCIÓN: Parseamos el error lindo, especialmente el de caja
       let errorMsg = "Error al crear turno"
       if (data.error) {
-        errorMsg = data.error // Este es el que manda Django ("Debe abrir una caja...")
+        errorMsg = data.error 
       } else if (data.message) {
         errorMsg = data.message
       } else if (data.errors) {
@@ -959,6 +991,9 @@ onMounted(() => {
     return
   }
   
+  // 🔥 AHORA SÍ LLAMAMOS A LA VERIFICACIÓN ACÁ
+  verificarCajaAbierta();
+
   cargarDatosIniciales()
 })
 
