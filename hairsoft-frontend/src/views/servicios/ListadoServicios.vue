@@ -31,7 +31,7 @@
 
           <div class="filter-group">
             <label>Categoría</label>
-            <select v-model="filtroCategoria" class="filter-input">
+            <select v-model="filtroCategoria" class="filter-input filter-select">
               <option value="">Todas las categorías</option>
               <option v-for="cat in categorias" :key="cat.id" :value="cat.nombre">
                 {{ cat.nombre }}
@@ -41,7 +41,7 @@
 
           <div class="filter-group">
             <label>Estado</label>
-            <select v-model="filtroEstado" class="filter-input">
+            <select v-model="filtroEstado" class="filter-input filter-select">
               <option value="todos">Todos</option>
               <option value="activos">Solo Activos</option>
               <option value="inactivos">Solo Inactivos</option>
@@ -82,7 +82,7 @@
                 </span>
               </td>
               <td>
-                <span class="duration-badge" style="color: #6f42c1; background: rgba(111, 66, 193, 0.1);">
+                <span class="duration-badge commission-badge">
                   {{ s.porcentaje_comision || 0 }}%
                 </span>
               </td>
@@ -216,14 +216,12 @@ const itemsPorPagina = 8
 
 const cargarDatos = async () => {
   try {
-    // ✅ CORRECCIÓN CRÍTICA: URLs actualizadas sin "/usuarios/"
     const [resServicios, resCategorias] = await Promise.all([
       axios.get('/api/servicios/'),
       axios.get('/api/categorias/servicios/')
     ])
     servicios.value = resServicios.data
     categorias.value = resCategorias.data
-    console.log('Datos cargados:', { servicios: servicios.value, categorias: categorias.value })
   } catch (err) {
     console.error('Error:', err.response || err)
     Swal.fire({
@@ -292,7 +290,6 @@ const cambiarEstado = async (servicio) => {
 
   if (result.isConfirmed) {
     try {
-      // ✅ CORRECCIÓN: URL actualizada sin "/usuarios/"
       await axios.post(`/api/servicios/${servicio.id}/cambiar-estado/`)
       servicio.activo = !servicio.activo
       Swal.fire({
@@ -343,7 +340,10 @@ watch([filtroBusqueda, filtroCategoria, filtroEstado], () => { pagina.value = 1 
 .input-with-icon { position: relative; }
 .input-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); }
 .filter-input { width: 100%; padding: 12px 14px 12px 42px; border-radius: 10px; background: var(--bg-primary); border: 2px solid var(--border-color); color: var(--text-primary); transition: 0.3s; box-sizing: border-box; }
-select.filter-input { padding-left: 14px; background-color: #1e293b; }
+
+/* FIX: selects usan variables CSS en vez de color hardcodeado */
+.filter-select { padding-left: 14px; background-color: var(--bg-primary); color: var(--text-primary); }
+
 .filter-input:focus { border-color: #0ea5e9; box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.1); outline: none; }
 .clear-filters-btn { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 12px; border-radius: 10px; cursor: pointer; width: 100%; font-weight: 600; display: flex; justify-content: center; gap: 6px; align-items: center; transition: 0.3s; }
 .clear-filters-btn:hover { background: var(--hover-bg); color: #ef4444; border-color: #ef4444; }
@@ -356,7 +356,8 @@ select.filter-input { padding-left: 14px; background-color: #1e293b; }
 .text-crossed { text-decoration: line-through; color: var(--text-tertiary); }
 .price-cell { color: #10b981; font-weight: 800; font-size: 1rem; }
 .duration-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(14, 165, 233, 0.1); color: #0ea5e9; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; }
-.category-badge { background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 4px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; }
+.commission-badge { color: #6f42c1; background: rgba(111, 66, 193, 0.1); }
+.category-badge { background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 4px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; color: var(--text-primary); }
 .status-badge { padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; font-weight: 800; }
 .status-active { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid #10b981; }
 .status-inactive { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444; }

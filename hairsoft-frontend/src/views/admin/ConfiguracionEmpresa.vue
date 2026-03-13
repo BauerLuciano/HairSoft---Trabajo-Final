@@ -89,7 +89,7 @@
             
             <div class="process-group">
               <div class="filter-group">
-                <label style="color: #0ea5e9;">Automatización: Cancelaciones y Reembolsos</label>
+                <label class="label-info">Automatización: Cancelaciones y Reembolsos</label>
                 <div style="display: flex; align-items: center; gap: 15px;">
                   <input v-model.number="config.margen_horas_cancelacion" type="number" class="filter-input input-short" min="1" />
                   <span class="badge-estado estado-info">Horas antes del turno</span>
@@ -97,12 +97,12 @@
               </div>
 
               <div class="filter-group mt-3">
-                <label style="color: #0ea5e9;">Descuento por Reoferta (Lista de espera)</label>
+                <label class="label-info">Descuento por Reoferta (Lista de espera)</label>
                 <div style="display: flex; align-items: center; gap: 15px;">
                   <input v-model.number="config.porcentaje_descuento_reoferta" type="number" class="filter-input input-short" min="0" max="100" />
-                  <span class="badge-estado estado-info" style="font-size: 1.2rem;">%</span>
+                  <span class="badge-estado estado-info badge-large">%</span>
                 </div>
-                <small style="color: var(--text-secondary); margin-top: 8px;">
+                <small class="hint-text">
                   * Descuento ofrecido a los clientes en lista de espera cuando se libera un turno.
                 </small>
               </div>
@@ -122,21 +122,21 @@
 
             <div class="process-group">
               <div class="filter-group">
-                <label style="color: #f97316;">Automatización: Reactivación de Clientes</label>
+                <label class="label-alert">Automatización: Reactivación de Clientes</label>
                 <div style="display: flex; align-items: center; gap: 15px;">
                   <input v-model.number="config.dias_inactividad_clientes" type="number" class="filter-input input-short" min="1" />
                   <span class="badge-estado estado-alert">Días sin asistir</span>
                 </div>
-                <small style="color: var(--text-secondary); margin-top: 8px;">
+                <small class="hint-text">
                   * Al superar estos días, se envía un WhatsApp automático con promo.
                 </small>
               </div>
 
               <div class="filter-group mt-3">
-                <label style="color: #f97316;">Descuento por Reactivación</label>
+                <label class="label-alert">Descuento por Reactivación</label>
                 <div style="display: flex; align-items: center; gap: 15px;">
                   <input v-model.number="config.porcentaje_descuento_promo" type="number" class="filter-input input-short" min="0" max="100" />
-                  <span class="badge-estado estado-alert" style="font-size: 1.2rem;">%</span>
+                  <span class="badge-estado estado-alert badge-large">%</span>
                 </div>
               </div>
             </div>
@@ -145,12 +145,12 @@
 
             <div class="process-group">
               <div class="filter-group">
-                <label style="color: #10b981;">Logística: Tarifa de Moto Mandado</label>
+                <label class="label-success">Logística: Tarifa de Moto Mandado</label>
                 <div style="display: flex; align-items: center; gap: 15px;">
-                  <span style="font-weight: bold; color: var(--text-secondary); font-size: 1.2rem;">$</span>
+                  <span class="currency-symbol">$</span>
                   <input v-model.number="config.costo_envio_moto" type="number" class="filter-input input-short" min="0" step="100" />
                 </div>
-                <small style="color: var(--text-secondary); margin-top: 8px;">
+                <small class="hint-text">
                   * Este es el precio fijo que pagará el cliente si elige envío a domicilio.
                 </small>
               </div>
@@ -180,7 +180,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from '../../utils/axiosConfig'
-import { Building2, Clock, Save, Loader2, Info, Store } from 'lucide-vue-next' // Agregué el ícono Store
+import { Building2, Clock, Save, Loader2, Info, Store } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 import GestionSillas from '@/components/GestionSillas.vue'; 
 import GestionCajas from '@/components/GestionCajas.vue';
@@ -336,7 +336,7 @@ onMounted(obtenerConfig)
 .logo-preview-container { width: 120px; height: 120px; border: 2px dashed var(--border-color); border-radius: 18px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--bg-primary); }
 .logo-img-preview { width: 100%; height: 100%; object-fit: cover; }
 .placeholder-icon { opacity: 0.3; color: var(--text-secondary); }
-.upload-btn { background: var(--bg-tertiary); color: white; padding: 10px 20px; border-radius: 10px; border: 1px solid var(--border-color); cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 8px; transition: 0.3s; font-size: 0.9rem; }
+.upload-btn { background: var(--bg-tertiary); color: var(--text-primary); padding: 10px 20px; border-radius: 10px; border: 1px solid var(--border-color); cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 8px; transition: 0.3s; font-size: 0.9rem; }
 .upload-btn:hover { background: var(--hover-bg); transform: translateY(-2px); border-color: #0ea5e9; }
 .upload-hint { font-size: 0.8rem; color: var(--text-tertiary); margin-top: 8px; font-style: italic; }
 .filters-container { margin-bottom: 30px; background: var(--hover-bg); padding: 30px; border-radius: 16px; border: 1px solid var(--border-color); }
@@ -347,9 +347,24 @@ onMounted(obtenerConfig)
 .filter-input { padding: 14px; border: 2px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); color: var(--text-primary); font-size: 1rem; transition: all 0.3s; width: 100%; }
 .input-short { width: 120px !important; text-align: center; font-weight: bold; }
 .filter-input:focus { outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 4px var(--accent-light); }
+
+/* Etiquetas de colores — ahora usan clases en vez de style inline */
+.label-info  { color: #0ea5e9 !important; }
+.label-alert { color: #f97316 !important; }
+.label-success { color: #10b981 !important; }
+
+/* Símbolo $ */
+.currency-symbol { font-weight: bold; color: var(--text-secondary); font-size: 1.2rem; }
+
+/* Hints */
+.hint-text { color: var(--text-secondary); margin-top: 8px; font-size: 0.85rem; }
+
+/* Sección de título — FIX PRINCIPAL: reemplaza color: #fff hardcodeado */
 .usuarios-count { display: flex; justify-content: space-between; align-items: center; margin: 40px 0 20px; padding: 15px 25px; background: var(--bg-primary); border-radius: 12px; border-left: 5px solid var(--accent-color); }
-.usuarios-count p { color: #fff; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 10px; font-size: 1.1rem; }
+.usuarios-count p { color: var(--text-primary); font-weight: 700; margin: 0; display: flex; align-items: center; gap: 10px; font-size: 1.1rem; }
+
 .badge-estado { padding: 8px 16px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; }
+.badge-large { font-size: 1.2rem !important; }
 .estado-info { background: rgba(14, 165, 233, 0.1); color: #0ea5e9; border: 2px solid #0ea5e9; }
 .estado-alert { background: rgba(249, 115, 22, 0.1); color: #f97316; border: 2px solid #f97316; }
 .divider { border: 0; height: 1px; background: var(--border-color); margin: 15px 0; opacity: 0.3; }

@@ -99,9 +99,6 @@
               <span v-else><i class="ri-loader-4-line animate-spin" style="margin-right: 8px;"></i> Procesando...</span>
             </button>
 
-            <div class="security-badge">
-              <i class="ri-lock-2-line"></i> Pago 100% seguro
-            </div>
           </div>
         </div>
 

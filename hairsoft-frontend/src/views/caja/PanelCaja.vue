@@ -169,7 +169,7 @@
                 </div>
 
                 <div v-if="['EFECTIVO', 'AMBOS'].includes(formApertura.tipoFondo)" class="filter-group" style="margin-top: 15px;">
-                  <label>Fondo de Caja (Efectivo Inicial)</label>
+                  <label>Fondo de Caja (Monto Inicial)</label>
                   <div class="input-money-wrapper">
                     <span class="currency-symbol">$</span>
                     <input type="number" v-model="formApertura.saldo_inicial_efectivo" step="0.01" min="0" required class="filter-input input-money">
