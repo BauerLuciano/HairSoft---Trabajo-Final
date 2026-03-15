@@ -12,10 +12,6 @@
             <Plus :size="18" />
             Registrar Producto
           </button>
-          <button @click="mostrarRegistrarMarca = true" class="register-button">
-            <Tag :size="18" />
-            Registrar Marca
-          </button>
         </div>
       </div>
 

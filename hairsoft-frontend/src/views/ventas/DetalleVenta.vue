@@ -7,15 +7,6 @@
           <p>Información completa y auditoría de la venta #{{ ventaId }}</p>
         </div>
         <div class="acciones-header">
-          <button 
-            @click="generarComprobantePDF" 
-            class="register-button"
-            :disabled="generandoPDF"
-          >
-            <FileText :size="18" v-if="!generandoPDF" />
-            <Loader :size="18" v-else />
-            {{ generandoPDF ? 'Generando...' : 'Comprobante PDF' }}
-          </button>
           <button @click="$router.push('/ventas')" class="btn-volver">
             <ChevronLeft :size="18" />
             Volver a Ventas

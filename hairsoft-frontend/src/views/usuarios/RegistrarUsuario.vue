@@ -1,6 +1,5 @@
 <template>
   <div class="modern-form">
-    <!-- 🎯 NOTA DE CONTEXTO CUANDO VENIMOS DE TURNOS -->
     <div v-if="vieneDeTurnos" class="turno-notice">
       <div class="notice-icon">📋</div>
       <div class="notice-content">
@@ -16,7 +15,11 @@
 
     <form @submit.prevent="crearUsuario" class="form-content" autocomplete="off">
       
-      <!-- Primera fila -->
+      <div style="opacity: 0; position: absolute; z-index: -1; height: 0; overflow: hidden;">
+        <input type="email" name="fake_email_catcher" id="fake_email_catcher" autocomplete="username">
+        <input type="password" name="fake_password_catcher" id="fake_password_catcher" autocomplete="current-password">
+      </div>
+
       <div class="form-row">
         <div class="input-field">
           <div class="field-header">
@@ -59,7 +62,6 @@
         </div>
       </div>
 
-      <!-- Segunda fila -->
       <div class="form-row">
         <div class="input-field">
           <div class="field-header">
@@ -105,7 +107,6 @@
         </div>
       </div>
 
-      <!-- Correo -->
       <div class="input-field full-width">
         <div class="field-header">
           <label>Correo Electrónico</label>
@@ -116,6 +117,7 @@
             v-model="form.correo" 
             type="email" 
             placeholder="ejemplo@dominio.com" 
+            autocomplete="off"
             @blur="validarCorreo"
             :class="{ 'error': errores.correo }"
           />
@@ -126,7 +128,6 @@
         </div>
       </div>
 
-      <!-- Contraseñas -->
       <div class="form-row">
         <div class="input-field">
           <div class="field-header">
@@ -138,6 +139,7 @@
               v-model="form.contrasena" 
               :type="mostrarContrasena ? 'text' : 'password'" 
               placeholder="Mínimo 6 caracteres"
+              autocomplete="new-password"
               @blur="validarContrasena"
               :class="{ 'error': errores.contrasena }"
             />
@@ -166,6 +168,7 @@
               v-model="form.confirmarContrasena" 
               :type="mostrarConfirmarContrasena ? 'text' : 'password'" 
               placeholder="Repite la contraseña" 
+              autocomplete="new-password"
               @blur="validarConfirmarContrasena"
               :class="{ 'error': errores.confirmarContrasena }"
             />
@@ -185,7 +188,6 @@
         </div>
       </div>
 
-      <!-- 🔥 CAMBIO IMPORTANTE: Si venimos de turnos, el rol ES FIJO = CLIENTE -->
       <div v-if="!vieneDeTurnos" class="input-field full-width">
         <div class="field-header">
           <label>Rol del Usuario</label>
@@ -214,7 +216,6 @@
         </div>
       </div>
 
-      <!-- Botón -->
       <button type="submit" class="submit-button" :disabled="cargando">
         <span class="button-content">
           <span class="button-text">{{ 
@@ -680,6 +681,8 @@ const crearUsuario = async () => {
           nuevo_cliente_id: nuevoUsuarioId,
           nuevo_cliente_nombre: nombreCompleto
         }
+      }).then(() => {
+        window.location.reload()
       })
       
     } else {
@@ -688,32 +691,16 @@ const crearUsuario = async () => {
         icon: 'success',
         title: 'Usuario creado',
         text: 'El usuario se ha registrado exitosamente',
+        showConfirmButton: false,  // Quitado el botón de confirmación
+        timer: 1500,               // Redirige solo en 1.5 seg
+        timerProgressBar: true,
         background: '#1e293b',
         color: '#f1f5f9'
       }).then(() => {
-        // Limpiar formulario
-        form.value = {
-          nombre: '',
-          apellido: '',
-          dni: '',
-          telefono: '',
-          correo: '',
-          contrasena: '',
-          confirmarContrasena: '',
-          rol_id: ''
-        }
-        
-        // Limpiar errores
-        Object.keys(errores.value).forEach(key => {
-          errores.value[key] = ''
+        // Redirige al listado y fuerza recarga para esquivar la caché y actualizar datos.
+        router.push('/usuarios').then(() => {
+          window.location.reload()
         })
-        
-        // Resetear estados de contraseñas
-        mostrarContrasena.value = false
-        mostrarConfirmarContrasena.value = false
-        
-        // Recargar usuarios existentes
-        cargarUsuariosExistentes()
       })
     }
 
