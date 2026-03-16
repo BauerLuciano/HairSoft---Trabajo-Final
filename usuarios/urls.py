@@ -164,7 +164,7 @@ urlpatterns = [
     path('api/turnos/registrar-interes/', func_views.registrar_interes_turno, name='registrar_interes_turno'),
     path('api/turnos/<int:turno_id>/interesados/', contar_interesados, name='contar_interesados'),
     path('api/turnos/ocupados/', turnos_ocupados, name='turnos_ocupados'),
-
+    path('api/turnos/<int:turno_id>/comprobante-pdf/', func_views.descargar_comprobante_turno, name='descargar_comprobante_turno'),
     # ================================
     # Categorías Productos (Funciones)
     # ================================
@@ -302,7 +302,8 @@ urlpatterns = [
     
     # 🔥 LA RUTA CORREGIDA IMPORTADA DESDE API_VIEWS
     path('api/estado-caja/', verificar_estado_caja, name='estado_caja'),
-]
 
+    path('api/web/pedidos/<int:pedido_id>/comprobante-pdf/', func_views.descargar_comprobante_pedido_web, name='comprobante_pedido_web'),
+    ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

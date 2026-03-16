@@ -91,31 +91,79 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router'; // ¡Añadí useRoute!
 import api from '@/services/api';
 import Swal from 'sweetalert2';
 
 const router = useRouter();
+const route = useRoute(); // Lo necesitamos para leer la URL
 const pedidos = ref([]);
 const cargando = ref(true);
 const paginaActual = ref(1);
 const itemsPorPagina = 10;
 
+// 🔥 NUEVA FUNCIÓN: Descargar el comprobante web
+const descargarComprobantePedidoWeb = async (pedidoId) => {
+  try {
+    Swal.fire({
+      title: 'Generando comprobante...',
+      text: 'Por favor espera un momento.',
+      allowOutsideClick: false,
+      didOpen: () => { Swal.showLoading() }
+    });
+
+    // Pega al nuevo endpoint que creamos
+    const response = await api.get(`/web/pedidos/${pedidoId}/comprobante-pdf/`, {
+      responseType: 'blob' 
+    });
+    
+    const fileURL = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    const fileLink = document.createElement('a');
+    fileLink.href = fileURL;
+    fileLink.setAttribute('download', `Comprobante_Compra_${pedidoId}.pdf`);
+    document.body.appendChild(fileLink);
+    fileLink.click();
+    
+    fileLink.remove();
+    window.URL.revokeObjectURL(fileURL);
+    Swal.close();
+  } catch (error) {
+    console.error("Error PDF:", error);
+    Swal.fire('Error', 'No se pudo descargar el PDF.', 'error');
+  }
+};
+
 onMounted(async () => {
   try {
-    // ✅ CORRECCIÓN: La URL debe coincidir con el router de Django (/api/web/pedidos/)
     const res = await api.get('/web/pedidos/'); 
-    
-    console.log("📦 Pedidos recibidos:", res.data); // Para que veas en la consola si llegan
     pedidos.value = Array.isArray(res.data) ? res.data : (res.data.results || []);
-    
+
+    // 🔥 MAGIA AQUÍ: Detectamos si viene de MercadoPago
+    if (route.query.pago_exitoso === 'true' && route.query.pedido_id) {
+      const pId = route.query.pedido_id;
+      
+      const result = await Swal.fire({
+        title: '¡Compra Exitosa! 🎉',
+        text: 'Tu pedido ha sido registrado y pagado correctamente.',
+        icon: 'success',
+        showCancelButton: true,
+        confirmButtonColor: '#2ecc71',
+        cancelButtonColor: '#95a5a6',
+        confirmButtonText: '📄 Descargar Comprobante',
+        cancelButtonText: 'Cerrar'
+      });
+
+      if (result.isConfirmed) {
+        await descargarComprobantePedidoWeb(pId);
+      }
+      
+      // Limpiar URL para que no salte de nuevo al recargar
+      router.replace({ query: {} });
+    }
+
   } catch (e) {
     console.error("❌ Error cargando pedidos:", e);
-    Swal.fire({
-      title: 'Error',
-      text: 'No se pudieron cargar tus pedidos. Intentá de nuevo más tarde.',
-      icon: 'error'
-    });
+    Swal.fire({ title: 'Error', text: 'No se pudieron cargar tus pedidos.', icon: 'error' });
   } finally {
     cargando.value = false;
   }
@@ -150,7 +198,7 @@ const formatearDinero = (monto) => {
 
 const getClaseEstado = (e) => {
   const map = {
-    'PENDIENTE_PAGO': 'bg-yellow', // Ajustado para que coincida con tu backend
+    'PENDIENTE_PAGO': 'bg-yellow',
     'PAGADO': 'bg-blue',
     'CONFIRMADO': 'bg-purple', 
     'ENTREGADO': 'bg-green',
@@ -159,19 +207,17 @@ const getClaseEstado = (e) => {
   return map[e] || 'bg-gray';
 };
 
-const verDetalle = (p) => {
+const verDetalle = async (p) => {
   const itemsHtml = p.detalles.map(d => `
     <tr>
-      <td style="text-align: left;">
-        <div style="font-weight: 600;">${d.nombre_producto || 'Producto'}</div>
-      </td>
+      <td style="text-align: left;"><div style="font-weight: 600;">${d.nombre_producto || 'Producto'}</div></td>
       <td style="text-align: center;">${d.cantidad}</td>
       <td style="text-align: right;">${formatearDinero(d.precio_unitario)}</td>
       <td style="text-align: right; font-weight: 600;">${formatearDinero(d.cantidad * d.precio_unitario)}</td>
     </tr>
   `).join('');
 
-  Swal.fire({
+  const result = await Swal.fire({
     title: `<div class="swal-header-title">Pedido #${p.id}</div>`,
     html: `
       <div class="detalle-container">
@@ -194,21 +240,24 @@ const verDetalle = (p) => {
         </div>
         <div class="detalle-totales">
           ${Number(p.costo_envio) > 0 ? `
-          <div class="row">
-            <span>Envío:</span>
-            <span>${formatearDinero(p.costo_envio)}</span>
-          </div>` : ''}
-          <div class="row total-final">
-            <span>TOTAL:</span>
-            <span>${formatearDinero(p.total)}</span>
-          </div>
+          <div class="row"><span>Envío:</span><span>${formatearDinero(p.costo_envio)}</span></div>` : ''}
+          <div class="row total-final"><span>TOTAL:</span><span>${formatearDinero(p.total)}</span></div>
         </div>
       </div>
     `,
     width: '600px',
     showCloseButton: true,
-    showConfirmButton: false
+    showCancelButton: true,
+    showConfirmButton: true,
+    confirmButtonText: '📄 Descargar Comprobante',
+    cancelButtonText: 'Cerrar',
+    confirmButtonColor: '#3085d6',
+    cancelButtonColor: '#64748b'
   });
+
+  if (result.isConfirmed) {
+    await descargarComprobantePedidoWeb(p.id);
+  }
 };
 </script>
 

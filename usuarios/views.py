@@ -59,7 +59,7 @@ from .serializers import (
 )
 from .forms import UsuarioForm # Ajustado si tenías formularios específicos
 from .mercadopago_service import MercadoPagoService
-from .pdf_utils import generar_comprobante_venta, generar_reporte_ventas
+from .pdf_utils import generar_comprobante_venta, generar_reporte_ventas, generar_comprobante_turno, generar_comprobante_pedido_web
 
 # Configuración del logger
 logger = logging.getLogger(__name__)
@@ -6356,3 +6356,33 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
         
         serializer.save(sesion_caja=sesion_abierta)
 
+#reportes de turnos y pedidos web
+@api_view(['GET'])
+@permission_classes([AllowAny]) # Lo dejamos AllowAny porque un cliente en la web podría no estar logueado (depende de tu flujo)
+def descargar_comprobante_turno(request, turno_id):
+    try:
+        turno = get_object_or_404(Turno, id=turno_id)
+        
+        pdf_content = generar_comprobante_turno(turno)
+        
+        response = HttpResponse(pdf_content, content_type='application/pdf')
+        filename = f"Comprobante_Turno_{turno.id}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+    except Exception as e:
+        return HttpResponse(f"Error generando comprobante de turno: {str(e)}", status=500)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def descargar_comprobante_pedido_web(request, pedido_id):
+    try:
+        pedido = get_object_or_404(PedidoWeb, id=pedido_id)
+        pdf_content = generar_comprobante_pedido_web(pedido)
+        
+        response = HttpResponse(pdf_content, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="Comprobante_Compra_{pedido.id}.pdf"'
+        return response
+    except Exception as e:
+        return HttpResponse(f"Error generando comprobante: {str(e)}", status=500)

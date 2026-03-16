@@ -22,9 +22,6 @@
         class="item-card"
         :class="{'inactiva': !silla.activa}"
       >
-        <div class="orden-badge" title="Prioridad de asignación">
-          #{{ silla.orden }}
-        </div>
 
         <div class="card-header">
           <div class="card-title">

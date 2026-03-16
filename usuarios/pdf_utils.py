@@ -470,3 +470,184 @@ def generar_reporte_ventas(ventas, filtros, usuario_impresor, config):
 
     buffer.seek(0)
     return buffer.getvalue()
+
+def generar_comprobante_turno(turno):
+    config = ConfiguracionSistema.get_solo()
+    buffer = BytesIO()
+    estilos = get_estilos()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=50)
+    elements = []
+
+    # --- HEADER ---
+    logo_img = obtener_logo_reporte(config)
+    col_izq = [
+        Paragraph(config.razon_social, estilos['Empresa']),
+        Spacer(1, 4),
+        Paragraph(f"<b>CUIT:</b> {config.cuil_cuit}", estilos['DatosEmpresa']),
+        Paragraph(f"<b>DIRECCIÓN:</b> {config.direccion}", estilos['DatosEmpresa']),
+        Paragraph(f"<b>TELÉFONO:</b> {config.telefono}", estilos['DatosEmpresa']),
+        Paragraph(f"<b>EMAIL:</b> {config.email}", estilos['DatosEmpresa']),
+    ]
+
+    if logo_img:
+        bloque_izquierda = Table([[logo_img, col_izq]], colWidths=[2.5*cm, 9.5*cm])
+        bloque_izquierda.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 0)]))
+    else:
+        bloque_izquierda = col_izq
+
+    col_der = [
+        Paragraph("COMPROBANTE DE TURNO", estilos['TituloDer']),
+        Spacer(1, 6),
+        Paragraph("NRO. TURNO", estilos['DatoDerL']),
+        Paragraph(f"#{turno.id:06d}", estilos['DatoDerV']),
+        Spacer(1, 3),
+        Paragraph("FECHA DEL TURNO", estilos['DatoDerL']),
+        Paragraph(f"{turno.fecha.strftime('%d/%m/%Y')} {turno.hora.strftime('%H:%M')}", estilos['DatoDerV']),
+        Spacer(1, 3),
+        Paragraph("CANAL", estilos['DatoDerL']),
+        Paragraph(turno.get_canal_display(), estilos['DatoDerV']),
+    ]
+
+    tabla_header = Table([[bloque_izquierda, col_der]], colWidths=[12*cm, 7*cm])
+    tabla_header.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('LINEBELOW', (0,0), (-1,-1), 2, AZUL_HEADER),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 15),
+    ]))
+    elements.append(tabla_header)
+    elements.append(Spacer(1, 1*cm))
+
+    # --- DATOS DEL CLIENTE Y PROFESIONAL ---
+    cliente_nombre = f"{turno.cliente.nombre} {turno.cliente.apellido}" if turno.cliente else "Consumidor Final"
+    peluquero_nombre = f"{turno.peluquero.nombre} {turno.peluquero.apellido}" if turno.peluquero else "-"
+    
+    lbl_style = ParagraphStyle('L', fontSize=8, textColor=GRIS_CLARO, textTransform='uppercase')
+    val_style = ParagraphStyle('V', fontName='Helvetica-Bold', fontSize=10, textColor=AZUL_HEADER)
+
+    t_info = Table([[
+        [Paragraph("CLIENTE", lbl_style), Paragraph(cliente_nombre, val_style)],
+        [Paragraph("PELUQUERO", lbl_style), Paragraph(peluquero_nombre, val_style)],
+        [Paragraph("ESTADO", lbl_style), Paragraph(turno.get_estado_display(), val_style)],
+    ]], colWidths=[7*cm, 7*cm, 5*cm])
+    
+    t_info.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), FONDO_ZEBRA),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('LEFTPADDING', (0,0), (-1,-1), 10),
+    ]))
+    elements.append(t_info)
+    elements.append(Spacer(1, 1*cm))
+
+    # --- SERVICIOS ---
+    rows = [[
+        Paragraph("SERVICIO", estilos['TH']),
+        Paragraph("DURACIÓN", estilos['TH']),
+        Paragraph("PRECIO", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)),
+    ]]
+    
+    for s in turno.servicios.all():
+        rows.append([
+            Paragraph(s.nombre, estilos['TD']),
+            Paragraph(f"{s.duracion} min", estilos['TD']),
+            Paragraph(f"${s.precio:,.2f}", estilos['TD_Right']),
+        ])
+
+    t_items = Table(rows, colWidths=[11*cm, 4*cm, 4*cm])
+    t_items.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), AZUL_HEADER),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('GRID', (0,1), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+    ]))
+    elements.append(t_items)
+    
+    # --- TOTALES ---
+    total_val = float(turno.monto_total) if turno.monto_total else sum(s.precio for s in turno.servicios.all())
+    t_total = Table([
+        [Paragraph("TOTAL DEL TURNO", estilos['TD_Right']), Paragraph(f"${total_val:,.2f}", estilos['DatoDerV'])]
+    ], colWidths=[14*cm, 5*cm])
+    elements.append(t_total)
+
+    doc.build(elements, onFirstPage=footer, onLaterPages=footer)
+    return buffer.getvalue()
+
+def generar_comprobante_pedido_web(pedido):
+    config = ConfiguracionSistema.get_solo()
+    buffer = BytesIO()
+    estilos = get_estilos()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=50)
+    elements = []
+
+    # --- HEADER ---
+    logo_img = obtener_logo_reporte(config)
+    col_izq = [
+        Paragraph(config.razon_social, estilos['Empresa']),
+        Spacer(1, 4),
+        Paragraph(f"<b>CUIT:</b> {config.cuil_cuit}", estilos['DatosEmpresa']),
+        Paragraph(f"<b>TELÉFONO:</b> {config.telefono}", estilos['DatosEmpresa']),
+    ]
+    bloque_izquierda = Table([[logo_img, col_izq]], colWidths=[2.5*cm, 9.5*cm]) if logo_img else col_izq
+
+    fecha_str = pedido.fecha_creacion.strftime("%d/%m/%Y %H:%M") if pedido.fecha_creacion else datetime.now().strftime("%d/%m/%Y")
+
+    col_der = [
+        Paragraph("COMPROBANTE DE COMPRA", estilos['TituloDer']),
+        Spacer(1, 6),
+        Paragraph("NRO. PEDIDO WEB", estilos['DatoDerL']),
+        Paragraph(f"#{pedido.id:06d}", estilos['DatoDerV']),
+        Spacer(1, 3),
+        Paragraph("FECHA", estilos['DatoDerL']),
+        Paragraph(fecha_str, estilos['DatoDerV']),
+    ]
+
+    tabla_header = Table([[bloque_izquierda, col_der]], colWidths=[12*cm, 7*cm])
+    tabla_header.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LINEBELOW', (0,0), (-1,-1), 2, AZUL_HEADER), ('BOTTOMPADDING', (0,0), (-1,-1), 15)]))
+    elements.append(tabla_header)
+    elements.append(Spacer(1, 1*cm))
+
+    # --- DATOS DEL CLIENTE ---
+    cliente_nombre = f"{pedido.cliente.nombre} {pedido.cliente.apellido}" if hasattr(pedido, 'cliente') and pedido.cliente else "Consumidor Final"
+    tipo_entrega = getattr(pedido, 'tipo_entrega', 'RETIRO')
+    
+    lbl_style = ParagraphStyle('L', fontSize=8, textColor=GRIS_CLARO, textTransform='uppercase')
+    val_style = ParagraphStyle('V', fontName='Helvetica-Bold', fontSize=10, textColor=AZUL_HEADER)
+
+    t_info = Table([[
+        [Paragraph("CLIENTE", lbl_style), Paragraph(cliente_nombre, val_style)],
+        [Paragraph("ENTREGA", lbl_style), Paragraph(tipo_entrega, val_style)],
+        [Paragraph("ESTADO", lbl_style), Paragraph(pedido.estado, val_style)],
+    ]], colWidths=[7*cm, 7*cm, 5*cm])
+    t_info.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), FONDO_ZEBRA), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('LEFTPADDING', (0,0), (-1,-1), 10)]))
+    elements.append(t_info)
+    elements.append(Spacer(1, 1*cm))
+
+    # --- PRODUCTOS ---
+    rows = [[
+        Paragraph("PRODUCTO", estilos['TH']),
+        Paragraph("CANT.", estilos['TH']),
+        Paragraph("PRECIO", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)),
+        Paragraph("SUBTOTAL", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)),
+    ]]
+    
+    # Recorremos los detalles (asumiendo que es pedido.detalles.all())
+    for d in pedido.detalles.all():
+        nombre_prod = getattr(d, 'nombre_producto', '') or (d.producto.nombre if hasattr(d, 'producto') and d.producto else 'Producto')
+        rows.append([
+            Paragraph(nombre_prod, estilos['TD']),
+            Paragraph(str(d.cantidad), estilos['TD']),
+            Paragraph(f"${d.precio_unitario:,.2f}", estilos['TD_Right']),
+            Paragraph(f"${(d.cantidad * d.precio_unitario):,.2f}", estilos['TD_Right']),
+        ])
+
+    t_items = Table(rows, colWidths=[9*cm, 2*cm, 4*cm, 4*cm])
+    t_items.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), AZUL_HEADER), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('GRID', (0,1), (-1,-1), 0.5, colors.HexColor('#e2e8f0'))]))
+    elements.append(t_items)
+    
+    # --- TOTALES ---
+    costo_envio = float(getattr(pedido, 'costo_envio', 0))
+    if costo_envio > 0:
+        elements.append(Table([[Paragraph("COSTO DE ENVÍO", estilos['TD_Right']), Paragraph(f"${costo_envio:,.2f}", estilos['DatoDerV'])]], colWidths=[14*cm, 5*cm]))
+    
+    elements.append(Table([[Paragraph("TOTAL", estilos['TD_Right']), Paragraph(f"${pedido.total:,.2f}", estilos['DatoDerV'])]], colWidths=[14*cm, 5*cm]))
+
+    doc.build(elements, onFirstPage=footer, onLaterPages=footer)
+    return buffer.getvalue()

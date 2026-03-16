@@ -1089,17 +1089,25 @@ const crearPagoMercadoPago = async () => {
         })
       }
       
-      const mpUrl = res.data?.mp_data?.init_point
+    const mpUrl = res.data?.mp_data?.init_point
       if (mpUrl) {
         window.location.href = mpUrl
       } else {
-        Swal.fire({
-          title: 'Turno Creado',
-          text: 'Tu turno fue reservado exitosamente.',
-          icon: 'success'
-        }).then(() => {
-          router.push('/cliente/historial')
-        })
+        const turnoCreadoId = res.data.turno_id || res.data.id;
+        
+        if (turnoCreadoId) {
+          // Engañamos a nuestra propia app para que tire la alerta de éxito bonita con el PDF
+          router.push(`/cliente/historial?pago_exitoso=true&turno_id=${turnoCreadoId}`);
+        } else {
+          // Fallback por si el backend no devolvió ID
+          Swal.fire({
+            title: 'Turno Creado',
+            text: 'Tu turno fue reservado exitosamente.',
+            icon: 'success'
+          }).then(() => {
+            router.push('/cliente/historial')
+          })
+        }
       }
     } else {
       throw new Error(res.data.message || 'Error al crear el turno')

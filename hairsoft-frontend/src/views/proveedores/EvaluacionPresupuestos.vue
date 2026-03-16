@@ -216,9 +216,6 @@
             <span :class="['badge-estado', getEstadoClass(licitacionSeleccionada.estado)]">
               {{ licitacionSeleccionada.estado }}
             </span>
-            <span v-if="tieneRecomendacion(licitacionSeleccionada)" class="recomendacion-badge-modal">
-              ⭐ PRIORIDAD ALTA
-            </span>
           </div>
         </div>
 

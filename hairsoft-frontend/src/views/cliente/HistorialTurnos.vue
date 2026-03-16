@@ -114,7 +114,16 @@
             </div>
             
             <div class="turno-acciones">
-              <!-- ✅ SIEMPRE SE MUESTRA EL BOTÓN DE CANCELAR PARA TURNOS RESERVADO -->
+              <button 
+                v-if="turno.estado !== 'CANCELADO'"
+                @click="descargarComprobantePDF(turno.id, 'turnos')" 
+                class="btn-detalles"
+                title="Descargar Comprobante PDF"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                PDF
+              </button>
+
               <button 
                 v-if="turno.estado === 'RESERVADO'" 
                 @click="cancelarTurno(turno)" 
@@ -130,7 +139,7 @@
                 class="btn-detalles"
               >
                 <Eye :size="16" />
-                Ver detalles
+                Detalles
               </button>
             </div>
           </div>
@@ -249,7 +258,6 @@ const formatFecha = (f) => {
 
 const formatPrecio = (p) => parseFloat(p).toLocaleString('es-AR', { minimumFractionDigits: 2 })
 
-// 🔥 ESTADOS ACTUALIZADOS (Chau Confirmado)
 const estadoTexto = (estado) => {
   const map = { 'RESERVADO': 'Reservado', 'CANCELADO': 'Cancelado', 'COMPLETADO': 'Completado' }
   return map[estado] || estado
@@ -260,11 +268,41 @@ const claseEstado = (estado) => {
   return map[estado] || 'default'
 }
 
-// 💳 MEDIOS DE PAGO PARA EL DETALLE
 const getMedioPagoTexto = (medio, entidad = null) => {
   if (medio === 'TRANSFERENCIA' && entidad) return entidad
   const map = { 'MERCADO_PAGO': 'Mercado Pago', 'EFECTIVO': 'Efectivo', 'TRANSFERENCIA': 'Transferencia' }
   return map[medio] || medio
+}
+
+// 🔥 NUEVA FUNCIÓN: Descargar Comprobante PDF (sirve para Turnos y Pedidos)
+const descargarComprobantePDF = async (id, tipo = 'turnos') => {
+  try {
+    Swal.fire({
+      title: 'Generando comprobante...',
+      text: 'Por favor espera un momento.',
+      allowOutsideClick: false,
+      didOpen: () => { Swal.showLoading() }
+    });
+
+    const response = await api.get(`/${tipo}/${id}/comprobante-pdf/`, {
+      responseType: 'blob' 
+    });
+    
+    const fileURL = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    const fileLink = document.createElement('a');
+    fileLink.href = fileURL;
+    fileLink.setAttribute('download', `Comprobante_${tipo}_${id}.pdf`);
+    document.body.appendChild(fileLink);
+    fileLink.click();
+    
+    fileLink.remove();
+    window.URL.revokeObjectURL(fileURL);
+    Swal.close();
+
+  } catch (error) {
+    console.error(error);
+    Swal.fire('Error', 'No se pudo descargar el PDF.', 'error');
+  }
 }
 
 const cancelarTurno = async (turno) => {
@@ -324,14 +362,11 @@ const cancelarTurno = async (turno) => {
   }
 }
 
-// 🔥 VERSIÓN UNIFICADA (ESTILO ADMIN) PARA EL CLIENTE
 const verDetalles = async (turno) => {
   try {
-    // 1. Buscamos los datos completos del turno a la API
     const response = await api.get(`/api/turnos/${turno.id}/`);
     const t = response.data;
 
-    // 2. Armamos la tablita de servicios
     let serviciosHTML = '';
     if (t.servicios && t.servicios.length > 0) {
       serviciosHTML = t.servicios.map(s => `
@@ -345,24 +380,24 @@ const verDetalles = async (turno) => {
       serviciosHTML = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #94a3b8;">Sin servicios detallados</td></tr>`;
     }
 
-    // 3. Cálculos de dinero (usando la lógica que corregimos hoy)
     const faltaPagar = t.tipo_pago === 'TOTAL' ? 0 : (parseFloat(t.monto_total) - parseFloat(t.monto_seña));
     const montoAbonado = t.tipo_pago === 'TOTAL' ? t.monto_total : t.monto_seña;
-
-    // 4. Identificamos los comprobantes
     const transactionId1 = t.codigo_transaccion || t.mp_payment_id || 'EFECTIVO';
 
-    Swal.fire({
+    const result = await Swal.fire({
       title: `<div style="display: flex; align-items: center; justify-content: center; gap: 10px; color: #0f172a;">
                 <span style="font-size: 1.6rem; font-weight: 800; letter-spacing: -0.5px;">Detalle de tu Turno</span>
               </div>`,
       width: '700px',
       background: '#ffffff',
-      showConfirmButton: false,
-      showCloseButton: true,
+      showConfirmButton: true, // Habilitamos el botón para descargar PDF
+      showCancelButton: true,
+      confirmButtonText: '📄 Descargar Comprobante',
+      cancelButtonText: 'Cerrar',
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#64748b',
       html: `
         <div style="font-family: 'Inter', sans-serif; text-align: left;">
-
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
             <span class="estado-badge ${claseEstado(t.estado)}" style="padding: 8px 16px; border-radius: 30px; font-weight: 700; font-size: 0.9rem;">
               ${estadoTexto(t.estado)}
@@ -414,7 +449,6 @@ const verDetalles = async (turno) => {
               <h4 style="margin:0; font-size: 0.9rem; font-weight: 600; color: #94a3b8;">Resumen Económico</h4>
               <span style="color: #4ade80; font-weight: 800; font-size: 1.2rem;">Total: $${formatPrecio(t.monto_total)}</span>
             </div>
-
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 15px;">
               <div>
                 <span style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase;">Has Abonado</span>
@@ -425,7 +459,6 @@ const verDetalles = async (turno) => {
                 <div style="font-size: 1.4rem; font-weight: 700; color: ${faltaPagar > 0 ? '#fbbf24' : '#ffffff'};">$${formatPrecio(faltaPagar)}</div>
               </div>
             </div>
-
             <div style="display: flex; flex-direction: column; gap: 10px;">
               <div>
                 <span style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; font-weight: 700;">${t.medio_pago_restante ? 'Primer Pago (Seña)' : 'Detalle de Pago'}</span>
@@ -434,7 +467,6 @@ const verDetalles = async (turno) => {
                   <span style="font-family: monospace; font-size: 0.85rem; color: #a5f3fc;">Ref: ${transactionId1}</span>
                 </div>
               </div>
-
               ${t.medio_pago_restante ? `
                 <div style="border-top: 1px dashed #334155; pt: 8px; margin-top: 5px;">
                   <span style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Segundo Pago (Saldo en Local)</span>
@@ -452,10 +484,15 @@ const verDetalles = async (turno) => {
               <strong>Nota del Peluquero:</strong> ${t.notas}
             </div>
           ` : ''}
-
         </div>
       `
     });
+
+    // Si el usuario hace clic en Descargar PDF:
+    if (result.isConfirmed) {
+      await descargarComprobantePDF(t.id, 'turnos');
+    }
+
   } catch (error) {
     console.error(error);
     Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo cargar el detalle del turno.', confirmButtonColor: '#0ea5e9' });
@@ -466,14 +503,27 @@ const mostrarAlertaFelicidades = async (turnoId) => {
   try {
     const res = await api.get(`/api/turnos/${turnoId}/`);
     const t = res.data;
-    Swal.fire({
+    
+    // Alerta de Felicidades Modificada para ofrecer PDF
+    const result = await Swal.fire({
       title: '¡Felicidades! 🎉',
       html: `<div style="text-align: left; background: #f0f9ff; padding: 1.2rem; border-radius: 12px; border: 1px solid #bae6fd;">
           <p style="font-size: 1.1rem; margin-bottom: 1rem;">Tu reserva ha sido confirmada con éxito.</p>
           <p>📅 <b>Día:</b> ${formatFecha(t.fecha)}</p><p>⏰ <b>Hora:</b> ${t.hora} hs</p><p>💇‍♂️ <b>Profesional:</b> ${t.peluquero_nombre}</p><p>💰 <b>Monto:</b> $${t.monto_total}</p>
         </div>`,
-      icon: 'success', confirmButtonColor: '#0ea5e9'
+      icon: 'success', 
+      showCancelButton: true,
+      confirmButtonColor: '#0ea5e9',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: '📄 Descargar Comprobante',
+      cancelButtonText: 'Cerrar'
     });
+
+    // Si el usuario hace clic en Descargar PDF:
+    if (result.isConfirmed) {
+      await descargarComprobantePDF(turnoId, 'turnos');
+    }
+
     router.replace({ query: {} });
   } catch (e) { console.error(e) }
 }

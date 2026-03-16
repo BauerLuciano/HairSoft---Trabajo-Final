@@ -271,6 +271,7 @@ def procesar_reactivacion_clientes_inactivos():
                     f"🎁 *{descuento_promo}% OFF* reservando acá:\n{link}\n"
                     f"🎫 Cupón: *{codigo}*"
                     f"\n⏰ Vence en 7 días\n"
+                    f"Los Ultimos Serán Los Primeros"
                 )
                 
                 # 🔥 ACÁ ESTÁ LA MAGIA: Usamos tu función que YA SABEMOS que anda
