@@ -100,9 +100,14 @@
                     </span>
                   </td>
                   <td class="text-center">
-                    <button class="action-button edit" title="Ver Movimientos" @click="verDetalleCajaCerrada(caja)" style="margin: 0 auto;">
-                      <i class="ri-eye-line"></i>
-                    </button>
+                    <div style="display: flex; gap: 5px; justify-content: center;">
+                      <button class="action-button edit" title="Ver Movimientos" @click="verDetalleCajaCerrada(caja)">
+                        <i class="ri-eye-line"></i>
+                      </button>
+                      <button v-if="!caja.esta_abierta" class="action-button edit" title="Descargar Reporte Z" @click="descargarPDFCaja(caja.id)" style="color: #ef4444; border-color: #ef4444;">
+                        <i class="ri-file-pdf-line"></i>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -350,18 +355,28 @@
               </div>
 
               <div class="filter-group" v-if="hayDiferencia">
-                <label style="color: #ef4444; font-size: 0.85rem; display: flex; align-items: center; gap: 5px;">
-                  <i class="ri-error-warning-line" style="font-size: 1.2rem;"></i> 
-                  DIFERENCIA DE {{ (diferenciaCierre > 0 ? '+' : '') + formatearMoneda(diferenciaCierre) }} ({{ tipoDiferencia }}). INGRESE JUSTIFICACIÓN:
+                <label style="color: #ef4444; font-size: 0.85rem; display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
+                  <i class="ri-error-warning-line" style="font-size: 1.4rem; margin-top: -2px;"></i> 
+                  <div style="flex: 1;">
+                    <strong style="display: block; font-size: 0.95rem; margin-bottom: 4px; text-transform: uppercase;">
+                      Diferencia: {{ (diferenciaCierre > 0 ? '+' : '') }}{{ formatearMoneda(diferenciaCierre) }} ({{ tipoDiferencia }})
+                    </strong>
+                    <span v-if="tipoDiferencia === 'REPOSICIÓN EXTERNA'" style="color: #d97706; font-size: 0.8rem; line-height: 1.3; display: block; font-weight: 600;">
+                      La caja quedó en negativo. Indicá en las observaciones de dónde salió el dinero para cubrir los gastos/anulaciones (Ej: "Aporte del dueño").
+                    </span>
+                    <span v-else style="color: #ef4444; font-size: 0.8rem; display: block;">
+                      Ingrese obligatoriamente la justificación del descuadre:
+                    </span>
+                  </div>
                 </label>
-                <textarea v-model="formCierre.observaciones" rows="3" class="filter-input" style="border-color: #ef4444; background: rgba(239, 68, 68, 0.03);" placeholder="Obligatorio: justifique detalladamente el descuadre de caja..." required></textarea>
+                <textarea v-model="formCierre.observaciones" rows="3" class="filter-input" style="border-color: #ef4444; background: rgba(239, 68, 68, 0.03);" placeholder="Justificación detallada..." required></textarea>
               </div>
             </div>
             
             <div style="display: flex; gap: 10px; margin-top: 25px;">
               <button type="button" @click="mostrarModalCierre = false" class="clear-filters-btn" style="flex: 1; justify-content: center;">Cancelar</button>
               <button type="submit" class="register-button" style="flex: 1; justify-content: center; background: #ef4444;">
-                <i class="ri-lock-fill"></i> Confirmar Cierre
+                <i class="ri-lock-fill"></i> Confirmar Cierre e Imprimir Z
               </button>
             </div>
           </form>
@@ -529,6 +544,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import cajaService from '@/services/cajaService';
+import axios from '@/utils/axiosConfig'; 
 import Swal from 'sweetalert2';
 
 const loading = ref(true);
@@ -573,7 +589,6 @@ watch(() => formGasto.value.tipo, (nuevoTipo) => {
 let pollingInterval = null;
 const itemsPerPage = 9;
 
-// ----- FILTROS -----
 const filterUser = ref('');
 const filterDateFrom = ref('');
 const filterDateTo = ref('');
@@ -609,7 +624,6 @@ const filteredCajas = computed(() => {
   });
 });
 
-// Paginación del historial
 const currentPageCajas = ref(1);
 const paginatedCajas = computed(() => {
   const start = (currentPageCajas.value - 1) * itemsPerPage;
@@ -617,7 +631,6 @@ const paginatedCajas = computed(() => {
 });
 const totalPagesCajas = computed(() => Math.ceil(filteredCajas.value.length / itemsPerPage));
 
-// Reiniciar página al cambiar filtros
 watch([filterUser, filterDateFrom, filterDateTo], () => {
   currentPageCajas.value = 1;
 });
@@ -629,15 +642,12 @@ const limpiarFiltros = () => {
   currentPageCajas.value = 1;
 };
 
-// ----- FIN FILTROS -----
-
-// 🔥 CORRECCIÓN DE NOMBRES DE VARIABLES DE TRANSFERENCIA
 const diferenciaCierre = computed(() => {
   if (!balance.value) return 0;
   
   const esperado = parseFloat(balance.value.esperado_efectivo || 0) + 
                    parseFloat(balance.value.esperado_mp || 0) + 
-                   parseFloat(balance.value.esperado_transf || 0); // Era esperado_transf, no transferencia
+                   parseFloat(balance.value.esperado_transf || 0); 
 
   const real = parseFloat(formCierre.value.saldo_final_efectivo_real || 0) + 
                parseFloat(formCierre.value.saldo_final_mp_real || 0) +
@@ -650,6 +660,7 @@ const hayDiferencia = computed(() => {
   return Math.abs(diferenciaCierre.value) > 0.01;
 });
 
+// 🔥 CORRECCIÓN DEL TIPO DE DIFERENCIA 🔥
 const tipoDiferencia = computed(() => {
   if (!balance.value) return '';
   const esperado = parseFloat(balance.value.esperado_efectivo || 0) + 
@@ -657,12 +668,18 @@ const tipoDiferencia = computed(() => {
                    parseFloat(balance.value.esperado_transf || 0);
 
   if (diferenciaCierre.value < 0) {
-      if (esperado < 0 && parseFloat(formCierre.value.saldo_final_efectivo_real || 0) === 0) {
-          return 'FALTANTE: Fondos Insuficientes para cubrir deuda';
-      }
       return 'FALTANTE';
   }
-  return 'SOBRANTE';
+  
+  if (diferenciaCierre.value > 0) {
+      // Si el sistema esperaba que la caja esté en negativo, y se declara 0
+      if (esperado < 0 && parseFloat(formCierre.value.saldo_final_efectivo_real || 0) === 0) {
+          return 'REPOSICIÓN EXTERNA';
+      }
+      return 'SOBRANTE';
+  }
+  
+  return '';
 });
 
 const calcularTotalRealDeclarado = (caja) => {
@@ -683,7 +700,6 @@ const formatearMoneda = (valor) => {
   return `$ ${signo}${formateado}`;
 };
 
-// Paginación de movimientos actuales
 const currentPageMovs = ref(1);
 const paginatedMovs = computed(() => {
   const start = (currentPageMovs.value - 1) * itemsPerPage;
@@ -691,7 +707,6 @@ const paginatedMovs = computed(() => {
 });
 const totalPagesMovs = computed(() => Math.ceil(movimientos.value.length / itemsPerPage));
 
-// Paginación de movimientos del modal de historial
 const currentPageModalMovs = ref(1);
 const paginatedModalMovs = computed(() => {
   const start = (currentPageModalMovs.value - 1) * itemsPerPage;
@@ -742,7 +757,6 @@ const cargarDatosCajaAbierta = async (sesionId) => {
   movimientos.value = resMovs.data;
   currentPageMovs.value = 1; 
   
-  // Rellenar automáticamente con lo esperado
   formCierre.value.saldo_final_efectivo_real = Math.max(0, parseFloat(balance.value.esperado_efectivo || 0));
   formCierre.value.saldo_final_mp_real = Math.max(0, parseFloat(balance.value.esperado_mp || 0)); 
   formCierre.value.saldo_final_transf_real = Math.max(0, parseFloat(balance.value.esperado_transf || 0)); 
@@ -772,11 +786,8 @@ const detenerRadar = () => { if (pollingInterval) clearInterval(pollingInterval)
 const cargarHistorial = async () => {
   try {
     const token = localStorage.getItem('token');
-    const res = await fetch('http://localhost:8000/api/sesiones-caja/', {
-      headers: { 'Authorization': `Token ${token}` }
-    });
-    const data = await res.json();
-    historialCajas.value = data;
+    const res = await axios.get('/api/sesiones-caja/');
+    historialCajas.value = res.data;
   } catch (e) { console.error(e); }
 }
 
@@ -793,6 +804,27 @@ const abrirCaja = async () => {
   } catch (error) { Swal.fire('Error', 'No se pudo abrir', 'error'); }
 };
 
+const descargarPDFCaja = async (sesionId) => {
+  try {
+    Swal.fire({ title: 'Generando Reporte Z...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    
+    const resPdf = await axios.get(`/api/sesiones-caja/${sesionId}/descargar_pdf/`, { responseType: 'blob' });
+    
+    const url = window.URL.createObjectURL(new Blob([resPdf.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Cierre_Z_Caja_${sesionId}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    Swal.close();
+  } catch (error) {
+    console.error("Error descargando PDF", error);
+    Swal.fire('Error', 'No se pudo descargar el comprobante.', 'error');
+  }
+};
+
 const cerrarCaja = async () => {
   if (hayDiferencia.value && !formCierre.value.observaciones.trim()) {
       Swal.fire({ icon: 'warning', title: 'Justificación Requerida', text: `Debe justificar la diferencia de ${formatearMoneda(Math.abs(diferenciaCierre.value))} (${tipoDiferencia.value})` });
@@ -802,16 +834,19 @@ const cerrarCaja = async () => {
       title: '¿Cerrar caja?',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonText: 'Sí, cerrar'
+      confirmButtonText: 'Sí, cerrar e imprimir'
   }).then(async (result) => {
       if (result.isConfirmed) {
           try {
-            await cajaService.cerrarCaja(sesionActual.value.id, formCierre.value);
+            const sesionIdCerrada = sesionActual.value.id; 
+            await cajaService.cerrarCaja(sesionIdCerrada, formCierre.value);
             detenerRadar();
             mostrarModalCierre.value = false;
+            
+            await descargarPDFCaja(sesionIdCerrada);
+
             inicializar();
           } catch (error) { 
-            // 🔥 AHORA SÍ MOSTRAMOS EL ERROR DEL BACKEND SI OCURRE ALGO
             let errorMsg = 'Error al cerrar la caja';
             if (error.response && error.response.data && error.response.data.error) {
                 errorMsg = error.response.data.error;
@@ -835,7 +870,7 @@ const registrarGastoManual = async () => {
           saldoDisponible = parseFloat(balance.value.esperado_mp);
           metodoNombre = 'Mercado Pago';
       } else if (formGasto.value.metodo_pago === 'TRANSFERENCIA') {
-          saldoDisponible = parseFloat(balance.value.esperado_transf || 0); // También corregido acá
+          saldoDisponible = parseFloat(balance.value.esperado_transf || 0); 
           metodoNombre = 'Transferencia';
       }
 
@@ -885,7 +920,6 @@ onUnmounted(() => detenerRadar());
 </script>
 
 <style scoped>
-/* HEREDANDO LOS ESTILOS DEL SISTEMA */
 .list-container { padding: 32px; max-width: 1600px; margin: 0 auto; min-height: 100vh; font-family: 'Inter', sans-serif; }
 .list-card { background: var(--bg-secondary); color: var(--text-primary); border-radius: 24px; padding: 40px; width: 100%; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; transition: all 0.4s ease; border: 1px solid var(--border-color); }
 .list-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9); border-radius: 24px 24px 0 0; }
@@ -907,7 +941,6 @@ onUnmounted(() => detenerRadar());
 .action-button.delete { background: var(--bg-tertiary); border: 1px solid var(--error-color); color: var(--error-color); cursor: pointer; font-weight: bold;}
 .action-button.delete:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4); border-color: var(--error-color); }
 
-/* UTILIDADES GLOBALES */
 .loader-container { text-align: center; padding: 60px; color: var(--text-secondary); font-size: 1.2rem; }
 .loader-icon { font-size: 3rem; color: #0ea5e9; margin-bottom: 15px; }
 .animate-spin { animation: spin 1s linear infinite; display: inline-block; }
@@ -916,13 +949,11 @@ onUnmounted(() => detenerRadar());
 .text-right { text-align: right !important; }
 .text-center { text-align: center !important; }
 
-/* BADGES */
 .badge-estado { padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; display: inline-block; letter-spacing: 0.5px; }
 .estado-success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.5); }
 .estado-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.5); }
 .estado-warning { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.5); }
 
-/* TABLAS Y CHAU SCROLL HORIZONTAL */
 .table-container { 
   border-radius: 16px; 
   border: 1px solid var(--border-color); 
@@ -943,20 +974,17 @@ onUnmounted(() => detenerRadar());
 .col-descripcion { white-space: normal; word-break: break-word; }
 .no-results { text-align: center; padding: 60px !important; color: var(--text-secondary); }
 
-/* PANTALLA CAJA CERRADA */
 .caja-cerrada-wrapper { display: flex; justify-content: center; padding: 40px 0; }
 .caja-cerrada-card { background: var(--bg-primary); padding: 40px; border-radius: 20px; text-align: center; max-width: 500px; width: 100%; border: 1px solid var(--border-color); box-shadow: var(--shadow-md); }
 .icono-bloqueo i { font-size: 5rem; color: #ef4444; opacity: 0.8; }
 .caja-cerrada-card h2 { color: var(--text-primary); font-size: 1.8rem; margin: 10px 0; }
 .caja-cerrada-card p { color: var(--text-secondary); margin-bottom: 30px; }
 
-/* ALERTA HUERFANOS */
 .alerta-huerfanos { background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; border-radius: 12px; padding: 20px; display: flex; gap: 15px; text-align: left; margin-bottom: 30px; align-items: flex-start; }
 .alerta-huerfanos i { font-size: 1.5rem; color: #f59e0b; }
 .alerta-content strong { display: block; color: #b45309; font-size: 1.1rem; margin-bottom: 5px; }
 .alerta-content p { margin: 0; color: #92400e; font-size: 0.95rem; line-height: 1.4; }
 
-/* FORMULARIOS Y FILTROS */
 .filters-grid { display: grid; gap: 15px; }
 .filter-group { text-align: left; display: flex; flex-direction: column; }
 .filter-group label { font-weight: 700; margin-bottom: 8px; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; }
@@ -981,19 +1009,16 @@ onUnmounted(() => detenerRadar());
 .clear-filters-btn { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 12px 18px; border-radius: 10px; cursor: pointer; font-weight: 700; transition: all 0.3s ease; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.8px; display: flex; align-items: center; gap: 6px; }
 .clear-filters-btn:hover { background: var(--hover-bg); border-color: var(--text-secondary); }
 
-/* INPUT CON SÍMBOLO $ */
 .input-money-wrapper { position: relative; display: flex; align-items: center; }
 .currency-symbol { position: absolute; left: 15px; color: var(--text-secondary); font-weight: bold; font-size: 1.1rem; pointer-events: none; }
 .input-money { padding-left: 35px; font-weight: bold; font-size: 1.1rem; }
 
-/* CAJA ABIERTA DASHBOARD */
 .status-bar-caja { background: var(--bg-primary); padding: 20px 25px; border-radius: 16px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border: 1px solid var(--border-color); }
 .status-info { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
 .caja-nombre-txt { font-size: 1.2rem; font-weight: 900; color: var(--text-primary); }
 .caja-usuario-txt { color: var(--text-secondary); font-size: 0.9rem; }
 .btn-arqueo { padding: 10px 20px; border-radius: 10px; width: auto; font-size: 0.9rem; }
 
-/* CARDS DE SALDOS */
 .balances-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-bottom: 40px; }
 .balance-card { background: var(--bg-primary); padding: 25px; border-radius: 16px; border: 1px solid var(--border-color); display: flex; align-items: center; gap: 20px; transition: transform 0.3s; }
 .balance-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
@@ -1006,7 +1031,6 @@ onUnmounted(() => detenerRadar());
 .balance-card.mp .b-icon { background: #00a1f1; color: white; }
 .balance-card.transfer .b-icon { background: #8b5cf6; color: white; }
 
-/* RESUMEN ESPERADO EN EL MODAL DE CIERRE */
 .resumen-esperado { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 18px; margin-bottom: 25px; }
 .resumen-esperado h4 { margin: 0 0 15px 0; color: var(--text-primary); font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;}
 .resumen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; }
@@ -1014,7 +1038,6 @@ onUnmounted(() => detenerRadar());
 .resumen-item span { font-size: 0.85rem; color: var(--text-secondary); font-weight: 600; display: flex; align-items: center; gap: 5px;}
 .resumen-item strong { font-size: 1.3rem; color: var(--text-primary); font-weight: 900; }
 
-/* MODALES MEJORADOS */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.88); backdrop-filter: blur(5px); display: flex; justify-content: center; align-items: center; z-index: 1000; animation: fadeIn 0.2s ease; }
 .modal-cierre { max-width: 600px !important; width: 90%; }
 .modal-historial-amplio { max-width: 1100px !important; width: 95%; max-height: 90vh; display: flex; flex-direction: column; }
@@ -1030,14 +1053,12 @@ onUnmounted(() => detenerRadar());
 .alerta-cierre i { color: #0ea5e9; font-size: 1.5rem; }
 .alerta-cierre p { margin: 0; color: var(--text-primary); font-size: 0.9rem; line-height: 1.5; }
 
-/* PAGINACIÓN */
 .pagination { display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: 25px; }
 .pagination button { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 10px 20px; border-radius: 12px; cursor: pointer; font-weight: 800; transition: all 0.3s ease; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; }
 .pagination button:hover:not(:disabled) { background: var(--hover-bg); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
 .pagination button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 .pagination span { font-weight: bold; color: var(--text-secondary); }
 
-/* Ajuste para columna de fondo inicial (opcional) */
 .users-table td:nth-child(5) {
   white-space: normal;
   word-break: break-word;

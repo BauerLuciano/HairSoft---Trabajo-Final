@@ -53,15 +53,6 @@
           </div>
 
           <div class="filter-group">
-            <label>Tipo</label>
-            <select v-model="filtros.tipo" class="filter-input select-dark">
-              <option value="">Todos</option>
-              <option value="PRODUCTO">Producto</option>
-              <option value="TURNO">Turno</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
             <label>Estado</label>
             <select v-model="filtros.estado" class="filter-input select-dark">
               <option value="">Todos</option>
@@ -89,12 +80,12 @@
         <table class="users-table">
           <thead>
             <tr>
-              <th style="width: 80px;">ID</th> <th style="width: 140px;">Fecha</th>
+              <th style="width: 80px;">ID</th> 
+              <th style="width: 140px;">Fecha</th>
               <th>Cliente</th>
               <th>Usuario</th>
               <th>Total</th>
               <th>Método Pago</th> 
-              <th>Tipo</th>
               <th>Estado</th>
               <th style="width: 60px; text-align: center;">PDF</th>
               <th>Acciones</th>
@@ -104,7 +95,9 @@
             <tr v-for="venta in ventasPaginadas" :key="venta.id" 
                 :class="{'venta-anulada-row': venta.anulada}">
               
-              <td><strong>#{{ venta.id }}</strong></td> <td class="fecha-cell">
+              <td><span class="badge-id">#{{ venta.id }}</span></td> 
+              
+              <td class="fecha-cell">
                 <span class="fecha-dia">{{ formatFechaDia(venta.fecha) }}</span>
                 <span class="fecha-hora">{{ formatFechaHora(venta.fecha) }}</span>
               </td>
@@ -122,11 +115,6 @@
                 </span>
               </td>
 
-              <td>
-                <span class="badge-tipo" :class="getClaseTipoVenta(venta.tipo)">
-                  {{ venta.tipo || '–' }}
-                </span>
-              </td>
               <td>
                 <span class="badge-estado" :class="getClaseEstadoVenta(venta.anulada)">
                   {{ venta.anulada ? 'ANULADA' : 'ACTIVA' }}
@@ -150,8 +138,8 @@
                   <button 
                     @click="abrirModalAnular(venta)" 
                     class="action-button delete" 
-                    :disabled="venta.anulada || venta.tipo === 'TURNO'"
-                    :title="venta.tipo === 'TURNO' ? 'No se puede anular un turno completado' : 'Anular Venta'"
+                    :disabled="venta.anulada"
+                    title="Anular Venta"
                   >
                     <Trash2 :size="14" />
                   </button>
@@ -282,12 +270,13 @@ import RegistrarVenta from './RegistrarVenta.vue'
 import { 
   Plus, Trash2, Eye, FileText, Loader, PackageX,
   ChevronLeft, ChevronRight, RefreshCw, AlertTriangle, CheckCircle,
-  CreditCard, Banknote, Smartphone, ArrowRightLeft, HelpCircle, Info // 🔥 IMPORTADO INFO
+  CreditCard, Banknote, Smartphone, ArrowRightLeft, HelpCircle, Info
 } from 'lucide-vue-next'
 
 const router = useRouter()
 const ventas = ref([])
-const filtros = ref({ busqueda: '', fechaDesde: '', fechaHasta: '', metodoPago: '', tipo: '', estado: '' })
+// Sacamos 'tipo' de los filtros porque ya no hace falta
+const filtros = ref({ busqueda: '', fechaDesde: '', fechaHasta: '', metodoPago: '', estado: '' })
 const pagina = ref(1)
 const itemsPorPagina = 8
 
@@ -354,7 +343,9 @@ onMounted(() => {
 const ventasFiltradas = computed(() => {
   const busca = filtros.value.busqueda.toLowerCase()
   return ventas.value.filter(v => {
-    // 🔍 CORRECCIÓN: Ahora busca también por usuario_nombre
+    // 🔥 CORRECCIÓN: Si el tipo es TURNO, lo ignoramos completamente
+    if (v.tipo === 'TURNO') return false;
+
     const matchBusqueda = !busca || 
       (v.cliente_nombre?.toLowerCase() || '').includes(busca) || 
       (v.usuario_nombre?.toLowerCase() || '').includes(busca) || 
@@ -364,16 +355,15 @@ const ventasFiltradas = computed(() => {
     const matchDesde = !filtros.value.fechaDesde || (fecha && fecha >= new Date(filtros.value.fechaDesde))
     const matchHasta = !filtros.value.fechaHasta || (fecha && fecha <= new Date(filtros.value.fechaHasta + 'T23:59:59'))
     const matchMetodo = !filtros.value.metodoPago || v.medio_pago_tipo === filtros.value.metodoPago
-    const matchTipo = !filtros.value.tipo || v.tipo === filtros.value.tipo
     const matchEstado = !filtros.value.estado || 
         (filtros.value.estado === 'activa' && !v.anulada) || 
         (filtros.value.estado === 'anulada' && v.anulada)
 
-    return matchBusqueda && matchDesde && matchHasta && matchMetodo && matchTipo && matchEstado
+    return matchBusqueda && matchDesde && matchHasta && matchMetodo && matchEstado
   })
 })
 
-const ventasAnuladas = computed(() => ventas.value.filter(v => v.anulada).length)
+const ventasAnuladas = computed(() => ventasFiltradas.value.filter(v => v.anulada).length)
 const totalPaginas = computed(() => Math.max(1, Math.ceil(ventasFiltradas.value.length / itemsPorPagina)))
 const ventasPaginadas = computed(() => {
   const inicio = (pagina.value - 1) * itemsPorPagina
@@ -457,8 +447,9 @@ const generarReporteListado = async () => {
     if (filtros.value.fechaDesde) params.append('fecha_desde', filtros.value.fechaDesde);
     if (filtros.value.fechaHasta) params.append('fecha_hasta', filtros.value.fechaHasta);
     if (filtros.value.metodoPago) params.append('metodo_pago', filtros.value.metodoPago);
-    if (filtros.value.tipo) params.append('tipo', filtros.value.tipo);
     if (filtros.value.estado) params.append('estado', filtros.value.estado);
+    // Para el backend, forzamos que no traiga los turnos
+    params.append('tipo', 'PRODUCTO,VENTA');
     
     if (usuarioEmisor.value) {
       params.append('impreso_por', usuarioEmisor.value);
@@ -482,7 +473,7 @@ const procesarVentaRegistrada = async (venta) => {
   ventaRecienCreada.value = venta.id 
   setTimeout(() => ventaRecienCreada.value = null, 5000) 
 }
-const limpiarFiltros = () => { filtros.value = { busqueda: '', fechaDesde: '', fechaHasta: '', metodoPago: '', tipo: '', estado: '' }; pagina.value = 1 }
+const limpiarFiltros = () => { filtros.value = { busqueda: '', fechaDesde: '', fechaHasta: '', metodoPago: '', estado: '' }; pagina.value = 1 }
 
 const formatFechaDia = (f) => f ? new Date(f).toLocaleDateString('es-AR', {day: '2-digit', month: '2-digit', year: 'numeric'}) : '-'
 const formatFechaHora = (f) => f ? new Date(f).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : ''
@@ -501,7 +492,6 @@ const getMedioPagoInfo = (venta) => {
 const getClaseTipoVenta = (t) => t === 'TURNO' ? 'tipo-turno' : 'tipo-prod'
 const getClaseEstadoVenta = (anulada) => anulada ? 'estado-anulada' : 'estado-activa'
 
-// 🔥 FUNCIÓN CORREGIDA: ALERTA DE ANULACIÓN LIMPIA Y ELEGANTE
 const verMotivoAnulacion = async (venta) => {
   try {
     Swal.fire({ title: 'Cargando auditoría...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
@@ -513,7 +503,6 @@ const verMotivoAnulacion = async (venta) => {
     
     const detalleVenta = response.data;
 
-    // Lista de productos limpia
     let itemsHTML = '<p style="color: #94a3b8; font-size: 0.85rem; text-align: center;">No hay productos registrados</p>';
     if (detalleVenta.detalles && detalleVenta.detalles.length > 0) {
       itemsHTML = detalleVenta.detalles.map(d => `
@@ -524,7 +513,6 @@ const verMotivoAnulacion = async (venta) => {
       `).join('');
     }
 
-    // Formateo de fecha
     const fechaMostrar = detalleVenta.fecha_anulacion 
       ? new Date(detalleVenta.fecha_anulacion).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) 
       : 'Fecha no registrada';
@@ -565,10 +553,10 @@ const verMotivoAnulacion = async (venta) => {
       showConfirmButton: true,
       confirmButtonText: 'Cerrar',
       confirmButtonColor: '#0ea5e9',
-      background: '#ffffff', // Forzamos fondo blanco para que no se rompa con themes oscuros
+      background: '#ffffff', 
       width: '500px',
       customClass: {
-        popup: 'swal2-border-radius' // Solo le damos bordes redondeados al contenedor
+        popup: 'swal2-border-radius' 
       }
     });
 
@@ -587,6 +575,19 @@ const verMotivoAnulacion = async (venta) => {
 .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; flex-wrap: wrap; gap: 20px; border-bottom: 2px solid var(--border-color); padding-bottom: 25px; }
 .header-content h1 { margin: 0; font-size: 2.2rem; background: linear-gradient(135deg, var(--text-primary), #0ea5e9); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
 .header-content p { color: var(--text-secondary); font-weight: 500; margin-top: 8px; letter-spacing: 0.5px; }
+
+/* 🔥 ESTILO PARA LA ETIQUETA DEL ID 🔥 */
+.badge-id {
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  font-size: 0.8rem;
+  border: 1px solid var(--border-color);
+  display: inline-block;
+}
 
 .register-button { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; border: none; padding: 14px 28px; border-radius: 12px; font-weight: 800; cursor: pointer; transition: 0.3s; text-transform: uppercase; letter-spacing: 1px; font-size: 0.95rem; box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35); display: flex; align-items: center; gap: 8px; }
 .register-button:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(14, 165, 233, 0.5); }
@@ -643,8 +644,6 @@ const verMotivoAnulacion = async (venta) => {
 .action-button:hover:not(:disabled) { transform: translateY(-2px); }
 .action-button.delete:hover:not(:disabled) { color: #ef4444; border-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
 .action-button.detalle:hover:not(:disabled) { color: #10b981; border-color: #10b981; background: rgba(16, 185, 129, 0.1); }
-
-/* 🔥 ESTILO BOTÓN INFO ANULADA */
 .action-button.anulada-info { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.5); color: #ef4444; }
 .action-button.anulada-info:hover { background: #ef4444; color: white; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3); }
 
@@ -682,7 +681,6 @@ const verMotivoAnulacion = async (venta) => {
 .btn-confirmar-anular { background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 700; cursor: pointer; display: flex; align-items: center; }
 .btn-confirmar-anular:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* FIX SWEETALERT PARA MODO OSCURO */
 :deep(.swal-rounded-popup) { border-radius: 20px !important; background: var(--bg-secondary) !important; border: 1px solid var(--border-color) !important; }
 :deep(.swal2-border-radius) { border-radius: 16px !important;}
 

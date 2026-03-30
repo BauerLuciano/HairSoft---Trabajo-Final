@@ -571,7 +571,6 @@ class Turno(models.Model):
         db_table = "turnos"
         ordering = ['fecha', 'hora']
 
-# Clientess interesados en turnos liberados - ACTUALIZADO Y CORREGIDO
 class InteresTurnoLiberado(models.Model):
     """Clientes interesados en horarios específicos - ACTUALIZADO PARA REOFERTA"""
     ESTADO_OFERTA_CHOICES = [
@@ -589,7 +588,6 @@ class InteresTurnoLiberado(models.Model):
     hora_deseada = models.TimeField()
     fecha_registro = models.DateTimeField(auto_now_add=True)
     
-    # ✅ Relación directa con el turno liberado que se les está ofreciendo
     turno_liberado = models.ForeignKey(
         'Turno', 
         on_delete=models.SET_NULL, # Usar SET_NULL para no borrar el Interes si borran el Turno, solo desvincular
@@ -598,28 +596,22 @@ class InteresTurnoLiberado(models.Model):
         blank=True
     )
     
-    # Campos para el proceso de reoferta masiva
     estado_oferta = models.CharField(max_length=20, choices=ESTADO_OFERTA_CHOICES, default='pendiente')
     token_oferta = models.CharField(max_length=100, unique=True, blank=True, null=True)
     fecha_envio_oferta = models.DateTimeField(null=True, blank=True)
     fecha_respuesta = models.DateTimeField(null=True, blank=True)
     ip_aceptacion = models.GenericIPAddressField(null=True, blank=True)
     
-    # Configuración de oferta
     descuento_aplicado = models.DecimalField(max_digits=5, decimal_places=2, default=15.0)
     tiempo_limite_respuesta = models.IntegerField(default=60) 	# minutos
     
-    # Para seguimiento del proceso FIFO
     prioridad = models.IntegerField(default=0)
     orden_notificacion = models.IntegerField(default=0)
     
     class Meta:
         db_table = "intereses_turnos_liberados"
         ordering = ['fecha_registro', 'prioridad']
-        # ✅ CORRECCIÓN: Evitar duplicados para el mismo slot
         unique_together = ['cliente', 'peluquero', 'fecha_deseada', 'hora_deseada', 'servicio'] 
-        # Se elimina 'servicio' del unique_together para permitir al cliente 
-        # registrar interés por el mismo slot pero con distinto servicio (si fuera necesario).
 
     def __str__(self):
         return f"{self.cliente.nombre} - {self.fecha_deseada} {self.hora_deseada}"
@@ -638,7 +630,6 @@ class InteresTurnoLiberado(models.Model):
         if not self.fecha_envio_oferta:
             return False
         tiempo_transcurrido = timezone.now() - self.fecha_envio_oferta
-        # Usamos el tiempo límite de la configuración global si es nulo, si no, el del interés
         limite = self.tiempo_limite_respuesta or ConfiguracionReoferta.get_configuracion().tiempo_limite_respuesta
         return tiempo_transcurrido.total_seconds() > (limite * 60)
     
@@ -667,8 +658,6 @@ class InteresTurnoLiberado(models.Model):
 class MetodoPago(models.Model):
     TIPO_CHOICES = [
         ('EFECTIVO', 'Efectivo'),
-        # ('TARJETA', 'Tarjeta'),  <-- Eliminada para evitar complejidad
-        ('TRANSFERENCIA', 'Transferencia'), # Para transferencias manuales
         ('MERCADOPAGO', 'Mercado Pago'),    # Para integración Web/QR
     ]
     
@@ -716,7 +705,6 @@ class Venta(models.Model):
         default='PRODUCTO'
     )
     
-    # ✅ MEDIO DE PAGO (Relación con el modelo MetodoPago)
     medio_pago = models.ForeignKey(
         'MetodoPago',
         on_delete=models.PROTECT,
@@ -725,7 +713,6 @@ class Venta(models.Model):
         help_text="Método de pago utilizado para esta transacción."
     )
 
-    # ✅ TRAZABILIDAD DE PAGOS (NUEVOS CAMPOS AGREGADOS)
     entidad_pago = models.CharField(
         max_length=50, 
         null=True, 
@@ -809,16 +796,15 @@ class DetalleVenta(models.Model):
 # ===============================
 
 class Pedido(models.Model):
-    # Identificador único para el link externo del proveedor
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
 
     # Definimos los estados posibles
     ESTADOS = [
-        ('PENDIENTE', 'Pendiente'),               # Creado por vos, borrador
-        ('ENVIADO', 'Enviado a Proveedor'),       # Se mandó el mail con el link
-        ('COTIZADO', 'Cotizado por Proveedor'),   # 👈 NUEVO: El proveedor tiró precio, espera tu OK
-        ('CONFIRMADO', 'Confirmado por Proveedor'), # El proveedor dio el OK (o vos manual) / O apróbaste el COTIZADO
-        ('ENTREGADO', 'Recibido en Local'),       # Llegó la caja (Stock + Precio impactado)
+        ('PENDIENTE', 'Pendiente'),               
+        ('ENVIADO', 'Enviado a Proveedor'),       
+        ('COTIZADO', 'Cotizado por Proveedor'),   
+        ('CONFIRMADO', 'Confirmado por Proveedor'), 
+        ('ENTREGADO', 'Recibido en Local'),       
         ('CANCELADO', 'Cancelado')
     ]
 
@@ -828,7 +814,6 @@ class Pedido(models.Model):
         related_name='pedidos'
     )
     
-    # Un solo campo estado, con las opciones nuevas
     estado = models.CharField(
         max_length=20, 
         choices=ESTADOS, 
@@ -899,8 +884,6 @@ class Pedido(models.Model):
 
     @transaction.atomic
     def completar_pedido(self): 
-        # Este método se reemplaza por la lógica de recibir_pedido en la view
-        # pero lo dejamos como helper interno si querés.
         pass
 
     @transaction.atomic
@@ -925,7 +908,6 @@ class DetallePedido(models.Model):
     cantidad = models.PositiveIntegerField(default=1)
     cantidad_recibida = models.PositiveIntegerField(default=0)
 
-    # 🆕 Campo nuevo: precio propuesto por el proveedor
     precio_propuesto = models.DecimalField(
         max_digits=10,
         decimal_places=2,

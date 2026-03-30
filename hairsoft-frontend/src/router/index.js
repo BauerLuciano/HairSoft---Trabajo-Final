@@ -19,6 +19,9 @@ const PerfilCliente = () => import('@/views/cliente/PerfilCliente.vue')
 // --- VISTAS ADMINISTRATIVAS ---
 const Dashboard = () => import('@/views/Dashboard.vue')
 
+// Estadísticas (NUEVO)
+const EstadisticasDashboard = () => import('@/views/EstadisticasDashboard.vue')
+
 // Usuarios
 const ListadoUsuarios = () => import('@/views/usuarios/ListadoUsuarios.vue')
 const RegistrarUsuario = () => import('@/views/usuarios/RegistrarUsuario.vue')
@@ -113,6 +116,11 @@ const routes = [
 
   // ZONA ADMINISTRATIVA
   { path: '/dashboard', name: 'Dashboard', component: Dashboard, meta: { requiresAuth: true, role: 'ADMIN' } },
+  
+  // ✅ ESTADÍSTICAS
+  { path: '/estadisticas', name: 'Estadisticas', component: EstadisticasDashboard, meta: { requiresAuth: true } },
+
+  // Usuarios
   { path: '/usuarios', name: 'ListadoUsuarios', component: ListadoUsuarios, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/usuarios/crear', name: 'RegistrarUsuario', component: RegistrarUsuario, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/usuarios/modificar/:id', name: 'ModificarUsuario', component: ModificarUsuario, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },

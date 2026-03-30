@@ -15,7 +15,8 @@ from .api_views import (
     HistorialLiquidacionesView,
     SillaViewSet,
     ConfigWebView,
-    verificar_estado_caja # 🔥 Agregado acá
+    verificar_estado_caja,
+    EstadisticasDashboardAPIView
 )
 
 from .views import (
@@ -300,8 +301,9 @@ urlpatterns = [
 
     path('api/web/configuracion/', ConfigWebView.as_view(), name='configuracion-web'),
     
-    # 🔥 LA RUTA CORREGIDA IMPORTADA DESDE API_VIEWS
-    path('api/estado-caja/', verificar_estado_caja, name='estado_caja'),
+    path('api/estadisticas/', EstadisticasDashboardAPIView.as_view(), name='estadisticas'),
+    
+    path('api/estado-caja/', verificar_estado_caja, name='estado_caja'),    
 
     path('api/web/pedidos/<int:pedido_id>/comprobante-pdf/', func_views.descargar_comprobante_pedido_web, name='comprobante_pedido_web'),
     ]

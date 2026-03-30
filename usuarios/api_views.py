@@ -3,12 +3,14 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
-# 🔥 ACÁ SE IMPORTA api_view y permission_classes CORRECTAMENTE
 from rest_framework.decorators import action, api_view, permission_classes
-from django.db.models import Sum
+from django.db.models import Sum, Count, F, Value, DecimalField, ExpressionWrapper, FloatField, Q, Avg
 from django.db import transaction
 from django.http import HttpResponse
-from .models import Auditoria, Servicio, Turno, Usuario, Producto, Liquidacion, PedidoWeb, ConfiguracionSistema, Silla, SesionCaja
+from django.db.models.functions import TruncDate, Coalesce
+from django.utils.dateparse import parse_date
+from django.utils import timezone
+from .models import Auditoria, Servicio, Turno, Usuario, Producto, Liquidacion, PedidoWeb, ConfiguracionSistema, Silla, SesionCaja, Venta, DetalleVenta, Pedido
 from .serializers import AuditoriaSerializer, ServicioSerializer, TurnoSerializer, UsuarioSerializer, ProductoCatalogoSerializer, LiquidacionSerializer, PedidoWebSerializer, SillaSerializer
 import io
 import datetime
@@ -104,7 +106,7 @@ class ProductoCatalogoView(generics.ListAPIView):
 
 
 # ============================================
-# 💰 4. MÓDULO DE LIQUIDACIÓN
+#  4. MÓDULO DE LIQUIDACIÓN
 # ============================================
 
 class ReporteLiquidacionView(APIView):
@@ -393,10 +395,8 @@ class ConfigWebView(APIView):
                 'direccion': config.direccion,
                 'telefono': config.telefono,
                 'email': config.email,
-                # Si en el futuro querés mandar el logo: 'logo': request.build_absolute_uri(config.logo.url) if config.logo else None
             })
         else:
-            # Datos por defecto por si aún no cargaron nada en la BD
             return Response({
                 'costo_moto': 1500.00,
                 'razon_social': 'Los Últimos Serán Los Primeros',
@@ -405,7 +405,6 @@ class ConfigWebView(APIView):
                 'email': 'contacto@hairsoft.com'
             })
 
-# 🔥 EL DECORADOR AHORA ESTÁ BIEN ESCRITO
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def verificar_estado_caja(request):
@@ -417,3 +416,201 @@ def verificar_estado_caja(request):
         return Response({'abierta': caja_abierta}, status=200)
     except Exception as e:
         return Response({'error': str(e)}, status=500)
+
+class EstadisticasDashboardAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            inicio_str = request.query_params.get('fecha_inicio')
+            fin_str = request.query_params.get('fecha_fin')
+
+            if not inicio_str or not fin_str:
+                return Response({'error': 'Debes proporcionar fecha_inicio y fecha_fin'}, status=400)
+
+            f_inicio = parse_date(inicio_str)
+            f_fin = parse_date(fin_str)
+
+            # =========================================================
+            # 1. INGRESOS TOTALES (Ventas + Turnos + Señas + PEDIDOS WEB)
+            # =========================================================
+            ventas_qs = Venta.objects.filter(fecha__date__range=[f_inicio, f_fin], anulada=False)
+            turnos_qs = Turno.objects.filter(fecha__range=[f_inicio, f_fin])
+            
+            # Pedidos Web de los clientes (Filtrando los que ya pagaron)
+            pedidos_web_qs = PedidoWeb.objects.filter(
+                fecha_creacion__date__range=[f_inicio, f_fin], 
+                estado__in=['PAGADO', 'EN_PREPARACION', 'LISTO_RETIRO', 'EN_CAMINO', 'ENTREGADO'] 
+            )
+
+            # A. Ventas de Mostrador
+            stats_ventas = ventas_qs.aggregate(ingreso=Sum('total'), cantidad=Count('id'))
+            ingreso_ventas = float(stats_ventas['ingreso'] or 0)
+            cantidad_ventas = stats_ventas['cantidad'] or 0
+
+            # B. Turnos Completados (Servicios)
+            turnos_completados_qs = turnos_qs.filter(estado='COMPLETADO')
+            ingreso_turnos_completados = float(turnos_completados_qs.aggregate(total=Sum('monto_total'))['total'] or 0)
+            cantidad_turnos_completados = turnos_completados_qs.count()
+
+            # C. Señas Retenidas
+            penalizaciones_qs = turnos_qs.filter(
+                estado='CANCELADO',
+                reembolsado=False,
+                reembolso_estado='NO_APLICA'
+            ).filter(Q(monto_seña__gt=0) | Q(monto_total__gt=0)).select_related('cliente').prefetch_related('servicios').order_by('-fecha')
+
+            ingresos_penalizaciones_lista = []
+            ingreso_penalizaciones = 0
+            
+            for p in penalizaciones_qs:
+                monto_retenido = float(p.monto_total) if p.tipo_pago == 'TOTAL' else float(p.monto_seña)
+                if monto_retenido > 0:
+                    ingreso_penalizaciones += monto_retenido
+                    ingresos_penalizaciones_lista.append({
+                        'cliente': f"{p.cliente.nombre} {p.cliente.apellido}" if p.cliente else 'Consumidor Final',
+                        'fecha': p.fecha.strftime('%Y-%m-%d'),
+                        'servicio': ", ".join([s.nombre for s in p.servicios.all()]),
+                        'motivo': p.motivo_cancelacion or 'Cancelación tardía',
+                        'monto_retenido': monto_retenido
+                    })
+
+            # D. Ingresos por Pedidos Web
+            stats_pedidos = pedidos_web_qs.aggregate(ingreso=Sum('total'), cantidad=Count('id'))
+            ingreso_pedidos_web = float(stats_pedidos['ingreso'] or 0)
+            cantidad_pedidos_web = stats_pedidos['cantidad'] or 0
+
+            # Totales Financieros sumando la guita de la web
+            ingreso_total_bruto = ingreso_ventas + ingreso_turnos_completados + ingreso_penalizaciones + ingreso_pedidos_web
+            total_operaciones = cantidad_ventas + cantidad_turnos_completados + len(ingresos_penalizaciones_lista) + cantidad_pedidos_web
+            ticket_promedio = (ingreso_total_bruto / total_operaciones) if total_operaciones > 0 else 0
+
+            # =========================================================
+            # 2. GRÁFICO DE BARRAS: MEDIOS DE PAGO UNIFICADOS
+            # =========================================================
+            medios_dict = {}
+            
+            # Agrupamos la plata de las Ventas
+            ventas_pagadas = ventas_qs.values('medio_pago__nombre').annotate(total=Sum('total'))
+            for v in ventas_pagadas:
+                mp = (v['medio_pago__nombre'] or 'OTRO').upper().replace('_', ' ')
+                medios_dict[mp] = medios_dict.get(mp, 0) + float(v['total'] or 0)
+
+            # Agrupamos la plata de los Turnos Completados
+            turnos_pagados = turnos_completados_qs.values('medio_pago').annotate(total=Sum('monto_total'))
+            for t in turnos_pagados:
+                mp = (t['medio_pago'] or 'OTRO').upper().replace('_', ' ')
+                medios_dict[mp] = medios_dict.get(mp, 0) + float(t['total'] or 0)
+
+            # Sumamos las Señas Retenidas 
+            for p in penalizaciones_qs:
+                mp = (p.medio_pago or 'OTRO').upper().replace('_', ' ')
+                monto_retenido = float(p.monto_total) if p.tipo_pago == 'TOTAL' else float(p.monto_seña)
+                medios_dict[mp] = medios_dict.get(mp, 0) + monto_retenido
+
+            # Sumamos los Pedidos Web (Siempre son por MP en tu sistema)
+            if ingreso_pedidos_web > 0:
+                medios_dict['MERCADO PAGO'] = medios_dict.get('MERCADO PAGO', 0) + ingreso_pedidos_web
+
+            grafico_medios = [{'medio': k, 'total': v} for k, v in sorted(medios_dict.items(), key=lambda item: item[1], reverse=True)]
+
+            # =========================================================
+            # 3. FAVORITOS Y STOCK ESTANCADO (Sin moda, con guita exacta)
+            # =========================================================
+            servicio_top = DetalleVenta.objects.filter(
+                venta__fecha__date__range=[f_inicio, f_fin], 
+                venta__anulada=False, 
+                servicio__isnull=False
+            ).values('servicio__nombre').annotate(
+                cantidad=Sum('cantidad'),
+                ingreso=Sum('subtotal')
+            ).order_by('-cantidad').first()
+
+            producto_top = DetalleVenta.objects.filter(
+                venta__fecha__date__range=[f_inicio, f_fin], 
+                venta__anulada=False, 
+                producto__isnull=False
+            ).values('producto__nombre').annotate(
+                cantidad=Sum('cantidad'),
+                ingreso=Sum('subtotal')
+            ).order_by('-cantidad').first()
+
+            productos_vendidos_ids = DetalleVenta.objects.filter(
+                venta__fecha__date__range=[f_inicio, f_fin], venta__anulada=False, producto__isnull=False
+            ).values_list('producto_id', flat=True)
+
+            stock_estancado_qs = Producto.objects.exclude(id__in=productos_vendidos_ids).filter(
+                estado='ACTIVO', stock_actual__gt=0
+            ).annotate(
+                capital_parado=ExpressionWrapper(F('stock_actual') * F('precio'), output_field=DecimalField())
+            ).values('nombre', 'marca__nombre', 'stock_actual', 'capital_parado').order_by('-capital_parado')[:5]
+
+            # =========================================================
+            # 4. FIDELIZACIÓN (Turnos) - FIX APLICADO ACÁ
+            # =========================================================
+            # Excluimos a los clientes nulos para no ensuciar la métrica
+            clientes_ids = turnos_completados_qs.exclude(cliente__isnull=True).values_list('cliente_id', flat=True).distinct()
+            recurrentes = 0
+            nuevos = 0
+            
+            for cid in clientes_ids:
+                # Contamos cuántos turnos en total tiene el cliente en la base de datos
+                turnos_historicos = Turno.objects.filter(cliente_id=cid, estado='COMPLETADO').count()
+                if turnos_historicos > 1:
+                    recurrentes += 1
+                else:
+                    nuevos += 1
+                    
+            total_clientes = nuevos + recurrentes
+            tasa_fidelidad = (recurrentes / total_clientes * 100) if total_clientes > 0 else 0
+
+            # 7. USUARIO EMISOR PARA EL PDF
+            if request.user.is_authenticated:
+                usuario_emisor = f"{getattr(request.user, 'nombre', '')} {getattr(request.user, 'apellido', '')}".strip() or request.user.username
+            else:
+                usuario_emisor = "Administrador"
+
+            # =========================================================
+            # RESPUESTA AL FRONTEND
+            # =========================================================
+            return Response({
+                'usuario_emisor': usuario_emisor,
+                'kpis': {
+                    'ingreso_total': ingreso_total_bruto,
+                    'ingreso_operaciones': ingreso_ventas + ingreso_turnos_completados + ingreso_pedidos_web,
+                    'ingreso_penalizaciones': ingreso_penalizaciones,
+                    'ticket_promedio': ticket_promedio,
+                    'fidelidad': { 'tasa': round(tasa_fidelidad, 1), 'nuevos': nuevos, 'recurrentes': recurrentes },
+                    'servicio_estrella': {
+                        'nombre': servicio_top['servicio__nombre'] if servicio_top else 'Ninguno',
+                        'cantidad': servicio_top['cantidad'] if servicio_top else 0,
+                        'ingreso': float(servicio_top['ingreso'] or 0) if servicio_top else 0
+                    },
+                    'producto_estrella': {
+                        'nombre': producto_top['producto__nombre'] if producto_top else 'Ninguno',
+                        'cantidad': producto_top['cantidad'] if producto_top else 0,
+                        'ingreso': float(producto_top['ingreso'] or 0) if producto_top else 0
+                    },
+                },
+                'graficos': {
+                    'medios_pago': grafico_medios,
+                    'turnos_ingresos': [
+                        {'label': 'Turnos Completados', 'total': ingreso_turnos_completados, 'color': '#10b981'},
+                        {'label': 'Señas Retenidas', 'total': ingreso_penalizaciones, 'color': '#f59e0b'}
+                    ]
+                },
+                'tablas': {
+                    'stock_estancado': [
+                        {
+                            'producto': p['nombre'],
+                            'marca': p['marca__nombre'] or 'Sin Marca',
+                            'stock': p['stock_actual'],
+                            'capital': float(p['capital_parado'] or 0)
+                        } for p in stock_estancado_qs
+                    ],
+                    'penalizaciones': ingresos_penalizaciones_lista
+                }
+            })
+        except Exception as e:
+            traceback.print_exc()
+            return Response({'error': 'Error interno del servidor. Revisá la consola.'}, status=500)

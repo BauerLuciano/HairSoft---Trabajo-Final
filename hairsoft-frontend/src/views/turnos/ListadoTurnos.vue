@@ -6,7 +6,7 @@
           <h1>Lista de Turnos</h1>
           <p>Gestión y administración de turnos</p>
         </div>
-        <button @click="irARegistrar" class="register-button"><Plus :size="18" /> Registrar Turno</button>
+        <button v-if="esAdminORecep" @click="irARegistrar" class="register-button"><Plus :size="18" /> Registrar Turno</button>
       </div>
 
       <div class="filters-container">
@@ -14,8 +14,19 @@
           <div class="filter-group">
             <label for="busqueda">Buscar</label>
             <input v-model="filtros.busqueda" id="busqueda" type="text" class="filter-input" 
-                   placeholder="Cliente, Peluquero..." @keyup.enter="cargarTurnos">
+                   placeholder="Cliente, Transacción..." @keyup.enter="cargarTurnos">
           </div>
+          
+          <div class="filter-group" v-if="esAdminORecep">
+            <label for="peluquero">Profesional</label>
+            <select v-model="filtros.peluquero" id="peluquero" class="filter-select" @change="cargarTurnos">
+              <option value="">Todos</option>
+              <option v-for="pel in listaPeluqueros" :key="pel.id" :value="pel.id">
+                {{ pel.nombre }} {{ pel.apellido }}
+              </option>
+            </select>
+          </div>
+
           <div class="filter-group">
             <label for="estado">Estado</label>
             <select v-model="filtros.estado" id="estado" class="filter-select" @change="cargarTurnos">
@@ -51,6 +62,7 @@
         <table class="users-table">
           <thead>
             <tr>
+              <th style="width: 60px;">ID</th>
               <th>Fecha/Hora</th>
               <th>Cliente</th>
               <th>Estado</th> 
@@ -60,6 +72,9 @@
           </thead>
           <tbody>
             <tr v-for="turno in turnosFiltradosPaginados" :key="turno.id">
+              <td>
+                <span class="badge-id">#{{ turno.id }}</span>
+              </td>
               <td>
                 <strong>{{ formatFecha(turno.fecha) }}</strong><br>
                 <small>{{ formatHora(turno.hora) }}hs</small><br>
@@ -90,7 +105,6 @@
                 </div>
                 
                 <div v-if="turno.estado === 'CANCELADO'">
-                  <!-- Caso: fue un canje (NO_APLICA y además cumple esTurnoPorCanje) -->
                   <div v-if="turno.reembolso_estado === 'NO_APLICA' && esTurnoPorCanje(turno)" style="margin-top: 5px;">
                     <span class="badge-reembolso-no-aplica">
                       <i class="bi bi-arrow-left-right me-1"></i>
@@ -98,7 +112,6 @@
                     </span>
                   </div>
                   
-                  <!-- Caso: cancelación tardía sin reembolso (NO_APLICA pero no es canje) -->
                   <div v-else-if="turno.reembolso_estado === 'NO_APLICA'" style="margin-top: 5px;">
                     <span class="badge-reembolso-no-aplica">
                       <i class="bi bi-clock me-1"></i>
@@ -106,7 +119,6 @@
                     </span>
                   </div>
                   
-                  <!-- Caso: reembolso pendiente -->
                   <div v-if="turno.reembolso_estado === 'PENDIENTE'" style="margin-top: 5px;">
                     <span class="badge-reembolso-pendiente">
                       <i class="bi bi-cash-coin me-1"></i>
@@ -114,7 +126,6 @@
                     </span>
                   </div>
                   
-                  <!-- Caso: reembolso completado -->
                   <div v-if="turno.reembolso_estado === 'COMPLETADO'" style="margin-top: 5px;">
                     <span class="badge-reembolso-completado">
                       <i class="bi bi-check-circle me-1"></i>
@@ -165,12 +176,12 @@
                     <span class="text-pagado">Pagado total: ${{ formatPrecio(turno.monto_total) }}</span>
                   </div>
                   
-                <div v-else-if="turno.descuento_aplicado && turno.descuento_aplicado > 0" style="margin-top: 5px;">
-                  <span class="badge-fidelizacion">
-                    <i class="bi bi-gift me-1"></i>
-                    {{ turno.descuento_aplicado }}% Fidelización
-                  </span>
-                </div>
+                  <div v-else-if="turno.descuento_aplicado && turno.descuento_aplicado > 0" style="margin-top: 5px;">
+                    <span class="badge-fidelizacion">
+                      <i class="bi bi-gift me-1"></i>
+                      {{ turno.descuento_aplicado }}% Fidelización
+                    </span>
+                  </div>
 
                   <div v-if="esTurnoPorCanje(turno) && extraerSaldoAFavor(turno) > 0" class="saldo-favor-info">
                     <span class="badge-saldo-favor">
@@ -182,44 +193,46 @@
               </td>
               <td>
                 <div class="action-buttons">
-                  <button v-if="puedeEditarTurno(turno)" 
+                  
+                  <button @click="verDetalleTurno(turno)" class="action-button view" title="Ver Detalle">
+                    <Eye :size="14"/>
+                  </button>
+                  
+                  <button v-if="esAdminORecep && puedeEditarTurno(turno)" 
                           @click="editarTurno(turno)" 
                           class="action-button edit" 
                           title="Editar Turno">
                     <Edit :size="14"/>
                   </button>
                   
-                  <button @click="verDetalleTurno(turno)" class="action-button view" title="Ver Detalle">
-                    <Eye :size="14"/>
-                  </button>
-                  
-                  <button v-if="turno.estado === 'CANCELADO' && turno.reembolso_estado === 'PENDIENTE'" 
+                  <button v-if="esAdminORecep && turno.estado === 'CANCELADO' && turno.reembolso_estado === 'PENDIENTE'" 
                           @click="gestionarReembolsoManual(turno)" 
                           class="action-button reembolso" 
                           title="Marcar como Dinero Devuelto">
                     <ArrowRightLeft :size="14"/>
                   </button>
                   
-                  <button v-if="esEstadoActivo(turno.estado) && turno.tipo_pago === 'SENA_50'" 
+                  <button v-if="esAdminORecep && esEstadoActivo(turno.estado) && turno.tipo_pago === 'SENA_50'" 
                           @click="confirmarPagoTotal(turno)" 
                           class="action-button pagar" 
                           title="Cobrar Restante">
                     <CreditCard :size="14"/>
                   </button>
                   
-                  <button v-if="mostrarBotonCompletar(turno)" 
+                  <button v-if="esAdminORecep && mostrarBotonCompletar(turno)" 
                           @click="completarTurno(turno)" 
                           class="action-button complete" 
                           title="Finalizar Atención">
                     <Check :size="14"/>
                   </button>
                   
-                  <button v-if="puedeCancelarTurno(turno)" 
+                  <button v-if="esAdminORecep && puedeCancelarTurno(turno)" 
                           @click="cancelarTurno(turno)" 
                           class="action-button delete" 
                           title="Cancelar Turno">
                     <Trash2 :size="14"/>
                   </button>
+                  
                 </div>
               </td>
             </tr>
@@ -262,6 +275,7 @@ import Swal from 'sweetalert2'
 
 const router = useRouter()
 const turnos = ref([])
+const listaPeluqueros = ref([]) 
 const pagina = ref(1)
 const itemsPorPagina = 7
 const loading = ref(false)
@@ -275,7 +289,11 @@ const filtros = ref({
 })
 
 const userRol = computed(() => {
-  return localStorage.getItem('user_rol') || ''
+  return (localStorage.getItem('user_rol') || '').toUpperCase()
+})
+
+const esAdminORecep = computed(() => {
+  return ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'SUPERUSER'].includes(userRol.value)
 })
 
 const irARegistrar = () => {
@@ -287,12 +305,8 @@ const editarTurno = (turno) => {
 }
 
 const puedeEditarTurno = (turno) => {
-  if (turno.estado !== 'RESERVADO') {
-    return false;
-  }
-  const rol = userRol.value.toUpperCase();
-  const rolesPermitidos = ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'PELUQUERO', 'PEL'];
-  return rolesPermitidos.includes(rol);
+  if (turno.estado !== 'RESERVADO') return false;
+  return ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'PELUQUERO', 'PEL'].includes(userRol.value);
 };
 
 const formatFecha = (fechaStr) => {
@@ -340,7 +354,6 @@ const getMedioPagoTexto = (medioPago, entidadPago = null) => {
   return map[medioPago] || medioPago
 }
 
-// 🔥 CORREGIDO: Si es TOTAL devuelve 0
 const calcularFaltaPagar = (turno) => {
   if (turno.tipo_pago === 'TOTAL') return 0;
   const total = parseFloat(turno.monto_total) || 0
@@ -355,7 +368,6 @@ const calcularMontoReembolso = (turno) => {
 }
 
 const esTurnoPorCanje = (turno) => {
-  // Para turnos cancelados: buscar en motivo_cancelacion (principal) y obs_cancelacion (backup)
   if (turno.estado === 'CANCELADO') {
     if (turno.motivo_cancelacion && 
         (turno.motivo_cancelacion.includes('Turno por canje') ||
@@ -370,7 +382,6 @@ const esTurnoPorCanje = (turno) => {
       return true;
     }
   } else {
-    // Para turnos activos: buscar la marca específica en obs_cancelacion
     if (turno.obs_cancelacion && turno.obs_cancelacion.includes('Turno obtenido por canje')) {
       return true;
     }
@@ -986,18 +997,26 @@ const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.va
 // PERMISOS
 const mostrarBotonCompletar = (turno) => {
   if (['COMPLETADO', 'CANCELADO'].includes(turno.estado)) return false
-  const rol = userRol.value.toUpperCase()
-  return ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'PELUQUERO', 'PEL'].includes(rol)
+  return ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'PELUQUERO', 'PEL'].includes(userRol.value)
 }
 
 const puedeCancelarTurno = (turno) => {
   if (['COMPLETADO', 'CANCELADO'].includes(turno.estado)) return false
-  const rol = userRol.value.toUpperCase()
-  return ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'PELUQUERO', 'PEL'].includes(rol)
+  return ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'PELUQUERO', 'PEL'].includes(userRol.value)
 }
 
 // CARGA INICIAL
-onMounted(() => { cargarTurnos() })
+onMounted(async () => { 
+  cargarTurnos() 
+  // Si es Administrador/Recepcionista, cargamos la lista de peluqueros para el filtro
+  if (esAdminORecep.value) {
+    try {
+      const res = await axios.get('/api/peluqueros/')
+      listaPeluqueros.value = res.data || []
+    } catch(e) { console.error('Error cargando peluqueros para el filtro', e) }
+  }
+})
+
 watch(filtros, () => { pagina.value = 1 }, { deep: true })
 </script>
 
@@ -1024,6 +1043,19 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   height: 4px;
   background: linear-gradient(90deg, #0ea5e9, #0284c7, #0369a1, #0284c7, #0ea5e9);
   border-radius: 24px 24px 0 0;
+}
+
+/* 🔥 ESTILO PARA LA ETIQUETA DEL ID 🔥 */
+.badge-id {
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  font-size: 0.8rem;
+  border: 1px solid var(--border-color);
+  display: inline-block;
 }
 
 /* BADGES DE ESTADO */

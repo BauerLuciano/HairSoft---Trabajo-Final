@@ -59,7 +59,7 @@ from .serializers import (
 )
 from .forms import UsuarioForm # Ajustado si tenías formularios específicos
 from .mercadopago_service import MercadoPagoService
-from .pdf_utils import generar_comprobante_venta, generar_reporte_ventas, generar_comprobante_turno, generar_comprobante_pedido_web
+from .pdf_utils import generar_comprobante_venta, generar_reporte_ventas, generar_comprobante_turno, generar_comprobante_pedido_web, generar_cierre_caja_pdf
 
 # Configuración del logger
 logger = logging.getLogger(__name__)
@@ -1246,23 +1246,26 @@ def listado_turnos(request):
         return JsonResponse({'error': 'Método no permitido'}, status=405)
 
     try:
-        # 🧹 PASO 0: Saneamiento automático
-        sanear_turnos_vencidos()
+        try:
+            sanear_turnos_vencidos()
+        except:
+            pass
 
-        # 1. IDENTIFICAMOS AL USUARIO POR SU TOKEN
         user_autenticado = request.user
-        rol_nombre = user_autenticado.rol.nombre.upper() if user_autenticado.rol else ''
+        
+        rol_nombre = getattr(user_autenticado.rol, 'nombre', '').upper().strip() if hasattr(user_autenticado, 'rol') and user_autenticado.rol else ''
 
-        # 2. QUERY BASE
         turnos = Turno.objects.all().select_related('cliente', 'peluquero').prefetch_related('servicios').order_by('fecha', 'hora')
 
-        # 🛡️ EL FILTRO DE PRIVACIDAD (LAUTARO SOLO VE LAUTARO)
-        if rol_nombre == 'PELUQUERO':
-            # Si el que pide es Peluquero, filtramos por su usuario
+        # =======================================================
+        # 🛡️ EL FILTRO DE PRIVACIDAD BLINDADO (REGLA DE ORO)
+        # =======================================================
+        es_admin_o_recep = rol_nombre in ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'SUPERUSER']
+
+        if not es_admin_o_recep:
             turnos = turnos.filter(peluquero=user_autenticado)
         else:
-            # Si es Admin o Recepcionista, puede usar el filtro de la URL
-            peluquero_id_query = request.GET.get('peluquero')
+            peluquero_id_query = request.GET.get('peluquero_id')
             if peluquero_id_query:
                 turnos = turnos.filter(peluquero__id=peluquero_id_query)
 
@@ -1273,7 +1276,6 @@ def listado_turnos(request):
         fecha_hasta = request.GET.get('fecha_hasta')
         fecha_exacta = request.GET.get('fecha')
         
-        # 🔥 NUEVO: Filtro para buscar turnos (cliente, peluquero, etc.)
         busqueda = request.GET.get('q')
         if busqueda:
             turnos = turnos.filter(
@@ -1316,9 +1318,6 @@ def listado_turnos(request):
             except ValueError: pass
 
         # 4. LÓGICA DE PERMISOS PARA BOTONES EN EL FRONT
-        es_admin_o_recep = rol_nombre in ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC']
-
-        # 5. CONSTRUCCIÓN DE LA DATA (CON TODOS LOS CAMPOS)
         data = []
         ahora = timezone.now()
 
@@ -1341,19 +1340,18 @@ def listado_turnos(request):
                 cumple_tiempo = timezone.now() < (fecha_turno - timedelta(hours=3))
                 
                 es_jefe = rol_nombre in ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC']
-                es_su_peluquero = (rol_nombre == 'PELUQUERO' and t.peluquero == user_autenticado)
+                es_su_peluquero = (not es_jefe and t.peluquero == user_autenticado)
                 estado_activo = t.estado in ['RESERVADO', 'CONFIRMADO']
 
                 puede_cancelar = estado_activo and (es_jefe or es_su_peluquero or cumple_tiempo)
                 puede_modificar = puede_cancelar
-                puede_completar = (t.estado == 'CONFIRMADO' and (es_jefe or es_su_peluquero))
+                puede_completar = (t.estado in ['RESERVADO', 'CONFIRMADO'] and (es_jefe or es_su_peluquero))
 
             except Exception:
                 puede_modificar = es_admin_o_recep
                 puede_cancelar = es_admin_o_recep
                 puede_completar = False
 
-            # 🔥 CONSTRUIR EL OBJETO COMPLETO CON TODOS LOS CAMPOS
             turno_data = {
                 'id': t.id,
                 'fecha': t.fecha.strftime("%Y-%m-%d"),
@@ -1379,11 +1377,10 @@ def listado_turnos(request):
                 'oferta_activa': getattr(t, 'oferta_activa', False),
                 'medio_pago': t.medio_pago or 'PENDIENTE',
                 'reembolsado': getattr(t, 'reembolsado', False),
-                'reembolso_estado': getattr(t, 'reembolso_estado', None),  # 🔥 NUEVO
-                'motivo_cancelacion': getattr(t, 'motivo_cancelacion', None),  # 🔥 NUEVO
-                'obs_cancelacion': getattr(t, 'obs_cancelacion', None),  # 🔥 NUEVO
+                'reembolso_estado': getattr(t, 'reembolso_estado', None),
+                'motivo_cancelacion': getattr(t, 'motivo_cancelacion', None),
+                'obs_cancelacion': getattr(t, 'obs_cancelacion', None),
                 'fecha_expiracion_oferta': t.fecha_expiracion_oferta.isoformat() if getattr(t, 'fecha_expiracion_oferta', None) else None,
-                # 🔥 🔥 🔥 CAMPOS CRÍTICOS DE TRAZABILIDAD DE PAGO 🔥 🔥 🔥
                 'codigo_transaccion': getattr(t, 'codigo_transaccion', None),
                 'entidad_pago': getattr(t, 'entidad_pago', None),
                 'mp_payment_id': getattr(t, 'mp_payment_id', None),
@@ -1391,18 +1388,6 @@ def listado_turnos(request):
             }
             
             data.append(turno_data)
-
-        # 🔥 DEBUG: Mostrar el primer turno para verificar que trae todos los campos
-        if data and len(data) > 0:
-            print("=== DEBUG LISTADO TURNOS ===")
-            print(f"Total turnos: {len(data)}")
-            primer_turno = data[0]
-            print(f"Primer turno ID: {primer_turno.get('id')}")
-            print(f"codigo_transaccion: {primer_turno.get('codigo_transaccion')}")
-            print(f"entidad_pago: {primer_turno.get('entidad_pago')}")
-            print(f"mp_payment_id: {primer_turno.get('mp_payment_id')}")
-            print(f"nro_transaccion: {primer_turno.get('nro_transaccion')}")
-            print("============================")
 
         return JsonResponse(data, safe=False)
 
@@ -4411,14 +4396,12 @@ def dashboard_data(request):
     try:
         from django.db.models import Sum, Count, Q, F
         from .models import Venta, Turno, Producto, DetalleVenta, ConfiguracionSistema, MovimientoCaja, SesionCaja
-        # Aseguramos importaciones necesarias de tiempo
         from datetime import datetime, time, timedelta
         
         period = request.GET.get('period', 'semana')
         date_from_str = request.GET.get('date_from')
         date_to_str = request.GET.get('date_to')
         
-        # OJO: Se asume que ARG_TZ ya está importado arriba en tu api_views.py
         ahora_arg = datetime.now(ARG_TZ)
         hoy_date = ahora_arg.date()
         start_date, end_date = None, None
@@ -4444,7 +4427,7 @@ def dashboard_data(request):
                 end_date = datetime.combine(hoy_date, time.max).replace(tzinfo=ARG_TZ)
 
         # ==========================================
-        # 1. MÉTRICAS OPERATIVAS (Para cantidades y Tops)
+        # 1. MÉTRICAS OPERATIVAS (Para cantidades)
         # ==========================================
         ventas_periodo = Venta.objects.filter(fecha__range=(start_date, end_date), anulada=False)
         turnos_periodo = Turno.objects.filter(fecha__range=(start_date, end_date), estado='COMPLETADO')
@@ -4453,19 +4436,16 @@ def dashboard_data(request):
         productos_vendidos = DetalleVenta.objects.filter(venta__in=ventas_periodo, producto__isnull=False).aggregate(total=Sum('cantidad'))['total'] or 0
 
         # ==========================================
-        # 2. MÉTRICAS FINANCIERAS (🔥 AHORA DESDE LA CAJA 🔥)
+        # 2. MÉTRICAS FINANCIERAS (DESDE LA CAJA)
         # ==========================================
         movimientos_ingreso = MovimientoCaja.objects.filter(tipo='INGRESO', fecha__range=(start_date, end_date))
         movimientos_egreso = MovimientoCaja.objects.filter(tipo='EGRESO', fecha__range=(start_date, end_date))
 
-        # Ingresos y Egresos Reales
         ingresos_totales = movimientos_ingreso.aggregate(total=Sum('monto'))['total'] or 0
         egresos_totales = movimientos_egreso.aggregate(total=Sum('monto'))['total'] or 0
 
-        # 🔥 Ingresos agrupados por Medio de Pago (Efectivo, Mercado Pago, etc.)
+        # Ingresos agrupados por Medio de Pago
         ingresos_por_medio_query = movimientos_ingreso.values('metodo_pago').annotate(total=Sum('monto')).order_by('-total')
-        
-        # Mapeamos los choices ('MERCADO_PAGO' -> 'Mercado Pago') para que quede lindo en el front
         dict_medios = dict(MovimientoCaja.METODO_CHOICES)
         ingresos_por_medio = [
             {'medio': dict_medios.get(m['metodo_pago'], m['metodo_pago']), 'total': float(m['total'])} 
@@ -4484,7 +4464,7 @@ def dashboard_data(request):
             pendientes_data['total_dinero'] = float(huerfanos.aggregate(t=Sum('monto'))['t'] or 0)
 
         # ==========================================
-        # 4. GRÁFICO DIARIO (🔥 AHORA BASADO EN CAJA 🔥)
+        # 4. GRÁFICO DIARIO (BASADO EN CAJA)
         # ==========================================
         labels_dias, ventas_por_dia = [], []
         delta_days = (end_date.date() - start_date.date()).days
@@ -4493,19 +4473,9 @@ def dashboard_data(request):
             l_s = datetime.combine(curr, time.min).replace(tzinfo=ARG_TZ)
             l_e = datetime.combine(curr, time.max).replace(tzinfo=ARG_TZ)
             
-            # Calculamos la plata real que entró ese día en la caja
             tot = MovimientoCaja.objects.filter(tipo='INGRESO', fecha__range=(l_s, l_e)).aggregate(t=Sum('monto'))['t'] or 0
             labels_dias.append(f"{curr.day}/{curr.month}")
             ventas_por_dia.append(float(tot))
-
-        # ==========================================
-        # 5. TOPS
-        # ==========================================
-        top_s = turnos_periodo.values('servicios__nombre').annotate(c=Count('id')).order_by('-c')[:5]
-        servicios_top = [{'nombre': s['servicios__nombre'] or 'Sin nombre', 'cantidad': s['c']} for s in top_s]
-        
-        top_p = DetalleVenta.objects.filter(venta__in=ventas_periodo, producto__isnull=False).values('producto__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:5]
-        productos_top = [{'nombre': p['producto__nombre'], 'cantidad': p['c']} for p in top_p]
 
         # Info de la empresa
         config = ConfiguracionSistema.get_solo()
@@ -4521,9 +4491,7 @@ def dashboard_data(request):
             'productosVendidos': productos_vendidos,
             'ventasPorDia': ventas_por_dia,
             'labelsDias': labels_dias,
-            'serviciosTop': servicios_top,
-            'productosTop': productos_top,
-            'ingresosPorMedio': ingresos_por_medio, # Ahora 100% exacto
+            'ingresosPorMedio': ingresos_por_medio,
             'usuario_emisor': usuario_emisor,
             'cajaAbierta': caja_abierta,       
             'pendientesInfo': pendientes_data, 
@@ -6230,7 +6198,6 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         
         caja_id = request.data.get('caja')
         saldo_inicial_efvo = Decimal(str(request.data.get('saldo_inicial_efectivo', 0.00)))
-        # 🔥 RECIBIMOS EL SALDO DE MP
         saldo_inicial_mp = Decimal(str(request.data.get('saldo_inicial_mp', 0.00)))
         
         caja = get_object_or_404(Caja, id=caja_id, activa=True)
@@ -6305,7 +6272,6 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         def sum_m(metodo, tipo): return movs.filter(metodo_pago=metodo, tipo=tipo).aggregate(t=Sum('monto'))['t'] or Decimal('0')
         
         esp_ef = sesion.saldo_inicial_efectivo + sum_m('EFECTIVO', 'INGRESO') - sum_m('EFECTIVO', 'EGRESO')
-        # 🔥 Ahora Mercado Pago suma el saldo inicial al balance
         esp_mp = sesion.saldo_inicial_mp + sum_m('MERCADO_PAGO', 'INGRESO') - sum_m('MERCADO_PAGO', 'EGRESO')
         esp_tr = sum_m('TRANSFERENCIA', 'INGRESO') - sum_m('TRANSFERENCIA', 'EGRESO')
         
@@ -6316,6 +6282,25 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
             'esperado_mp': esp_mp, 
             'esperado_transf': esp_tr
         })
+
+    # 🔥 NUEVO ENDPOINT PARA DESCARGAR PDF
+    @action(detail=True, methods=['GET'])
+    def descargar_pdf(self, request, pk=None):
+        sesion = self.get_object()
+        movimientos = sesion.movimientos.all().order_by('fecha')
+        
+        try:
+            config = ConfiguracionSistema.get_solo()
+        except:
+            config = None
+
+        # Generamos el PDF con ReportLab
+        pdf_bytes = generar_cierre_caja_pdf(sesion, movimientos, config)
+
+        # Devolvemos el archivo para que el navegador lo descargue
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="Cierre_Z_Sesion_{sesion.id}.pdf"'
+        return response
 
 class MovimientoCajaViewSet(viewsets.ModelViewSet):
     """

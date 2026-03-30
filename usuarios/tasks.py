@@ -120,7 +120,6 @@ def procesar_reoferta_masiva(turno_id):
             turno.token_reoferta = str(uuid.uuid4())
             Turno.objects.filter(id=turno.id).update(token_reoferta=turno.token_reoferta)
 
-        # Buscar interesados
         interesados = InteresTurnoLiberado.objects.filter(
             turno_liberado=turno,
             estado_oferta__in=['preparando', 'pendiente']
@@ -130,11 +129,9 @@ def procesar_reoferta_masiva(turno_id):
             logger.info(f"📭 No hay interesados para turno {turno_id}")
             return True
             
-        # 🔥 ACÁ LEEMOS EL DESCUENTO DE REOFERTA
         config = ConfiguracionSistema.get_solo()
         descuento = getattr(config, 'porcentaje_descuento_reoferta', 15)
 
-        # 🔄 AGRUPAR POR CLIENTE
         clientes_map = {}
         for interes in interesados:
             cid = interes.cliente.id
@@ -168,7 +165,6 @@ def procesar_reoferta_masiva(turno_id):
 
                 link = f"{base_url}/aceptar-oferta/{turno.id}/{interes.token_oferta}"
 
-                # 🔥 Y ACA SE USA EN EL MENSAJE:
                 msg = (
                     f"¡TURNO DISPONIBLE! 🎁\n"
                     f"Hola {interes.cliente.nombre}, se liberó un lugar para:\n"
@@ -274,7 +270,6 @@ def procesar_reactivacion_clientes_inactivos():
                     f"Los Ultimos Serán Los Primeros"
                 )
                 
-                # 🔥 ACÁ ESTÁ LA MAGIA: Usamos tu función que YA SABEMOS que anda
                 if cliente.telefono:
                     enviar_whatsapp_oferta.delay(cliente.telefono, mensaje)
                 
@@ -445,14 +440,12 @@ def procesar_alertas_stock_proveedores(producto_id):
         
         fecha_hoy = timezone.now().strftime("%d/%m/%Y")
         
-        # Se crea UNA sola solicitud para agrupar las cotizaciones
         solicitud = SolicitudPresupuesto.objects.create(
             producto=producto,
             cantidad_requerida=producto.lote_reposicion,
             estado='PENDIENTE'
         )
 
-        # Usamos tu link de Ngrok para que sea clickeable fuera de tu red
         base_url = 'https://brandi-palmar-pickily.ngrok-free.dev'
 
         for proveedor in producto.proveedores.all():
@@ -468,7 +461,6 @@ def procesar_alertas_stock_proveedores(producto_id):
             link = f"{base_url}/proveedor/cotizar/{cotizacion.token}"
             asunto = f"📦 Nueva Solicitud de Compra #{solicitud.id}"
             
-            # --- TU HTML ORIGINAL (Con doble {{ }} en CSS para que Python no se confunda) ---
             mensaje_html = f"""
             <!DOCTYPE html>
             <html>

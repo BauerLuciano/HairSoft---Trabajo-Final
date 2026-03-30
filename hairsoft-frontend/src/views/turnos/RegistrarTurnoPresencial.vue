@@ -155,29 +155,6 @@
 
           <div v-if="form.peluquero && form.peluquero !== form.cliente" class="card-modern slide-in">
             <div class="card-header">
-              <div class="card-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);"><Armchair :size="20" /></div>
-              <h3>Puesto de Trabajo</h3>
-            </div>
-            
-            <div class="input-group">
-              <div class="custom-select-wrapper">
-                <select v-model="form.silla" class="form-control-select">
-                  <option :value="null">✨ Asignación Automática (Recomendado)</option>
-                  <option v-for="silla in sillasActivas" :key="silla.id" :value="silla.id">
-                    🪑 {{ silla.nombre }}
-                  </option>
-                </select>
-                <ChevronDown class="select-icon" :size="18" />
-              </div>
-              <small style="color: #6b7280; font-size: 0.85rem; margin-top: 8px; display: block; padding-left: 5px;">
-                <Info :size="14" style="vertical-align: middle; margin-right: 4px;" />
-                Si eliges automático, el sistema buscará la primera silla libre.
-              </small>
-            </div>
-          </div>
-
-          <div v-if="form.peluquero && form.peluquero !== form.cliente" class="card-modern slide-in">
-            <div class="card-header">
               <div class="card-icon"><CalendarDays :size="20" /></div>
               <h3>Fecha</h3>
             </div>
@@ -257,6 +234,29 @@
                 <span v-else-if="obtenerDetalleOcupacion(hora) === 'LOCAL_LLENO'" class="etiqueta-ocupado lleno">SIN SILLAS</span>
                 <span v-else-if="obtenerDetalleOcupacion(hora) === 'PASADO'" class="etiqueta-ocupado pasado">EXPIRÓ</span>
               </div>
+            </div>
+          </div>
+
+          <div v-if="form.fecha" class="card-modern slide-in">
+            <div class="card-header">
+              <div class="card-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);"><Armchair :size="20" /></div>
+              <h3>Puesto de Trabajo</h3>
+            </div>
+            
+            <div class="input-group">
+              <div class="custom-select-wrapper">
+                <select v-model="form.silla" class="form-control-select">
+                  <option :value="null">✨ Asignación Automática (Recomendado)</option>
+                  <option v-for="silla in sillasActivas" :key="silla.id" :value="silla.id">
+                    🪑 {{ silla.nombre }}
+                  </option>
+                </select>
+                <ChevronDown class="select-icon" :size="18" />
+              </div>
+              <small style="color: #6b7280; font-size: 0.85rem; margin-top: 8px; display: block; padding-left: 5px;">
+                <Info :size="14" style="vertical-align: middle; margin-right: 4px;" />
+                Si eliges automático, el sistema buscará la primera silla libre.
+              </small>
             </div>
           </div>
 
@@ -432,11 +432,10 @@ import {
   CalendarDays, ChevronLeft, ChevronRight, Info, Loader2, Receipt, CheckCircle, Armchair, ChevronDown 
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
-// 🔥 AGREGAMOS AXIOS Y API_BASE_URL COMO EN VENTAS
 import axios from '@/utils/axiosConfig'
 
 const router = useRouter()
-const API_BASE_URL = 'http://127.0.0.1:8000'; // Mismo que en ventas
+const API_BASE_URL = 'http://127.0.0.1:8000'; 
 const API_URL = `${API_BASE_URL}/api`;
 
 const getAuthHeaders = () => {
@@ -484,7 +483,6 @@ const cargandoDatos = ref(true)
 const intervaloMinutos = 10
 const STORAGE_KEY = 'turno_presencial_context'
 
-// 🔥 FUNCIÓN PARA VERIFICAR CAJA IGUAL A LA DE VENTAS
 const verificarCajaAbierta = async () => {
   try {
     const res = await axios.get(`${API_BASE_URL}/api/estado-caja/`);
@@ -991,7 +989,6 @@ onMounted(() => {
     return
   }
   
-  // 🔥 AHORA SÍ LLAMAMOS A LA VERIFICACIÓN ACÁ
   verificarCajaAbierta();
 
   cargarDatosIniciales()
@@ -1306,16 +1303,11 @@ onBeforeUnmount(() => {
   color: white; 
 }
 
-/* ======================================================================
-   🔥 NUEVOS COLORES DINÁMICOS DEPENDIENDO DE QUIÉN OCUPA EL TURNO 🔥 
-   ====================================================================== */
-
 .hora-ocupada {
   cursor: not-allowed;
   opacity: 0.85;
 }
 
-/* ESTILO: OCUPADO POR PELUQUERO (Tu color rojo original) */
 .hora-ocupada.ocupada-peluquero {
   background: linear-gradient(135deg, #fee2e2, #fecaca);
   border: 2px solid #f87171;
@@ -1327,7 +1319,6 @@ onBeforeUnmount(() => {
 }
 .hora-ocupada.ocupada-peluquero .hora-icono { color: #dc2626; }
 
-/* ESTILO: OCUPADO POR LA SILLA (Amarillo/Naranja) */
 .hora-ocupada.ocupada-silla {
   background: linear-gradient(135deg, #fef08a, #fde047);
   border: 2px solid #eab308;
@@ -1339,7 +1330,6 @@ onBeforeUnmount(() => {
 }
 .hora-ocupada.ocupada-silla .hora-icono { color: #ca8a04; }
 
-/* ETIQUETITAS ABAJO DE LA HORA */
 .etiqueta-ocupado {
   display: block;
   font-size: 0.65em;
@@ -1360,7 +1350,6 @@ onBeforeUnmount(() => {
   transform: none;
   box-shadow: none;
 }
-/* ====================================================================== */
 
 .input-modern, .select-modern {
   width: 100%;

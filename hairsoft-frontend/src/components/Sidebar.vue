@@ -149,6 +149,8 @@ const menuData = {
     title: 'Administración',
     icon: 'ri-settings-3-line',
     items: [
+      // ✅ ACÁ AGREGAMOS LAS ESTADÍSTICAS
+      { name: 'Estadísticas', path: '/estadisticas', icon: 'ri-pie-chart-line', roles: ['ADMINISTRADOR'] },
       { name: 'Usuarios', path: '/usuarios', icon: 'ri-team-line', roles: ['ADMINISTRADOR'] },
       { name: 'Roles', path: '/roles', icon: 'ri-shield-user-line', roles: ['ADMINISTRADOR'] },
       { name: 'Liquidación Sueldos', path: '/admin/liquidacion', icon: 'ri-money-dollar-circle-line', roles: ['ADMINISTRADOR'] }, 

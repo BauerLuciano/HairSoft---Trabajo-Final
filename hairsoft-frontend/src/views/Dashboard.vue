@@ -178,36 +178,10 @@
       </div>
 
       <div class="top-section">
-        <h3 class="section-title" style="margin-bottom: 1.5rem;"><i class="fas fa-trophy"></i> Desempeño y Medios de Pago</h3>
+        <h3 class="section-title" style="margin-bottom: 1.5rem;"><i class="fas fa-wallet"></i> Medios de Pago</h3>
         
         <div class="top-grid">
-          
           <div class="section-card top-card">
-            <div class="section-header"><h3><i class="fas fa-star"></i> Servicios Top</h3></div>
-            <div class="list-body">
-              <div class="list-item" v-for="(s, i) in dashboardData.serviciosTop" :key="i">
-                <div class="rank">{{ i + 1 }}</div>
-                <div class="item-content"><div class="item-name">{{ s.nombre }}</div></div>
-                <div class="item-count">{{ s.cantidad }}</div>
-              </div>
-              <div v-if="!dashboardData.serviciosTop.length" class="empty-state">Sin servicios en este período</div>
-            </div>
-          </div>
-          
-          <div class="section-card top-card">
-            <div class="section-header"><h3><i class="fas fa-fire"></i> Productos Top</h3></div>
-            <div class="list-body">
-              <div class="list-item" v-for="(p, i) in dashboardData.productosTop" :key="i">
-                <div class="rank">{{ i + 1 }}</div>
-                <div class="item-content"><div class="item-name">{{ p.nombre }}</div></div>
-                <div class="item-count">{{ p.cantidad }}</div>
-              </div>
-              <div v-if="!dashboardData.productosTop.length" class="empty-state">Sin productos vendidos</div>
-            </div>
-          </div>
-
-          <div class="section-card top-card">
-            <div class="section-header"><h3><i class="fas fa-wallet"></i> Ingresos por Medio</h3></div>
             <div class="list-body medios-pago-body">
               
               <div v-for="(medio, index) in dashboardData.ingresosPorMedio" :key="index" class="medio-item">
@@ -227,7 +201,6 @@
               
             </div>
           </div>
-
         </div>
       </div>
     </main>
@@ -255,6 +228,7 @@
           <p style="margin: 0; font-size: 11px; color: #64748b; text-transform: uppercase;">Emitido por:</p>
           <p style="margin: 2px 0 10px; font-size: 13px; font-weight: bold; color: #0f172a;">{{ dashboardData.usuario_emisor || 'ADMINISTRADOR' }}</p>
           <p style="margin: 0; font-size: 11px; color: #64748b;">PERÍODO: <strong>{{ getPeriodDisplay }}</strong></p>
+          <p style="margin: 4px 0 0; font-size: 11px; color: #64748b;">FECHA DE EMISIÓN: <strong>{{ getFechaEmision() }}</strong></p>
         </div>
       </div>
 
@@ -278,42 +252,17 @@
         </div>
       </div>
 
-      <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #0ea5e9; padding-left: 10px; margin-bottom: 20px; color: #0f172a;">2. Análisis Detallado</h3>
-      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px;">
-        
-        <div>
-          <h4 style="font-size: 12px; color: #475569; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">Top Servicios</h4>
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr v-for="s in dashboardData.serviciosTop.slice(0, 5)" :key="s.nombre" style="border-bottom: 1px solid #f1f5f9;">
-              <td style="padding: 10px 0; font-size: 12px;">{{ s.nombre }}</td>
-              <td style="padding: 10px 0; font-size: 12px; text-align: right; font-weight: bold;">{{ s.cantidad }} uds.</td>
-            </tr>
-          </table>
-        </div>
-        
-        <div>
-          <h4 style="font-size: 12px; color: #475569; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">Top Productos</h4>
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr v-for="p in dashboardData.productosTop.slice(0, 5)" :key="p.nombre" style="border-bottom: 1px solid #f1f5f9;">
-              <td style="padding: 10px 0; font-size: 12px;">{{ p.nombre }}</td>
-              <td style="padding: 10px 0; font-size: 12px; text-align: right; font-weight: bold;">{{ p.cantidad }} uds.</td>
-            </tr>
-          </table>
-        </div>
-
-        <div>
-          <h4 style="font-size: 12px; color: #475569; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">Ingresos por Medio</h4>
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr v-for="(m, index) in dashboardData.ingresosPorMedio" :key="m.medio" style="border-bottom: 1px solid #f1f5f9;">
-              <td style="padding: 10px 0; font-size: 12px;">
-                <span :style="{ color: getMedioColor(index), fontWeight: 'bold', marginRight: '5px' }">●</span>
-                {{ m.medio }}
-              </td>
-              <td style="padding: 10px 0; font-size: 12px; text-align: right; font-weight: bold;">${{ formatNumber(m.total) }}</td>
-            </tr>
-          </table>
-        </div>
-
+      <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #0ea5e9; padding-left: 10px; margin-bottom: 20px; color: #0f172a;">2. Análisis de Medios de Pago</h3>
+      <div>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr v-for="(m, index) in dashboardData.ingresosPorMedio" :key="m.medio" style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 10px 0; font-size: 12px;">
+              <span :style="{ color: getMedioColor(index), fontWeight: 'bold', marginRight: '5px' }">●</span>
+              {{ m.medio }}
+            </td>
+            <td style="padding: 10px 0; font-size: 12px; text-align: right; font-weight: bold;">${{ formatNumber(m.total) }}</td>
+          </tr>
+        </table>
       </div>
 
       <div style="position: absolute; bottom: 50px; right: 60px; text-align: right;">
@@ -340,8 +289,8 @@ const tooltip = ref({ visible: false, x: 0, y: 0, value: 0, date: '', index: 0 }
 
 const dashboardData = ref({
   ingresosTotales: 0, egresosTotales: 0, serviciosRealizados: 0, productosVendidos: 0,
-  ventasPorDia: [], labelsDias: [], serviciosTop: [], productosTop: [],
-  ingresosPorMedio: [], // 🔥 ARRAY NUEVO
+  ventasPorDia: [], labelsDias: [],
+  ingresosPorMedio: [],
   usuario_emisor: '', empresa: null, cajaAbierta: true, pendientesInfo: { cantidad: 0, total_dinero: 0 }
 })
 
@@ -359,6 +308,12 @@ const getLocalToday = () => {
 }
 const today = getLocalToday()
 
+// 🔥 FUNCIÓN NUEVA PARA LA FECHA EXACTA DE DESCARGA
+const getFechaEmision = () => {
+  const d = new Date()
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+}
+
 const periods = [
   { value: 'hoy', label: 'Hoy', icon: 'fas fa-clock' },
   { value: 'semana', label: '7 Días', icon: 'fas fa-calendar-week' },
@@ -371,7 +326,6 @@ const getPeriodDisplay = computed(() => {
   return p ? p.label : 'Período'
 })
 
-// 🔥 COLORES PARA LOS MEDIOS DE PAGO
 const medioColors = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899'];
 const getMedioColor = (index) => medioColors[index % medioColors.length];
 
