@@ -956,7 +956,10 @@ class SolicitudPresupuestoSerializer(serializers.ModelSerializer):
 class AuditoriaSerializer(serializers.ModelSerializer):
     usuario_nombre = serializers.CharField(source='usuario.nombre', read_only=True, default='Sistema')
     usuario_apellido = serializers.CharField(source='usuario.apellido', read_only=True, default='')
-    usuario_rol = serializers.CharField(source='usuario.rol.nombre', read_only=True, default='-')
+    
+    # 🔥 FIX: Usamos un Method Field para hacer la magia de detectar al Super Admin
+    usuario_rol = serializers.SerializerMethodField()
+    
     usuario_email = serializers.CharField(source='usuario.correo', read_only=True, default='')
     
     # ✅ NUEVO: Campos extraídos de 'detalles'
@@ -967,6 +970,16 @@ class AuditoriaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Auditoria
         fields = '__all__'
+        
+    # 🔥 NUEVA LÓGICA: Saca el rol, o le clava SUPER ADMIN
+    def get_usuario_rol(self, obj):
+        if not obj.usuario:
+            return '-'
+        if obj.usuario.rol:
+            return obj.usuario.rol.nombre.upper()
+        if obj.usuario.is_superuser:
+            return 'SUPER ADMIN'
+        return 'SIN ROL'
     
     def get_navegador_info(self, obj):
         if not obj.detalles:

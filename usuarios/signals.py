@@ -1,18 +1,21 @@
-# usuarios/signals.py (VERSIÓN CORREGIDA - CON CELERY FIDELIZACIÓN)
+# usuarios/signals.py (VERSIÓN CORREGIDA - CON CELERY FIDELIZACIÓN + LOGINS)
 from django.db.models.signals import pre_save, post_save, post_delete
+from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.dispatch import receiver
 from django.utils import timezone
 from decimal import Decimal
 from datetime import date, datetime, time
 import logging, uuid
 
+# 🔥 FIX: Agregamos Liquidacion a los imports
 from .models import (
     Turno, Producto, Auditoria, Usuario, Venta, Pedido, Rol,
     Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago,
-    InteresTurnoLiberado, PromocionReactivacion, SesionCaja, MovimientoCaja
+    InteresTurnoLiberado, PromocionReactivacion, SesionCaja, MovimientoCaja,
+    Liquidacion
 )
 from .middleware import get_current_request_data
-from .tasks import procesar_reactivacion_clientes_inactivos # ✅ IMPORTANTE: Importar la task
+from .tasks import procesar_reactivacion_clientes_inactivos
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +38,16 @@ def disparar_analisis_fidelizacion(sender, instance, **kwargs):
             
     except Exception as e:
         logger.error(f"❌ Error signal fidelización: {e}")
+        
 # =========================================================
 # AUDITORÍA DE DATOS (NO TOCAR)
 # =========================================================
 
+# 🔥 FIX: Agregamos Liquidacion a la lista de vigilancia
 MODELOS_A_AUDITAR = [
     Usuario, Producto, Turno, Venta, Pedido, Rol,
     Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago,
-    SesionCaja, MovimientoCaja
+    SesionCaja, MovimientoCaja, Liquidacion
 ]
 
 def serializar(valor):
@@ -178,3 +183,70 @@ def auditar_borrado(sender, instance, **kwargs):
             )
         except Exception as e:
             logger.error(f"Error en auditoría de borrado: {e}")
+
+# =========================================================
+# 🔥 NUEVO: AUDITORÍA DE INICIO Y CIERRE DE SESIÓN 🔥
+# =========================================================
+
+@receiver(user_logged_in)
+def auditar_inicio_sesion(sender, request, user, **kwargs):
+    try:
+        req_data = get_current_request_data()
+        ip = req_data.get('ip', 'Desconocida')
+        navegador = req_data.get('navegador', 'Desconocido')
+        
+        # Formateamos los detalles para que tu parser de Vue los entienda perfecto
+        detalles = {
+            '__meta__': {
+                'navegador': navegador,
+                'ip': ip
+            },
+            'Mensaje del Sistema': {
+                'tipo': 'VALOR', 
+                'valor': f'El usuario {getattr(user, "username", getattr(user, "correo", "Desconocido"))} inició sesión exitosamente.'
+            }
+        }
+        
+        Auditoria.objects.create(
+            usuario=user,
+            modelo_afectado='SesionDeUsuario',  # Tu vue lo clasificará como AUTENTICACION
+            objeto_id=str(user.pk),
+            accion='LOGIN',
+            detalles=detalles,
+            ip_address=ip
+        )
+    except Exception as e:
+        logger.error(f"❌ Error al auditar LOGIN: {e}")
+
+@receiver(user_logged_out)
+def auditar_cierre_sesion(sender, request, user, **kwargs):
+    try:
+        req_data = get_current_request_data()
+        ip = req_data.get('ip', 'Desconocida')
+        navegador = req_data.get('navegador', 'Desconocido')
+        
+        identificador = "Desconocido"
+        if user:
+            identificador = getattr(user, "username", getattr(user, "correo", "Desconocido"))
+
+        detalles = {
+            '__meta__': {
+                'navegador': navegador,
+                'ip': ip
+            },
+            'Mensaje del Sistema': {
+                'tipo': 'VALOR', 
+                'valor': f'El usuario {identificador} cerró sesión.'
+            }
+        }
+        
+        Auditoria.objects.create(
+            usuario=user,
+            modelo_afectado='SesionDeUsuario', 
+            objeto_id=str(user.pk) if user else '0',
+            accion='LOGOUT',
+            detalles=detalles,
+            ip_address=ip
+        )
+    except Exception as e:
+        logger.error(f"❌ Error al auditar LOGOUT: {e}")

@@ -1,7 +1,6 @@
 <template>
   <div class="list-container">
     <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarEditar }">
-      <!-- Header -->
       <div class="list-header">
         <div class="header-content">
           <h1>Gestión de Usuarios</h1>
@@ -13,7 +12,6 @@
         </button>
       </div>
 
-      <!-- Filtros -->
       <div class="filters-container">
         <div class="filters-grid">
           <div class="filter-group">
@@ -31,7 +29,7 @@
             <input type="date" v-model="filtros.fechaHasta" class="filter-input"/>
           </div>
 
-                    <div class="filter-group">
+          <div class="filter-group">
             <label>Rol</label>
             <select v-model="filtros.rol" class="filter-input">
               <option value="">Todos</option>
@@ -51,11 +49,11 @@
         </div>
       </div>
 
-      <!-- Tabla de usuarios -->
       <div class="table-container">
         <table class="users-table">
           <thead>
             <tr>
+              <th>ID</th>
               <th>Nombre</th>
               <th>Apellido</th>
               <th>DNI</th>
@@ -69,6 +67,7 @@
           </thead>
           <tbody>
             <tr v-for="usuario in usuariosPaginados" :key="usuario.id">
+              <td><span class="badge-id">#{{ usuario.id }}</span></td>
               <td><strong>{{ usuario.nombre || '–' }}</strong></td>
               <td>{{ usuario.apellido || '–' }}</td>
               <td>{{ usuario.dni || '–' }}</td>
@@ -117,7 +116,6 @@
         </div>
       </div>
 
-      <!-- Mostrando cantidad -->
       <div class="usuarios-count">
         <p>
           <Users :size="16" />
@@ -125,7 +123,6 @@
         </p>
       </div>
 
-      <!-- Paginación -->
       <div class="pagination">
         <button @click="paginaAnterior" :disabled="pagina === 1">
           <ChevronLeft :size="16" />
@@ -139,7 +136,6 @@
       </div>
     </div>
 
-    <!-- Modal Registrar Usuario -->
     <div v-if="mostrarRegistrar" class="modal-overlay" @click.self="cerrarModal">
       <div class="modal-content">
         <button class="modal-close" @click="cerrarModal" title="Cerrar formulario">
@@ -150,7 +146,6 @@
       </div>
     </div>
 
-    <!-- Modal Editar Usuario -->
     <div v-if="mostrarEditar" class="modal-overlay" @click.self="cerrarModalEditar">
       <div class="modal-content">
         <ModificarUsuario 
@@ -166,7 +161,7 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import axios from 'axios'
-import Swal from 'sweetalert2' // 🔥 IMPORTAMOS SWEETALERT
+import Swal from 'sweetalert2' 
 import RegistrarUsuario from './RegistrarUsuario.vue'
 import ModificarUsuario from './ModificarUsuario.vue'
 import { 
@@ -187,13 +182,11 @@ const mostrarEditar = ref(false)
 const usuarioEditando = ref(null)
 const hayAdminActivo = ref(false)
 
-// Función auxiliar para headers si usás tokens (opcional)
 const getHeaders = () => {
   const token = localStorage.getItem('token');
   return token ? { headers: { Authorization: `Token ${token}` } } : {};
 }
 
-// Cargar usuarios desde backend
 const cargarUsuarios = async () => {
   try {
     const res = await axios.get(`${API_BASE}/api/usuarios/`, getHeaders())
@@ -210,7 +203,6 @@ const cargarUsuarios = async () => {
     )
   } catch (err) {
     console.error('Error al cargar usuarios:', err)
-    // Usamos Toast para errores silenciosos de carga
     Swal.fire({
       toast: true,
       position: 'top-end',
@@ -222,7 +214,6 @@ const cargarUsuarios = async () => {
   }
 }
 
-// Cargar roles
 const cargarRoles = async () => {
   try {
     const res = await axios.get(`${API_BASE}/api/roles/`, getHeaders())
@@ -238,7 +229,6 @@ onMounted(async () => {
   await cargarRoles()
 })
 
-// Filtros por fecha
 const filtrarPorFecha = (usuario) => {
   const fecha = usuario.fecha_creacion ? new Date(usuario.fecha_creacion) : null
   if (!fecha) return true
@@ -251,7 +241,6 @@ const filtrarPorFecha = (usuario) => {
   return true
 }
 
-// Filtrar usuarios
 const usuariosFiltrados = computed(() => {
   const filtrados = usuarios.value.filter(u => {
     const busca = filtros.value.busqueda.toLowerCase()
@@ -270,7 +259,6 @@ const usuariosFiltrados = computed(() => {
   })
 })
 
-// Paginación
 const totalPaginas = computed(() => {
   return Math.max(1, Math.ceil(usuariosFiltrados.value.length / itemsPorPagina))
 })
@@ -294,7 +282,6 @@ const usuarioActualizado = async () => {
   cerrarModalEditar()
 }
 
-// 🔥 ELIMINAR/DESACTIVAR CON SWAL 🔥
 const eliminarUsuario = async (usuario) => {
   const result = await Swal.fire({
     title: '¿Desactivar usuario?',
@@ -326,7 +313,6 @@ const eliminarUsuario = async (usuario) => {
   }
 }
 
-// 🔥 ACTIVAR CON SWAL 🔥
 const activarUsuario = async (usuario) => {
   const result = await Swal.fire({
     title: '¿Reactivar usuario?',
@@ -358,7 +344,6 @@ const activarUsuario = async (usuario) => {
   }
 }
 
-// Clases para estados
 const getEstadoClass = (estado) => {
   const estadoLower = estado?.toLowerCase() || ''
   if (estadoLower === 'activo') return 'estado-success'
@@ -366,16 +351,13 @@ const getEstadoClass = (estado) => {
   return 'estado-secondary'
 }
 
-// Limpiar filtros
 const limpiarFiltros = () => {
   filtros.value = { busqueda: '', rol: '', fechaDesde: '', fechaHasta: '' }
   pagina.value = 1
 }
 
-// Formato de fecha
 const formatFecha = (fecha) => fecha ? new Date(fecha).toLocaleString() : '–'
 
-// Cerrar modales
 const cerrarModal = () => mostrarRegistrar.value = false
 
 const cerrarModalEditar = () => {
@@ -383,7 +365,6 @@ const cerrarModalEditar = () => {
   usuarioEditando.value = null
 }
 
-// Refrescar usuarios 
 const refrescarUsuarios = async (nuevoUsuario = null) => {
   if (nuevoUsuario) {
     await cargarUsuarios()
@@ -393,18 +374,12 @@ const refrescarUsuarios = async (nuevoUsuario = null) => {
   mostrarRegistrar.value = false
 }
 
-// Resetear página al cambiar filtros
 watch(filtros, () => {
   pagina.value = 1
 }, { deep: true })
 </script>
 
 <style scoped>
-/* ========================================
-   🔥 ESTILO BARBERÍA MASCULINO ELEGANTE - USUARIOS
-   ======================================== */
-
-/* Tarjeta principal - CON VARIABLES */
 .list-card {
   background: var(--bg-secondary);
   color: var(--text-primary);
@@ -419,7 +394,6 @@ watch(filtros, () => {
   border: 1px solid var(--border-color);
 }
 
-/* Borde superior azul acero */
 .list-card::before {
   content: '';
   position: absolute;
@@ -429,7 +403,19 @@ watch(filtros, () => {
   border-radius: 24px 24px 0 0;
 }
 
-/* BADGES DE ESTADO - CON VARIABLES */
+/* 🔥 ESTILO PARA LA ETIQUETA DEL ID 🔥 */
+.badge-id {
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  font-size: 0.8rem;
+  border: 1px solid var(--border-color);
+  display: inline-block;
+}
+
 .badge-estado {
   padding: 6px 12px;
   border-radius: 20px;
@@ -478,7 +464,6 @@ watch(filtros, () => {
   box-shadow: 0 0 8px rgba(156, 163, 175, 0.2);
 }
 
-/* HEADER - CON VARIABLES */
 .list-header {
   display: flex;
   justify-content: space-between;
@@ -508,7 +493,6 @@ watch(filtros, () => {
   letter-spacing: 0.5px;
 }
 
-/* Botón registrar */
 .register-button {
   background: linear-gradient(135deg, #0ea5e9, #0284c7);
   color: white;
@@ -550,7 +534,6 @@ watch(filtros, () => {
   background: linear-gradient(135deg, #0284c7, #0369a1);
 }
 
-/* FILTROS - CON VARIABLES */
 .filters-container {
   margin-bottom: 30px;
   background: var(--hover-bg);
@@ -621,7 +604,6 @@ watch(filtros, () => {
   box-shadow: var(--shadow-sm);
 }
 
-/* TABLA - CON VARIABLES */
 .table-container {
   overflow-x: auto;
   margin-bottom: 25px;
@@ -671,7 +653,6 @@ watch(filtros, () => {
   transition: all 0.2s ease;
 }
 
-/* BOTONES DE ACCIÓN - CON VARIABLES */
 .action-buttons { 
   display: flex; 
   gap: 8px; 
@@ -718,7 +699,6 @@ watch(filtros, () => {
   border-color: var(--error-color);
 }
 
-/* 🆕 NUEVO: Botón de activar usuario */
 .action-button.activate {
   background: var(--bg-tertiary);
   border: 1px solid #10b981;
@@ -732,7 +712,6 @@ watch(filtros, () => {
   border-color: #10b981;
 }
 
-/* CONTADOR Y MENSAJES - CON VARIABLES */
 .usuarios-count {
   display: flex;
   justify-content: space-between;
@@ -756,7 +735,6 @@ watch(filtros, () => {
   gap: 8px;
 }
 
-/* ESTADOS DE CARGA - CON VARIABLES */
 .no-results {
   text-align: center;
   padding: 80px;
@@ -780,7 +758,6 @@ watch(filtros, () => {
   color: var(--text-tertiary);
 }
 
-/* PAGINACIÓN - CON VARIABLES */
 .pagination {
   display: flex;
   justify-content: center;
@@ -828,7 +805,6 @@ watch(filtros, () => {
   font-size: 0.95rem;
 }
 
-/* OVERLAY Y MODALES - CON VARIABLES */
 .overlay-activo {
   opacity: 0.3;
   filter: blur(5px);
@@ -895,7 +871,6 @@ watch(filtros, () => {
   border-color: var(--error-color);
 }
 
-/* SCROLLBAR PERSONALIZADO - CON VARIABLES */
 .modal-content::-webkit-scrollbar,
 .table-container::-webkit-scrollbar {
   width: 12px;
@@ -920,7 +895,6 @@ watch(filtros, () => {
   background: var(--accent-color);
 }
 
-/* RESPONSIVE */
 @media (max-width: 768px) {
   .list-card {
     padding: 25px;

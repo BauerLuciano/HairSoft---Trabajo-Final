@@ -164,8 +164,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import Swal from 'sweetalert2';
 import { ShoppingBag } from 'lucide-vue-next';
-
-// IMPORTAMOS TU STORE DE PINIA (cart.js)
+import axios from '@/utils/axiosConfig';
 import { useCartStore } from '@/stores/cart';
 
 const router = useRouter();
@@ -303,9 +302,16 @@ const confirmLogout = () => {
   });
 };
 
-const logout = () => {
+const logout = async () => {
+  try {
+    await axios.post('/api/auth/logout/');
+  } catch (error) {
+    console.error('Error al registrar el logout del cliente en el servidor:', error);
+  }
+
   localStorage.clear();
-  cartStore.limpiarCarrito(); // Limpiamos el carrito al salir usando la acción del store
+  cartStore.limpiarCarrito(); 
+  
   Swal.fire({
     title: 'Sesión cerrada',
     text: 'Has cerrado sesión exitosamente',

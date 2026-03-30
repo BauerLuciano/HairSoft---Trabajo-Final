@@ -185,6 +185,8 @@ class RegistrarPagoLiquidacionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        from .models import SesionCaja, MovimientoCaja, Usuario, Turno, Liquidacion
+
         sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
         if not sesion_abierta:
             return Response(
@@ -215,28 +217,35 @@ class RegistrarPagoLiquidacionView(APIView):
         if total == 0:
              return Response({"error": "No hay monto pendiente para liquidar."}, status=400)
 
-        liquidacion = Liquidacion.objects.create(
-            empleado=empleado,
-            fecha_inicio_periodo=inicio,
-            fecha_fin_periodo=fin,
-            monto_comisiones=total_comision,
-            monto_sueldo_fijo=sueldo_fijo,
-            total_pagado=total,
-            observaciones=data.get('observaciones', '')
-        )
+        try:
+            with transaction.atomic():
+                liquidacion = Liquidacion.objects.create(
+                    empleado=empleado,
+                    fecha_inicio_periodo=inicio,
+                    fecha_fin_periodo=fin,
+                    monto_comisiones=total_comision,
+                    monto_sueldo_fijo=sueldo_fijo,
+                    total_pagado=total,
+                    observaciones=data.get('observaciones', '')
+                )
+                
+                liquidacion.turnos_pagados.set(turnos)
+
+                MovimientoCaja.objects.create(
+                    sesion_caja=sesion_abierta,
+                    tipo='EGRESO',
+                    metodo_pago='EFECTIVO',
+                    concepto='LIQUIDACION_SUELDO',
+                    monto=total,
+                    descripcion=f"Liquidación a {empleado.nombre} {empleado.apellido} (Periodo: {inicio} al {fin})"
+                )
+
+            return Response({"status": "ok", "id": liquidacion.id, "mensaje": "Pago registrado correctamente y descontado de la caja."})
         
-        liquidacion.turnos_pagados.set(turnos)
-
-        MovimientoCaja.objects.create(
-            sesion_caja=sesion_abierta,
-            tipo='EGRESO',
-            metodo_pago='EFECTIVO',
-            concepto='LIQUIDACION_SUELDO',
-            monto=total,
-            descripcion=f"Liquidación a {empleado.nombre} {empleado.apellido} (Periodo: {inicio} al {fin})"
-        )
-
-        return Response({"status": "ok", "id": liquidacion.id, "mensaje": "Pago registrado correctamente"})
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({"error": f"Error interno al guardar: {str(e)}"}, status=500)
 
 class ReporteLiquidacionPDFView(APIView):
     permission_classes = [IsAuthenticated]
@@ -256,29 +265,37 @@ class ReporteLiquidacionPDFView(APIView):
         data_empleados = []
 
         for emp in empleados:
-            filtros = {
-                'peluquero': emp, 
-                'estado': 'COMPLETADO', 
-                'fecha__range': [inicio, fin]
-            }
-            
-            if not es_historial:
-                turnos = Turno.objects.filter(**filtros).exclude(liquidacion__isnull=False)
+            # 🔥 CORRECCIÓN: Separamos la lógica si es historial o si es en vivo
+            if es_historial:
+                from .models import Liquidacion
+                # Buscamos la liquidación exacta guardada en el historial
+                liq = Liquidacion.objects.filter(empleado=emp, fecha_inicio_periodo=inicio, fecha_fin_periodo=fin).first()
+                if not liq:
+                    continue
+                turnos = liq.turnos_pagados.all()
+                sueldo_fijo = float(liq.monto_sueldo_fijo)
+                total_comision = float(liq.monto_comisiones)
             else:
-                turnos = Turno.objects.filter(**filtros)
-            
-            sueldo_fijo = float(emp.sueldo_fijo or 0)
-            if not turnos.exists() and sueldo_fijo == 0:
-                continue
-
-            total_comision = sum(float(t.monto_comision) for t in turnos)
+                turnos = Turno.objects.filter(
+                    peluquero=emp, 
+                    estado='COMPLETADO', 
+                    fecha__range=[inicio, fin]
+                ).exclude(liquidacion__isnull=False)
+                
+                sueldo_fijo = float(emp.sueldo_fijo or 0)
+                if not turnos.exists() and sueldo_fijo == 0:
+                    continue
+                total_comision = sum(float(t.monto_comision) for t in turnos)
             
             lista_turnos = []
             for t in turnos:
+                # Armamos el string con los servicios y porcentajes
                 servicios_str = "<br/>".join([f"• {s.nombre} ({int(getattr(s, 'porcentaje_comision', 0))}%)" for s in t.servicios.all()])
+                cliente_nombre = f"{t.cliente.nombre} {t.cliente.apellido}" if t.cliente else "Consumidor Final"
+                
                 lista_turnos.append({
                     'fecha': t.fecha.strftime("%d/%m"),
-                    'cliente': f"{t.cliente.nombre} {t.cliente.apellido}",
+                    'cliente': cliente_nombre,
                     'servicios': servicios_str,
                     'monto': float(t.monto_comision)
                 })
@@ -288,7 +305,7 @@ class ReporteLiquidacionPDFView(APIView):
                 'comisiones': total_comision,
                 'sueldo_fijo': sueldo_fijo,
                 'total': total_comision + sueldo_fijo,
-                'turnos': lista_turnos
+                'turnos': lista_turnos 
             })
 
         pdf_bytes = generar_liquidacion_pdf(data_empleados, inicio, fin, usuario_impresor, es_pagado=es_historial)

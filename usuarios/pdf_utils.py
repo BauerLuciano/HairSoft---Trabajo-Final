@@ -223,6 +223,14 @@ def generar_liquidacion_pdf(data_empleados, fecha_inicio, fecha_fin, usuario_imp
     titulo_texto = "COMPROBANTE DE PAGO" if es_pagado else "LIQUIDACIÓN PRELIMINAR"
     emisor_nombre = usuario_impresor if usuario_impresor else "Sistema"
     
+    # 🔥 MAGIA: Convertimos el formato de base de datos (YYYY-MM-DD) a formato latino (DD/MM/YYYY)
+    try:
+        f_inicio_str = datetime.strptime(str(fecha_inicio), '%Y-%m-%d').strftime('%d/%m/%Y')
+        f_fin_str = datetime.strptime(str(fecha_fin), '%Y-%m-%d').strftime('%d/%m/%Y')
+        periodo_texto = f"{f_inicio_str} al {f_fin_str}"
+    except:
+        periodo_texto = f"{fecha_inicio} al {fecha_fin}"
+    
     col_der = [
         Paragraph(titulo_texto, estilos['TituloDer']),
         Spacer(1, 6),
@@ -230,7 +238,7 @@ def generar_liquidacion_pdf(data_empleados, fecha_inicio, fecha_fin, usuario_imp
         Paragraph(emisor_nombre, estilos['DatoDerV']),
         Spacer(1, 3),
         Paragraph("PERÍODO", estilos['DatoDerL']),
-        Paragraph(f"{fecha_inicio} al {fecha_fin}", estilos['DatoDerV']),
+        Paragraph(periodo_texto, estilos['DatoDerV']),
         Spacer(1, 3),
         Paragraph("FECHA EMISIÓN", estilos['DatoDerL']),
         Paragraph(datetime.now().strftime("%d/%m/%Y"), estilos['DatoDerV']),
@@ -249,15 +257,56 @@ def generar_liquidacion_pdf(data_empleados, fecha_inicio, fecha_fin, usuario_imp
     for emp in data_empleados:
         grand_total += emp['total']
         elements.append(Paragraph(f"PROFESIONAL: {emp['nombre']}", estilos['Empresa']))
+        
+        # --- TABLA DE RESUMEN ---
         resumen_data = [
             [Paragraph("CONCEPTO", estilos['TH']), Paragraph("MONTO", estilos['TH'])],
-            [Paragraph("Comisiones", estilos['TD']), Paragraph(f"${emp['comisiones']:,.2f}", estilos['TD_Right'])],
-            [Paragraph("TOTAL", estilos['DatoDerV']), Paragraph(f"${emp['total']:,.2f}", estilos['DatoDerV'])]
         ]
+        if emp['sueldo_fijo'] > 0:
+            resumen_data.append([Paragraph("Sueldo Fijo", estilos['TD']), Paragraph(f"${emp['sueldo_fijo']:,.2f}", estilos['TD_Right'])])
+        
+        resumen_data.append([Paragraph("Comisiones Generadas", estilos['TD']), Paragraph(f"${emp['comisiones']:,.2f}", estilos['TD_Right'])])
+        resumen_data.append([Paragraph("TOTAL A PAGAR", estilos['DatoDerV']), Paragraph(f"${emp['total']:,.2f}", estilos['DatoDerV'])])
+        
         t_res = Table(resumen_data, colWidths=[12*cm, 7*cm])
-        t_res.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), AZUL_HEADER)]))
+        t_res.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), AZUL_HEADER),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE')
+        ]))
         elements.append(t_res)
-        elements.append(Spacer(1, 20))
+        elements.append(Spacer(1, 15))
+
+        # --- TABLA DE DETALLE DE TURNOS ---
+        if emp.get('turnos'):
+            elements.append(Paragraph("DETALLE DE SERVICIOS Y COMISIONES", ParagraphStyle('Subtit', fontName='Helvetica-Bold', fontSize=10, textColor=GRIS_TEXTO, spaceAfter=5)))
+            
+            detalles_data = [[
+                Paragraph("FECHA", estilos['TH']),
+                Paragraph("CLIENTE", estilos['TH']),
+                Paragraph("SERVICIOS", estilos['TH']),
+                Paragraph("COMISIÓN", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT))
+            ]]
+            
+            for t in emp['turnos']:
+                detalles_data.append([
+                    Paragraph(t['fecha'], estilos['TD']),
+                    Paragraph(t['cliente'], estilos['TD']),
+                    Paragraph(t['servicios'], estilos['TD']),
+                    Paragraph(f"${t['monto']:,.2f}", estilos['TD_Right'])
+                ])
+            
+            t_det = Table(detalles_data, colWidths=[2.5*cm, 5.5*cm, 8*cm, 3*cm])
+            t_det.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), GRIS_CLARO),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('GRID', (0,1), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+                ('BOTTOMPADDING', (0,0), (-1,0), 6),
+                ('TOPPADDING', (0,0), (-1,0), 6),
+            ]))
+            elements.append(t_det)
+            
+        elements.append(Spacer(1, 30))
 
     funcion_cierre = sello_pagado if es_pagado else footer
     doc.build(elements, onFirstPage=funcion_cierre, onLaterPages=funcion_cierre)

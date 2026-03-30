@@ -8,10 +8,10 @@ _thread_locals = threading.local()
 def get_current_request_data():
     return getattr(_thread_locals, 'request_data', {})
 
-# Clase para desactivar CSRF (la que ya tenías)
 class DisableCSRFMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
+        
     def __call__(self, request):
         setattr(request, '_dont_enforce_csrf_checks', True)
         return self.get_response(request)
@@ -21,45 +21,48 @@ class AuditoriaMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        # 1. Intentamos obtener el usuario estándar de Django
-        user = getattr(request, 'user', None)
+        user = None
 
-        # 2. Si no hay usuario o es Anónimo, buscamos el TOKEN manualmente
-        if not user or user.is_anonymous:
-            auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-            
-            if auth_header:
-                # Limpiamos espacios extra y separamos
-                parts = auth_header.strip().split()
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        
+        if auth_header:
+            parts = auth_header.strip().split()
+            if len(parts) == 2:
+                prefix = parts[0].decode('utf-8') if isinstance(parts[0], bytes) else parts[0]
+                key = parts[1].decode('utf-8') if isinstance(parts[1], bytes) else parts[1]
                 
-                # Aceptamos 'Token <key>' o 'Bearer <key>'
-                if len(parts) == 2 and parts[0].lower() in [b'token', 'token', b'bearer', 'bearer']:
-                    key = parts[1]
+                if prefix.lower() in ['token', 'bearer']:
                     try:
-                        # Buscamos el token en la BD
                         token_obj = Token.objects.select_related('user').get(key=key)
                         user = token_obj.user
-                        # ¡Lo encontramos! Lo asignamos al request para que el resto del sistema sepa
-                        request.user = user
+                        request.user = user  
                     except Token.DoesNotExist:
-                        pass # Token falso o expirado
+                        pass
 
-        # 3. Datos técnicos
+        if not user:
+            session_user = getattr(request, 'user', None)
+            if isinstance(session_user, SimpleLazyObject):
+                session_user._setup()
+                session_user = session_user._wrapped
+            
+            if not getattr(session_user, 'is_anonymous', True):
+                user = session_user
+
+        if getattr(user, 'is_anonymous', True):
+            user = None
+
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
-        
         user_agent = request.META.get('HTTP_USER_AGENT', 'Desconocido')[:250]
 
-        # 4. Guardamos en el hilo global para signals.py
         _thread_locals.request_data = {
-            'user': user if user and not user.is_anonymous else None,
+            'user': user,
             'ip': ip,
             'navegador': user_agent
         }
         
-        response = self.get_response(request)
-        
-        # Limpieza
-        _thread_locals.request_data = {}
-        
-        return response
+        try:
+            response = self.get_response(request)
+            return response
+        finally:
+            _thread_locals.request_data = {}

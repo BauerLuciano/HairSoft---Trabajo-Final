@@ -15,9 +15,9 @@ export default defineConfig({
     },
   },
   server: {
-    host: true, // Escucha en toda la red
+    host: true, 
     port: 5173,
-    // ✅ AGREGAMOS ESTO PARA QUE NGROK NO SEA BLOQUEADO
+    open: true,
     allowedHosts: [
       'brandi-palmar-pickily.ngrok-free.dev'
     ],

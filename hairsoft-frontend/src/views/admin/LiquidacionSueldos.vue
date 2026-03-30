@@ -2,7 +2,6 @@
   <div class="list-container">
     <div class="list-card">
       
-      <!-- HEADER -->
       <div class="list-header">
         <div class="header-content">
           <h1>Gestión de Sueldos</h1>
@@ -31,10 +30,8 @@
         </div>
       </div>
 
-      <!-- VISTA CALCULAR -->
       <div v-if="tabActiva === 'calcular'" class="animate-fade">
         
-        <!-- FILTROS AUTOMÁTICOS -->
         <div class="filters-container">
           <div class="filters-grid">
             <div class="filter-group">
@@ -62,7 +59,6 @@
           </div>
         </div>
 
-        <!-- STATS CARDS -->
         <div v-if="reporte.length > 0" class="usuarios-count" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; background: transparent; border: none; padding: 0;">
           <div class="stat-card total-pagar">
             <div class="stat-icon"><DollarSign :size="24" /></div>
@@ -87,7 +83,6 @@
           </div>
         </div>
 
-        <!-- TABLA REPORTE -->
         <div class="table-container" v-if="reporte.length > 0">
           <table class="users-table">
             <thead>
@@ -131,7 +126,6 @@
                   </td>
                 </tr>
                 
-                <!-- DETALLE EXPANDIDO -->
                 <tr v-if="expandedRows.includes(item.id)" class="row-detail">
                   <td colspan="6" style="padding: 0;">
                     <div class="detail-wrapper">
@@ -211,7 +205,6 @@
         </div>
       </div>
 
-      <!-- VISTA HISTORIAL -->
       <div v-if="tabActiva === 'historial'" class="animate-fade">
         <div class="filters-container">
             <div class="filters-grid" style="grid-template-columns: 1fr;">
@@ -255,7 +248,6 @@
                   <span class="monto-total" style="font-size: 0.95rem;">$ {{ formatPrecio(pago.total_pagado) }}</span>
                 </td>
                 <td class="text-center">
-                  <!-- BOTÓN CORREGIDO CON TÍTULO DETALLADO -->
                   <div class="action-buttons" style="justify-content: center;">
                     <button 
                       class="action-button edit" 
@@ -322,23 +314,16 @@ const paginaHistorial = ref(1);
 
 const formatPrecio = (v) => parseFloat(v || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 });
 
-// --- CORRECCIÓN DE FECHA MEJORADA ---
-// Formatea fechas ISO o strings simples para evitar 'Invalid Date'
 const formatDate = (f) => {
   if (!f) return '-';
   try {
     const datePart = typeof f === 'string' && f.includes('T') ? f.split('T')[0] : f;
-    
-    // Parseo manual YYYY-MM-DD para evitar problemas de zona horaria
     if (typeof datePart === 'string' && datePart.includes('-')) {
         const parts = datePart.split('-');
-        // Aseguramos que tenemos año, mes y día
         if (parts.length === 3) {
             return `${parts[2]}/${parts[1]}/${parts[0]}`;
         }
     }
-    
-    // Fallback: intento estándar
     const d = new Date(f);
     return isNaN(d) ? '-' : d.toLocaleDateString('es-AR');
   } catch (e) {
@@ -392,7 +377,6 @@ const cargarPeluqueros = async () => {
 };
 
 const obtenerReporte = async () => {
-  // Búsqueda automática: si faltan fechas no hacemos nada, si están, buscamos.
   if (!fechaInicio.value || !fechaFin.value) return;
   
   cargando.value = true;
@@ -411,8 +395,11 @@ const obtenerReporte = async () => {
   finally { cargando.value = false; }
 };
 
+// 🔥 ACÁ ESTÁ LA MAGIA CORREGIDA: LEE EL ERROR DEL BACKEND Y RESPETA EL TEMA CLARO/OSCURO 🔥
 const registrarPago = async (empleado) => {
   if (empleado.total_a_pagar <= 0) return Swal.fire('Atención', 'El monto a pagar es 0', 'warning');
+
+  const isDark = !document.documentElement.classList.contains('light-theme');
 
   const result = await Swal.fire({
     title: `Pagar $${formatPrecio(empleado.total_a_pagar)}`,
@@ -421,7 +408,9 @@ const registrarPago = async (empleado) => {
     showCancelButton: true,
     confirmButtonText: 'Sí, Pagar',
     confirmButtonColor: '#10b981',
-    background: '#1e293b', color: '#fff'
+    cancelButtonText: 'Cancelar',
+    background: isDark ? '#1e293b' : '#ffffff',
+    color: isDark ? '#ffffff' : '#1e293b'
   });
 
   if (result.isConfirmed) {
@@ -432,12 +421,32 @@ const registrarPago = async (empleado) => {
         fecha_fin: fechaFin.value,
       };
       await axios.post(`${API_URL}/liquidaciones/registrar/`, payload);
-      Swal.fire({ title: '¡Pago Registrado!', icon: 'success', timer: 1500, showConfirmButton: false });
+      
+      Swal.fire({ 
+          title: '¡Pago Registrado!', 
+          icon: 'success', 
+          timer: 1500, 
+          showConfirmButton: false,
+          background: isDark ? '#1e293b' : '#ffffff',
+          color: isDark ? '#ffffff' : '#1e293b'
+      });
       
       reporte.value = reporte.value.filter(e => e.id !== empleado.id);
     } catch (e) { 
       console.error(e);
-      Swal.fire('Error', 'No se pudo registrar. Verifique que no esté ya pagado.', 'error'); 
+      // Extraemos el error real que manda Django ("Debe abrir una caja...")
+      let msjError = 'No se pudo registrar. Verifique que no esté ya pagado.';
+      if (e.response && e.response.data && e.response.data.error) {
+          msjError = e.response.data.error;
+      }
+      
+      Swal.fire({
+          title: '¡Atención!',
+          text: msjError,
+          icon: 'warning',
+          background: isDark ? '#1e293b' : '#ffffff',
+          color: isDark ? '#ffffff' : '#1e293b'
+      }); 
     }
   }
 };
@@ -507,26 +516,8 @@ onMounted(async () => {
 
 <style scoped>
 /* ========================================
-   🔥 ESTILO UNIFICADO (Idéntico a Productos)
+   🔥 ESTILO UNIFICADO Y CORREGIDO PARA MODO CLARO/OSCURO
    ======================================== */
-
-:root {
-  --bg-primary: #1e293b;
-  --bg-secondary: #0f172a;
-  --bg-tertiary: #1e293b; 
-  --hover-bg: #334155;
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-tertiary: #64748b;
-  --accent-color: #0ea5e9;
-  --accent-light: rgba(14, 165, 233, 0.2);
-  --success-color: #10b981;
-  --error-color: #ef4444;
-  --border-color: #334155;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
-}
 
 .list-container {
   padding: 32px;
@@ -763,10 +754,10 @@ onMounted(async () => {
 .action-button.edit { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }
 .action-button.edit:hover { background: var(--hover-bg); border-color: var(--accent-color); }
 
-/* DETALLE EXPANDIDO */
-.row-detail td { padding: 0; background: #0b1120; }
+/* DETALLE EXPANDIDO (Corregido para adaptarse a variables CSS) */
+.row-detail td { padding: 0; background: var(--bg-primary); }
 .detail-wrapper { padding: 24px; border-left: 4px solid var(--accent-color); }
-.spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+.spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: var(--accent-color); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* PAGINACIÓN */
@@ -801,7 +792,6 @@ onMounted(async () => {
   font-weight: 600;
 }
 
-/* Ocultar texto en móviles si quieres ahorrar espacio */
 @media (max-width: 768px) {
   .btn-text { display: none; }
 }

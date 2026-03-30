@@ -113,9 +113,18 @@ const cerrarSesion = async () => {
   });
 
   if (result.isConfirmed) {
+    try {
+      await axios.post('/api/auth/logout/');
+    } catch (error) {
+      console.error('Error al registrar el logout en el servidor:', error);
+    }
+
     localStorage.removeItem('token');
     localStorage.removeItem('user_rol');
     localStorage.removeItem('user_id');
+    localStorage.removeItem('user_nombre'); 
+    localStorage.removeItem('user_apellido');
+    
     router.push('/login');
   }
 };

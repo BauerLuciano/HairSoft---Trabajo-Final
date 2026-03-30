@@ -57,7 +57,7 @@ from .serializers import (
     PermisoSerializer, TurnoSerializer, ConfiguracionSistemaSerializer, NotaCreditoSerializer, 
     CajaSerializer, SesionCajaSerializer, MovimientoCajaSerializer
 )
-from .forms import UsuarioForm # Ajustado si tenías formularios específicos
+from .forms import UsuarioForm 
 from .mercadopago_service import MercadoPagoService
 from .pdf_utils import generar_comprobante_venta, generar_reporte_ventas, generar_comprobante_turno, generar_comprobante_pedido_web, generar_cierre_caja_pdf
 
@@ -338,31 +338,103 @@ def login_auth(request):
     user = authenticate(username=correo, password=contrasena)
 
     if user:
-        # ✅ Generar o recuperar token
         token, created = Token.objects.get_or_create(user=user)
+        
+        # 🔥 REGISTRO BLINDADO DE AUDITORÍA (LOGIN) 🔥
+        try:
+            from .models import Auditoria
+            from .middleware import get_current_request_data
+            
+            print("--- INICIANDO AUDITORÍA DE LOGIN ---")
+            req_data = get_current_request_data() or {}
+            ip = req_data.get('ip', '127.0.0.1')
+            navegador = req_data.get('navegador', 'Desconocido')
+            
+            # 🔥 FIX: Usamos getattr para evitar que explote si no existe el campo
+            nombre_completo = f"{getattr(user, 'nombre', '')} {getattr(user, 'apellido', '')}".strip()
+            if not nombre_completo:
+                nombre_completo = getattr(user, 'correo', str(user))
+                
+            detalles_login = {
+                '__meta__': {'navegador': navegador, 'ip': ip},
+                'Mensaje del Sistema': {'tipo': 'VALOR', 'valor': f'El usuario {nombre_completo} inició sesión exitosamente.'}
+            }
+            
+            auditoria = Auditoria.objects.create(
+                usuario=user,
+                modelo_afectado='SesionDeUsuario', 
+                objeto_id=str(user.pk),
+                accion='LOGIN',
+                detalles=detalles_login,
+                ip_address=ip
+            )
+            print(f"✅ Auditoría LOGIN guardada perfecto! ID: {auditoria.id}")
+        except Exception as e:
+            print("❌ ERROR EN AUDITORIA DE LOGIN:")
+            import traceback
+            traceback.print_exc()
                 
         return Response({
             'status': 'ok',
             'message': 'Login exitoso',
             'token': token.key,
             'user_id': user.id,
-            'nombre': user.nombre,
-            'apellido': user.apellido,
-            'rol': user.rol.nombre.upper() if user.rol else 'SIN_ROL',
+            'nombre': getattr(user, 'nombre', ''),
+            'apellido': getattr(user, 'apellido', ''),
+            'rol': user.rol.nombre.upper() if getattr(user, 'rol', None) else 'SIN_ROL',
         })
     else:
         return Response({'error': 'Credenciales inválidas'}, status=401)
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_view(request):
     try:
-        print(f"🚪 LOGOUT SOLICITADO POR: {request.user}") # <--- DEBUG
+        # 🔥 FIX: Ya no usamos .username
+        identificador = getattr(request.user, 'correo', str(request.user))
+        print(f"--- 🚪 PROCESO DE LOGOUT INICIADO POR: {identificador} ---")
+
+        # 🔥 REGISTRO BLINDADO DE AUDITORÍA (LOGOUT) 🔥
+        try:
+            from .models import Auditoria
+            from .middleware import get_current_request_data
+            
+            req_data = get_current_request_data() or {}
+            ip = req_data.get('ip', '127.0.0.1')
+            navegador = req_data.get('navegador', 'Desconocido')
+            
+            user = request.user
+            nombre_completo = f"{getattr(user, 'nombre', '')} {getattr(user, 'apellido', '')}".strip()
+            if not nombre_completo:
+                nombre_completo = identificador
+                
+            detalles_logout = {
+                '__meta__': {'navegador': navegador, 'ip': ip},
+                'Mensaje del Sistema': {'tipo': 'VALOR', 'valor': f'El usuario {nombre_completo} cerró sesión.'}
+            }
+            
+            auditoria = Auditoria.objects.create(
+                usuario=user,
+                modelo_afectado='SesionDeUsuario', 
+                objeto_id=str(user.pk),
+                accion='LOGOUT',
+                detalles=detalles_logout,
+                ip_address=ip
+            )
+            print(f"✅ Auditoría LOGOUT guardada perfecto! ID: {auditoria.id}")
+        except Exception as e:
+            print("❌ ERROR EN AUDITORIA DE LOGOUT:")
+            import traceback
+            traceback.print_exc()
 
         if hasattr(request.user, 'auth_token'):
-            request.user.auth_token.delete()       
+            request.user.auth_token.delete()
+            print("✅ Token destruido con éxito.")
+            
         return Response({'message': 'Chau!'})
     except Exception as e:
+        print(f"❌ ERROR GENERAL LOGOUT: {e}")
         return Response({'error': str(e)}, status=500)
     
 @api_view(['POST', 'PATCH', 'PUT'])

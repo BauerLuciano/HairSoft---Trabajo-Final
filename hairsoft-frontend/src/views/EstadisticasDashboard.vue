@@ -93,17 +93,61 @@
       <div class="charts-grid">
         <div class="section-card chart-card">
           <div class="section-header"><h3>💸 Origen de Ingresos (Reservas)</h3></div>
-          <div class="chart-box">
-            <canvas ref="turnosChartCanvas" :style="{ opacity: stats.kpis.ingreso_total > 0 ? 1 : 0 }"></canvas>
-            <div class="chart-empty-message" v-if="stats.kpis.ingreso_total === 0">Sin datos en estas fechas.</div>
+          <div class="chart-layout">
+            <div class="chart-box">
+              <canvas ref="turnosChartCanvas" :style="{ opacity: (ingresosTurnos > 0 || ingresosSenas > 0) ? 1 : 0 }"></canvas>
+              <div class="chart-empty-message" v-if="ingresosTurnos === 0 && ingresosSenas === 0">Sin datos en estas fechas.</div>
+            </div>
+            <div class="chart-summary" v-if="ingresosTurnos > 0 || ingresosSenas > 0">
+              <div class="summary-item">
+                <span class="summary-dot" style="background-color: #10b981;"></span>
+                <div class="summary-info">
+                  <span class="summary-label">Turnos Completados</span>
+                  <span class="summary-value">{{ formatCurrency(ingresosTurnos) }}</span>
+                </div>
+              </div>
+              <div class="summary-item mt-3">
+                <span class="summary-dot" style="background-color: #f59e0b;"></span>
+                <div class="summary-info">
+                  <span class="summary-label">Señas Retenidas</span>
+                  <span class="summary-value">{{ formatCurrency(ingresosSenas) }}</span>
+                </div>
+              </div>
+              <div class="summary-item total mt-4">
+                <div class="summary-info">
+                  <span class="summary-label">TOTAL ORIGEN</span>
+                  <span class="summary-value">{{ formatCurrency(ingresosTurnos + ingresosSenas) }}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         
         <div class="section-card chart-card">
           <div class="section-header"><h3>💳 Distribución por Medio de Pago</h3></div>
-          <div class="chart-box">
-            <canvas ref="pagosChartCanvas" :style="{ opacity: stats.graficos.medios_pago.length > 0 ? 1 : 0 }"></canvas>
-            <div class="chart-empty-message" v-if="stats.graficos.medios_pago.length === 0">No hay pagos registrados.</div>
+          <div class="chart-layout">
+            <div class="chart-box">
+              <canvas ref="pagosChartCanvas" :style="{ opacity: stats.graficos.medios_pago.length > 0 ? 1 : 0 }"></canvas>
+              <div class="chart-empty-message" v-if="stats.graficos.medios_pago.length === 0">No hay pagos registrados.</div>
+            </div>
+            
+            <div class="chart-summary" v-if="stats.graficos.medios_pago.length > 0">
+              <div class="summary-item" v-for="(item, idx) in stats.graficos.medios_pago" :key="idx" :class="{ 'mt-3': idx > 0 }">
+                <span class="summary-dot" style="background-color: #3b82f6;"></span>
+                <div class="summary-info">
+                  <span class="summary-label">{{ item.medio }}</span>
+                  <span class="summary-value">{{ formatCurrency(item.total) }}</span>
+                </div>
+              </div>
+              
+              <div class="summary-item total mt-4">
+                <div class="summary-info">
+                  <span class="summary-label">TOTAL PAGOS</span>
+                  <span class="summary-value">{{ formatCurrency(stats.graficos.medios_pago.reduce((a, c) => a + c.total, 0)) }}</span>
+                </div>
+              </div>
+            </div>
+            
           </div>
         </div>
       </div>
@@ -220,11 +264,22 @@
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 40px;">
         <div>
           <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #f59e0b; padding-left: 10px; margin-bottom: 15px; color: #0f172a;">2. Origen de Ingresos</h3>
-          <img id="pdf-chart-torta" style="width: 100%; max-height: 250px; object-fit: contain;" />
+          <img id="pdf-chart-torta" style="width: 100%; max-height: 250px; object-fit: contain; margin-bottom: 10px;" />
+          <div v-if="stats" style="font-size: 11px; color: #334155; line-height: 1.5;">
+            <strong>Turnos Completados:</strong> {{ formatCurrency(ingresosTurnos) }}<br>
+            <strong>Señas Retenidas:</strong> {{ formatCurrency(ingresosSenas) }}<br>
+            <strong style="color: #0f172a; display: block; margin-top: 5px; font-size: 12px;">TOTAL ORIGEN: {{ formatCurrency(ingresosTurnos + ingresosSenas) }}</strong>
+          </div>
         </div>
         <div>
           <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #3b82f6; padding-left: 10px; margin-bottom: 15px; color: #0f172a;">3. Medios de Pago</h3>
-          <img id="pdf-chart-barras" style="width: 100%; max-height: 250px; object-fit: contain;" />
+          <img id="pdf-chart-barras" style="width: 100%; max-height: 250px; object-fit: contain; margin-bottom: 10px;" />
+          <div v-if="stats" style="font-size: 11px; color: #334155; line-height: 1.5;">
+            <span v-for="item in stats.graficos.medios_pago" :key="item.medio">
+              <strong>{{ item.medio }}:</strong> {{ formatCurrency(item.total) }}<br>
+            </span>
+            <strong style="color: #0f172a; display: block; margin-top: 5px; font-size: 12px;">TOTAL PAGOS: {{ formatCurrency(stats.graficos.medios_pago.reduce((a,c) => a + c.total, 0)) }}</strong>
+          </div>
         </div>
       </div>
 
@@ -311,6 +366,19 @@ const periodOptions = [
   { value: 'custom', label: 'Personalizado', icon: 'ri-settings-4-line' }
 ];
 
+// 🔥 VARIABLES COMPUTADAS PARA EXTRAER INGRESOS
+const ingresosTurnos = computed(() => {
+  if (!stats.value || !stats.value.graficos.turnos_ingresos) return 0;
+  const turnoObj = stats.value.graficos.turnos_ingresos.find(i => i.label === 'Turnos Completados');
+  return turnoObj ? turnoObj.total : 0;
+});
+
+const ingresosSenas = computed(() => {
+  if (!stats.value || !stats.value.graficos.turnos_ingresos) return 0;
+  const senaObj = stats.value.graficos.turnos_ingresos.find(i => i.label === 'Señas Retenidas');
+  return senaObj ? senaObj.total : 0;
+});
+
 const formatCurrency = (v) => {
   if (!v || isNaN(v)) return '$ 0,00';
   return `$ ${parseFloat(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -395,10 +463,7 @@ const renderCharts = async () => {
   const textColor = style.getPropertyValue('--text-tertiary').trim() || '#94a3b8';
   const gridColor = style.getPropertyValue('--border-color').trim() || '#334155';
 
-  const ingresoTurnos = stats.value.graficos.turnos_ingresos[0].total;
-  const ingresoSeñas = stats.value.graficos.turnos_ingresos[1].total;
-
-  if (turnosChartCanvas.value && (ingresoTurnos > 0 || ingresoSeñas > 0)) {
+  if (turnosChartCanvas.value && (ingresosTurnos.value > 0 || ingresosSenas.value > 0)) {
     turnosChartInstance = new Chart(turnosChartCanvas.value, {
       type: 'doughnut',
       data: {
@@ -414,14 +479,7 @@ const renderCharts = async () => {
         responsive: true, maintainAspectRatio: false,
         animation: { duration: 0 }, 
         plugins: { 
-          legend: { 
-            position: 'bottom', 
-            labels: { 
-              color: textColor, 
-              padding: 20,
-              font: { size: 22, weight: 'bold' } // 🔥 TAMAÑO AUMENTADO
-            } 
-          },
+          legend: { display: false }, 
           tooltip: { callbacks: { label: (context) => ' ' + formatCurrency(context.raw || 0) } }
         },
         cutout: '75%'
@@ -453,14 +511,14 @@ const renderCharts = async () => {
             beginAtZero: true, 
             ticks: { 
               color: textColor,
-              font: { size: 18, weight: '600' } // 🔥 TAMAÑO AUMENTADO
+              font: { size: 18, weight: '600' } 
             }, 
             grid: { color: gridColor, drawBorder: false } 
           },
           x: { 
             ticks: { 
               color: textColor,
-              font: { size: 18, weight: 'bold' } // 🔥 TAMAÑO AUMENTADO
+              font: { size: 18, weight: 'bold' } 
             }, 
             grid: { display: false } 
           }
@@ -790,13 +848,24 @@ onMounted(() => aplicarPeriodoRapido());
   flex-direction: column;
   margin-bottom: 0 !important;
 }
-.chart-box {
-  position: relative;
-  height: 260px;
-  width: 100%;
+
+.chart-layout {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
   padding: 1rem;
 }
+
+.chart-layout .chart-box {
+  width: 50%;
+  height: 220px;
+  flex-shrink: 0;
+  padding: 0;
+  position: relative;
+}
+
 .chart-box canvas { transition: opacity 0.3s ease; }
+
 .chart-empty-message {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -809,6 +878,54 @@ onMounted(() => aplicarPeriodoRapido());
   font-style: italic;
   font-size: 1rem;
 }
+
+.chart-summary {
+  width: 45%;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.summary-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.summary-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.summary-info {
+  display: flex;
+  flex-direction: column;
+}
+.summary-label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.summary-value {
+  color: var(--text-primary);
+  font-size: 1.5rem;
+  font-weight: 900;
+}
+.summary-item.total {
+  border-top: 1px solid var(--border-color);
+  padding-top: 1rem;
+}
+.summary-item.total .summary-label {
+  color: var(--accent-color);
+  font-size: 1rem;
+  font-weight: 800;
+}
+.summary-item.total .summary-value {
+  font-size: 2rem;
+}
+.mt-3 { margin-top: 1rem; }
+.mt-4 { margin-top: 1.5rem; }
 
 .section-card {
   background: var(--bg-secondary);
@@ -902,4 +1019,20 @@ onMounted(() => aplicarPeriodoRapido());
 
 .fade-in { animation: fadeIn 0.4s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* RESPONSIVE */
+@media (max-width: 900px) {
+  .chart-layout {
+    flex-direction: column;
+  }
+  .chart-layout .chart-box {
+    width: 100%;
+    margin-bottom: 1rem;
+  }
+  .chart-summary {
+    width: 100%;
+    border-top: 1px solid var(--border-color);
+    padding-top: 1.5rem;
+  }
+}
 </style>
