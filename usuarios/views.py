@@ -2203,7 +2203,6 @@ def completar_pago_turno(request, turno_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'Método no permitido'}, status=405)
 
-    # 🛑 CHEQUEO DE CAJA
     sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
     if not sesion_abierta:
         return JsonResponse({'error': 'Debe abrir una caja antes de cobrar un turno.'}, status=400)
@@ -2684,21 +2683,18 @@ def pago_pendiente(request):
 
 def procesar_reembolso_si_corresponde(turno):
     """
-    ✅ VERSIÓN CORREGIDA: NUNCA marca automáticamente como COMPLETADO
-    Solo determina el tipo de reembolso pendiente
+    Solo determina el tipo de reembolso pendiente.
+    Nunca marca automáticamente como COMPLETADO ni toca la caja directamente.
     """
-    # 1. Si ya fue reembolsado, no hacer nada
     if turno.reembolso_estado == 'COMPLETADO':
         return False, "El dinero ya fue devuelto."
     
-    # 2. Verificar si el cliente pagó algo
     puso_plata = (turno.monto_seña > 0 or turno.tipo_pago == 'TOTAL')
     if not puso_plata:
         turno.reembolso_estado = 'NO_APLICA'
         turno.save()
         return False, "El turno no tiene pagos registrados."
     
-    # 3. ✅ Usar la lógica de tiempo corregida del modelo
     puede_cancelar, hay_reembolso, msg_tiempo = turno.puede_ser_cancelado()
     
     if not hay_reembolso:
@@ -2706,30 +2702,19 @@ def procesar_reembolso_si_corresponde(turno):
         turno.save()
         return False, f"Fuera de término para reembolso: {msg_tiempo}"
     
-    # 4. ✅ SI HAY REEMBOLSO CORRESPONDIENTE: SOLO determinar tipo, NO procesar
-    
-    # Caso MercadoPago - Solo determinar que es por MP
-    if turno.medio_pago == 'MERCADO_PAGO' and turno.mp_payment_id:
-        turno.reembolso_estado = 'PENDIENTE'
-        turno.save()
-        return True, "⚠️ Reembolso PENDIENTE via Mercado Pago (requiere procesamiento manual)"
-    
-    # Caso EFECTIVO / TRANSFERENCIA
-    if turno.medio_pago in ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA']:
-        turno.reembolso_estado = 'PENDIENTE'
-        turno.save()
-        return True, f"💰 Reembolso PENDIENTE ({turno.medio_pago}) - Procesar manualmente"
-    
-    # Cualquier otro caso
     turno.reembolso_estado = 'PENDIENTE'
     turno.save()
-    return True, "⏳ Reembolso marcado como PENDIENTE para gestión manual."
+
+    if turno.medio_pago in ['MERCADOPAGO', 'MERCADO_PAGO']:
+        return True, "⚠️ Reembolso PENDIENTE via Mercado Pago (requiere enviar el dinero y confirmar manual)"
+    else:
+        return True, "💰 Reembolso PENDIENTE (Efectivo) - Entregar dinero físico al cliente y confirmar manual"
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def me_api_view(request):
     from .models import Usuario
     
-    # 🆕 OBTENER USUARIO DEL localStorage VIA HEADERS
     user_id = request.headers.get('User-Id')
     user_rol = request.headers.get('User-Rol')
     
@@ -5097,15 +5082,13 @@ def get_client_ip(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def completar_reembolso_manual(request, turno_id):
-    """Marca un reembolso como completado manualmente (para efectivo/transferencia)"""
-    # 🛑 CHEQUEO DE CAJA OBLIGATORIO
+    """Marca un reembolso como completado y AHORA SÍ registra el EGRESO en la Caja"""
     sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
     if not sesion_abierta:
         return Response(
-            {"error": "Debe abrir una caja antes de realizar un reembolso manual."}, 
+            {"error": "Debe abrir una caja diaria antes de registrar la devolución de dinero."}, 
             status=status.HTTP_400_BAD_REQUEST
         )
-
     try:
         with transaction.atomic():
             turno = Turno.objects.select_for_update().get(id=turno_id)
@@ -5117,28 +5100,23 @@ def completar_reembolso_manual(request, turno_id):
             turno.reembolsado = True
             turno.save()
 
-            # 💸 REGISTRAR EGRESO DE CAJA
-            # Reembolsamos la seña (o el total si había pagado todo)
             monto_a_devolver = turno.monto_seña if turno.monto_seña else turno.monto_total
             
             metodo_pago_caja = 'EFECTIVO'
             if turno.medio_pago and 'MERCADO' in str(turno.medio_pago).upper():
                 metodo_pago_caja = 'MERCADO_PAGO'
-            elif turno.medio_pago and 'TRANS' in str(turno.medio_pago).upper():
-                metodo_pago_caja = 'TRANSFERENCIA'
 
             if monto_a_devolver and monto_a_devolver > 0:
                 MovimientoCaja.objects.create(
                     sesion_caja=sesion_abierta,
                     tipo='EGRESO',
                     metodo_pago=metodo_pago_caja,
-                    concepto='OTROS', # O podés agregar 'REEMBOLSO_TURNO' al modelo
+                    concepto='OTROS', 
                     monto=monto_a_devolver,
-                    descripcion=f"Reembolso Manual de Turno #{turno.id} a {turno.cliente.nombre if turno.cliente else 'Cliente'}",
+                    descripcion=f"Reembolso por Cancelación - Turno #{turno.id} ({turno.cliente.nombre if turno.cliente else 'Cliente'})",
                     turno_relacionado=turno
                 )
             
-            # Registrar en auditoría
             Auditoria.objects.create(
                 usuario=request.user,
                 modelo_afectado='Turno',
@@ -5150,7 +5128,7 @@ def completar_reembolso_manual(request, turno_id):
             
             return Response({
                 'status': 'ok',
-                'message': '✅ Reembolso marcado como completado y registrado en caja.',
+                'message': '✅ Reembolso completado y EGRESO registrado en la caja diaria.',
                 'turno_id': turno.id
             })
         
@@ -5158,7 +5136,7 @@ def completar_reembolso_manual(request, turno_id):
         return Response({'error': 'Turno no encontrado'}, status=404)
     except Exception as e:
         return Response({'error': str(e)}, status=500)
-
+    
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def aceptar_oferta_turno(request, turno_id, token):
@@ -6091,25 +6069,30 @@ def exportar_listado_ventas_pdf(request):
             queryset = queryset.filter(fecha__date__gte=fecha_desde)
         if fecha_hasta:
             queryset = queryset.filter(fecha__date__lte=fecha_hasta)
+            
         if metodo_pago:
-            # ✅ CORREGIDO: usar doble guion bajo para acceder al campo del modelo relacionado
-            queryset = queryset.filter(medio_pago__tipo=metodo_pago)
+            if 'MERCADO' in metodo_pago.upper():
+                queryset = queryset.filter(medio_pago__tipo__icontains='MERCADO')
+            else:
+                queryset = queryset.filter(medio_pago__tipo=metodo_pago)
+                
         if tipo:
-            queryset = queryset.filter(tipo=tipo)
+            # ✅ SOPORTE PARA MÚLTIPLES TIPOS (PRODUCTO,VENTA)
+            tipos_list = [t.strip() for t in tipo.split(',')]
+            queryset = queryset.filter(tipo__in=tipos_list)
+            
         if estado == 'activa':
             queryset = queryset.filter(anulada=False)
         elif estado == 'anulada':
             queryset = queryset.filter(anulada=True)
 
         ventas = list(queryset)
-
         config = ConfiguracionSistema.get_solo()
 
         # Determinar nombre del impresor
         if nombre_impresor:
             usuario_impresor = nombre_impresor
         else:
-            # Fallback: usuario autenticado
             user = request.user
             if user.is_authenticated:
                 if hasattr(user, 'get_full_name') and callable(user.get_full_name):
@@ -6122,11 +6105,11 @@ def exportar_listado_ventas_pdf(request):
             else:
                 usuario_impresor = "Sistema"
 
+        # ✅ DICCIONARIO DE FILTROS SIN EL 'TIPO' PARA EL ENCABEZADO
         filtros_dict = {
             'fecha_desde': fecha_desde,
             'fecha_hasta': fecha_hasta,
             'metodo_pago': metodo_pago,
-            'tipo': tipo,
             'estado': estado,
         }
 
@@ -6366,12 +6349,10 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         except:
             config = None
 
-        # Generamos el PDF con ReportLab
         pdf_bytes = generar_cierre_caja_pdf(sesion, movimientos, config)
 
-        # Devolvemos el archivo para que el navegador lo descargue
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="Cierre_Z_Sesion_{sesion.id}.pdf"'
+        response['Content-Disposition'] = f'attachment; filename="Cierre_Caja_{sesion.id}.pdf"'
         return response
 
 class MovimientoCajaViewSet(viewsets.ModelViewSet):

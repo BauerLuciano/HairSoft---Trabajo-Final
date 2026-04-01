@@ -235,37 +235,19 @@
               </select>
             </div>
 
-            <div v-if="esMercadoPago || esTransferencia" class="datos-extra-pago slide-in">
-              
-              <div class="form-group" v-if="esTransferencia">
-                <label>Billetera / Banco de Origen *</label>
-                <select v-model="datosVenta.entidad_pago" class="input-select">
-                  <option value="" disabled selected>Seleccione entidad...</option>
-                  <option value="UALA">Ualá</option>
-                  <option value="BRUBANK">Brubank</option>
-                  <option value="LEMON">Lemon Cash</option>
-                  <option value="NARANJAX">Naranja X</option>
-                  <option value="MODO">MODO</option>
-                  <option value="GALICIA">Galicia</option>
-                  <option value="BBVA">BBVA</option>
-                  <option value="MACRO">Macro</option>
-                  <option value="OTRO">Otro</option>
-                </select>
-              </div>
-
+            <div v-if="esMercadoPago" class="datos-extra-pago slide-in">
               <div class="form-group">
-                <label>
-                  {{ esMercadoPago ? 'ID Transacción Mercado Pago *' : 'Código de Comprobante *' }}
-                </label>
+                <label>ID Transacción Mercado Pago *</label>
                 <input 
                   type="text" 
                   v-model="datosVenta.codigo_transaccion" 
                   class="input-search"
-                  :placeholder="esMercadoPago ? 'Ej: #145025893768' : 'Ej: A123B456789'"
-                  :maxlength="esMercadoPago ? 14 : 25"
+                  placeholder="Ej: 145025893768"
+                  maxlength="14"
+                  @input="datosVenta.codigo_transaccion = datosVenta.codigo_transaccion.replace(/\D/g, '')"
                 />
                 <small class="helper-text" style="color: #6b7280; font-size: 0.8rem; margin-top: 4px; display: block;">
-                  {{ esMercadoPago ? 'Ingrese el ID de operación (Máx 14).' : 'Copie el código del comprobante bancario.' }}
+                  Ingrese solo los números del ID de operación (Máx 14).
                 </small>
               </div>
             </div>
@@ -408,7 +390,6 @@ export default {
     },
     
     methods: {
-        // 🔥 NUEVA FUNCIÓN PARA VERIFICAR CAJA
         async verificarCajaAbierta() {
             try {
                 const res = await axios.get(`${API_BASE_URL}/api/estado-caja/`);
@@ -506,7 +487,7 @@ export default {
                 icon: 'success',
                 showCancelButton: true,
                 confirmButtonText: '📄 Sí, abrir comprobante',
-                cancelButtonText: '➡️ Continuar (ir a Listado)',
+                cancelButtonText: '➡️ Continuar ',
                 confirmButtonColor: '#3b82f6',
                 cancelButtonColor: '#6c757d',
                 reverseButtons: true,
@@ -621,21 +602,25 @@ export default {
             });
         },
 
-        async cargarMetodosPago() {
+      async cargarMetodosPago() {
             try {
                 const res = await axios.get(`${API_BASE_URL}/usuarios/api/metodos-pago/`); 
                 if (Array.isArray(res.data)) {
-                    const permitidos = ['EFECTIVO', 'MERCADOPAGO', 'MERCADO_PAGO', 'TRANSFERENCIA'];
-                    
-                    this.metodosPago = res.data.filter(mp => 
-                        mp.activo !== false && 
-                        (permitidos.includes(mp.tipo) || permitidos.includes(mp.nombre.toUpperCase())) &&
-                        !mp.nombre.toUpperCase().includes('TARJETA') 
-                    );
+                    this.metodosPago = res.data.filter(mp => {
+                        if (mp.activo === false) return false; 
+                        
+                        const tipoStr = (mp.tipo || '').toUpperCase();
+                        const nombreStr = (mp.nombre || '').toUpperCase();
+                        
+                        const esEfectivo = tipoStr.includes('EFECTIVO') || nombreStr.includes('EFECTIVO');
+                        const esMercadoPago = tipoStr.includes('MERCADO') || nombreStr.includes('MERCADO');
+                        
+                        return esEfectivo || esMercadoPago;
+                    });
                 }
                 
                 if (this.metodosPago.length > 0) {
-                    const efectivo = this.metodosPago.find(m => m.tipo === 'EFECTIVO');
+                    const efectivo = this.metodosPago.find(m => (m.tipo || '').toUpperCase().includes('EFECTIVO'));
                     this.datosVenta.medio_pago = efectivo ? efectivo.id : this.metodosPago[0].id;
                 }
             } catch (err) { 
@@ -854,7 +839,6 @@ export default {
     },
     
     mounted() {
-        // 🔥 LLAMAMOS A LA VERIFICACIÓN ACÁ APENAS CARGA
         this.verificarCajaAbierta();
 
         this.cargarProductos();

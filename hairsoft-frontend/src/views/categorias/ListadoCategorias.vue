@@ -284,7 +284,7 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   border-radius: 24px;
   padding: 40px;
   width: 100%;
-  max-width: 1200px;
+  max-width: 1500px;
   margin: auto;
   box-shadow: var(--shadow-lg);
   position: relative;

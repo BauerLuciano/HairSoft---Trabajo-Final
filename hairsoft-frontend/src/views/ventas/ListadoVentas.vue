@@ -29,7 +29,7 @@
         <div class="filters-grid">
           <div class="filter-group">
             <label>Buscar</label>
-            <input v-model="filtros.busqueda" placeholder="Cliente, Usuario, ID de Venta" class="filter-input"/>
+            <input v-model="filtros.busqueda" placeholder="Usuario o ID de Venta" class="filter-input"/>
           </div>
 
           <div class="filter-group">
@@ -47,7 +47,6 @@
             <select v-model="filtros.metodoPago" class="filter-input select-dark">
               <option value="">Todos</option>
               <option value="EFECTIVO">Efectivo</option>
-              <option value="TRANSFERENCIA">Transferencia</option>
               <option value="MERCADO_PAGO">Mercado Pago</option>
             </select>
           </div>
@@ -320,7 +319,7 @@ const obtenerUsuarioLogueado = () => {
 const cargarVentas = async () => {
   cargando.value = true
   try {
-    const res = await axios.get('/api/ventas/')
+    const res = await axios.get('/api/ventas/?incluir_anuladas=true&estado=TODOS')
     const data = Array.isArray(res.data) ? res.data : (res.data.results || [])
     if (data.length > 0) {
       ventas.value = data.sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
@@ -343,7 +342,7 @@ onMounted(() => {
 const ventasFiltradas = computed(() => {
   const busca = filtros.value.busqueda.toLowerCase()
   return ventas.value.filter(v => {
-    // 🔥 CORRECCIÓN: Si el tipo es TURNO, lo ignoramos completamente
+    // Si el tipo es TURNO, lo ignoramos completamente de esta pantalla
     if (v.tipo === 'TURNO') return false;
 
     const matchBusqueda = !busca || 
@@ -354,10 +353,24 @@ const ventasFiltradas = computed(() => {
     const fecha = v.fecha ? new Date(v.fecha) : null
     const matchDesde = !filtros.value.fechaDesde || (fecha && fecha >= new Date(filtros.value.fechaDesde))
     const matchHasta = !filtros.value.fechaHasta || (fecha && fecha <= new Date(filtros.value.fechaHasta + 'T23:59:59'))
-    const matchMetodo = !filtros.value.metodoPago || v.medio_pago_tipo === filtros.value.metodoPago
+    
+    // 🔥 CORRECCIÓN 2: Filtro de Método de Pago blindado
+    let matchMetodo = true;
+    if (filtros.value.metodoPago) {
+        const tipoPago = (v.medio_pago_tipo || '').toUpperCase();
+        const nombrePago = (v.medio_pago_nombre || '').toUpperCase();
+        
+        if (filtros.value.metodoPago === 'MERCADO_PAGO') {
+            matchMetodo = tipoPago.includes('MERCADO') || nombrePago.includes('MERCADO');
+        } else if (filtros.value.metodoPago === 'EFECTIVO') {
+            matchMetodo = tipoPago.includes('EFECTIVO') || nombrePago.includes('EFECTIVO');
+        }
+    }
+
+    const estaAnulada = v.anulada === true || v.estado === 'ANULADA' || v.estado === 'INACTIVO';
     const matchEstado = !filtros.value.estado || 
-        (filtros.value.estado === 'activa' && !v.anulada) || 
-        (filtros.value.estado === 'anulada' && v.anulada)
+        (filtros.value.estado === 'activa' && !estaAnulada) || 
+        (filtros.value.estado === 'anulada' && estaAnulada);
 
     return matchBusqueda && matchDesde && matchHasta && matchMetodo && matchEstado
   })

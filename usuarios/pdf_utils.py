@@ -338,6 +338,13 @@ def generar_reporte_ventas(ventas, filtros, usuario_impresor, config):
         texto = re.sub(r'[^\x20-\x7EáéíóúÁÉÍÓÚñÑ\s]', '', texto)
         return texto.strip()
 
+    def formatear_fecha_filtro(fecha_str):
+        if not fecha_str: return ""
+        try:
+            return datetime.strptime(fecha_str, '%Y-%m-%d').strftime('%d/%m/%Y')
+        except:
+            return fecha_str
+
     logo_img = obtener_logo_reporte(config)
 
     col_izq = [
@@ -358,10 +365,13 @@ def generar_reporte_ventas(ventas, filtros, usuario_impresor, config):
     filtros_str = ""
     if filtros:
         f_list = []
-        if filtros.get('fecha_desde'): f_list.append(f"Desde: {filtros['fecha_desde']}")
-        if filtros.get('fecha_hasta'): f_list.append(f"Hasta: {filtros['fecha_hasta']}")
+        # ✅ AHORA FORMATEAMOS LAS FECHAS ANTES DE AGREGARLAS
+        if filtros.get('fecha_desde'): 
+            f_list.append(f"Desde: {formatear_fecha_filtro(filtros['fecha_desde'])}")
+        if filtros.get('fecha_hasta'): 
+            f_list.append(f"Hasta: {formatear_fecha_filtro(filtros['fecha_hasta'])}")
+            
         if filtros.get('metodo_pago'): f_list.append(f"Método: {filtros['metodo_pago']}")
-        if filtros.get('tipo'): f_list.append(f"Tipo: {filtros['tipo']}")
         if filtros.get('estado'): f_list.append(f"Estado: {filtros['estado']}")
         if f_list:
             filtros_str = " | ".join(f_list)
@@ -392,13 +402,12 @@ def generar_reporte_ventas(ventas, filtros, usuario_impresor, config):
     elements.append(Spacer(1, 1*cm))
 
     col_widths = [
-        2.2*cm,  # FECHA
-        3.5*cm,  # CLIENTE
-        3.0*cm,  # USUARIO
-        2.5*cm,  # MÉTODO
-        2.5*cm,  # TIPO 
+        2.5*cm,  # FECHA
+        4.8*cm,  # CLIENTE
+        4.0*cm,  # USUARIO
+        3.0*cm,  # MÉTODO
         2.0*cm,  # ESTADO
-        2.5*cm,  # TOTAL
+        2.7*cm,  # TOTAL
     ]
 
     rows = [[
@@ -406,7 +415,6 @@ def generar_reporte_ventas(ventas, filtros, usuario_impresor, config):
         Paragraph("CLIENTE", estilos['TH']),
         Paragraph("USUARIO", estilos['TH']),
         Paragraph("MÉTODO", estilos['TH']),
-        Paragraph("TIPO", estilos['TH']),
         Paragraph("ESTADO", estilos['TH']),
         Paragraph("TOTAL", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)),
     ]]
@@ -437,7 +445,6 @@ def generar_reporte_ventas(ventas, filtros, usuario_impresor, config):
                 usuario = "-"
             
             metodo = limpiar_texto(v.medio_pago.nombre) if v.medio_pago else "-"
-            tipo = limpiar_texto(v.tipo) or "-"
             estado = "ANULADA" if v.anulada else "ACTIVA"
             total = float(v.total) if v.total else 0
             total_general += total
@@ -447,7 +454,6 @@ def generar_reporte_ventas(ventas, filtros, usuario_impresor, config):
                 Paragraph(cliente, estilos['TD']),
                 Paragraph(usuario, estilos['TD']),
                 Paragraph(metodo, estilos['TD']),
-                Paragraph(tipo, estilos['TD']),
                 Paragraph(estado, estilos['TD']),
                 Paragraph(f"${total:,.2f}", estilos['TD_Right']),
             ])
@@ -460,12 +466,10 @@ def generar_reporte_ventas(ventas, filtros, usuario_impresor, config):
                 Paragraph("", estilos['TD']),
                 Paragraph("", estilos['TD']),
                 Paragraph("", estilos['TD']),
-                Paragraph("", estilos['TD']),
             ])
             continue
 
     rows.append([
-        Paragraph("", estilos['TD']),
         Paragraph("", estilos['TD']),
         Paragraph("", estilos['TD']),
         Paragraph("", estilos['TD']),
@@ -747,6 +751,11 @@ def generar_cierre_caja_pdf(sesion, movimientos, config):
     esp_mp = float(sesion.saldo_inicial_mp) + float(ing_mp) - float(egr_mp)
     real_mp = float(sesion.saldo_final_mp_real)
 
+    # Totales generales (NUEVO)
+    total_esp = esp_ef + esp_mp
+    total_real = real_ef + real_mp
+    dif_total = total_real - total_esp
+
     # --- ESTILOS FIXEADOS (NO HEREDAN DE 'NORMAL') ---
     estilo_subtit = ParagraphStyle('Subtit', fontName='Helvetica-Bold', fontSize=12, textColor=AZUL_HEADER, spaceAfter=10)
 
@@ -757,13 +766,21 @@ def generar_cierre_caja_pdf(sesion, movimientos, config):
         [Paragraph("MEDIO", estilos['TH']), Paragraph("SISTEMA (ESPERADO)", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)), Paragraph("CAJERO (DECLARADO)", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)), Paragraph("DIFERENCIA", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT))],
         [Paragraph("Físico (Efectivo)", estilos['TD']), Paragraph(f"${esp_ef:,.2f}", estilos['TD_Right']), Paragraph(f"${real_ef:,.2f}", estilos['TD_Right']), Paragraph(f"${(real_ef - esp_ef):,.2f}", estilos['TD_Right'])],
         [Paragraph("Mercado Pago", estilos['TD']), Paragraph(f"${esp_mp:,.2f}", estilos['TD_Right']), Paragraph(f"${real_mp:,.2f}", estilos['TD_Right']), Paragraph(f"${(real_mp - esp_mp):,.2f}", estilos['TD_Right'])],
+        
+        # 🔥 NUEVA FILA DE TOTAL GENERAL
+        [Paragraph("<b>TOTAL GENERAL</b>", estilos['TD']), Paragraph(f"<b>${total_esp:,.2f}</b>", estilos['TD_Right']), Paragraph(f"<b>${total_real:,.2f}</b>", estilos['TD_Right']), Paragraph(f"<b>${dif_total:,.2f}</b>", estilos['TD_Right'])],
     ], colWidths=[5*cm, 4.5*cm, 4.5*cm, 5*cm])
     
-    t_saldos.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), AZUL_HEADER), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0'))]))
+    # Le agregamos una línea gris arriba de la fila de total general para separarla
+    t_saldos.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), AZUL_HEADER), 
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('LINEABOVE', (0,3), (-1,3), 1, colors.HexColor('#94a3b8')) # Línea separadora del Total
+    ]))
     elements.append(t_saldos)
     
-    # Diferencia total y Observaciones
-    dif_total = (real_ef + real_mp) - (esp_ef + esp_mp)
+    # Diferencia total y Observaciones (Lo dejamos por si las moscas, aunque ya está en la tabla)
     if dif_total != 0:
         elements.append(Spacer(1, 0.3*cm))
         color_dif = colors.red if dif_total < 0 else colors.green
@@ -778,20 +795,26 @@ def generar_cierre_caja_pdf(sesion, movimientos, config):
     # --- MOVIMIENTOS ---
     elements.append(Paragraph("DETALLE DE MOVIMIENTOS", estilo_subtit))
     
-    rows = [[Paragraph("HORA", estilos['TH']), Paragraph("TIPO", estilos['TH']), Paragraph("CONCEPTO", estilos['TH']), Paragraph("MÉTODO", estilos['TH']), Paragraph("MONTO", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT))]]
+    rows = [[Paragraph("HORA", estilos['TH']), Paragraph("TIPO", estilos['TH']), Paragraph("CONCEPTO Y DESCRIPCIÓN", estilos['TH']), Paragraph("MÉTODO", estilos['TH']), Paragraph("MONTO", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT))]]
     
     for mov in movimientos:
         signo = "+" if mov.tipo == "INGRESO" else "-"
+        
+        # 🔥 NUEVO: Unificamos Concepto y Descripción en una sola celda
+        texto_concepto = f"<b>{mov.get_concepto_display()}</b>"
+        if mov.descripcion:
+            texto_concepto += f"<br/><font color='#64748b' size='7'>{mov.descripcion}</font>"
+            
         rows.append([
             Paragraph(mov.fecha.strftime("%H:%M"), estilos['TD']),
             Paragraph(mov.tipo, estilos['TD']),
-            Paragraph(mov.get_concepto_display(), estilos['TD']),
+            Paragraph(texto_concepto, estilos['TD']), # Acá mandamos el texto unificado
             Paragraph(mov.get_metodo_pago_display(), estilos['TD']),
             Paragraph(f"{signo}${mov.monto:,.2f}", estilos['TD_Right']),
         ])
     
-    t_movs = Table(rows, colWidths=[2.5*cm, 2.5*cm, 7*cm, 3.5*cm, 3.5*cm])
-    t_movs.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), AZUL_HEADER), ('GRID', (0,1), (-1,-1), 0.5, colors.HexColor('#e2e8f0'))]))
+    t_movs = Table(rows, colWidths=[2.5*cm, 2.5*cm, 7.5*cm, 3*cm, 3.5*cm])
+    t_movs.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), AZUL_HEADER), ('GRID', (0,1), (-1,-1), 0.5, colors.HexColor('#e2e8f0')), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
     elements.append(t_movs)
 
     elements.append(Spacer(1, 2*cm))

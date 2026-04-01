@@ -376,7 +376,7 @@
             <div style="display: flex; gap: 10px; margin-top: 25px;">
               <button type="button" @click="mostrarModalCierre = false" class="clear-filters-btn" style="flex: 1; justify-content: center;">Cancelar</button>
               <button type="submit" class="register-button" style="flex: 1; justify-content: center; background: #ef4444;">
-                <i class="ri-lock-fill"></i> Confirmar Cierre e Imprimir Z
+                <i class="ri-lock-fill"></i> Confirmar Cierre e Imprimir Reporte
               </button>
             </div>
           </form>
@@ -806,14 +806,14 @@ const abrirCaja = async () => {
 
 const descargarPDFCaja = async (sesionId) => {
   try {
-    Swal.fire({ title: 'Generando Reporte Z...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    Swal.fire({ title: 'Generando Cierre de Caja...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     
     const resPdf = await axios.get(`/api/sesiones-caja/${sesionId}/descargar_pdf/`, { responseType: 'blob' });
     
     const url = window.URL.createObjectURL(new Blob([resPdf.data]));
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `Cierre_Z_Caja_${sesionId}.pdf`);
+    link.setAttribute('download', `Cierre_Caja_${sesionId}.pdf`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

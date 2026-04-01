@@ -297,47 +297,27 @@
                 <label class="label-modern">Medio de Pago</label>
                 <select v-model="form.medio_pago" class="select-modern">
                   <option value="EFECTIVO">💵 Efectivo</option>
-                  <option value="MERCADO_PAGO">🔵 Mercado Pago (QR/Link)</option>
-                  <option value="TRANSFERENCIA">🏦 Transferencia</option>
+                  <option value="MERCADO_PAGO">🔵 Mercado Pago</option>
                 </select>
               </div>
-              
-              <div v-if="form.medio_pago !== 'EFECTIVO'" class="datos-transferencia-container slide-in">
-                <div class="input-group" v-if="form.medio_pago === 'TRANSFERENCIA'">
-                  <label class="label-modern">Billetera / Banco de Origen</label>
-                  <select v-model="form.entidad_pago" class="select-modern">
-                    <option value="" disabled selected>Seleccione entidad...</option>
-                    <option value="UALA">Ualá</option>
-                    <option value="BRUBANK">Brubank</option>
-                    <option value="LEMON">Lemon Cash</option>
-                    <option value="NARANJAX">Naranja X</option>
-                    <option value="MODO">MODO</option>
-                    <option value="SANTANDER">Santander</option>
-                    <option value="GALICIA">Galicia</option>
-                    <option value="BBVA">BBVA</option>
-                    <option value="MACRO">Macro</option>
-                    <option value="OTRO">Otro</option>
-                  </select>
-                </div>
-
+  
+              <div v-if="form.medio_pago === 'MERCADO_PAGO'" class="datos-transferencia-container slide-in">
                 <div class="input-group">
-                  <label class="label-modern">
-                    {{ form.medio_pago === 'MERCADO_PAGO' ? 'ID Transacción Mercado Pago *' : 'Código de Comprobante *' }}
-                  </label>
+                  <label class="label-modern">ID Transacción Mercado Pago *</label>
                   <input 
                     type="text" 
                     v-model="form.codigo_transaccion" 
                     class="input-modern" 
-                    :placeholder="form.medio_pago === 'MERCADO_PAGO' ? 'Ej: #145025893768' : 'Ej: A123B456789'"
-                    :maxlength="maxCodigoLength"
+                    placeholder="Ej: 145025893768"
+                    maxlength="14"
+                    @input="form.codigo_transaccion = form.codigo_transaccion.replace(/\D/g, '')"
                     :class="{ 'input-error': errorValidacion && !form.codigo_transaccion }"
                   />
                   <small class="helper-text">
-                    <Info :size="12" /> 
-                    {{ form.medio_pago === 'MERCADO_PAGO' ? 'ID de operación MP (Ej: #123...). Máx 14.' : 'Código del comprobante bancario. Máx 25.' }}
+                    <Info :size="12" /> Ingrese solo los números del ID de operación (Máx 14).
                   </small>
                   <div v-if="errorValidacion && !form.codigo_transaccion" class="msg-error small">
-                    El código es obligatorio.
+                    El código de transacción es obligatorio.
                   </div>
                 </div>
               </div>
@@ -455,7 +435,6 @@ const form = ref({
   servicios_ids: [],
   tipo_pago: "SENA_50",
   medio_pago: "EFECTIVO",
-  entidad_pago: "", 
   codigo_transaccion: "", 
   fecha: "",
   hora: ""
@@ -532,12 +511,8 @@ watch(() => form.value.servicios_ids, () => {
 
 watch(() => form.value.medio_pago, (newVal) => {
   if (newVal === 'EFECTIVO') {
-    form.value.entidad_pago = ""
     form.value.codigo_transaccion = ""
     errorValidacion.value = false
-  }
-  if (newVal === 'MERCADO_PAGO') {
-    form.value.entidad_pago = "" 
   }
 })
 
@@ -545,10 +520,6 @@ watch(() => form.value.silla, () => {
   if (form.value.fecha && form.value.peluquero && form.value.peluquero !== form.value.cliente) {
     cargarHorariosOcupados(form.value.fecha)
   }
-})
-
-const maxCodigoLength = computed(() => {
-  return form.value.medio_pago === 'MERCADO_PAGO' ? 14 : 25
 })
 
 const serviciosFiltrados = computed(() => {
@@ -675,7 +646,6 @@ const guardarContexto = () => {
     silla_id: form.value.silla, 
     tipo_pago: form.value.tipo_pago,
     medio_pago: form.value.medio_pago,
-    entidad_pago: form.value.entidad_pago,
     codigo_transaccion: form.value.codigo_transaccion,
     fecha: form.value.fecha,
     hora: form.value.hora,
@@ -691,7 +661,6 @@ const cargarContexto = () => {
       const contexto = JSON.parse(contextoStr)
       if (contexto.tipo_pago) form.value.tipo_pago = contexto.tipo_pago
       if (contexto.medio_pago) form.value.medio_pago = contexto.medio_pago
-      if (contexto.entidad_pago) form.value.entidad_pago = contexto.entidad_pago
       if (contexto.codigo_transaccion) form.value.codigo_transaccion = contexto.codigo_transaccion
       
       if (contexto.peluquero && form.value.cliente !== contexto.peluquero) {
@@ -845,7 +814,7 @@ const esDiaSeleccionable = (day) => {
   today.setHours(0,0,0,0)
   const diffTime = date - today
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  return (diffDays >= 0 && diffDays <= 8) && date.getDay() !== 0
+  return (diffDays >= 0 && diffDays <= 7) && date.getDay() !== 0
 }
 
 const esDiaSeleccionado = (day) => {
@@ -876,9 +845,9 @@ const calcularTotal = () => {
 const calcularSena = () => (calcularTotal() / 2).toFixed(2)
 
 const crearTurno = async () => {
-  if (form.value.medio_pago !== 'EFECTIVO' && !form.value.codigo_transaccion) {
+  if (form.value.medio_pago === 'MERCADO_PAGO' && !form.value.codigo_transaccion) {
     errorValidacion.value = true
-    Swal.fire({ icon: 'error', title: 'Error', text: 'Falta el código de transacción', confirmButtonText: 'Entendido' })
+    Swal.fire({ icon: 'error', title: 'Error', text: 'Falta el código de transacción de Mercado Pago', confirmButtonText: 'Entendido' })
     return
   }
   
@@ -893,13 +862,6 @@ const crearTurno = async () => {
   const totalCalculado = parseFloat(calcularTotal())
   const esPagoSena = form.value.tipo_pago.includes('SENA')
 
-  let entidadFinal = null;
-  if (form.value.medio_pago === 'MERCADO_PAGO') {
-    entidadFinal = 'MERCADO_PAGO';
-  } else if (form.value.medio_pago === 'TRANSFERENCIA') {
-    entidadFinal = form.value.entidad_pago;
-  }
-
   const payload = {
     peluquero_id: form.value.peluquero,
     cliente_id: form.value.cliente,
@@ -913,9 +875,9 @@ const crearTurno = async () => {
     monto_total: totalCalculado,
     monto_seña: esPagoSena ? parseFloat(calcularSena()) : totalCalculado,
     duracion_total: duracion,
-    entidad_pago: entidadFinal,
+    entidad_pago: form.value.medio_pago === 'MERCADO_PAGO' ? 'MERCADOPAGO' : null,
     mp_payment_id: form.value.medio_pago === 'MERCADO_PAGO' ? form.value.codigo_transaccion : null,
-    codigo_transaccion: form.value.medio_pago === 'TRANSFERENCIA' ? form.value.codigo_transaccion : null
+    codigo_transaccion: null // Eliminamos uso de transferencia
   }
 
   try {
@@ -1000,7 +962,6 @@ onBeforeUnmount(() => {
   }
 })
 </script>
-
 <style scoped>
 /* ============================================
    FONDO DE PÁGINA Y CONTENEDOR PRINCIPAL
@@ -1916,8 +1877,8 @@ onBeforeUnmount(() => {
 }
 
 .pago-detalles { 
-  display: grid; 
-  grid-template-columns: 1fr 1fr; 
+  display: flex;
+  flex-direction: column;
   gap: 20px; 
   margin-bottom: 25px; 
 }
@@ -2042,11 +2003,7 @@ onBeforeUnmount(() => {
     padding: 30px;
     margin: 20px;
   }
-  
-  .pago-detalles {
-    grid-template-columns: 1fr;
-  }
-  
+    
   .grid-servicios {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }

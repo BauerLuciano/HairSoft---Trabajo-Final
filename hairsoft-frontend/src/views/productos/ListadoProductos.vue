@@ -249,8 +249,9 @@
                 <tr>
                   <th>Fecha y Hora</th>
                   <th>Usuario</th>
+                  <th style="text-align: center;">Stock Anterior</th>
                   <th style="text-align: center;">Movimiento</th>
-                  <th style="text-align: center;">Stock Resultante</th>
+                  <th style="text-align: center;">Stock Final</th>
                   <th>Motivo Registrado</th>
                 </tr>
               </thead>
@@ -258,14 +259,21 @@
                 <tr v-for="reg in historialPaginado" :key="reg.id">
                   <td>{{ formatFechaHora(reg.fecha) }}</td>
                   <td><strong>{{ reg.usuario }}</strong></td>
+                  
+                  <td style="text-align: center; color: var(--text-secondary); font-weight: 600;">
+                    {{ reg.cantidad_nueva - reg.diferencia }} u.
+                  </td>
+
                   <td style="text-align: center;">
                     <span :class="reg.diferencia > 0 ? 'badge-positivo' : 'badge-negativo'">
                       {{ reg.diferencia > 0 ? '+' : '' }}{{ reg.diferencia }}
                     </span>
                   </td>
-                  <td style="text-align: center; font-weight: 800; color: var(--text-primary);">
+                  
+                  <td style="text-align: center; font-weight: 900; color: var(--text-primary); font-size: 1.05rem;">
                     {{ reg.cantidad_nueva }} u.
                   </td>
+                  
                   <td style="color: var(--text-secondary); font-style: italic;">
                     "{{ reg.motivo }}"
                   </td>

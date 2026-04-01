@@ -16,7 +16,6 @@
             <input v-model="filtros.busqueda" id="busqueda" type="text" class="filter-input" 
                    placeholder="Cliente, Transacción..." @keyup.enter="cargarTurnos">
           </div>
-          
           <div class="filter-group" v-if="esAdminORecep">
             <label for="peluquero">Profesional</label>
             <select v-model="filtros.peluquero" id="peluquero" class="filter-select" @change="cargarTurnos">
@@ -51,6 +50,14 @@
           <div class="filter-group">
             <label for="fechaHasta">Hasta</label>
             <input v-model="filtros.fechaHasta" id="fechaHasta" type="date" class="filter-input" @change="cargarTurnos">
+          </div>
+          <div class="filter-group">
+            <label for="medioPago">Método Pago</label>
+            <select v-model="filtros.medioPago" id="medioPago" class="filter-select" @change="cargarTurnos">
+              <option value="">Todos</option>
+              <option value="EFECTIVO">Efectivo</option>
+              <option value="MERCADO_PAGO">Mercado Pago</option>
+            </select>
           </div>
           <div class="filter-group">
             <button @click="limpiarFiltros" class="clear-filters-btn"><Trash2 :size="14"/> Limpiar</button>
@@ -285,7 +292,8 @@ const filtros = ref({
   estado: '', 
   canal: '', 
   fechaDesde: '', 
-  fechaHasta: '' 
+  fechaHasta: '' ,
+  medioPago: ''
 })
 
 const userRol = computed(() => {
@@ -962,15 +970,15 @@ const completarTurno = async (turno) => {
   }
 }
 
-// FILTROS Y PAGINACIÓN
 const limpiarFiltros = () => {
-  filtros.value = { busqueda: '', peluquero: '', estado: '', canal: '', fechaDesde: '', fechaHasta: '' }
+  filtros.value = { busqueda: '', peluquero: '', estado: '', canal: '', fechaDesde: '', fechaHasta: '', medioPago: '' }
   pagina.value = 1
   cargarTurnos()
 }
 
 const turnosFiltrados = computed(() => {
   let filtrados = turnos.value
+  
   if (filtros.value.busqueda) {
     const busqueda = filtros.value.busqueda.toLowerCase()
     filtrados = filtrados.filter(turno => 
@@ -982,6 +990,22 @@ const turnosFiltrados = computed(() => {
   if (filtros.value.canal) filtrados = filtrados.filter(turno => turno.canal === filtros.value.canal)
   if (filtros.value.fechaDesde) filtrados = filtrados.filter(turno => turno.fecha >= filtros.value.fechaDesde)
   if (filtros.value.fechaHasta) filtrados = filtrados.filter(turno => turno.fecha <= filtros.value.fechaHasta)
+  
+  if (filtros.value.medioPago) {
+    filtrados = filtrados.filter(turno => {
+      const mp1 = (turno.medio_pago || '').toUpperCase();
+      const mp2 = (turno.medio_pago_restante || '').toUpperCase();
+      
+      if (filtros.value.medioPago === 'MERCADO_PAGO') {
+        return mp1.includes('MERCADO') || mp2.includes('MERCADO');
+      } else if (filtros.value.medioPago === 'EFECTIVO') {
+        return mp1.includes('EFECTIVO') || mp2.includes('EFECTIVO');
+      } else if (filtros.value.medioPago === 'TRANSFERENCIA') {
+        return mp1.includes('TRANSF') || mp2.includes('TRANSF');
+      }
+      return true;
+    })
+  }
   return filtrados
 })
 
@@ -1008,7 +1032,6 @@ const puedeCancelarTurno = (turno) => {
 // CARGA INICIAL
 onMounted(async () => { 
   cargarTurnos() 
-  // Si es Administrador/Recepcionista, cargamos la lista de peluqueros para el filtro
   if (esAdminORecep.value) {
     try {
       const res = await axios.get('/api/peluqueros/')
@@ -1122,17 +1145,16 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* BADGE GRIS PARA REEMBOLSO NO APLICABLE */
 .badge-reembolso-no-aplica {
   display: inline-flex;
   align-items: center;
-  background: #f3f4f6;
-  color: #6b7280;
+  background: #2d817f; 
+  color: #f8fafc; 
   padding: 4px 10px;
   border-radius: 20px;
   font-size: 0.75rem;
   font-weight: 600;
-  border: 1px solid #d1d5db;
+  border: 1px solid #475569;
 }
 
 .badge-fidelizacion {
@@ -1443,7 +1465,7 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 
 .filters-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 18px;
   align-items: end;
 }
@@ -1484,7 +1506,7 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   background: var(--bg-tertiary);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
-  padding: 12px 18px;
+  padding: 0 18px; /* Ajustado el padding vertical porque le damos height fijo */
   border-radius: 10px;
   cursor: pointer;
   font-weight: 700;
@@ -1494,7 +1516,9 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   letter-spacing: 0.8px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center; 
+  height: 42px; 
+  width: 100%;
 }
 
 .clear-filters-btn:hover {
@@ -1502,7 +1526,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   transform: translateY(-2px);
   box-shadow: var(--shadow-sm);
 }
-
 /* TABLA */
 .table-container {
   overflow-x: auto;
@@ -1704,7 +1727,16 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   .list-card { padding: 25px; border-radius: 20px; }
   .list-header { flex-direction: column; align-items: flex-start; }
   .header-content h1 { font-size: 1.6rem; }
-  .filters-grid { grid-template-columns: 1fr; }
+@media (max-width: 1024px) {
+  .filters-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .filters-grid {
+    grid-template-columns: 1fr;
+  }
+}
   .users-table { font-size: 0.85rem; }
   .users-table th { font-size: 0.7rem; padding: 14px 10px; }
   .action-buttons { flex-direction: column; gap: 6px; }

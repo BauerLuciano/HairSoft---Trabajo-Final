@@ -350,7 +350,6 @@ class Turno(models.Model):
     MEDIO_PAGO_CHOICES = [
         ('EFECTIVO', 'Efectivo'), 
         ('MERCADO_PAGO', 'Mercado Pago'), 
-        ('TRANSFERENCIA', 'Transferencia'), 
         ('PENDIENTE', 'Pendiente')
     ]
     REEMBOLSO_ESTADO_CHOICES = [
@@ -1402,7 +1401,6 @@ class MovimientoCaja(models.Model):
     METODO_CHOICES = [
         ('EFECTIVO', 'Efectivo'),
         ('MERCADO_PAGO', 'Mercado Pago'),
-        ('TRANSFERENCIA', 'Transferencia'),
     ]
 
     CONCEPTO_CHOICES = [

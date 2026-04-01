@@ -258,7 +258,7 @@ const loading = ref(false)
 const modulosDisponibles = [
   { id: '', label: 'Todos', icon: 'fas fa-layer-group' },
   { id: 'AUTENTICACION', label: 'Accesos', icon: 'fas fa-user-shield' },
-  { id: 'VENTAS', label: 'Facturación', icon: 'fas fa-cash-register' },
+  { id: 'VENTAS', label: 'Ventas', icon: 'fas fa-cash-register' },
   { id: 'TURNOS', label: 'Turnos', icon: 'fas fa-calendar-check' },
   { id: 'CAJA', label: 'Caja', icon: 'fas fa-box-open' },
   { id: 'INVENTARIO', label: 'Inventario', icon: 'fas fa-boxes' },
