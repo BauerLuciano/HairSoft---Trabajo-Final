@@ -198,6 +198,10 @@ onMounted(async () => {
     console.log("Datos de oferta recibidos:", info.value);
   } catch (error) {
     console.error("Error cargando oferta:", error);
+    if (error.response && error.response.status === 401) {
+      router.push({ path: '/login', query: { redirect: route.fullPath } });
+      return; 
+    }
     errorMsg.value = error.response?.data?.error || "La oferta ya no está disponible o expiró.";
   } finally {
     loading.value = false;

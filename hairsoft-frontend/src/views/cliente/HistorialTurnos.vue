@@ -529,7 +529,10 @@ const mostrarAlertaFelicidades = async (turnoId) => {
 }
 
 onMounted(async () => {
-  await cargarMisTurnos()
+  const token = localStorage.getItem('token'); // o tu store: authStore.token
+  if (token) {
+    await cargarMisTurnos();
+  }
   const query = route.query;
   if (query.pago_exitoso === 'true') {
     if (query.tipo !== 'pedido') mostrarAlertaFelicidades(query.turno_id); 
