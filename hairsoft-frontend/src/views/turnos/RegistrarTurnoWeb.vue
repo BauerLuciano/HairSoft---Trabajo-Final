@@ -675,15 +675,14 @@ const validarCuponBackend = async (codigo) => {
 }
 
 onMounted(async () => {
-  await cargarDatosIniciales()
+  const cargoBien = await cargarDatosIniciales()
   
-  // Verificar si hay cupón en la URL
-  if (route.query.cup) {
-    cuponCodigo.value = route.query.cup
-    console.log(`🔍 Cupón detectado en URL: ${route.query.cup}`)
-    
-    // Validar automáticamente el cupón
-    await validarCuponBackend(route.query.cup)
+  if (cargoBien) {
+    if (route.query.cup) {
+      cuponCodigo.value = route.query.cup
+      console.log(`🔍 Cupón detectado en URL: ${route.query.cup}`)
+      await validarCuponBackend(route.query.cup)
+    }
   }
 })
 
@@ -972,7 +971,12 @@ const cargarDatosIniciales = async () => {
   cargandoDatos.value = true
   try {
     const userId = localStorage.getItem('user_id')
-    if (!userId) return router.push('/login')
+    const token = localStorage.getItem('token') 
+    
+    if (!userId || !token) {
+      router.push({ path: '/login', query: { redirect: route.fullPath } })
+      return false 
+    }
     
     const [resU, p, s, c, resConfig] = await Promise.all([
       api.get(`/api/usuarios/${userId}/`),
@@ -992,13 +996,22 @@ const cargarDatosIniciales = async () => {
       configSist.value = resConfig.data
     }
     
+    return true
+    
   } catch (error) {
     console.error('Error cargando datos iniciales:', error)
+    
+    if (error.response && error.response.status === 401) {
+      router.push({ path: '/login', query: { redirect: route.fullPath } })
+      return false
+    }
+
     Swal.fire({
       title: 'Error',
       text: 'No se pudieron cargar los datos. Intenta recargar la página.',
       icon: 'error'
     })
+    return false
   } finally {
     cargandoDatos.value = false
   }
