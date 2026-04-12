@@ -51,10 +51,33 @@
                 <strong>{{ pedido.proveedor_nombre }}</strong>
               </div>
             </div>
+            
             <div class="info-item">
               <label>Responsable</label>
-              <div class="info-value">{{ pedido.usuario_creador_nombre || 'Claudio' }}</div>
+              <div class="info-value">{{ pedido.usuario_creador_nombre || 'Administrador' }}</div>
             </div>
+
+            <div class="info-item destacada">
+              <label>Llegada Estimada</label>
+              <div class="info-value" v-if="diasRestantesInfo" style="gap: 12px; align-items: center;">
+                <Clock :size="24" :color="diasRestantesInfo.dias <= 1 && diasRestantesInfo.dias >= 0 ? '#ef4444' : '#0ea5e9'" />
+                <div class="llegada-container">
+                  <strong style="font-size: 1.1rem; display: block; margin-bottom: 4px;">{{ diasRestantesInfo.fecha }}</strong>
+                  <span class="badge-dias" :class="{'critico': diasRestantesInfo.dias <= 1 && diasRestantesInfo.dias >= 0, 'atrasado': diasRestantesInfo.dias < 0}">
+                    {{ 
+                      diasRestantesInfo.dias === 0 ? '¡Llega HOY!' : 
+                      (diasRestantesInfo.dias === 1 ? 'Llega mañana' : 
+                      (diasRestantesInfo.dias < 0 ? 'Atrasado por ' + Math.abs(diasRestantesInfo.dias) + ' días' : 
+                      'Faltan ' + diasRestantesInfo.dias + ' días')) 
+                    }}
+                  </span>
+                </div>
+              </div>
+              <div class="info-value" v-else style="color: #94a3b8; font-size: 0.95rem; font-weight: 500;">
+                <Clock :size="20" style="margin-right: 5px;" /> Aún sin confirmar
+              </div>
+            </div>
+            
             <div class="info-item">
               <label>Total de la Operación</label>
               <div class="info-value total-monto">${{ formatPrecio(pedido.total) }}</div>
@@ -109,10 +132,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue' // 🔥 Agregamos computed
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
-import { ChevronLeft, Truck, Calendar, CalendarCheck, Package, MessageSquare, X } from 'lucide-vue-next'
+import { ChevronLeft, Truck, Calendar, Package, MessageSquare, X, Clock } from 'lucide-vue-next' // 🔥 Agregamos Clock
 
 const route = useRoute()
 const router = useRouter()
@@ -140,6 +163,27 @@ const obtenerPedido = async () => {
 const formatFecha = (f) => f ? new Date(f).toLocaleString('es-AR') : '-'
 const formatFechaSimple = (f) => f ? new Date(f + 'T00:00:00').toLocaleDateString('es-AR') : '-'
 const formatPrecio = (p) => parseFloat(p || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })
+
+// 🔥 Lógica para calcular los días restantes
+const diasRestantesInfo = computed(() => {
+  if (!pedido.value || !pedido.value.fecha_esperada_recepcion || pedido.value.estado === 'ENTREGADO' || pedido.value.estado === 'CANCELADO') {
+    return null;
+  }
+  
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  
+  const fechaLlegada = new Date(pedido.value.fecha_esperada_recepcion + 'T00:00:00');
+  fechaLlegada.setHours(0, 0, 0, 0);
+  
+  const diffTime = fechaLlegada - hoy;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  return {
+    fecha: formatFechaSimple(pedido.value.fecha_esperada_recepcion),
+    dias: diffDays
+  };
+})
 
 // ✅ Mapeo de estados según la clase Pedido de Django
 const getEstadoTexto = (e) => {
@@ -188,17 +232,58 @@ onMounted(obtenerPedido)
 
 .destacada {
   background: #1e293b; 
-  border-radius: 8px;
-  padding: 10px !important;
+  border-radius: 12px; /* Un poco más redondo */
+  padding: 20px !important;
   border: 1px solid var(--accent-color);
+  box-shadow: 0 4px 15px rgba(14, 165, 233, 0.15);
 }
 
 .destacada label {
-  color: #94a3b8;
+  color: #93c5fd !important;
 }
 
 .destacada .info-value {
   color: #ffffff;
+}
+
+/* 🔥 ESTILOS PARA LOS DÍAS RESTANTES 🔥 */
+.llegada-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.badge-dias {
+  background: rgba(14, 165, 233, 0.15);
+  color: #38bdf8;
+  border: 1px solid #0ea5e9;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  display: inline-block;
+  width: fit-content;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-dias.critico {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border-color: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+  animation: pulse-rojo 2s infinite;
+}
+
+.badge-dias.atrasado {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fcd34d;
+  border-color: #f59e0b;
+}
+
+@keyframes pulse-rojo {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
 }
 
 /* Base de estilos del componente (sin cambios) */

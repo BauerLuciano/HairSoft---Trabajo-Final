@@ -820,7 +820,6 @@ def ajustar_stock_manual(request, producto_id):
 
         stock_anterior = producto.stock_actual
         
-        # 🔥 Usamos UPDATE para no generar doble auditoría
         Producto.objects.filter(id=producto.id).update(stock_actual=int(nuevo_stock))
 
         from .models import HistorialStock, Auditoria 
@@ -837,7 +836,6 @@ def ajustar_stock_manual(request, producto_id):
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
 
-        # 🔥 UN SOLO REGISTRO MAESTRO
         Auditoria.objects.create(
             usuario=request.user,
             modelo_afectado='Producto',
@@ -851,6 +849,17 @@ def ajustar_stock_manual(request, producto_id):
             },
             ip_address=ip
         )
+        try:
+            from .tasks import procesar_alertas_stock_proveedores 
+            
+            if producto.stock_actual <= producto.stock_minimo:
+                procesar_alertas_stock_proveedores.delay(producto.id) 
+                print(f"🚀 [CELERY] Tarea individual de stock encolada para {producto.nombre}")
+            else:
+                print(f"✅ [CELERY] No hace falta pedir {producto.nombre}, stock OK.")
+                
+        except Exception as celery_err:
+            print(f"⚠️ Error al disparar Celery manualmente: {celery_err}")
 
         return Response({'message': 'Stock actualizado.', 'nuevo_stock': int(nuevo_stock)}, status=200)
 
@@ -4452,8 +4461,10 @@ def actualizar_listas_masivo(request):
 def dashboard_data(request):
     try:
         from django.db.models import Sum, Count, Q, F
-        from .models import Venta, Turno, Producto, DetalleVenta, ConfiguracionSistema, MovimientoCaja, SesionCaja
+        # ¡Asegurate de importar Pedido acá!
+        from .models import Venta, Turno, Producto, DetalleVenta, ConfiguracionSistema, MovimientoCaja, SesionCaja, Pedido
         from datetime import datetime, time, timedelta
+        from django.utils import timezone
         
         period = request.GET.get('period', 'semana')
         date_from_str = request.GET.get('date_from')
@@ -4534,6 +4545,28 @@ def dashboard_data(request):
             labels_dias.append(f"{curr.day}/{curr.month}")
             ventas_por_dia.append(float(tot))
 
+        # ==========================================
+        # 5. PEDIDOS EN CAMINO (ALERTA DE PROVEEDORES)
+        # ==========================================
+        # Buscamos pedidos confirmados que lleguen hoy o en el futuro
+        pedidos_proximos_qs = Pedido.objects.filter(
+            estado='CONFIRMADO', 
+            fecha_esperada_recepcion__isnull=False,
+            fecha_esperada_recepcion__gte=hoy_date
+        ).select_related('proveedor').order_by('fecha_esperada_recepcion')[:5]
+
+        pedidos_proximos = []
+        for p in pedidos_proximos_qs:
+            fecha_llegada_date = p.fecha_esperada_recepcion.date() if hasattr(p.fecha_esperada_recepcion, 'date') else p.fecha_esperada_recepcion
+            dias_restantes = (fecha_llegada_date - hoy_date).days
+            
+            pedidos_proximos.append({
+                'id': p.id,
+                'proveedor': p.proveedor.nombre if p.proveedor else 'Desconocido',
+                'fecha_llegada': fecha_llegada_date.strftime('%d/%m/%Y'),
+                'dias_restantes': dias_restantes
+            })
+
         # Info de la empresa
         config = ConfiguracionSistema.get_solo()
         if request.user.is_authenticated:
@@ -4552,6 +4585,7 @@ def dashboard_data(request):
             'usuario_emisor': usuario_emisor,
             'cajaAbierta': caja_abierta,       
             'pendientesInfo': pendientes_data, 
+            'pedidosProximos': pedidos_proximos, 
             'empresa': {
                 'razon_social': config.razon_social,
                 'cuil_cuit': config.cuil_cuit,
@@ -4564,6 +4598,7 @@ def dashboard_data(request):
         import traceback
         traceback.print_exc()
         return Response({'error': str(e)}, status=500)
+
 # ================================
 # CONFIGURACIÓN REOFERTA AUTOMÁTICA
 # ================================
@@ -6178,7 +6213,6 @@ def obtener_ocupacion_grilla(request):
                 if es_del_peluquero:
                     minutos_ocupados[hora_str_min] = 'PELUQUERO'
                 elif es_de_la_silla:
-                    # Si no estaba ya bloqueado por el peluquero, avisamos que es por la silla
                     if hora_str_min not in minutos_ocupados:
                         minutos_ocupados[hora_str_min] = 'SILLA'
 
@@ -6200,7 +6234,7 @@ def obtener_ocupacion_grilla(request):
 def historial_stock_producto(request, producto_id):
     """Devuelve el historial de ajustes de stock de un producto específico."""
     try:
-        from .models import HistorialStock # Asegurate de tener el modelo creado como te pasé antes
+        from .models import HistorialStock
         historial = HistorialStock.objects.filter(producto_id=producto_id).order_by('-fecha')
         
         datos = []

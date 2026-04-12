@@ -94,6 +94,23 @@
         </div>
       </div>
 
+      <div v-if="dashboardData.pedidosProximos && dashboardData.pedidosProximos.length > 0" class="alerta-pedidos fade-in" style="margin-bottom: 2rem;">
+        <i class="fas fa-truck-loading" style="font-size: 2.2rem;"></i>
+        <div class="alerta-content">
+          <strong>Mercadería en camino</strong>
+          <p>Tenés entregas programadas de proveedores en los próximos días:</p>
+          <ul class="pedidos-lista">
+            <li v-for="pedido in dashboardData.pedidosProximos" :key="pedido.id">
+              <i class="fas fa-box" style="font-size: 0.9rem; margin-right: 5px;"></i>
+              Pedido <strong>#{{ pedido.id }}</strong> a <strong>{{ pedido.proveedor }}</strong> - Llegada aprox: {{ pedido.fecha_llegada }}
+              <span class="badge-dias" :class="{'critico': pedido.dias_restantes <= 1}">
+                {{ pedido.dias_restantes === 0 ? '¡Llega HOY!' : (pedido.dias_restantes === 1 ? 'Llega mañana' : 'Faltan ' + pedido.dias_restantes + ' días') }}
+              </span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
       <div class="kpi-grid">
         <div class="kpi-card income">
           <div class="kpi-header-card"><div class="kpi-icon"><i class="fas fa-dollar-sign"></i></div></div>
@@ -287,11 +304,13 @@ const dateFrom = ref('')
 const dateTo = ref('')
 const tooltip = ref({ visible: false, x: 0, y: 0, value: 0, date: '', index: 0 })
 
+// Agregado pedidosProximos al state inicial
 const dashboardData = ref({
   ingresosTotales: 0, egresosTotales: 0, serviciosRealizados: 0, productosVendidos: 0,
   ventasPorDia: [], labelsDias: [],
   ingresosPorMedio: [],
-  usuario_emisor: '', empresa: null, cajaAbierta: true, pendientesInfo: { cantidad: 0, total_dinero: 0 }
+  usuario_emisor: '', empresa: null, cajaAbierta: true, pendientesInfo: { cantidad: 0, total_dinero: 0 },
+  pedidosProximos: []
 })
 
 const ticketPromedio = computed(() => {
@@ -308,7 +327,6 @@ const getLocalToday = () => {
 }
 const today = getLocalToday()
 
-// 🔥 FUNCIÓN NUEVA PARA LA FECHA EXACTA DE DESCARGA
 const getFechaEmision = () => {
   const d = new Date()
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
@@ -568,6 +586,108 @@ onMounted(() => fetchDashboardData())
 .alerta-content strong { display: block; color: #b45309; font-size: 1.2rem; margin-bottom: 5px; text-transform: uppercase;}
 .alerta-content p { margin: 0; color: #92400e; font-size: 1rem; line-height: 1.5; }
 
+/* 🔥 ALERTA DE PEDIDOS EN CAMINO (ESTILO COMPACTO Y SIN ESTIRAR) 🔥 */
+.alerta-pedidos {
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.15) 0%, rgba(15, 23, 42, 0.7) 100%);
+  border-left: 4px solid #3b82f6;
+  border-radius: 12px;
+  padding: 15px 20px;
+  margin-bottom: 1.5rem;
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(10px);
+}
+
+.alerta-pedidos > i {
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 12px;
+  border-radius: 50%;
+  font-size: 1.4rem !important;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
+}
+
+.alerta-pedidos .alerta-content {
+  flex: 1;
+}
+
+.alerta-pedidos .alerta-content strong {
+  display: block;
+  color: #93c5fd;
+  font-size: 1.1rem;
+  margin-bottom: 2px;
+}
+
+.alerta-pedidos .alerta-content p {
+  margin: 0 0 10px 0;
+  color: #cbd5e1;
+  font-size: 0.9rem;
+}
+
+/* Contenedor de la lista en modo flex con wrap para que no estiren */
+.pedidos-lista {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap; /* IMPORTANTE: Permite que fluyan horizontalmente */
+  gap: 8px; /* Espacio entre los bloques */
+}
+
+/* Modificamos el item para que se ajuste al contenido (no ocupe el 100%) */
+.pedidos-lista li {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid #334155;
+  padding: 6px 12px; 
+  border-radius: 8px;
+  display: inline-flex; /* IMPORTANTE: Inline-flex hace que el ancho dependa del contenido */
+  align-items: center;
+  gap: 8px; /* Juntamos el texto y el badge */
+  color: #f1f5f9;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+  width: max-content; /* Asegura que la caja solo mida lo que mide el texto y badge */
+}
+
+.pedidos-lista li:hover {
+  background: rgba(30, 41, 59, 0.8);
+  border-color: #475569;
+  transform: translateX(3px);
+}
+
+.pedidos-lista li i {
+  color: #94a3b8;
+}
+
+/* Redujimos margen del badge para pegarlo al texto */
+.badge-dias {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border: 1px solid #3b82f6;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.1);
+  margin-left: 5px; /* Pegadito a la info del pedido */
+}
+
+.badge-dias.critico {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border-color: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.2);
+  animation: pulse-rojo 2s infinite;
+}
+
+@keyframes pulse-rojo {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3); }
+  70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
 /* KPI CARDS */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
 .kpi-card {
@@ -721,7 +841,6 @@ onMounted(() => fetchDashboardData())
   filter: drop-shadow(0 0 8px #ef4444);
 }
 
-
 /* ============ MODO CLARO ============ */
 :root.light-theme .dashboard-wrapper {
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
@@ -769,4 +888,29 @@ onMounted(() => fetchDashboardData())
 :root.light-theme .medio-name { color: #0f172a; }
 :root.light-theme .medio-amount { color: #0f172a; }
 :root.light-theme .medio-progress-bg { background: #e2e8f0; }
+
+/* CLARO: ALERTA DE PEDIDOS */
+:root.light-theme .alerta-pedidos {
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+  border-left-color: #2563eb;
+  box-shadow: 0 8px 24px rgba(148, 163, 184, 0.15);
+}
+:root.light-theme .alerta-pedidos > i {
+  background: #dbeafe;
+  color: #2563eb;
+  box-shadow: 0 0 15px rgba(37, 99, 235, 0.15);
+}
+:root.light-theme .alerta-pedidos .alerta-content strong { color: #1e3a8a; }
+:root.light-theme .alerta-pedidos .alerta-content p { color: #475569; }
+:root.light-theme .pedidos-lista li {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #334155;
+}
+:root.light-theme .pedidos-lista li:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+:root.light-theme .badge-dias { background: #dbeafe; color: #1d4ed8; }
+:root.light-theme .badge-dias.critico { background: #fee2e2; color: #b91c1c; }
 </style>

@@ -448,24 +448,30 @@ class EstadisticasDashboardAPIView(APIView):
             f_inicio = parse_date(inicio_str)
             f_fin = parse_date(fin_str)
 
+            # Convertir a datetime aware para campos DateTimeField (Venta, PedidoWeb)
+            f_inicio_dt = timezone.make_aware(datetime.datetime.combine(f_inicio, datetime.time.min))
+            f_fin_dt = timezone.make_aware(datetime.datetime.combine(f_fin, datetime.time.max))
+
             # =========================================================
-            # 1. INGRESOS TOTALES (Ventas + Turnos + Señas + PEDIDOS WEB)
+            # 1. INGRESOS TOTALES
             # =========================================================
-            ventas_qs = Venta.objects.filter(fecha__date__range=[f_inicio, f_fin], anulada=False)
+            ventas_qs = Venta.objects.filter(
+                fecha__range=[f_inicio_dt, f_fin_dt],
+                anulada=False
+            )
+            # Turno.fecha es DateField -> usamos __range con objetos date
             turnos_qs = Turno.objects.filter(fecha__range=[f_inicio, f_fin])
-            
-            # Pedidos Web de los clientes (Filtrando los que ya pagaron)
             pedidos_web_qs = PedidoWeb.objects.filter(
-                fecha_creacion__date__range=[f_inicio, f_fin], 
-                estado__in=['PAGADO', 'EN_PREPARACION', 'LISTO_RETIRO', 'EN_CAMINO', 'ENTREGADO'] 
+                fecha_creacion__range=[f_inicio_dt, f_fin_dt],
+                estado__in=['PAGADO', 'EN_PREPARACION', 'LISTO_RETIRO', 'EN_CAMINO', 'ENTREGADO']
             )
 
-            # A. Ventas de Mostrador
+            # A. Ventas de mostrador
             stats_ventas = ventas_qs.aggregate(ingreso=Sum('total'), cantidad=Count('id'))
             ingreso_ventas = float(stats_ventas['ingreso'] or 0)
             cantidad_ventas = stats_ventas['cantidad'] or 0
 
-            # B. Turnos Completados (Servicios)
+            # B. Turnos Completados
             turnos_completados_qs = turnos_qs.filter(estado='COMPLETADO')
             ingreso_turnos_completados = float(turnos_completados_qs.aggregate(total=Sum('monto_total'))['total'] or 0)
             cantidad_turnos_completados = turnos_completados_qs.count()
@@ -479,7 +485,6 @@ class EstadisticasDashboardAPIView(APIView):
 
             ingresos_penalizaciones_lista = []
             ingreso_penalizaciones = 0
-            
             for p in penalizaciones_qs:
                 monto_retenido = float(p.monto_total) if p.tipo_pago == 'TOTAL' else float(p.monto_seña)
                 if monto_retenido > 0:
@@ -492,68 +497,109 @@ class EstadisticasDashboardAPIView(APIView):
                         'monto_retenido': monto_retenido
                     })
 
-            # D. Ingresos por Pedidos Web
+            # D. Pedidos Web
             stats_pedidos = pedidos_web_qs.aggregate(ingreso=Sum('total'), cantidad=Count('id'))
             ingreso_pedidos_web = float(stats_pedidos['ingreso'] or 0)
             cantidad_pedidos_web = stats_pedidos['cantidad'] or 0
 
-            # Totales Financieros sumando la guita de la web
+            # Totales
             ingreso_total_bruto = ingreso_ventas + ingreso_turnos_completados + ingreso_penalizaciones + ingreso_pedidos_web
             total_operaciones = cantidad_ventas + cantidad_turnos_completados + len(ingresos_penalizaciones_lista) + cantidad_pedidos_web
             ticket_promedio = (ingreso_total_bruto / total_operaciones) if total_operaciones > 0 else 0
 
             # =========================================================
-            # 2. GRÁFICO DE BARRAS: MEDIOS DE PAGO UNIFICADOS
+            # 2. MEDIOS DE PAGO UNIFICADOS
             # =========================================================
             medios_dict = {}
-            
-            # Agrupamos la plata de las Ventas
-            ventas_pagadas = ventas_qs.values('medio_pago__nombre').annotate(total=Sum('total'))
-            for v in ventas_pagadas:
+            # Ventas
+            for v in ventas_qs.values('medio_pago__nombre').annotate(total=Sum('total')):
                 mp = (v['medio_pago__nombre'] or 'OTRO').upper().replace('_', ' ')
                 medios_dict[mp] = medios_dict.get(mp, 0) + float(v['total'] or 0)
-
-            # Agrupamos la plata de los Turnos Completados
-            turnos_pagados = turnos_completados_qs.values('medio_pago').annotate(total=Sum('monto_total'))
-            for t in turnos_pagados:
+            # Turnos
+            for t in turnos_completados_qs.values('medio_pago').annotate(total=Sum('monto_total')):
                 mp = (t['medio_pago'] or 'OTRO').upper().replace('_', ' ')
                 medios_dict[mp] = medios_dict.get(mp, 0) + float(t['total'] or 0)
-
-            # Sumamos las Señas Retenidas 
+            # Penalizaciones
             for p in penalizaciones_qs:
                 mp = (p.medio_pago or 'OTRO').upper().replace('_', ' ')
-                monto_retenido = float(p.monto_total) if p.tipo_pago == 'TOTAL' else float(p.monto_seña)
-                medios_dict[mp] = medios_dict.get(mp, 0) + monto_retenido
-
-            # Sumamos los Pedidos Web (Siempre son por MP en tu sistema)
+                monto = float(p.monto_total) if p.tipo_pago == 'TOTAL' else float(p.monto_seña)
+                medios_dict[mp] = medios_dict.get(mp, 0) + monto
+            # Pedidos Web
             if ingreso_pedidos_web > 0:
                 medios_dict['MERCADO PAGO'] = medios_dict.get('MERCADO PAGO', 0) + ingreso_pedidos_web
 
             grafico_medios = [{'medio': k, 'total': v} for k, v in sorted(medios_dict.items(), key=lambda item: item[1], reverse=True)]
 
             # =========================================================
-            # 3. FAVORITOS Y STOCK ESTANCADO (Sin moda, con guita exacta)
+            # 3. SERVICIO ESTRELLA (ventas mostrador + turnos completados)
             # =========================================================
-            servicio_top = DetalleVenta.objects.filter(
-                venta__fecha__date__range=[f_inicio, f_fin], 
-                venta__anulada=False, 
+            from decimal import Decimal
+            servicio_stats = {}
+
+            # 3a. Ventas de mostrador
+            ventas_servicios = DetalleVenta.objects.filter(
+                venta__fecha__range=[f_inicio_dt, f_fin_dt],
+                venta__anulada=False,
                 servicio__isnull=False
-            ).values('servicio__nombre').annotate(
+            ).values('servicio__id', 'servicio__nombre').annotate(
                 cantidad=Sum('cantidad'),
                 ingreso=Sum('subtotal')
-            ).order_by('-cantidad').first()
+            )
+            for vs in ventas_servicios:
+                sid = vs['servicio__id']
+                nombre = vs['servicio__nombre']
+                if sid not in servicio_stats:
+                    servicio_stats[sid] = {'nombre': nombre, 'cantidad': 0, 'ingreso': Decimal('0.00')}
+                servicio_stats[sid]['cantidad'] += vs['cantidad']
+                servicio_stats[sid]['ingreso'] += Decimal(str(vs['ingreso'] or 0))
 
+            # 3b. Turnos completados
+            turnos_con_servicios = turnos_completados_qs.prefetch_related('servicios')
+            for turno in turnos_con_servicios:
+                servicios_turno = list(turno.servicios.all())
+                if not servicios_turno:
+                    continue
+                precio_total_lista = sum((s.precio for s in servicios_turno), Decimal('0.00'))
+                if precio_total_lista > 0:
+                    factor = Decimal(str(turno.monto_total or 0)) / precio_total_lista
+                else:
+                    factor = Decimal('0.00')
+                for s in servicios_turno:
+                    sid = s.id
+                    if sid not in servicio_stats:
+                        servicio_stats[sid] = {'nombre': s.nombre, 'cantidad': 0, 'ingreso': Decimal('0.00')}
+                    servicio_stats[sid]['cantidad'] += 1
+                    servicio_stats[sid]['ingreso'] += s.precio * factor
+
+            if servicio_stats:
+                mejor = max(servicio_stats.values(), key=lambda x: x['cantidad'])
+                servicio_top = {
+                    'nombre': mejor['nombre'],
+                    'cantidad': mejor['cantidad'],
+                    'ingreso': float(mejor['ingreso'])
+                }
+            else:
+                servicio_top = {'nombre': 'Ninguno', 'cantidad': 0, 'ingreso': 0.0}
+
+            # =========================================================
+            # 4. PRODUCTO ESTRELLA
+            # =========================================================
             producto_top = DetalleVenta.objects.filter(
-                venta__fecha__date__range=[f_inicio, f_fin], 
-                venta__anulada=False, 
+                venta__fecha__range=[f_inicio_dt, f_fin_dt],
+                venta__anulada=False,
                 producto__isnull=False
             ).values('producto__nombre').annotate(
                 cantidad=Sum('cantidad'),
                 ingreso=Sum('subtotal')
             ).order_by('-cantidad').first()
 
+            # =========================================================
+            # 5. STOCK ESTANCADO
+            # =========================================================
             productos_vendidos_ids = DetalleVenta.objects.filter(
-                venta__fecha__date__range=[f_inicio, f_fin], venta__anulada=False, producto__isnull=False
+                venta__fecha__range=[f_inicio_dt, f_fin_dt],
+                venta__anulada=False,
+                producto__isnull=False
             ).values_list('producto_id', flat=True)
 
             stock_estancado_qs = Producto.objects.exclude(id__in=productos_vendidos_ids).filter(
@@ -563,32 +609,43 @@ class EstadisticasDashboardAPIView(APIView):
             ).values('nombre', 'marca__nombre', 'stock_actual', 'capital_parado').order_by('-capital_parado')[:5]
 
             # =========================================================
-            # 4. FIDELIZACIÓN (Turnos) - FIX APLICADO ACÁ
+            # 6. FIDELIZACIÓN (clientes únicos: nuevos vs recurrentes)
             # =========================================================
-            # Excluimos a los clientes nulos para no ensuciar la métrica
-            clientes_ids = turnos_completados_qs.exclude(cliente__isnull=True).values_list('cliente_id', flat=True).distinct()
+            clientes_ids_unicos = set(
+                turnos_completados_qs.exclude(cliente__isnull=True)
+                .values_list('cliente_id', flat=True)
+            )
             recurrentes = 0
             nuevos = 0
-            
-            for cid in clientes_ids:
-                # Contamos cuántos turnos en total tiene el cliente en la base de datos
-                turnos_historicos = Turno.objects.filter(cliente_id=cid, estado='COMPLETADO').count()
-                if turnos_historicos > 1:
+            print("=== DEBUG FIDELIDAD ===")
+            print(f"Período: {f_inicio} a {f_fin}")
+            print(f"Clientes únicos en período: {len(clientes_ids_unicos)}")
+            for cid in clientes_ids_unicos:
+                # Contar total de turnos COMPLETADOS en TODA la historia para este cliente
+                total_turnos_historia = Turno.objects.filter(
+                    cliente_id=cid,
+                    estado='COMPLETADO'
+                ).count()
+                print(f"Cliente ID {cid} -> total histórico de turnos: {total_turnos_historia}")
+                if total_turnos_historia > 1:
                     recurrentes += 1
                 else:
                     nuevos += 1
-                    
+            print(f"Nuevos: {nuevos} | Recurrentes: {recurrentes}")
+            print("=========================")
+            
             total_clientes = nuevos + recurrentes
             tasa_fidelidad = (recurrentes / total_clientes * 100) if total_clientes > 0 else 0
-
-            # 7. USUARIO EMISOR PARA EL PDF
+            # =========================================================
+            # 7. USUARIO EMISOR (DEBE ESTAR DEFINIDO ANTES DEL RESPONSE)
+            # =========================================================
             if request.user.is_authenticated:
                 usuario_emisor = f"{getattr(request.user, 'nombre', '')} {getattr(request.user, 'apellido', '')}".strip() or request.user.username
             else:
                 usuario_emisor = "Administrador"
 
             # =========================================================
-            # RESPUESTA AL FRONTEND
+            # RESPUESTA FINAL
             # =========================================================
             return Response({
                 'usuario_emisor': usuario_emisor,
@@ -598,11 +655,7 @@ class EstadisticasDashboardAPIView(APIView):
                     'ingreso_penalizaciones': ingreso_penalizaciones,
                     'ticket_promedio': ticket_promedio,
                     'fidelidad': { 'tasa': round(tasa_fidelidad, 1), 'nuevos': nuevos, 'recurrentes': recurrentes },
-                    'servicio_estrella': {
-                        'nombre': servicio_top['servicio__nombre'] if servicio_top else 'Ninguno',
-                        'cantidad': servicio_top['cantidad'] if servicio_top else 0,
-                        'ingreso': float(servicio_top['ingreso'] or 0) if servicio_top else 0
-                    },
+                    'servicio_estrella': servicio_top,
                     'producto_estrella': {
                         'nombre': producto_top['producto__nombre'] if producto_top else 'Ninguno',
                         'cantidad': producto_top['cantidad'] if producto_top else 0,
@@ -629,5 +682,6 @@ class EstadisticasDashboardAPIView(APIView):
                 }
             })
         except Exception as e:
+            import traceback
             traceback.print_exc()
             return Response({'error': 'Error interno del servidor. Revisá la consola.'}, status=500)
