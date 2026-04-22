@@ -126,6 +126,15 @@
 
               <button 
                 v-if="turno.estado === 'RESERVADO'" 
+                @click="modificarTurno(turno)" 
+                class="btn-modificar"
+              >
+                <i class="bi bi-pencil-square" style="margin-right: 5px;"></i>
+                Modificar
+              </button>
+
+              <button 
+                v-if="turno.estado === 'RESERVADO'" 
                 @click="cancelarTurno(turno)" 
                 class="btn-cancelar"
               >
@@ -274,7 +283,6 @@ const getMedioPagoTexto = (medio, entidad = null) => {
   return map[medio] || medio
 }
 
-// 🔥 NUEVA FUNCIÓN: Descargar Comprobante PDF (sirve para Turnos y Pedidos)
 const descargarComprobantePDF = async (id, tipo = 'turnos') => {
   try {
     Swal.fire({
@@ -305,6 +313,80 @@ const descargarComprobantePDF = async (id, tipo = 'turnos') => {
   }
 }
 
+// 🔥 LÓGICA DE MODIFICAR TURNO (CLIENTE)
+const modificarTurno = async (turno) => {
+  try {
+    // 1. Obtener límite de cancelación
+    let margenConfig = 3;
+    try {
+      const resConfig = await api.get('/api/configuracion/');
+      if (resConfig.data && resConfig.data.margen_horas_cancelacion) {
+        margenConfig = resConfig.data.margen_horas_cancelacion;
+      }
+    } catch (e) { console.error('Error cargando config para modificar', e) }
+
+    // 2. Calcular tiempo restante
+    const ahora = new Date();
+    const fechaTurno = new Date(`${turno.fecha}T${turno.hora}`);
+    const horasFaltantes = (fechaTurno - ahora) / (1000 * 60 * 60);
+
+    // 3. Evaluar Penalidad
+    if (horasFaltantes < margenConfig) {
+      // PENALIDAD: Faltan menos horas que el margen
+      const confirmacion = await Swal.fire({
+        title: '⚠️ Modificación Tardía',
+        html: `
+          <div style="text-align: left; font-size: 0.95rem; line-height: 1.5;">
+            <p>Estás intentando modificar tu turno faltando menos de <strong>${margenConfig} horas</strong>.</p>
+            <p style="color: #b91c1c; background: #fef2f2; padding: 10px; border-radius: 8px; border: 1px solid #fecaca;">
+              Según nuestras políticas, esto se considera una cancelación tardía. 
+              <strong>Se retendrá tu pago/seña actual</strong> y deberás abonar nuevamente el valor del nuevo turno.
+            </p>
+            <p>¿Estás seguro de que querés continuar y perder tu pago actual?</p>
+          </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Sí, modificar igual',
+        cancelButtonText: 'Volver atrás'
+      });
+
+      if (confirmacion.isConfirmed) {
+        // Redirigir a la vista de creación mandándole el ID del turno viejo para que el Backend lo mate.
+        router.push({ 
+          path: '/turnos/crear-web', 
+          query: { modificar_tarde_id: turno.id } 
+        });
+      }
+    } else {
+      // GRATIS: Faltan más horas que el margen
+      const confirmacion = await Swal.fire({
+        title: '✏️ Modificar Turno',
+        html: `<p>Estás dentro del tiempo permitido para reprogramar tu turno sin costo adicional.</p>
+               <p>Tu pago será transferido al nuevo horario que elijas.</p>`,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonColor: '#0ea5e9',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Elegir nuevo horario',
+        cancelButtonText: 'Cancelar'
+      });
+
+      if (confirmacion.isConfirmed) {
+        router.push({ 
+          path: '/turnos/crear-web', 
+          query: { modificar_gratis_id: turno.id } 
+        });
+      }
+    }
+  } catch (error) {
+    console.error(error);
+    Swal.fire('Error', 'No se pudo procesar la solicitud de modificación.', 'error');
+  }
+}
+
 const cancelarTurno = async (turno) => {
   let margenConfig = 3;
   try {
@@ -319,41 +401,93 @@ const cancelarTurno = async (turno) => {
   const horasFaltantes = (fechaTurno - ahora) / (1000 * 60 * 60);
   const hayReembolso = horasFaltantes >= margenConfig;
 
+  // Armamos el mensaje dinámico
+  const mensajeReembolso = hayReembolso 
+    ? `Como estás cancelando con anticipación (más de ${margenConfig}hs), te corresponde la devolución de tu dinero.`
+    : `Estás cancelando con menos de ${margenConfig}hs de anticipación. Según nuestras políticas de cancelación tardía, se pierde el valor de la reserva.`;
+
   const { value: formValues } = await Swal.fire({
-    title: '¿Cancelar Turno?',
+    title: '¿Querés cancelar tu turno?',
+    width: '500px',
     html: `
-      <div style="text-align: left; font-family: sans-serif;">
-        <div style="background: ${hayReembolso ? '#f0fdf4' : '#fffbeb'}; padding: 12px; border-radius: 10px; margin-bottom: 15px; border: 1px solid ${hayReembolso ? '#bbf7d0' : '#fef3c7'}; display: flex; align-items: center; gap: 10px;">
-          <div style="font-size: 1.2rem;">${hayReembolso ? '✅' : '⚠️'}</div>
-          <div>
-            <div style="font-weight: 700; color: ${hayReembolso ? '#166534' : '#92400e'}; font-size: 0.9rem;">${hayReembolso ? 'Reembolso disponible' : 'Sin reembolso'}</div>
-            <div style="color: ${hayReembolso ? '#16a34a' : '#b45309'}; font-size: 0.8rem;">Anticipación: ${Math.floor(horasFaltantes)}hs (Mínimo requerido: ${margenConfig}hs).</div>
+      <div style="text-align: left; font-family: 'Inter', -apple-system, sans-serif;">
+        
+        <div style="background: ${hayReembolso ? '#f0fdf4' : '#fef2f2'}; padding: 18px; border-radius: 14px; margin-bottom: 20px; border: 1px solid ${hayReembolso ? '#bbf7d0' : '#fecaca'}; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+            <span style="font-size: 1.6rem;">${hayReembolso ? '✅' : '⚠️'}</span>
+            <span style="font-weight: 800; color: ${hayReembolso ? '#166534' : '#991b1b'}; font-size: 1.1rem;">
+              ${hayReembolso ? 'Reembolso garantizado' : 'Sin reembolso'}
+            </span>
           </div>
+          <p style="color: ${hayReembolso ? '#15803d' : '#991b1b'}; font-size: 0.95rem; margin: 0; line-height: 1.5; font-weight: 500;">
+            ${mensajeReembolso}
+          </p>
         </div>
-        <div style="background: #f8fafc; padding: 1rem; border-radius: 12px; border: 1px solid #e2e8f0;">
-          <label style="display:block; margin-bottom:5px; font-weight:bold;">Motivo:</label>
-          <select id="motivo" class="swal2-input" style="width: 100%; margin: 0 0 15px 0;">
+
+        <div style="background: #f8fafc; padding: 18px; border-radius: 14px; border: 1px solid #e2e8f0;">
+          
+          ${hayReembolso ? `
+          <label style="display:block; margin-bottom:8px; font-weight:700; color: #0f172a; font-size: 0.95rem;">¿Cómo preferís recibir tu dinero?</label>
+          <select id="preferencia_reembolso" class="swal2-input" style="width: 100%; margin: 0 0 20px 0; height: 48px; border-radius: 10px; font-size: 0.95rem; font-weight: 600; color: #0f172a; border: 1px solid #0ea5e9; background-color: #f0f9ff;">
+            <option value="Mercado Pago / Transferencia">📱 Devolución a mi cuenta (Mercado Pago)</option>
+            <option value="Efectivo en el local">💵 Paso a buscar el efectivo por el local</option>
+          </select>
+          ` : ''}
+
+          <label style="display:block; margin-bottom:8px; font-weight:700; color: #334155; font-size: 0.95rem;">¿Por qué necesitás cancelar?</label>
+          <select id="motivo" class="swal2-input" style="width: 100%; margin: 0 0 15px 0; height: 48px; border-radius: 10px; font-size: 0.95rem; font-weight: 500; color: #0f172a; border: 1px solid #cbd5e1;">
             <option value="PERSONAL">Motivos personales</option>
             <option value="SALUD">Problema de salud</option>
             <option value="ERROR">Error al reservar</option>
             <option value="HORARIO">Cambio de planes</option>
           </select>
-          <label style="display:block; margin-bottom:5px; font-weight:bold;">Observaciones:</label>
-          <textarea id="obs" class="swal2-textarea" style="width: 100%; margin: 0; height: 80px;" placeholder="Opcional..."></textarea>
+          
+          <label style="display:block; margin-bottom:8px; font-weight:700; color: #334155; font-size: 0.95rem;">Comentarios (Opcional):</label>
+          <textarea id="obs" class="swal2-textarea" style="width: 100%; margin: 0; height: 80px; border-radius: 10px; font-size: 0.95rem; padding: 12px; border: 1px solid #cbd5e1;" placeholder="Dejanos un mensaje si querés..."></textarea>
         </div>
       </div>
     `,
     icon: 'question',
     showCancelButton: true,
     confirmButtonColor: '#ef4444',
-    confirmButtonText: 'Confirmar Cancelación',
-    preConfirm: () => ({ motivo: document.getElementById('motivo').value, observaciones: document.getElementById('obs').value })
+    cancelButtonColor: '#64748b',
+    confirmButtonText: 'Sí, cancelar turno',
+    cancelButtonText: 'No, mantener turno',
+    didOpen: () => {
+      const confirmBtn = Swal.getConfirmButton();
+      const cancelBtn = Swal.getCancelButton();
+      confirmBtn.style.borderRadius = '10px';
+      confirmBtn.style.fontWeight = '700';
+      cancelBtn.style.borderRadius = '10px';
+      cancelBtn.style.fontWeight = '700';
+    },
+    preConfirm: () => {
+      const motivo = document.getElementById('motivo').value;
+      const obsCliente = document.getElementById('obs').value.trim();
+      const preferencia = document.getElementById('preferencia_reembolso').value;
+      
+      // Inyectamos la preferencia bien clarito
+      const observacionFinal = `PREFIERE DEVOLUCIÓN EN: ${preferencia}. ${obsCliente}`;
+
+      return { 
+        motivo: motivo, 
+        observaciones: observacionFinal,
+        obs_cancelacion: observacionFinal // Mandamos ambos para asegurar el backend
+      };
+    }
   });
 
   if (formValues) {
     try {
+      Swal.fire({ title: 'Cancelando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
       const response = await api.post(`/turnos/cancelar-propio/${turno.id}/`, formValues);
-      await Swal.fire({ icon: response.data.reembolso_ok ? 'success' : 'warning', title: 'Turno Cancelado', text: response.data.message });
+      
+      await Swal.fire({ 
+        icon: 'success',
+        title: 'Turno Cancelado', 
+        text: 'Tu turno ha sido cancelado exitosamente.',
+        confirmButtonColor: '#0ea5e9'
+      });
       cargarMisTurnos();
     } catch (error) {
       const mensaje = error.response?.data?.error || 'No se pudo cancelar el turno.';
@@ -390,7 +524,7 @@ const verDetalles = async (turno) => {
               </div>`,
       width: '700px',
       background: '#ffffff',
-      showConfirmButton: true, // Habilitamos el botón para descargar PDF
+      showConfirmButton: true,
       showCancelButton: true,
       confirmButtonText: '📄 Descargar Comprobante',
       cancelButtonText: 'Cerrar',
@@ -488,7 +622,6 @@ const verDetalles = async (turno) => {
       `
     });
 
-    // Si el usuario hace clic en Descargar PDF:
     if (result.isConfirmed) {
       await descargarComprobantePDF(t.id, 'turnos');
     }
@@ -504,7 +637,6 @@ const mostrarAlertaFelicidades = async (turnoId) => {
     const res = await api.get(`/api/turnos/${turnoId}/`);
     const t = res.data;
     
-    // Alerta de Felicidades Modificada para ofrecer PDF
     const result = await Swal.fire({
       title: '¡Felicidades! 🎉',
       html: `<div style="text-align: left; background: #f0f9ff; padding: 1.2rem; border-radius: 12px; border: 1px solid #bae6fd;">
@@ -519,7 +651,6 @@ const mostrarAlertaFelicidades = async (turnoId) => {
       cancelButtonText: 'Cerrar'
     });
 
-    // Si el usuario hace clic en Descargar PDF:
     if (result.isConfirmed) {
       await descargarComprobantePDF(turnoId, 'turnos');
     }
@@ -529,7 +660,7 @@ const mostrarAlertaFelicidades = async (turnoId) => {
 }
 
 onMounted(async () => {
-  const token = localStorage.getItem('token'); // o tu store: authStore.token
+  const token = localStorage.getItem('token'); 
   if (token) {
     await cargarMisTurnos();
   }
@@ -1045,6 +1176,28 @@ watch(tabActiva, () => { pagina.value = 1 })
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+/* 🔥 ESTILOS PARA EL NUEVO BOTÓN MODIFICAR */
+.btn-modificar {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.btn-modificar:hover {
+  background: rgba(245, 158, 11, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
 }
 
 .btn-cancelar {

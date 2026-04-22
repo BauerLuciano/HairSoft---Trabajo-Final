@@ -128,8 +128,10 @@ class MercadoPagoService:
 
     def devolver_pago(self, payment_id, amount=None):
         """
-        REEMBOLSOS - Ajustado para Sandbox
+        REEMBOLSOS - Ajustado con Simulación para entorno Sandbox (Pruebas)
         """
+        import uuid
+        import mercadopago
         try:
             request_options = mercadopago.config.RequestOptions()
             request_options.custom_headers = {'X-Idempotency-Key': str(uuid.uuid4())}
@@ -146,6 +148,16 @@ class MercadoPagoService:
                 }
             
             error_detail = result["response"].get("message", "Error desconocido")
+
+            if result["status"] == 401 and "live credentials" in error_detail:
+                print(f"⚠️ [SANDBOX] MP no permite reembolsos reales con credenciales TEST.")
+                print(f"⚠️ [SANDBOX] Simulando reembolso exitoso del pago {payment_id}...")
+                return {
+                    "success": True, 
+                    "status": "refunded_sandbox",
+                    "refund_id": f"simulated_{payment_id}"
+                }
+
             return {"success": False, "error": f"MP Status {result['status']}: {error_detail}"}
             
         except Exception as e:

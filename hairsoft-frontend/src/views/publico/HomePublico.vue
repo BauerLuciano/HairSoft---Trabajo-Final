@@ -27,23 +27,6 @@
       </div>
     </div>
 
-    <div class="video-showcase fade-in">
-      <div class="video-container">
-        <video 
-          controls 
-          class="institutional-video"
-        >
-          <source src="/videos/Pelu-HairSoft.mp4" type="video/mp4">
-          Tu navegador no soporta videos HTML5.
-        </video>
-      </div>
-      <div class="video-text">
-        <h2>Conocé nuestro espacio</h2>
-        <p>
-          Te ofrecemos un ambiente moderno, relajado y la mejor atención profesional.
-        </p>
-      </div>
-    </div>
 
     <div class="features-section fade-in">
       <div class="section-header">
@@ -91,9 +74,9 @@
             </div>
           </div>
           <div class="card-content">
-            <h3 class="card-title">Productos Premium</h3>
+            <h3 class="card-title">Productos</h3>
             <p class="card-description">
-              Las mejores marcas profesionales para el cuidado y mantenimiento de tu estilo en casa.
+              Las mejores marcas para el cuidado de tu cabello
             </p>
             <div class="card-features">
               <span class="feature-tag">Shampoos</span>

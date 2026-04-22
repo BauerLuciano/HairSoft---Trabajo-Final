@@ -357,7 +357,6 @@ const getMedioPagoTexto = (medioPago, entidadPago = null) => {
   const map = {
     'MERCADO_PAGO': 'Mercado Pago',
     'EFECTIVO': 'Efectivo',
-    'TRANSFERENCIA': 'Transferencia',
   }
   return map[medioPago] || medioPago
 }
@@ -371,8 +370,12 @@ const calcularFaltaPagar = (turno) => {
 
 const calcularMontoReembolso = (turno) => {
   if (turno.estado !== 'CANCELADO' || turno.reembolso_estado !== 'PENDIENTE') return 0
-  if (turno.tipo_pago === 'SENA_50') return turno.monto_seña || 0
-  return turno.monto_total || 0
+  
+  if (turno.tipo_pago === 'TOTAL' || turno.medio_pago_restante) {
+    return parseFloat(turno.monto_total) || 0
+  }
+  
+  return parseFloat(turno.monto_seña) || parseFloat(turno.monto_total) || 0
 }
 
 const esTurnoPorCanje = (turno) => {
@@ -450,7 +453,6 @@ const getMedioPagoClass = (medioPago) => {
   const medio = medioPago.toLowerCase()
   if (medio.includes('mercado')) return 'mp'
   if (medio.includes('efectivo')) return 'efectivo'
-  if (medio.includes('transferencia')) return 'transferencia'
   if (medio.includes('pendiente')) return 'pendiente'
   return 'otro'
 }
@@ -499,66 +501,90 @@ const cancelarTurno = async (turno) => {
     const ahora = new Date();
     const fechaTurno = new Date(`${turno.fecha}T${turno.hora}`);
     const horasFaltantes = (fechaTurno - ahora) / (1000 * 60 * 60);
-    const hayReembolso = horasFaltantes >= margenConfig;
+    const hayReembolso = horasFaltantes >= margenConfig && (parseFloat(turno.monto_seña) > 0 || parseFloat(turno.monto_total) > 0);
+    
+    // Calculamos el monto solo para mostrárselo como aviso
+    let montoTotal = 0;
+    if (turno.tipo_pago === 'TOTAL' || turno.medio_pago_restante) {
+      montoTotal = parseFloat(turno.monto_total) || 0;
+    } else {
+      montoTotal = parseFloat(turno.monto_seña) || parseFloat(turno.monto_total) || 0;
+    }
 
     const { value: formValues } = await Swal.fire({
-      title: `<span style="font-size: 1.5rem; font-weight: 700; color: #1f2937;">¿Cancelar Turno?</span>`,
+      title: '',
+      width: '480px',
       html: `
-        <div style="text-align: left; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+        <div style="font-family: 'Inter', -apple-system, sans-serif; text-align: left;">
           
-          <div style="background: ${hayReembolso ? '#f0fdf4' : '#fffbeb'}; 
-                      padding: 12px; border-radius: 10px; margin-bottom: 12px; 
-                      border: 1px solid ${hayReembolso ? '#bbf7d0' : '#fef3c7'};
-                      display: flex; align-items: center; gap: 10px;">
-            <div style="font-size: 1.2rem;">${hayReembolso ? '✅' : '⚠️'}</div>
-            <div>
-              <div style="font-weight: 700; color: ${hayReembolso ? '#166534' : '#92400e'}; font-size: 0.9rem;">
-                ${hayReembolso ? 'Reembolso disponible' : 'Sin reembolso'}
-              </div>
-              <div style="color: ${hayReembolso ? '#16a34a' : '#b45309'}; font-size: 0.8rem;">
-                Cancelación con ${Math.floor(horasFaltantes)}hs de anticipación (Mínimo: ${margenConfig}hs).
-              </div>
+          <div style="text-align: center; margin-bottom: 20px;">
+            <div style="background: #fee2e2; color: #ef4444; width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto; font-size: 2rem;">
+              <i class="bi bi-calendar-x"></i>
             </div>
+            <h2 style="margin: 0; font-size: 1.4rem; font-weight: 800; color: #1e293b;">Cancelar Turno</h2>
+            <p style="margin: 5px 0 0 0; color: #64748b; font-size: 0.95rem;">Estás a punto de anular la reserva de <b>${turno.cliente_nombre}</b>.</p>
           </div>
 
-          <div style="background: #e0f2fe; padding: 12px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #bae6fd; display: flex; align-items: center; gap: 10px;">
-            <div style="font-size: 1.2rem;">🔔</div>
-            <div>
-              <div style="font-weight: 700; color: #0369a1; font-size: 0.9rem;">
-                Notificación Automática
-              </div>
-              <div style="color: #0284c7; font-size: 0.8rem;">
-                Al cancelar, se avisará a los clientes en lista de espera que este horario se liberó.
+          ${hayReembolso ? `
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 15px; margin-bottom: 20px; display: flex; gap: 15px; align-items: flex-start; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+              <span style="font-size: 1.5rem;">✅</span>
+              <div>
+                <strong style="color: #166534; font-size: 0.95rem; display: block; margin-bottom: 4px;">Reembolso a favor del cliente</strong>
+                <span style="color: #15803d; font-size: 0.85rem; line-height: 1.4; display: block;">
+                  Se generará un <b>reembolso pendiente de $${formatPrecio(montoTotal)}</b> porque cancela con ${Math.floor(horasFaltantes)}hs de anticipación. Luego podrás gestionarlo desde la tabla.
+                </span>
               </div>
             </div>
-          </div>
+          ` : `
+            <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 12px; padding: 15px; margin-bottom: 20px; display: flex; gap: 15px; align-items: flex-start; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+              <span style="font-size: 1.5rem;">⚠️</span>
+              <div>
+                <strong style="color: #92400e; font-size: 0.95rem; display: block; margin-bottom: 4px;">Sin Reembolso</strong>
+                <span style="color: #b45309; font-size: 0.85rem; line-height: 1.4; display: block;">
+                  Cancelación con ${Math.floor(horasFaltantes)}hs de anticipación (Mínimo requerido: ${margenConfig}hs). El dinero no se devuelve.
+                </span>
+              </div>
+            </div>
+          `}
 
-          <div style="background: #f8fafc; padding: 1rem; border-radius: 12px; border: 1px solid #e2e8f0;">
-            <label style="display:block; margin-bottom:5px; font-weight:bold; color: #1e293b; font-size: 0.9rem;">Motivo:</label>
-            <select id="motivoCancelacion" class="swal2-input" style="width: 100%; margin: 0 0 15px 0; height: 40px; font-size: 0.9rem;">
-              <option value="" disabled selected>Selecciona un motivo...</option>
+          <div style="background: #f8fafc; padding: 20px; border-radius: 14px; border: 1px solid #e2e8f0;">
+            <label style="display:block; margin-bottom:8px; font-weight: 700; color: #334155; font-size: 0.9rem;">Motivo de cancelación:</label>
+            <select id="motivoCancelacion" class="swal2-input" style="width: 100%; margin: 0 0 15px 0; height: 45px; font-size: 0.95rem; border-radius: 10px; border: 1px solid #cbd5e1; color: #0f172a; background: white;">
+              <option value="" disabled selected>Seleccioná un motivo...</option>
               <option value="MOTIVOS_PERSONALES">Motivos personales</option>
               <option value="PROBLEMAS_SALUD">Problema de salud</option>
               <option value="ERROR_RESERVA">Error al reservar</option>
               <option value="CAMBIO_PLANES">Cambio de planes</option>
               <option value="OTRO">Otro</option>
             </select>
-            <label style="display:block; margin-bottom:5px; font-weight:bold; color: #1e293b; font-size: 0.9rem;">Observaciones:</label>
-            <textarea id="observacionesCancelacion" class="swal2-textarea" style="width: 100%; margin: 0; height: 80px; font-size: 0.9rem;" placeholder="Opcional..."></textarea>
+            
+            <label style="display:block; margin-bottom:8px; font-weight: 700; color: #334155; font-size: 0.9rem;">Observaciones internas:</label>
+            <textarea id="observacionesCancelacion" class="swal2-textarea" style="width: 100%; margin: 0; height: 80px; font-size: 0.95rem; padding: 12px; border-radius: 10px; border: 1px solid #cbd5e1; color: #0f172a; background: white;" placeholder="Escribí un detalle (opcional)..."></textarea>
           </div>
+
         </div>
       `,
-      icon: 'question',
       showCancelButton: true,
       confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#64748b',
       confirmButtonText: 'Confirmar Cancelación',
       cancelButtonText: 'Volver',
+      didOpen: () => {
+        const confirmBtn = Swal.getConfirmButton();
+        const cancelBtn = Swal.getCancelButton();
+        confirmBtn.style.borderRadius = '10px';
+        confirmBtn.style.fontWeight = '700';
+        confirmBtn.style.padding = '12px 24px';
+        cancelBtn.style.borderRadius = '10px';
+        cancelBtn.style.fontWeight = '700';
+        cancelBtn.style.padding = '12px 24px';
+      },
       preConfirm: () => {
         const motivoSelect = document.getElementById('motivoCancelacion');
         const observacionesTextarea = document.getElementById('observacionesCancelacion');
         
         if (!motivoSelect.value) {
-          Swal.showValidationMessage('Por favor selecciona un motivo');
+          Swal.showValidationMessage('Por favor seleccioná un motivo');
           return false;
         }
         
@@ -573,17 +599,13 @@ const cancelarTurno = async (turno) => {
     if (formValues) {
       loading.value = true;
       try {
-        Swal.fire({ 
-          title: 'Procesando...', 
-          allowOutsideClick: false, 
-          didOpen: () => Swal.showLoading() 
-        });
+        Swal.fire({ title: 'Procesando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         
         const response = await axios.post(`/api/turnos/${turno.id}/cancelar/`, formValues);
         
         if (response.data.status === 'ok') {
           await Swal.fire({ 
-            icon: hayReembolso ? 'success' : 'warning', 
+            icon: 'success', 
             title: 'Turno cancelado', 
             text: response.data.message || 'El turno ha sido cancelado exitosamente.',
             confirmButtonColor: '#0ea5e9'
@@ -593,8 +615,7 @@ const cancelarTurno = async (turno) => {
         }
         await cargarTurnos();
       } catch (error) {
-        const mensaje = error.response?.data?.error || 'Error de conexión';
-        Swal.fire('Error', mensaje, 'error');
+        Swal.fire('Error', error.response?.data?.error || 'Error de conexión', 'error');
       } finally {
         loading.value = false;
       }
@@ -639,8 +660,7 @@ const confirmarPagoTotal = async (turno) => {
         <label style="display: block; font-weight: 600; font-size: 0.9rem; color: #1e293b; margin-bottom: 5px;">Medio de Pago</label>
         <select id="medio_pago" class="swal2-input" style="width: 100%; margin: 0; height: 42px; font-size: 0.9rem;">
           <option value="EFECTIVO" selected>💵 Efectivo</option>
-          <option value="MERCADO_PAGO">🔵 Mercado Pago (QR/Link)</option>
-          <option value="TRANSFERENCIA">🏦 Transferencia</option>
+          <option value="MERCADO_PAGO">🔵 Mercado Pago</option>
         </select>
 
         ${selectEntidadHtml}
@@ -746,22 +766,208 @@ const confirmarPagoTotal = async (turno) => {
 }
 
 const gestionarReembolsoManual = async (turno) => {
-  const monto = calcularMontoReembolso(turno)
-  const { isConfirmed } = await Swal.fire({
-    title: 'Confirmar devolución',
-    html: `Devolver <b>$${formatPrecio(monto)}</b> a ${turno.cliente_nombre}`,
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonText: 'Sí, devuelto'
-  })
-  if (isConfirmed) {
-    try {
-      await axios.post(`/api/turnos/${turno.id}/completar-reembolso-manual/`)
-      await cargarTurnos()
-      Swal.fire('¡Reembolso completado!', '', 'success')
-    } catch (error) { Swal.fire('Error', 'No se pudo completar el reembolso.', 'error') }
+  const montoTotal = calcularMontoReembolso(turno);
+  
+  // 1. Detectar si hay pago Online (Mercado Pago)
+  const idMP = turno.mp_payment_id || turno.codigo_transaccion;
+  const esPagoOnline = idMP && !['EFECTIVO', 'PRESENCIAL', 'None', null, ''].includes(idMP);
+
+  // 2. Lógica de Preferencia e Inteligencia de sugerencia
+  let valorEfe = 0;
+  let valorMP = 0;
+  let prefeTexto = "No especificada";
+  let prefeIcono = "❓";
+  let prefeColor = "#94a3b8"; // Gris por defecto
+  let prefeBg = "#f8fafc";
+  const obs = turno.obs_cancelacion || "";
+
+  if (obs.includes("PREFIERE DEVOLUCIÓN EN:")) {
+    // Si el cliente especificó desde su app, respetamos su decisión
+    if (obs.includes("Efectivo")) {
+      valorEfe = montoTotal;
+      prefeTexto = "Efectivo en el local";
+      prefeIcono = "💵";
+      prefeColor = "#15803d";
+      prefeBg = "#f0fdf4";
+    } else {
+      valorMP = montoTotal;
+      prefeTexto = "Mercado Pago";
+      prefeIcono = "📱";
+      prefeColor = "#1d4ed8";
+      prefeBg = "#eff6ff";
+    }
+  } else {
+    // 💡 SUGERENCIA AUTOMÁTICA: Si no especificó, sugerimos según cómo entró la plata
+    if (esPagoOnline) {
+      valorMP = montoTotal;
+      prefeTexto = "Mercado Pago";
+      prefeIcono = "💳";
+      prefeColor = "#1d4ed8";
+      prefeBg = "#eff6ff";
+    } else {
+      valorEfe = montoTotal;
+      prefeTexto = "Efectivo";
+      prefeIcono = "💵";
+      prefeColor = "#15803d";
+      prefeBg = "#f0fdf4";
+    }
   }
-}
+
+  const formatear = (n) => n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  await Swal.fire({
+    title: '',
+    width: '520px',
+    background: '#ffffff',
+    showCancelButton: true,
+    confirmButtonText: 'Confirmar Devolución',
+    confirmButtonColor: '#0ea5e9',
+    cancelButtonText: 'Cerrar',
+    html: `
+      <div style="font-family: 'Inter', -apple-system, sans-serif; text-align: left; padding: 5px;">
+        
+        <div style="text-align: center; margin-bottom: 25px;">
+          <div style="display: inline-block; padding: 8px 16px; background: #f0f9ff; border-radius: 30px; color: #0ea5e9; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">
+            Gestión de Reintegro
+          </div>
+          <h2 style="margin: 0; font-size: 2.8rem; font-weight: 900; color: #0f172a; letter-spacing: -1.5px;">$${formatear(montoTotal)}</h2>
+          <p style="margin: 5px 0 0 0; color: #64748b; font-size: 1rem; font-weight: 500;">Total a devolver a <b>${turno.cliente_nombre}</b></p>
+        </div>
+
+        <div style="margin-bottom: 25px;">
+           <div style="background: ${prefeBg}; border: 1px solid ${prefeColor}33; padding: 15px; border-radius: 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
+              <div>
+                <span style="display: block; font-size: 0.65rem; text-transform: uppercase; color: ${prefeColor}; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 2px;">Método recomendado</span>
+                <span style="font-size: 1.05rem; color: ${prefeColor}; font-weight: 700;">${prefeIcono} ${prefeTexto}</span>
+              </div>
+           </div>
+
+           ${esPagoOnline ? `
+           <div style="background: #0f172a; padding: 18px; border-radius: 16px; margin-top: 12px; position: relative; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
+              <span style="display: block; font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 8px; letter-spacing: 0.5px;">ID de Transacción Mercado Pago</span>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.25rem; color: #38bdf8; font-weight: 800; letter-spacing: 1px;">${idMP}</span>
+              </div>
+           </div>
+           ` : `
+           `}
+        </div>
+
+        <div style="background: #ffffff; border: 2px solid #f1f5f9; padding: 20px; border-radius: 20px;">
+          <h4 style="margin: 0 0 18px 0; font-size: 0.85rem; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Confirmar Montos de Salida</h4>
+          
+          <div style="display: flex; flex-direction: column; gap: 15px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid #f1f5f9;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 42px; height: 42px; background: #f0fdf4; color: #16a34a; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">💵</div>
+                <span style="font-weight: 700; color: #1e293b; font-size: 1rem;">Efectivo</span>
+              </div>
+              <div style="position: relative; width: 180px;">
+                <span style="position: absolute; left: 14px; top: 12px; font-weight: 800; color: #94a3b8; font-size: 1.1rem;">$</span>
+                <input id="val_efe" type="text" class="swal2-input" 
+                       style="width: 100%; margin: 0; height: 50px; padding-left: 28px; font-size: 1.3rem; font-weight: 800; border-radius: 12px; border: 2px solid #e2e8f0; text-align: right; color: #0f172a;" 
+                       value="${valorEfe > 0 ? formatear(valorEfe) : '0'}">
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 5px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 42px; height: 42px; background: #eff6ff; color: #2563eb; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">📱</div>
+                <span style="font-weight: 700; color: #1e293b; font-size: 1rem;">Mercado Pago</span>
+              </div>
+              <div style="position: relative; width: 180px;">
+                <span style="position: absolute; left: 14px; top: 12px; font-weight: 800; color: #94a3b8; font-size: 1.1rem;">$</span>
+                <input id="val_mp" type="text" class="swal2-input" 
+                       style="width: 100%; margin: 0; height: 50px; padding-left: 28px; font-size: 1.3rem; font-weight: 800; border-radius: 12px; border: 2px solid #e2e8f0; text-align: right; color: #0f172a;" 
+                       value="${valorMP > 0 ? formatear(valorMP) : '0'}">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="val_status" style="margin-top: 20px; padding: 15px; border-radius: 14px; text-align: center; font-weight: 800; font-size: 0.95rem; transition: all 0.3s;"></div>
+      </div>
+    `,
+    didOpen: () => {
+      const inEfe = document.getElementById('val_efe');
+      const inMP = document.getElementById('val_mp');
+      const status = document.getElementById('val_status');
+      const confirmBtn = Swal.getConfirmButton();
+
+      confirmBtn.style.width = '100%';
+      confirmBtn.style.height = '55px';
+      confirmBtn.style.borderRadius = '14px';
+      confirmBtn.style.fontSize = '1.1rem';
+      confirmBtn.style.fontWeight = '800';
+      confirmBtn.style.marginTop = '15px';
+      confirmBtn.style.boxShadow = '0 10px 15px -3px rgba(14, 165, 233, 0.3)';
+
+      const parse = (v) => parseFloat(v.replace(/\./g, '').replace(',', '.')) || 0;
+      const mask = (i) => {
+        let l = i.value.replace(/[^0-9,]/g, '');
+        let p = l.split(',');
+        if (p.length > 2) p = [p[0], p.slice(1).join('')];
+        if (p[1]) p[1] = p[1].substring(0, 2);
+        p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+        i.value = p.join(',');
+      };
+
+      const validate = () => {
+        const total = parse(inEfe.value) + parse(inMP.value);
+        const diff = Math.abs(total - montoTotal);
+        if (diff <= 0.01) {
+          status.style.background = '#dcfce7'; status.style.color = '#15803d'; status.style.border = '1px solid #bbf7d0';
+          status.innerHTML = '¡Listo! Los montos coinciden perfectamente';
+          confirmBtn.disabled = false;
+          confirmBtn.style.background = 'linear-gradient(135deg, #0ea5e9, #2563eb)';
+        } else {
+          status.style.background = '#fef2f2'; status.style.color = '#dc2626'; status.style.border = '1px solid #fecaca';
+          status.innerHTML = `⚠️ Falta asignar $${formatear(Math.max(0, montoTotal - total))}`;
+          confirmBtn.disabled = true;
+          confirmBtn.style.background = '#cbd5e1';
+          confirmBtn.style.boxShadow = 'none';
+        }
+      };
+
+      inEfe.addEventListener('input', () => { mask(inEfe); validate(); });
+      inMP.addEventListener('input', () => { mask(inMP); validate(); });
+      inEfe.addEventListener('focus', () => inEfe.select());
+      inMP.addEventListener('focus', () => inMP.select());
+      validate();
+    },
+    preConfirm: () => {
+      const vEfe = parseFloat(document.getElementById('val_efe').value.replace(/\./g, '').replace(',', '.')) || 0;
+      const vMP = parseFloat(document.getElementById('val_mp').value.replace(/\./g, '').replace(',', '.')) || 0;
+      return {
+        monto_efectivo: vEfe,
+        monto_mp: vMP,
+        reembolso_api_mp: vMP > 0 && esPagoOnline
+      };
+    }
+  }).then(async (result) => {
+    if (result.isConfirmed) {
+      try {
+        Swal.fire({ 
+          title: 'Procesando Reintegro', 
+          html: '<div class="spinner-border text-info" role="status"></div><p style="margin-top:15px">Esto puede tomar unos segundos...</p>', 
+          showConfirmButton: false,
+          allowOutsideClick: false
+        });
+        const resp = await axios.post(`/api/turnos/${turno.id}/completar-reembolso-manual/`, result.value);
+        await cargarTurnos();
+        Swal.fire({
+          icon: 'success',
+          title: '¡Operación Exitosa!',
+          text: resp.data.message,
+          timer: 3000,
+          showConfirmButton: false
+        });
+      } catch (e) {
+        Swal.fire('Atención', e.response?.data?.error || 'No se pudo completar el reintegro.', 'error');
+      }
+    }
+  });
+};
 
 const verDetalleTurno = async (turno) => {
   try {
@@ -1029,7 +1235,6 @@ const puedeCancelarTurno = (turno) => {
   return ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'PELUQUERO', 'PEL'].includes(userRol.value)
 }
 
-// CARGA INICIAL
 onMounted(async () => { 
   cargarTurnos() 
   if (esAdminORecep.value) {

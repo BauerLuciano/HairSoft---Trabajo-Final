@@ -338,7 +338,6 @@ class Silla(models.Model):
     def __str__(self):
         return f"{self.nombre} ({'Activa' if self.activa else 'Inactiva'})"
 
-
 class Turno(models.Model):
     CANAL_CHOICES = [('WEB', 'Web'), ('PRESENCIAL', 'Presencial')]
     ESTADO_CHOICES = [
@@ -434,14 +433,16 @@ class Turno(models.Model):
         else:
             msg = f"Fuera de término para reembolso (faltan {round(horas_restantes, 1)}hs)"
         
-        # ✅ SIEMPRE puede cancelar si el estado lo permite
         puede_cancelar = True if self.estado in ['RESERVADO', 'DISPONIBLE'] else False
-        
         return puede_cancelar, hay_reembolso, msg
 
     def puede_ser_modificado(self):
+        """
+        ✅ ACTUALIZADO: Evalúa con los parámetros dinámicos de cancelación.
+        Retorna (puede_modificar, tiene_penalidad, mensaje)
+        """
         if self.estado not in ['RESERVADO', 'DISPONIBLE']:
-            return False, f"No se puede modificar un turno en estado {self.estado}"
+            return False, False, f"No se puede modificar un turno en estado {self.estado}"
         
         tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
         ahora_utc = timezone.now()
@@ -453,43 +454,37 @@ class Turno(models.Model):
         diferencia = fecha_turno_arg - ahora_arg
         horas_restantes = diferencia.total_seconds() / 3600
         
-        if horas_restantes < 3:
-            return False, f"No se puede modificar con menos de 3 horas de anticipación (faltan {round(horas_restantes, 1)}hs)"
+        from usuarios.models import ConfiguracionSistema
+        config = ConfiguracionSistema.get_solo()
+        margen = config.margen_horas_cancelacion or 3
         
-        return True, "OK"
+        tiene_penalidad = horas_restantes < margen
+        
+        if tiene_penalidad:
+            msg = f"Modificación tardía. Conlleva penalidad económica (Límite: {margen}hs, faltan {round(horas_restantes, 1)}hs)."
+        else:
+            msg = "OK - Modificación temprana permitida."
+            
+        return True, tiene_penalidad, msg
     
     def usuario_puede_modificar(self, usuario):
-        if usuario.is_superuser:
-            return True
-        
+        if usuario.is_superuser: return True
         grupos_usuario = usuario.groups.values_list('name', flat=True)
-        
-        if 'Administrador' in grupos_usuario:
-            return True
-        
-        if 'Recepcionista' in grupos_usuario:
-            return True
-        
-        if 'Peluquero' in grupos_usuario:
-            return usuario.id == self.peluquero.id
-        
+        if 'Administrador' in grupos_usuario: return True
+        if 'Recepcionista' in grupos_usuario: return True
+        if 'Peluquero' in grupos_usuario: return usuario.id == self.peluquero.id
         return False
     
     def verificar_disponibilidad(self, fecha, hora, peluquero_id, excluir_turno_id=None):
         from .models import Turno
-        
         if isinstance(fecha, str):
             fecha = datetime.strptime(fecha, "%Y-%m-%d").date()
         if isinstance(hora, str):
             hora = datetime.strptime(hora, "%H:%M").time()
         
         turnos_solapados = Turno.objects.filter(
-            fecha=fecha,
-            hora=hora,
-            peluquero_id=peluquero_id,
-            estado__in=['RESERVADO', 'DISPONIBLE']
+            fecha=fecha, hora=hora, peluquero_id=peluquero_id, estado__in=['RESERVADO', 'DISPONIBLE']
         )
-        
         if excluir_turno_id:
             turnos_solapados = turnos_solapados.exclude(id=excluir_turno_id)
         
@@ -503,10 +498,6 @@ class Turno(models.Model):
 
     def puede_reofertar(self):
         if self.estado != 'CANCELADO': return False
-        import pytz
-        from datetime import datetime, timedelta
-        from django.utils import timezone
-        
         tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')
         fecha_turno_naive = datetime.combine(self.fecha, self.hora)
         fecha_turno = tz_arg.localize(fecha_turno_naive)
@@ -514,7 +505,6 @@ class Turno(models.Model):
         return tiempo_restante > timedelta(minutes=5) and not self.oferta_activa
 
     def obtener_interesados(self):
-        from django.apps import apps
         InteresTurnoLiberado = apps.get_model('usuarios', 'InteresTurnoLiberado')
         return InteresTurnoLiberado.objects.filter(fecha_deseada=self.fecha, hora_deseada=self.hora, peluquero=self.peluquero, estado_oferta='pendiente').order_by('fecha_registro')
 
@@ -541,7 +531,6 @@ class Turno(models.Model):
 
     @transaction.atomic
     def crear_venta_turno(self):
-        from django.apps import apps
         MetodoPago = apps.get_model('usuarios', 'MetodoPago')
         Venta = apps.get_model('usuarios', 'Venta')
         DetalleVenta = apps.get_model('usuarios', 'DetalleVenta')
@@ -570,6 +559,7 @@ class Turno(models.Model):
         db_table = "turnos"
         ordering = ['fecha', 'hora']
 
+
 class InteresTurnoLiberado(models.Model):
     """Clientes interesados en horarios específicos - ACTUALIZADO PARA REOFERTA"""
     ESTADO_OFERTA_CHOICES = [
@@ -580,16 +570,16 @@ class InteresTurnoLiberado(models.Model):
         ('expirada', 'Expirada'),
     ]
     
-    cliente = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="intereses_turnos")
-    servicio = models.ForeignKey(Servicio, on_delete=models.CASCADE)
-    peluquero = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="intereses_peluquero")
+    cliente = models.ForeignKey('Usuario', on_delete=models.CASCADE, related_name="intereses_turnos")
+    servicio = models.ForeignKey('Servicio', on_delete=models.CASCADE)
+    peluquero = models.ForeignKey('Usuario', on_delete=models.CASCADE, related_name="intereses_peluquero")
     fecha_deseada = models.DateField()
     hora_deseada = models.TimeField()
     fecha_registro = models.DateTimeField(auto_now_add=True)
     
     turno_liberado = models.ForeignKey(
         'Turno', 
-        on_delete=models.SET_NULL, # Usar SET_NULL para no borrar el Interes si borran el Turno, solo desvincular
+        on_delete=models.SET_NULL,
         related_name="intereses_asociados",
         null=True, 
         blank=True
@@ -602,7 +592,7 @@ class InteresTurnoLiberado(models.Model):
     ip_aceptacion = models.GenericIPAddressField(null=True, blank=True)
     
     descuento_aplicado = models.DecimalField(max_digits=5, decimal_places=2, default=15.0)
-    tiempo_limite_respuesta = models.IntegerField(default=60) 	# minutos
+    tiempo_limite_respuesta = models.IntegerField(default=60)   # minutos
     
     prioridad = models.IntegerField(default=0)
     orden_notificacion = models.IntegerField(default=0)
@@ -621,32 +611,28 @@ class InteresTurnoLiberado(models.Model):
         super().save(*args, **kwargs)
 
     def puede_ser_notificado(self):
-        """Verifica si puede ser notificado"""
         return self.estado_oferta == 'pendiente'
     
     def oferta_expirada(self):
-        """Verifica si la oferta ya expiró"""
         if not self.fecha_envio_oferta:
             return False
         tiempo_transcurrido = timezone.now() - self.fecha_envio_oferta
+        from usuarios.models import ConfiguracionReoferta
         limite = self.tiempo_limite_respuesta or ConfiguracionReoferta.get_configuracion().tiempo_limite_respuesta
         return tiempo_transcurrido.total_seconds() > (limite * 60)
     
     def aceptar_oferta(self, ip_address=None):
-        """Marca la oferta como aceptada"""
         self.estado_oferta = 'aceptada'
         self.fecha_respuesta = timezone.now()
         self.ip_aceptacion = ip_address
         self.save()
     
     def rechazar_oferta(self):
-        """Marca la oferta como rechazada"""
         self.estado_oferta = 'rechazada'
         self.fecha_respuesta = timezone.now()
         self.save()
     
     def marcar_enviada(self):
-        """Marca la oferta como enviada"""
         self.estado_oferta = 'enviada'
         self.fecha_envio_oferta = timezone.now()
         self.save()

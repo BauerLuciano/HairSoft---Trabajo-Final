@@ -89,7 +89,7 @@
             
             <div class="process-group">
               <div class="filter-group">
-                <label class="label-info">Automatización: Cancelaciones y Reembolsos</label>
+                <label class="label-info">Automatización: Cancelaciones, Modificaciones y Reembolsos</label>
                 <div style="display: flex; align-items: center; gap: 15px;">
                   <input v-model.number="config.margen_horas_cancelacion" type="number" class="filter-input input-short" min="1" />
                   <span class="badge-estado estado-info">Horas antes del turno</span>

@@ -5,7 +5,7 @@ from decimal import Decimal
 import logging
 import uuid
 from django.core.exceptions import ValidationError # <--- IMPORTANTE PARA VALIDAR
-from .models import Turno, Silla # <--- AGREGADA IMPORTACIÓN DE SILLA
+from .models import Turno, Silla, InteresTurnoLiberado, ConfiguracionSistema # <--- AGREGADA IMPORTACIÓN DE SILLA Y OTROS
 from .tasks import procesar_reoferta_masiva  # Importar la tarea de Celery
 
 logger = logging.getLogger(__name__)
@@ -22,21 +22,17 @@ class TurnoService:
         Busca una silla activa que no esté ocupada en ese horario.
         Prioriza por el campo 'orden'.
         """
-        # 1. Traer todas las sillas activas ordenadas
         sillas_activas = Silla.objects.filter(activa=True).order_by('orden')
         
         if not sillas_activas.exists():
             return None # No hay sillas configuradas en el sistema
 
-        # 2. Identificar cuáles están ocupadas en ese slot
-        # Consideramos ocupadas las que tienen turno confirmado, reservado, etc.
         ids_ocupadas = Turno.objects.filter(
             fecha=fecha,
             hora=hora,
-            estado__in=['RESERVADO', 'CONFIRMADO', 'PENDIENTE', 'PAGADO', 'SENADO'] # Ajustá según tus estados exactos
+            estado__in=['RESERVADO', 'CONFIRMADO', 'PENDIENTE', 'PAGADO', 'SENADO']
         ).exclude(silla__isnull=True).values_list('silla_id', flat=True)
 
-        # 3. Algoritmo de asignación (Bolsa de recursos)
         for silla in sillas_activas:
             if silla.id not in ids_ocupadas:
                 return silla # Encontré lugar
@@ -45,12 +41,8 @@ class TurnoService:
 
     @staticmethod
     def registrar_turno(datos):
-        """
-        Crea el turno validando peluquero y asignando silla (Manual o Automática).
-        """
         from rest_framework.exceptions import ValidationError
 
-        # 🔥 CORRECCIÓN CLAVE: Buscamos 'cliente_id' (que es lo que manda Vue) o 'cliente'
         cliente_id = datos.get('cliente_id') or datos.get('cliente')
         
         if hasattr(cliente_id, 'id'):
@@ -65,13 +57,10 @@ class TurnoService:
             ).exists()
             
             if ya_tiene_turno:
-                # Lo mandamos como diccionario para que Vue lo atrape en error.response.data.error
                 raise ValidationError({"error": "No puedes reservar. Ya tienes un turno para esta misma fecha y hora con otro profesional."})
 
-        # Lógica de asignación de silla
         silla_asignada = None
 
-        # CASO A: Asignación Manual (El recepcionista eligió una silla)
         if 'silla' in datos and datos['silla']:
             silla_id = datos['silla']
             try:
@@ -95,29 +84,25 @@ class TurnoService:
             except Silla.DoesNotExist:
                 raise ValidationError({"error": "La silla seleccionada no existe."})
 
-        # CASO B: Asignación Automática (Vino null o no vino)
         else:
             silla_asignada = TurnoService._asignar_silla_disponible(datos['fecha'], datos['hora'])
             
             if not silla_asignada:
                 raise ValidationError({"error": "No hay puestos de trabajo disponibles en este horario (Local lleno)."})
 
-        # Crear el turno con la silla definida
         try:
-            # Para el create de Django, necesitamos pasar la clave que espera el modelo.
-            # Asegurarnos de que asigne el cliente correctamente.
             cliente_instancia = datos.get('cliente')
             if not cliente_instancia and cliente_id:
                 from django.contrib.auth import get_user_model
                 User = get_user_model()
                 cliente_instancia = User.objects.get(id=cliente_id)
 
+            # 🔥 ACÁ ESTABA EL ERROR: Le sacamos el servicio=datos.get('servicio')
             turno = Turno.objects.create(
                 fecha=datos['fecha'],
                 hora=datos['hora'],
                 cliente=cliente_instancia,
                 peluquero=datos['peluquero'],
-                servicio=datos.get('servicio'), 
                 silla=silla_asignada, 
                 estado='RESERVADO', 
                 canal=datos.get('canal', 'PRESENCIAL'),
@@ -133,25 +118,79 @@ class TurnoService:
             return turno
 
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"Error creando turno: {e}")
             raise e
+
+    # =========================================================================
+    # 🔥 UNIFICACIÓN DE MODIFICACIONES
+    # =========================================================================
+    @staticmethod
+    @transaction.atomic
+    def modificar_turno(turno_viejo_id, nuevos_datos, usuario_ejecutor):
+        """
+        Lógica unificada para modificar turno. 
+        Maneja reglas de penalidad económica y roles.
+        """
+        turno_viejo = Turno.objects.select_for_update().get(id=turno_viejo_id)
+        
+        # 1. Determinar Rol (El staff esquiva la penalidad)
+        grupos_usuario = usuario_ejecutor.groups.values_list('name', flat=True)
+        es_staff = usuario_ejecutor.is_superuser or 'Administrador' in grupos_usuario or 'Recepcionista' in grupos_usuario
+
+        # 2. Evaluar Penalidad del sistema
+        puede_mod, tiene_penalidad, msg_evaluacion = turno_viejo.puede_ser_modificado()
+        
+        if not puede_mod:
+            raise ValidationError({"error": msg_evaluacion})
+
+        aplica_penalidad = tiene_penalidad and not es_staff
+
+        if aplica_penalidad:
+            TurnoService.procesar_cancelacion_automatica(
+                turno_id=turno_viejo.id,
+                motivo="Modificación tardía",
+                observacion="El cliente modificó fuera de término. Se retiene el pago."
+            )
+
+            nuevos_datos['monto_seña'] = 0 
+            nuevos_datos['mp_payment_id'] = None
+            
+            nuevo_turno = TurnoService.registrar_turno(nuevos_datos)
+            return True, "Fuera de término: Se retiene el pago anterior. Deberás abonar el nuevo turno.", nuevo_turno
+        
+        else:
+            nuevos_datos['monto_seña'] = turno_viejo.monto_seña
+            nuevos_datos['monto_total'] = turno_viejo.monto_total
+            nuevos_datos['tipo_pago'] = turno_viejo.tipo_pago
+            nuevos_datos['medio_pago'] = turno_viejo.medio_pago
+            nuevos_datos['mp_payment_id'] = turno_viejo.mp_payment_id
+            
+            nuevo_turno = TurnoService.registrar_turno(nuevos_datos)
+            
+            # Matamos el turno viejo pasando es_modificacion_gratis para NO generar reembolsos locos
+            TurnoService.procesar_cancelacion_automatica(
+                turno_id=turno_viejo.id,
+                motivo="Reprogramación",
+                observacion="Modificación gratuita de horario.",
+                es_modificacion_gratis=True
+            )
+            
+            return True, "Turno reprogramado exitosamente sin cargos extra.", nuevo_turno
 
     # =========================================================================
     # 🛑 FIN LÓGICA DE SILLAS - A CONTINUACIÓN TU CÓDIGO ORIGINAL
     # =========================================================================
     
     @staticmethod
-    def procesar_cancelacion_automatica(turno_id, usuario_cancelacion=None, motivo="", observacion=""):
+    def procesar_cancelacion_automatica(turno_id, usuario_cancelacion=None, motivo="", observacion="", es_modificacion_gratis=False):
         """
-        🔥 VERSIÓN FINAL CORREGIDA - Reembolso determinado por el margen de cancelación
+        🔥 VERSIÓN FINAL CORREGIDA - Integrada con Tetris del tiempo y flag de modificación
         """
         print(f"🔄 CANCELANDO TURNO {turno_id} - REEMBOLSO SEGÚN MARGEN")
         
         try:
             from django.db.models import Q
-            from .models import InteresTurnoLiberado, ConfiguracionSistema  # <-- IMPORTAMOS CONFIG
+            from .models import InteresTurnoLiberado, ConfiguracionSistema
             
             print(f"\n🔥 INICIANDO CANCELACIÓN TURNO {turno_id}")
             print(f"   Motivo: {motivo}")
@@ -188,8 +227,7 @@ class TurnoService:
                 turno.save()
                 
                 # 5. LLAMAR A LA FUNCIÓN DE REEMBOLSO PARA QUE DETERMINE EL ESTADO
-                if es_cancelacion_cliente:
-                    from .models import ConfiguracionSistema
+                if es_cancelacion_cliente and not es_modificacion_gratis:
                     config = ConfiguracionSistema.get_solo()
                     margen = config.margen_horas_cancelacion
                     horas_restantes = tiempo_restante.total_seconds() / 3600
@@ -207,28 +245,60 @@ class TurnoService:
                     turno.reembolsado = False
                     turno.save()
                 else:
-                    # Cancelación por reoferta: no aplica reembolso
+                    # Cancelación por reoferta o por modificación gratis transferida
                     turno.reembolso_estado = 'NO_APLICA'
                     turno.save()
-                    mensaje_reembolso = "Cancelación por aceptación de oferta - no aplica reembolso."
+                    mensaje_reembolso = "Cancelación administrativa/reoferta - no aplica reembolso."
                 
                 print(f"💾 Turno {turno_id} guardado. Reembolso: {turno.reembolso_estado}, Reembolsado: {turno.reembolsado}")
             
-            # 6. 🔥 BUSCAR INTERESADOS (EXCLUIR AL CLIENTE QUE CANCELÓ)
-            print(f"🔍 Buscando interesados (excluyendo cliente que canceló)...")
+            # 6. 🔥 BUSCAR INTERESADOS (TETRIS DEL TIEMPO REFINADO Y AGRUPADO)
+            print(f"🔍 Buscando interesados (excluyendo cliente que canceló y aplicando Tetris)...")
             
-            interesados = InteresTurnoLiberado.objects.filter(
+            duracion_hueco = turno.duracion_total or turno.calcular_duracion_total()
+            if duracion_hueco == 0: duracion_hueco = 30
+            fecha_base = datetime.combine(turno.fecha, turno.hora)
+            fecha_fin_hueco = fecha_base + timedelta(minutes=duracion_hueco)
+            hora_fin_hueco = fecha_fin_hueco.time()
+            
+            # Traemos todos los intereses en ese rango (excluyendo al que canceló)
+            interesados_potenciales = InteresTurnoLiberado.objects.filter(
                 peluquero=turno.peluquero,
                 fecha_deseada=turno.fecha,
-                hora_deseada=turno.hora
+                hora_deseada__gte=turno.hora,
+                hora_deseada__lt=hora_fin_hueco
             ).exclude(
                 Q(estado_oferta='aceptada') | 
                 Q(cliente=turno.cliente)  # ✅ EXCLUIR AL CLIENTE QUE CANCELÓ
-            ).order_by('fecha_registro')
+            ).select_related('servicio', 'cliente').order_by('fecha_registro')
             
-            print(f"👥 Interesados encontrados (sin cliente que canceló): {interesados.count()}")
+            # AGRUPAR POR CLIENTE PARA SUMAR TIEMPOS DE SERVICIOS
+            from collections import defaultdict
+            intereses_agrupados = defaultdict(list)
+            for interes in interesados_potenciales:
+                intereses_agrupados[interes.cliente_id].append(interes)
+
+            interesados_validos_ids = []
+
+            # Filtrado Tetris: Validar que LA SUMA de los servicios entre en el tiempo libre
+            for cliente_id, lista_intereses in intereses_agrupados.items():
+                hora_solicitada = lista_intereses[0].hora_deseada
+                inicio_bloque = datetime.combine(turno.fecha, hora_solicitada)
+                
+                # Sumamos la duración de TODOS los servicios que quiere este cliente
+                duracion_total_cliente = sum(i.servicio.duracion for i in lista_intereses)
+                fin_bloque_cliente = inicio_bloque + timedelta(minutes=duracion_total_cliente)
+                
+                # Si TODO el bloque del cliente termina ANTES de que se acabe el hueco, califica
+                if fin_bloque_cliente <= fecha_fin_hueco:
+                    for i in lista_intereses:
+                        interesados_validos_ids.append(i.id)
+
+            interesados = InteresTurnoLiberado.objects.filter(id__in=interesados_validos_ids).order_by('fecha_registro')
             
-            # 7. 🔥 ENVIAR WHATSAPP A TODOS LOS INTERESADOS (excepto el que canceló)
+            print(f"👥 Interesados encontrados (Tetris Match Completo): {interesados.count()}")
+            
+            # 7. 🔥 ENVIAR WHATSAPP A TODOS LOS INTERESADOS
             whatsapp_enviados = 0
             if interesados.exists():
                 print(f"📡 Enviando WhatsApps a nuevos interesados (agrupados por cliente)...")
@@ -241,17 +311,15 @@ class TurnoService:
                 config = ConfiguracionSistema.get_solo()
                 descuento = config.porcentaje_descuento_reoferta  # Valor por defecto 15
                 
-                # Agrupar intereses por cliente_id
-                from collections import defaultdict
-                intereses_por_cliente = defaultdict(list)
+                # Re-agrupar para mandar 1 solo whatsapp por cliente
+                intereses_por_cliente_envio = defaultdict(list)
                 for interesado in interesados:
-                    intereses_por_cliente[interesado.cliente_id].append(interesado)
+                    intereses_por_cliente_envio[interesado.cliente_id].append(interesado)
                 
-                for cliente_id, lista_intereses in intereses_por_cliente.items():
-                    # Tomamos el primer interés para datos del cliente (todos comparten cliente)
-                    interes_ejemplo = lista_intereses[0]
+                for cliente_id, lista_int in intereses_por_cliente_envio.items():
+                    interes_ejemplo = lista_int[0]
                     cliente = interes_ejemplo.cliente
-                    print(f"  → Procesando cliente: {cliente.nombre} (ID: {cliente_id}, Tel: {cliente.telefono}) - {len(lista_intereses)} interés(es)")
+                    print(f"  → Procesando cliente: {cliente.nombre} (ID: {cliente_id}, Tel: {cliente.telefono}) - {len(lista_int)} interés(es) calificados")
                     
                     # Generar link único con token
                     link = f"{base_url}/aceptar-oferta/{turno.id}/{turno.token_reoferta}"
@@ -277,18 +345,18 @@ class TurnoService:
                             print(f"    ❌ Error enviando WhatsApp")
                     
                     # Actualizar TODOS los intereses de este cliente a 'enviada'
-                    for interesado in lista_intereses:
+                    for interesado in lista_int:
                         interesado.estado_oferta = 'enviada'
                         interesado.turno_liberado = turno
                         interesado.save(update_fields=['estado_oferta', 'turno_liberado'])
                         print(f"    ✅ Interés ID {interesado.id} actualizado a 'enviada'")
                 
-                print(f"✅ {whatsapp_enviados} WhatsApps enviados exitosamente (para {len(intereses_por_cliente)} clientes)")
+                print(f"✅ {whatsapp_enviados} WhatsApps enviados exitosamente")
             
             # 8. ✅ MENSAJE FINAL - INCLUYE INFORMACIÓN DEL REEMBOLSO
             mensaje = 'Turno cancelado exitosamente.'
             
-            if es_cancelacion_cliente:
+            if es_cancelacion_cliente and not es_modificacion_gratis:
                 if turno.reembolso_estado == 'PENDIENTE':
                     mensaje += ' Reembolso pendiente de procesar manualmente.'
                 elif turno.reembolso_estado == 'NO_APLICA':
@@ -296,7 +364,7 @@ class TurnoService:
                 else:
                     mensaje += f' Estado reembolso: {turno.reembolso_estado}'
             else:
-                mensaje += ' Cancelación por aceptación de oferta - no aplica reembolso.'
+                mensaje += ' Cancelación interna/modificación - no aplica reembolso acá.'
             
             if whatsapp_enviados > 0:
                 mensaje += f' Se notificó a {whatsapp_enviados} interesados.'
@@ -315,14 +383,9 @@ class TurnoService:
     
     @staticmethod
     def _notificar_interesados_sincrono(turno_cancelado):
-        """
-        Notificación SÍNCRONA inmediata después del commit.
-        Actualiza estado de interesados sin enviar WhatsApp.
-        """
         try:
             from .models import InteresTurnoLiberado
             
-            # Usar 'estado_oferta' en lugar de 'notificado'
             interesados = InteresTurnoLiberado.objects.filter(
                 peluquero=turno_cancelado.peluquero,
                 fecha_deseada=turno_cancelado.fecha,
@@ -331,7 +394,6 @@ class TurnoService:
             ).order_by('fecha_registro')[:5]
             
             for interesado in interesados:
-                # Solo actualizar estado, no enviar mensajes aquí
                 interesado.estado_oferta = 'preparando'
                 interesado.turno_liberado = turno_cancelado
                 interesado.save(update_fields=['estado_oferta', 'turno_liberado'])
@@ -345,11 +407,7 @@ class TurnoService:
 
     @staticmethod
     def _procesar_devolucion_senia(turno):
-        """
-        ✅ VERSIÓN CORREGIDA: SOLO determina si corresponde reembolso, NO lo procesa automáticamente
-        """
         try:
-            # ✅ CORRECCIÓN: NUNCA procesamos automáticamente, solo determinamos el tipo
             if turno.canal == 'WEB' and turno.medio_pago == 'MERCADO_PAGO':
                 logger.info(f"💰 Reembolso MP PENDIENTE para turno {turno.id}, monto: {turno.monto_seña}")
                 return False, "Reembolso pendiente de procesar via Mercado Pago"
@@ -422,6 +480,7 @@ class TurnoService:
             logger.error(f"❌ Turno {turno_id} no encontrado para reoferta")
             return False
 
+
 class ReofertaAutomaticaService:
     print("🚀 Clase ReofertaAutomaticaService cargada correctamente")
 
@@ -463,20 +522,15 @@ class ReofertaAutomaticaService:
 
     @staticmethod
     def obtener_datos_oferta_previa(turno_liberado_id, token):
-        """
-        ✅ RESTAURADO: Agrupa servicios, calcula saldos y respeta toda tu lógica.
-        """
         from .models import Turno, InteresTurnoLiberado, ConfiguracionSistema
         from decimal import Decimal
         try:
             turno_liberado = Turno.objects.get(id=turno_liberado_id)
             
-            # Validar token
             if str(turno_liberado.token_reoferta) != str(token):
                 logger.error(f"❌ Mismatch Token. DB: {turno_liberado.token_reoferta}, URL: {token}")
                 return None, "Token inválido o enlace expirado"
 
-            # 1. Buscamos el interés principal
             interes_principal = InteresTurnoLiberado.objects.filter(
                 turno_liberado_id=turno_liberado_id,
                 token_oferta=token
@@ -491,7 +545,6 @@ class ReofertaAutomaticaService:
             if not interes_principal: 
                 return None, "Oferta no disponible"
 
-            # 2. Agrupamos todos los servicios de este cliente para este slot
             intereses_cliente = InteresTurnoLiberado.objects.filter(
                 turno_liberado_id=turno_liberado_id,
                 cliente=interes_principal.cliente
@@ -500,14 +553,11 @@ class ReofertaAutomaticaService:
             total_bruto = sum(Decimal(str(i.servicio.precio)) for i in intereses_cliente)
             nombres_servicios = ", ".join([i.servicio.nombre for i in intereses_cliente])
             
-            # 🔥 OBTENER DESCUENTO DE CONFIGURACIÓN
             config = ConfiguracionSistema.get_solo()
-            descuento = config.porcentaje_descuento_reoferta  # Ej: 15
+            descuento = config.porcentaje_descuento_reoferta
             
-            # 3. Cálculo de oferta (con el % de configuración)
             precio_oferta = total_bruto * (Decimal('100') - Decimal(descuento)) / Decimal('100')
             
-            # 4. Cálculo de saldo con el turno que el cliente ya tenía
             turno_anterior = Turno.objects.filter(
                 cliente=interes_principal.cliente, 
                 estado__in=['RESERVADO', 'CONFIRMADO']
@@ -533,23 +583,19 @@ class ReofertaAutomaticaService:
                 "cliente_id": interes_principal.cliente.id,
                 "turno_liberado_id": turno_liberado_id,
                 "token": token,
-                "descuento_porcentaje": descuento,  # <-- NUEVO CAMPO
+                "descuento_porcentaje": descuento, 
             }, None
         except Exception as e:
             return None, str(e)
 
     @staticmethod
     def ejecutar_canje(intereses_o_unico, turno_liberado):
-        """
-        🔥 VERSIÓN CORREGIDA: Ahora el motivo del turno anterior es 'Turno por canje'.
-        """
         print("🔥 EJECUTANDO ejecutar_canje - Método alcanzado")
         from .models import Turno, InteresTurnoLiberado
         from django.db import transaction
         from decimal import Decimal
         try:
             with transaction.atomic():
-                # Determinar cliente y turno target
                 if hasattr(intereses_o_unico, '__iter__'):
                     lista_original = list(intereses_o_unico)
                     interes_base = lista_original[0]
@@ -563,7 +609,6 @@ class ReofertaAutomaticaService:
 
                 cliente = interes_base.cliente
 
-                # Obtener TODOS los intereses activos de este cliente para este turno
                 intereses_completos = InteresTurnoLiberado.objects.filter(
                     turno_liberado=turno_target,
                     cliente=cliente,
@@ -574,7 +619,6 @@ class ReofertaAutomaticaService:
                 else:
                     lista_intereses = lista_original
 
-                # Buscar turno anterior para clonar datos de pago
                 turno_anterior = Turno.objects.filter(
                     cliente=cliente, estado__in=['RESERVADO', 'CONFIRMADO']
                 ).exclude(id=turno_target.id).order_by('-fecha_creacion').first()
@@ -592,17 +636,14 @@ class ReofertaAutomaticaService:
                     cod_trans = turno_anterior.codigo_transaccion
                     entidad = turno_anterior.entidad_pago
 
-                    # 🔁 CANCELAR TURNO ANTERIOR CON MOTIVO "Turno por canje"
                     turno_anterior.estado = 'CANCELADO'
                     turno_anterior.motivo_cancelacion = "Turno por canje"
                     turno_anterior.reembolso_estado = 'NO_APLICA'
                     turno_anterior.save()
 
-                # Calcular precios
                 total_bruto = sum(Decimal(str(i.servicio.precio)) for i in lista_intereses)
                 precio_con_desc = total_bruto * Decimal('0.85')
 
-                # Determinar tipo de pago
                 if pagado_previo < precio_con_desc:
                     tipo_pago = 'SENA_50'
                 else:
@@ -610,7 +651,6 @@ class ReofertaAutomaticaService:
 
                 monto_seña = pagado_previo
 
-                # 🚀 CREAR NUEVO TURNO (sin motivo de cancelación)
                 nuevo = Turno.objects.create(
                     fecha=turno_target.fecha,
                     hora=turno_target.hora,

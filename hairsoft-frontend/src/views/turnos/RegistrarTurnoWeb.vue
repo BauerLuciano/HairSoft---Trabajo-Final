@@ -550,6 +550,13 @@ const descuentoAplicado = ref(0)
 const mensajePromo = ref("")
 const fechaVencimientoCupon = ref("")
 const mensajeErrorCupon = ref("")
+
+// 🔥 VARIABLES PARA MODIFICACIÓN
+const modoModificacion = ref(false)
+const tipoModificacion = ref(null) // 'gratis' o 'tarde'
+const turnoViejoId = ref(null)
+const bloqueandoWatchers = ref(false) // 👈 FRENO DE MANO PARA VUE
+
 const mostrarDescuento = computed(() => {
   const totalOriginal = calcularTotalOriginal()
   if (descuentoAplicado.value > 0 && totalOriginal > 0) {
@@ -580,7 +587,7 @@ const form = ref({
   medio_pago: "MERCADO_PAGO", 
   canal: "WEB", 
   cliente: null,
-  cup_codigo: null  // 🔥 NUEVO: Campo para cupón
+  cup_codigo: null
 })
 
 // DATOS
@@ -611,22 +618,19 @@ const horariosInteres = ref([])
 const mensaje = ref("")
 const mensajeTipo = ref("")
 
-// 🔥 NUEVA FUNCIÓN: VALIDAR CUPÓN CON BACKEND
+// VALIDAR CUPÓN CON BACKEND
 const validarCuponBackend = async (codigo) => {
   if (!codigo) return
   
   try {
     console.log(`🎟️ Validando cupón: ${codigo}`)
-    
     const response = await api.get(`/api/promociones/validar/${codigo}/`)
     
     if (response.data.valido) {
-      // Aplicar descuento
       descuentoAplicado.value = response.data.descuento
       mensajePromo.value = response.data.mensaje
       fechaVencimientoCupon.value = response.data.valido_hasta || ""
       
-      // Mostrar mensaje de éxito
       Swal.fire({
         title: '¡Cupón Aplicado!',
         text: response.data.mensaje,
@@ -635,12 +639,9 @@ const validarCuponBackend = async (codigo) => {
         showConfirmButton: false
       })
       
-      // Guardar código en el form para enviar al backend
       form.value.cup_codigo = codigo
-      
       return true
     } else {
-      // Mostrar error
       mensajeErrorCupon.value = response.data.mensaje
       descuentoAplicado.value = 0
       cuponCodigo.value = null
@@ -652,12 +653,10 @@ const validarCuponBackend = async (codigo) => {
         icon: 'error',
         confirmButtonText: 'Entendido'
       })
-      
       return false
     }
   } catch (error) {
     console.error('Error validando cupón:', error)
-    
     mensajeErrorCupon.value = 'Error al validar el cupón. Intenta nuevamente.'
     descuentoAplicado.value = 0
     cuponCodigo.value = null
@@ -669,8 +668,82 @@ const validarCuponBackend = async (codigo) => {
       icon: 'error',
       confirmButtonText: 'Entendido'
     })
-    
     return false
+  }
+}
+
+// 🔥 CARGAR DATOS DEL TURNO VIEJO (A PRUEBA DE FALLOS)
+const cargarDatosTurnoViejo = async (id) => {
+  try {
+    bloqueandoWatchers.value = true; // ⛔ Evitamos que los watchers borren datos
+
+    const response = await api.get(`/api/turnos/${id}/`);
+    const t = response.data;
+    
+    // 1. Cargar Categorías y Servicios
+    if (t.servicios && t.servicios.length > 0) {
+      const idsServicios = [];
+      const idsCategorias = new Set();
+      
+      t.servicios.forEach(s => {
+        idsServicios.push(String(s.id || s));
+        if (s.categoria) {
+            let catId = (typeof s.categoria === 'object') ? String(s.categoria.id) : String(s.categoria);
+            idsCategorias.add(catId);
+        }
+      });
+      
+      categoriasSeleccionadas.value = Array.from(idsCategorias);
+      await nextTick(); // Esperamos que se dibuje el bloque
+      
+      form.value.servicios_ids = idsServicios;
+      await nextTick();
+    }
+
+    // 2. Cargar Peluquero
+    if (t.peluquero) {
+        form.value.peluquero = t.peluquero.id || t.peluquero;
+        await nextTick();
+    }
+
+    // 3. Cargar Fecha y Sincronizar Calendario
+    if (t.fecha) {
+      form.value.fecha = t.fecha;
+      const [anio, mes, dia] = t.fecha.split('-');
+      currentDate.value = new Date(parseInt(anio), parseInt(mes) - 1, parseInt(dia));
+      await nextTick();
+      
+      // Consultamos ocupación real
+      if (form.value.peluquero) {
+        await cargarTurnosOcupados(t.fecha);
+        await nextTick();
+      }
+    }
+    
+    // 4. Cargar Hora (Al final, cuando ya cargó todo lo demás)
+    if (t.hora) {
+      form.value.hora = t.hora.substring(0, 5); 
+      await nextTick();
+    }
+
+    // 5. Método de Pago original
+    if (t.tipo_pago) form.value.tipo_pago = t.tipo_pago;
+    if (t.medio_pago) form.value.medio_pago = t.medio_pago;
+
+    Swal.fire({
+      title: 'Modo Edición',
+      text: 'Modificá tu turno. Los datos actuales ya están cargados.',
+      icon: 'info',
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 3000
+    });
+
+  } catch (error) {
+    console.error("No se pudo cargar el turno viejo para edición", error);
+  } finally {
+    bloqueandoWatchers.value = false; // 🟢 Soltamos el freno
   }
 }
 
@@ -680,14 +753,27 @@ onMounted(async () => {
   if (cargoBien) {
     if (route.query.cup) {
       cuponCodigo.value = route.query.cup
-      console.log(`🔍 Cupón detectado en URL: ${route.query.cup}`)
       await validarCuponBackend(route.query.cup)
+    }
+
+    // 🔥 DETECTAR SI ES MODIFICACIÓN
+    if (route.query.modificar_gratis_id) {
+      modoModificacion.value = true;
+      tipoModificacion.value = 'gratis';
+      turnoViejoId.value = route.query.modificar_gratis_id;
+      await cargarDatosTurnoViejo(turnoViejoId.value);
+    } else if (route.query.modificar_tarde_id) {
+      modoModificacion.value = true;
+      tipoModificacion.value = 'tarde';
+      turnoViejoId.value = route.query.modificar_tarde_id;
+      await cargarDatosTurnoViejo(turnoViejoId.value);
     }
   }
 })
 
-// WATCHERS
+// WATCHERS (Corregidos con el Freno)
 watch(() => form.value.servicios_ids, () => {
+  if (bloqueandoWatchers.value) return; // ⛔ Evitar limpieza durante carga
   if (form.value.fecha && form.value.peluquero && form.value.hora) {
     if (!esHorarioDisponibleCompleto(form.value.hora)) {
       form.value.hora = ""
@@ -696,6 +782,7 @@ watch(() => form.value.servicios_ids, () => {
 }, { deep: true })
 
 watch([() => form.value.fecha, () => form.value.peluquero], ([nuevaFecha, nuevoPeluquero]) => {
+  if (bloqueandoWatchers.value) return; // ⛔ Evitar llamadas inútiles durante carga
   if (nuevaFecha && nuevoPeluquero) cargarTurnosOcupados(nuevaFecha)
 })
 
@@ -796,6 +883,7 @@ const calcularSena = () => {
 }
 
 const montoAPagarAhora = () => {
+  if (modoModificacion.value && tipoModificacion.value === 'gratis') return "0.00";
   return (form.value.tipo_pago === 'SENA_50' ? calcularSena() : calcularTotalConDescuento())
 }
 
@@ -871,7 +959,6 @@ const cambiarMes = (delta) => {
   currentDate.value = n
 }
 
-// 🔥 FIX: Eliminado el buffer de 30 minutos para que muestre la hora real
 const esHorarioDisponibleUI = (h) => {
   if (!form.value.fecha || !form.value.peluquero) return true
   
@@ -884,7 +971,6 @@ const esHorarioDisponibleUI = (h) => {
   const hoy = new Date()
   const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
   
-  // 🔥 FIX: Si es hoy, solo bloquea las horas que YA PASARON estrictamente
   if (form.value.fecha === hoyF) {
     const minutosActuales = hoy.getHours() * 60 + hoy.getMinutes();
     const minutosTurno = hS * 60 + mS;
@@ -894,7 +980,6 @@ const esHorarioDisponibleUI = (h) => {
   return true
 }
 
-// 🔥 FIX: Lo mismo aquí, eliminado el buffer de 30 minutos
 const esHorarioDisponibleCompleto = (horaSeleccionada) => {
   if (!form.value.fecha || !form.value.peluquero) return false
   
@@ -919,7 +1004,6 @@ const esHorarioDisponibleCompleto = (horaSeleccionada) => {
   const hoy = new Date()
   const hoyFormateado = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
   
-  // 🔥 FIX: Solo bloquea si el inicio del turno ya pasó
   if (form.value.fecha === hoyFormateado) {
     const minutosActuales = hoy.getHours() * 60 + hoy.getMinutes();
     if (inicioMinutos <= minutosActuales) {
@@ -930,7 +1014,6 @@ const esHorarioDisponibleCompleto = (horaSeleccionada) => {
   return true
 }
 
-// 🔥 FIX: HORARIOS GENERADOS CADA 10 MINUTOS
 const generarHorariosBase = () => {
   const horarios = []
   const bloques = [
@@ -939,11 +1022,11 @@ const generarHorariosBase = () => {
   ]
   bloques.forEach(b => {
     for (let h = b.inicio; h < b.fin; h++) {
-      for (let m = 0; m < 60; m += 10) { // <--- ACÁ ESTÁ EL CAMBIO A 10 MIN
+      for (let m = 0; m < 60; m += 10) { 
         horarios.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
       }
     }
-    if(b.fin === 20) horarios.push('20:00'); // Añadimos el último turno
+    if(b.fin === 20) horarios.push('20:00'); 
     else if(b.fin === 12) horarios.push('12:00');
   })
   return horarios
@@ -1028,6 +1111,8 @@ const cargarTurnosOcupados = async (f) => {
     
     turnosData.forEach(turno => {
       if (turno.estado === 'CANCELADO' || turno.estado === 'DISPONIBLE') return
+      if (modoModificacion.value && String(turno.id) === String(turnoViejoId.value)) return 
+      
       if (turno.fecha !== f) return
       if (!turno.hora) return
       
@@ -1061,13 +1146,10 @@ const cargarTurnosOcupados = async (f) => {
   }
 }
 
+// 🔥 LÓGICA PRINCIPAL (Crea o Modifica)
 const crearPagoMercadoPago = async () => {
   if (!formularioValido.value) {
-    Swal.fire({
-      title: 'Formulario Incompleto',
-      text: 'Por favor completa todos los campos requeridos.',
-      icon: 'warning'
-    })
+    Swal.fire('Formulario Incompleto', 'Por favor completa todos los campos.', 'warning')
     return
   }
   
@@ -1088,61 +1170,67 @@ const crearPagoMercadoPago = async () => {
       duracion_total: calcularDuracionTotalServicios()
     }
     
-    const res = await api.post('/api/turnos/crear/', payload)
-    
-    if (res.data.status === 'ok') {
-      if (res.data.descuento && res.data.descuento.aplicado) {
-        Swal.fire({
-          title: '¡Descuento Aplicado!',
-          html: `✅ Se aplicó un ${res.data.descuento.porcentaje}% de descuento<br>
-                 <strong>Total a pagar: $${res.data.descuento.monto_final.toFixed(2)}</strong>`,
-          icon: 'success',
-          timer: 4000,
-          showConfirmButton: false
-        })
-      }
+    // 🔀 BIFURCACIÓN: CREAR VS MODIFICAR
+    if (modoModificacion.value) {
       
-    const mpUrl = res.data?.mp_data?.init_point
-      if (mpUrl) {
-        window.location.href = mpUrl
-      } else {
-        const turnoCreadoId = res.data.turno_id || res.data.id;
-        
-        if (turnoCreadoId) {
-          // Engañamos a nuestra propia app para que tire la alerta de éxito bonita con el PDF
-          router.push(`/cliente/historial?pago_exitoso=true&turno_id=${turnoCreadoId}`);
+      // 1. Es Modificación GRATIS
+      if (tipoModificacion.value === 'gratis') {
+        // 🔥 CORRECCIÓN CLAVE DE URL AQUÍ:
+        const res = await api.post(`/api/turnos/${turnoViejoId.value}/modificar/`, payload);
+        if (res.data && res.data.status === 'ok') {
+          Swal.fire({ title: 'Turno Modificado', text: 'Tu turno fue reprogramado exitosamente.', icon: 'success' })
+            .then(() => router.push('/cliente/historial'));
         } else {
-          // Fallback por si el backend no devolvió ID
-          Swal.fire({
-            title: 'Turno Creado',
-            text: 'Tu turno fue reservado exitosamente.',
-            icon: 'success'
-          }).then(() => {
-            router.push('/cliente/historial')
-          })
+          console.error("DATA DEL BACKEND:", res.data);
+          throw new Error(res.data?.error || res.data?.message || JSON.stringify(res.data) || 'Error desconocido al modificar');
+        }
+      } 
+      
+      // 2. Es Modificación TARDE
+      else if (tipoModificacion.value === 'tarde') {
+        // 🔥 CORRECCIÓN CLAVE DE URL AQUÍ:
+        const res = await api.post(`/api/turnos/${turnoViejoId.value}/modificar/`, payload);
+        
+        if (res.data && res.data.status === 'ok') {
+            const mpUrl = res.data?.nuevo_turno?.mp_data?.init_point || res.data?.mp_data?.init_point;
+            if (mpUrl) {
+                window.location.href = mpUrl; 
+            } else {
+                Swal.fire('Atención', 'Turno re-agendado. Deberás abonar en el local.', 'info')
+                  .then(() => router.push('/cliente/historial'));
+            }
+        } else {
+            console.error("DATA DEL BACKEND:", res.data);
+            throw new Error(res.data?.error || res.data?.message || 'Error al procesar el cambio de horario');
         }
       }
+
     } else {
-      throw new Error(res.data.message || 'Error al crear el turno')
+      
+      // 3. Es un turno NUEVO normal
+      const res = await api.post('/api/turnos/crear/', payload)
+      
+      if (res.data.status === 'ok') {
+        const mpUrl = res.data?.mp_data?.init_point
+        if (mpUrl) {
+          window.location.href = mpUrl
+        } else {
+          const turnoCreadoId = res.data.turno_id || res.data.id;
+          if (turnoCreadoId) {
+            router.push(`/cliente/historial?pago_exitoso=true&turno_id=${turnoCreadoId}`);
+          } else {
+            Swal.fire('Turno Creado', 'Tu turno fue reservado.', 'success').then(() => router.push('/cliente/historial'))
+          }
+        }
+      } else {
+        throw new Error(res.data.message || 'Error al crear')
+      }
     }
     
   } catch (error) {
-    console.error('Error creando turno:', error)
-    
-    let errorMsg = 'Error al crear el turno.'
-    if (error.response?.data?.error || error.response?.data?.message) {
-      errorMsg = error.response.data.error || error.response.data.message
-    } else if (error.message) {
-      errorMsg = error.message
-    }
-    
-    Swal.fire({
-      title: 'No se pudo reservar',
-      text: errorMsg,
-      icon: 'error',
-      confirmButtonText: 'Entendido'
-    })
-    
+    console.error('Error:', error)
+    let errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Error al completar la operación';
+    Swal.fire('No se pudo completar', errorMsg, 'error')
   } finally {
     cargandoMercadoPago.value = false
   }
@@ -1200,30 +1288,17 @@ const filtrarServicios = () => {
 
 const volverAlListado = () => router.push('/cliente/historial')
 
-// 🔥 NUEVA FUNCIÓN: Validar cupón manualmente
 const validarCuponManual = async () => {
   if (!cuponCodigo.value) {
-    Swal.fire({
-      title: 'Código Vacío',
-      text: 'Por favor ingresa un código de cupón.',
-      icon: 'warning'
-    })
+    Swal.fire('Código Vacío', 'Por favor ingresa un código de cupón.', 'warning')
     return
   }
-  
   await validarCuponBackend(cuponCodigo.value)
 }
 
-// Exportar funciones para usar en template
 defineExpose({
-  form,
-  usuario,
-  serviciosFiltrados,
-  toggleServicio,
-  estaServicioSeleccionado,
-  eliminarServicio,
-  crearPagoMercadoPago,
-  validarCuponManual
+  form, usuario, serviciosFiltrados, toggleServicio, estaServicioSeleccionado,
+  eliminarServicio, crearPagoMercadoPago, validarCuponManual
 })
 </script>
 
