@@ -357,7 +357,34 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def perform_create(self, serializer):
+        # Nota: Este perform_create es redundante porque ya pasas el cliente en el save() 
+        # dentro de create(), pero no molesta dejarlo.
         serializer.save(cliente=self.request.user)
+
+    # ✅ NUEVO ENDPOINT: Para que el cliente solicite la cancelación
+    @action(detail=True, methods=['post'])
+    def solicitar_cancelacion(self, request, pk=None):
+        pedido = self.get_object() # Seguro porque get_queryset ya filtra por cliente
+        motivo = request.data.get('motivo', 'Sin motivo especificado')
+
+        estados_validos = [
+            PedidoWeb.ESTADO_PENDIENTE_PAGO, 
+            PedidoWeb.ESTADO_PAGADO, 
+            PedidoWeb.ESTADO_PREPARACION
+        ]
+        
+        if pedido.estado not in estados_validos:
+            return Response(
+                {"error": "El pedido ya está procesado y no se puede solicitar su cancelación."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        pedido.estado = PedidoWeb.ESTADO_SOLICITA_CANCELACION
+        pedido.obs_cancelacion = f"SOLICITUD DE CLIENTE: {motivo}"
+        pedido.save()
+
+        print(f"⚠️ El cliente ID {request.user.id} solicitó cancelar el pedido #{pedido.id}")
+        return Response({"mensaje": "Solicitud de cancelación enviada correctamente."})
 
     @action(detail=True, methods=['post'])
     def cambiar_estado(self, request, pk=None):
@@ -373,12 +400,48 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
 
         if nuevo_estado == 'CANCELADO' and pedido.estado != 'CANCELADO':
             with transaction.atomic():
+                # 1. Devolver stock al inventario
                 for detalle in pedido.detalles.all():
                     detalle.producto.stock_actual += detalle.cantidad
                     detalle.producto.save()
                 
+                # 2. REEMBOLSO MERCADO PAGO Y MOVIMIENTO DE CAJA 💸
+                if pedido.mp_payment_id:
+                    from .mercadopago_service import MercadoPagoService 
+                    mp_service = MercadoPagoService()
+                    resultado_reembolso = mp_service.devolver_pago(pedido.mp_payment_id)
+                    
+                    if not resultado_reembolso.get('success'):
+                        return Response({
+                            'error': f"No se pudo reembolsar en MP. Motivo: {resultado_reembolso.get('error')}"
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    nota_mp = f"[Reembolso OK: {resultado_reembolso.get('refund_id')}]"
+                    observacion = f"{observacion} | {nota_mp}" if observacion else nota_mp
+
+                    # 🔥 ACÁ REGISTRAMOS EL EGRESO EN TU MÓDULO DE CAJA
+                    from .models import SesionCaja, MovimientoCaja # Ajustá el import si están en otra app
+                    
+                    # Buscamos si hay alguna caja abierta en el local
+                    sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+                    
+                    MovimientoCaja.objects.create(
+                        sesion_caja=sesion_abierta, 
+                        tipo='EGRESO',
+                        metodo_pago='MERCADO_PAGO',
+                        concepto='PEDIDO_WEB',
+                        monto=pedido.total,
+                        descripcion=f"Reembolso por cancelación Pedido Web #{pedido.id}"
+                    )
+                    print(f"💸 Egreso registrado en caja por ${pedido.total} (Reembolso MP)")
+
+                # 3. Guardar motivos
                 pedido.motivo_cancelacion = motivo
-                pedido.obs_cancelacion = observacion
+                if pedido.obs_cancelacion and observacion and "SOLICITUD DE CLIENTE" in pedido.obs_cancelacion:
+                    pedido.obs_cancelacion = f"{pedido.obs_cancelacion} || ADMIN: {observacion}"
+                else:
+                    pedido.obs_cancelacion = observacion
+                    
                 print(f"🚫 Pedido #{pedido.id} cancelado por: {motivo}")
 
         if repartidor:
@@ -394,7 +457,7 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
             'repartidor': pedido.datos_entrega_interna,
             'motivo': motivo
         })
-
+    
 class SillaViewSet(viewsets.ModelViewSet):
     queryset = Silla.objects.all().order_by('orden')
     serializer_class = SillaSerializer

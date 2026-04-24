@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.core.mail import get_connection, EmailMessage
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
+from django.apps import apps
 from django.core.signing import Signer
 import secrets, time, threading, uuid, pytz
 
@@ -1040,6 +1041,7 @@ class PedidoWeb(models.Model):
     ESTADO_LISTO_RETIRO = 'LISTO_RETIRO'
     ESTADO_EN_CAMINO = 'EN_CAMINO'
     ESTADO_ENTREGADO = 'ENTREGADO'
+    ESTADO_SOLICITA_CANCELACION = 'SOLICITA_CANCELACION' # ✅ NUEVO ESTADO
     ESTADO_CANCELADO = 'CANCELADO'
 
     ESTADOS_CHOICES = [
@@ -1049,6 +1051,7 @@ class PedidoWeb(models.Model):
         (ESTADO_LISTO_RETIRO, 'Listo para retirar en Local'),
         (ESTADO_EN_CAMINO, 'En camino (Moto/Correo)'),
         (ESTADO_ENTREGADO, 'Entregado / Finalizado'),
+        (ESTADO_SOLICITA_CANCELACION, 'Cancelación Solicitada por Cliente'), # ✅ NUEVO
         (ESTADO_CANCELADO, 'Cancelado'),
     ]
 
@@ -1067,7 +1070,7 @@ class PedidoWeb(models.Model):
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
     
-    estado = models.CharField(max_length=20, choices=ESTADOS_CHOICES, default=ESTADO_PENDIENTE_PAGO)
+    estado = models.CharField(max_length=25, choices=ESTADOS_CHOICES, default=ESTADO_PENDIENTE_PAGO)
     tipo_entrega = models.CharField(max_length=20, choices=ENTREGA_CHOICES, default=ENTREGA_RETIRO)
     
     direccion_envio = models.TextField(null=True, blank=True, help_text="Dirección completa si es envío")
@@ -1078,7 +1081,7 @@ class PedidoWeb(models.Model):
     motivo_cancelacion = models.CharField(max_length=100, blank=True, null=True)
     obs_cancelacion = models.TextField(blank=True, null=True)
 
-    # ✅ Campo para trazabilidad de la moto
+    # Campo para trazabilidad de la moto
     datos_entrega_interna = models.CharField(max_length=255, null=True, blank=True, help_text="Nombre del cadete")
 
     def __str__(self):
@@ -1089,9 +1092,10 @@ class PedidoWeb(models.Model):
         self.total = total_productos + self.costo_envio
         self.save()
 
+
 class DetallePedidoWeb(models.Model):
     pedido = models.ForeignKey(PedidoWeb, on_delete=models.CASCADE, related_name='detalles')
-    producto = models.ForeignKey(Producto, on_delete=models.PROTECT) 
+    producto = models.ForeignKey('Producto', on_delete=models.PROTECT) 
     cantidad = models.PositiveIntegerField(default=1)
     precio_unitario = models.DecimalField(max_digits=10, decimal_places=2)
 
@@ -1101,7 +1105,7 @@ class DetallePedidoWeb(models.Model):
 
     @property
     def subtotal(self):
-        return self.cantidad * self.precio_unitario  
+        return self.cantidad * self.precio_unitario 
 
 # ==============================================================================
 # MÓDULO INTELIGENTE: REABASTECIMIENTO AUTOMÁTICO (PROVEEDORES)

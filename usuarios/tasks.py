@@ -210,6 +210,11 @@ def notificar_turno_asignado(turno_id):
 # ==============================================================================
 # 3. MÓDULO DE FIDELIZACIÓN
 # ==============================================================================
+from datetime import timedelta # Asegurate de tener esto arriba
+from django.utils import timezone
+import secrets
+import time
+
 @shared_task
 def procesar_reactivacion_clientes_inactivos():
     try:
@@ -222,13 +227,14 @@ def procesar_reactivacion_clientes_inactivos():
         
     try:
         DIAS_COOLDOWN = 90
-        hoy = timezone.now()
+        # 🔥 CORRECCIÓN 1: Usamos solo LA FECHA ACTUAL para que la resta sea exacta
+        hoy_fecha = timezone.now().date() 
         from django.db.models import Exists, OuterRef
         
         clientes_con_turnos = Usuario.objects.filter(
             rol__nombre__iexact='Cliente', telefono__isnull=False,
         ).exclude(telefono='').annotate(
-            tiene_turnos=Exists(Turno.objects.filter(cliente=OuterRef('pk'), fecha__lt=hoy.date()))
+            tiene_turnos=Exists(Turno.objects.filter(cliente=OuterRef('pk'), fecha__lt=hoy_fecha))
         ).filter(tiene_turnos=True)
         
         if clientes_con_turnos.count() == 0: return "0 procesados"
@@ -238,17 +244,17 @@ def procesar_reactivacion_clientes_inactivos():
             ultimo_turno = Turno.objects.filter(cliente=cliente, estado__in=['COMPLETADO', 'RESERVADO']).order_by('-fecha', '-hora').first()
             if not ultimo_turno: continue
             
-            fecha_turno_naive = datetime.combine(ultimo_turno.fecha, ultimo_turno.hora)
-            fecha_ultimo_turno = timezone.make_aware(fecha_turno_naive)
-            dias_inactivo = (hoy - fecha_ultimo_turno).days
+            dias_inactivo = (hoy_fecha - ultimo_turno.fecha).days
             
-            if dias_inactivo <= DIAS_INACTIVIDAD: continue
+            if dias_inactivo < DIAS_INACTIVIDAD: continue
             
-            fecha_cooldown = hoy - timedelta(days=DIAS_COOLDOWN)
-            if PromocionReactivacion.objects.filter(cliente=cliente, fecha_creacion__gte=fecha_cooldown).exists(): continue
+            fecha_cooldown = hoy_fecha - timedelta(days=DIAS_COOLDOWN)
+            if PromocionReactivacion.objects.filter(cliente=cliente, fecha_creacion__date__gte=fecha_cooldown).exists(): continue
             
             clientes_inactivos.append({'cliente': cliente, 'dias_inactivo': dias_inactivo})
         
+        if not clientes_inactivos: return "0 procesados"
+
         clientes_a_enviar = clientes_inactivos[:5] 
         enviados = 0
         base_url = 'https://brandi-palmar-pickily.ngrok-free.dev'
@@ -258,7 +264,6 @@ def procesar_reactivacion_clientes_inactivos():
             dias = info['dias_inactivo']
             try:
                 codigo = f"VOLVE{secrets.token_hex(3).upper()}"
-                
                 link = f"{base_url}/turnos/crear-web?cup={codigo}"
                 
                 mensaje = (
@@ -277,7 +282,7 @@ def procesar_reactivacion_clientes_inactivos():
                     cliente=cliente,
                     codigo=codigo,
                     descuento_porcentaje=descuento_promo,
-                    fecha_vencimiento=hoy + timedelta(days=7),
+                    fecha_vencimiento=hoy_fecha + timedelta(days=7), # También corregido a hoy_fecha
                     mensaje_sid="ENVIO_VIA_CELERY_UNIFICADO",
                     canal_envio='WHATSAPP'
                 )

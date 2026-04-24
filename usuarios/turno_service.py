@@ -651,6 +651,7 @@ class ReofertaAutomaticaService:
 
                 monto_seña = pagado_previo
 
+                # 🔥 ACÁ CREAMOS EL TURNO Y LE PASAMOS LA SILLA
                 nuevo = Turno.objects.create(
                     fecha=turno_target.fecha,
                     hora=turno_target.hora,
@@ -667,7 +668,8 @@ class ReofertaAutomaticaService:
                     monto_seña=monto_seña,
                     oferta_activa=True,
                     motivo_cancelacion="",
-                    obs_cancelacion="Turno obtenido por canje"
+                    obs_cancelacion="Turno obtenido por canje",
+                    silla=turno_target.silla  # ✅ ESTA ES LA SOLUCIÓN
                 )
 
                 for item in lista_intereses:

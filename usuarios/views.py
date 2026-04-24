@@ -4914,16 +4914,12 @@ def actualizar_marca(request, pk):
             marca.descripcion = data.get('descripcion', marca.descripcion)
             marca.estado = data.get('estado', marca.estado)
             
-            # 🔥 CORRECCIÓN CLAVE: Manejo seguro de la lista de proveedores
             proveedores_data = data.get('proveedores')
             
-            # Solo intentamos actualizar si proveedores_data es una lista válida
             if proveedores_data is not None and isinstance(proveedores_data, list):
-                # Filtramos IDs vacíos o nulos por seguridad
                 ids_limpios = [id for id in proveedores_data if id]
                 marca.proveedores.set(ids_limpios)
             elif proveedores_data == []: 
-                # Si mandan lista vacía explícita, limpiamos las relaciones
                 marca.proveedores.clear()
             
             marca.save()

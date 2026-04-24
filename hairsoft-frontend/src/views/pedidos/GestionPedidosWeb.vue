@@ -68,7 +68,7 @@
               <td>
                 <div class="entrega-badge" :class="pedido.tipo_entrega === 'RETIRO' ? 'retiro' : 'envio'">
                   <svg v-if="pedido.tipo_entrega === 'RETIRO'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
                   {{ pedido.tipo_entrega }}
                 </div>
               </td>
@@ -82,7 +82,7 @@
                 </div>
               </td>
               <td>
-                <span :class="['badge-estado', getEstadoClass(pedido.estado)]">{{ pedido.estado_display }}</span>
+                <span :class="['badge-estado', getEstadoClass(pedido.estado)]">{{ pedido.estado_display || pedido.estado }}</span>
                 <div v-if="pedido.datos_entrega_interna" style="font-size: 0.75rem; color: #0ea5e9; margin-top: 6px; font-weight: 700; display: flex; align-items: center; gap: 4px;">
                   🛵 {{ pedido.datos_entrega_interna }}
                 </div>
@@ -110,6 +110,10 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                     </svg>
+                  </button>
+
+                  <button v-if="pedido.estado === 'SOLICITA_CANCELACION'" @click="aprobarCancelacionCliente(pedido)" class="action-button refund" title="Aprobar Cancelación y Reembolsar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                   </button>
 
                   <button v-if="!['ENTREGADO', 'CANCELADO'].includes(pedido.estado)" @click="cambiarEstado(pedido, 'CANCELADO')" class="action-button delete" title="Cancelar pedido">
@@ -158,6 +162,7 @@ const itemsPorPagina = 8;
 const filtrosEstados = [
   { key: 'TODOS', label: 'Todos' },
   { key: 'ACTIVOS', label: 'Pendientes' },
+  { key: 'SOLICITA_CANCELACION', label: 'Req. Cancelación' }, // 🔥 NUEVO
   { key: 'ENTREGADO', label: 'Entregados' },
   { key: 'CANCELADO', label: 'Cancelados' },
 ];
@@ -175,10 +180,11 @@ const cargarPedidos = async () => {
   }
 };
 
-const cambiarEstado = async (pedido, nuevoEstado) => {
+// 🔥 MODIFICADO: Agregamos parámetros para saltear el modal si viene del cliente
+const cambiarEstado = async (pedido, nuevoEstado, skipModal = false, motivoAuto = '', obsAuto = '') => {
   let repartidor = '';
-  let motivoCancelacion = '';
-  let obsCancelacion = '';
+  let motivoCancelacion = motivoAuto;
+  let obsCancelacion = obsAuto;
   
   // 🛵 CASO 1: DESPACHO MOTO
   if (nuevoEstado === 'EN_CAMINO' && pedido.tipo_entrega === 'MOTO') {
@@ -198,7 +204,7 @@ const cambiarEstado = async (pedido, nuevoEstado) => {
   }
 
   // 🚫 CASO 2: CANCELACIÓN CON MOTIVOS (NUEVO)
-  if (nuevoEstado === 'CANCELADO') {
+  if (nuevoEstado === 'CANCELADO' && !skipModal) {
     const { value: formValues } = await Swal.fire({
       title: '🚫 Cancelar Pedido Web',
       html: `
@@ -236,7 +242,7 @@ const cambiarEstado = async (pedido, nuevoEstado) => {
     if (!formValues) return; // Canceló el modal
     motivoCancelacion = formValues.motivo;
     obsCancelacion = formValues.obs;
-  } else {
+  } else if (!skipModal) {
     // Confirmación simple para otros estados
     const result = await Swal.fire({
       title: '¿Confirmar cambio?',
@@ -265,7 +271,42 @@ const cambiarEstado = async (pedido, nuevoEstado) => {
     Swal.fire({ title: '¡Éxito!', icon: 'success', timer: 1000, showConfirmButton: false });
     cargarPedidos();
   } catch (e) {
-    Swal.fire('Error', 'No se pudo actualizar el pedido.', 'error');
+    // Si viene error de Mercado Pago desde el backend, lo mostramos
+    const errorMsg = e.response?.data?.error || 'No se pudo actualizar el pedido.';
+    Swal.fire('Error', errorMsg, 'error');
+  }
+};
+
+// 🔥 NUEVA FUNCIÓN: Aprobar directamente la solicitud del cliente
+const aprobarCancelacionCliente = async (pedido) => {
+  const result = await Swal.fire({
+    title: 'Aprobar Cancelación',
+    html: `
+      <p style="color: #cbd5e1; font-size: 0.95rem;">El cliente solicitó cancelar este pedido con el siguiente motivo:</p>
+      <div style="background: rgba(239, 68, 68, 0.1); padding: 12px; border-radius: 8px; border: 1px dashed #ef4444; margin: 15px 0;">
+        <span style="color: #fca5a5; font-style: italic;">"${pedido.obs_cancelacion}"</span>
+      </div>
+      <p style="color: #f8fafc; font-weight: bold;">¿Deseas aprobarla y realizar el reembolso en Mercado Pago?</p>
+    `,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#10b981', 
+    cancelButtonColor: '#64748b',
+    confirmButtonText: 'Sí, Reembolsar Dinero',
+    cancelButtonText: 'Cerrar',
+    background: '#1e293b',
+    color: '#fff'
+  });
+
+  if (result.isConfirmed) {
+    Swal.fire({ title: 'Procesando Reembolso...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    await cambiarEstado(
+      pedido, 
+      'CANCELADO', 
+      true, 
+      'SOLICITUD_CLIENTE', 
+      'Reembolso aprobado por administrador'
+    );
   }
 };
 
@@ -278,7 +319,8 @@ const verDetalle = (p) => {
     `).join('');
 
     // Recuadro de cancelación si corresponde
-    const cancelBox = p.estado === 'CANCELADO' ? `
+    const isCanceledOrRequested = p.estado === 'CANCELADO' || p.estado === 'SOLICITA_CANCELACION';
+    const cancelBox = isCanceledOrRequested ? `
       <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
         <h4 style="color: #fca5a5; margin: 0 0 8px 0; text-transform: uppercase; font-size: 0.8rem; font-weight: 900;">🚫 Información de Cancelación</h4>
         <p style="margin: 0; color: #f8fafc;"><strong>Motivo:</strong> ${p.motivo_cancelacion || 'No especificado'}</p>
@@ -362,7 +404,15 @@ const cambiarFiltro = (k) => { filtroActual.value = k; paginaActual.value = 1; }
 const contarPorEstado = (k) => k === 'TODOS' ? pedidos.value.length : (k === 'ACTIVOS' ? pedidos.value.filter(p => !['ENTREGADO', 'CANCELADO'].includes(p.estado)).length : pedidos.value.filter(p => p.estado === k).length);
 
 const getEstadoClass = (e) => {
-  const mapa = { 'PAGADO': 'estado-info', 'EN_PREPARACION': 'estado-warning', 'LISTO_RETIRO': 'estado-success', 'EN_CAMINO': 'estado-success', 'ENTREGADO': 'estado-completado', 'CANCELADO': 'estado-cancelado' };
+  const mapa = { 
+    'PAGADO': 'estado-info', 
+    'EN_PREPARACION': 'estado-warning', 
+    'LISTO_RETIRO': 'estado-success', 
+    'EN_CAMINO': 'estado-success', 
+    'ENTREGADO': 'estado-completado', 
+    'CANCELADO': 'estado-cancelado',
+    'SOLICITA_CANCELACION': 'estado-solicitud' // 🔥 NUEVO COLOR
+  };
   return mapa[e] || 'estado-secondary';
 };
 
@@ -683,6 +733,8 @@ onMounted(cargarPedidos);
 .estado-secondary { background: var(--bg-tertiary); color: var(--text-tertiary); border-color: var(--text-tertiary); }
 .estado-completado { background: #0ea5e9; color: white; border-color: #0ea5e9; box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3); }
 .estado-cancelado { background: var(--bg-tertiary); color: var(--error-color); border-color: var(--error-color); opacity: 0.8; text-decoration: line-through; }
+/* 🔥 NUEVO COLOR PARA SOLICITUD DE CANCELACIÓN */
+.estado-solicitud { background: var(--bg-tertiary); color: #f97316; border-color: #f97316; box-shadow: 0 0 10px rgba(249, 115, 22, 0.2); }
 
 /* ACCIONES */
 .action-buttons {
@@ -724,6 +776,10 @@ onMounted(cargarPedidos);
 
 .action-button.delete { border: 1px solid var(--error-color); color: var(--error-color); }
 .action-button.delete:hover { background: var(--error-color); color: white; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3); }
+
+/* 🔥 NUEVO BOTÓN DE REEMBOLSO */
+.action-button.refund { border: 1px solid #10b981; color: #10b981; }
+.action-button.refund:hover { background: #10b981; color: white; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); }
 
 
 /* 🔥 PAGINACIÓN MEJORADA */
