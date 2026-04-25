@@ -3610,19 +3610,46 @@ def buscar_pedidos(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def cancelar_pedido(request, pedido_id):
-    """Cancelar un pedido pendiente"""
+    """Cancelar un pedido a proveedor, guardar motivo y notificar"""
     try:
         pedido = get_object_or_404(Pedido, id=pedido_id)
         
         if not pedido.puede_ser_cancelado():
             return Response({
-                'error': 'No se puede cancelar el pedido. Solo se pueden cancelar pedidos en estado PENDIENTE.'
+                'error': 'No se puede cancelar el pedido. Solo se permiten pedidos PENDIENTES o CONFIRMADOS.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        pedido.cancelar_pedido()
-        
+        # 1. Atrapamos lo que mandaste desde el Select de Vue
+        motivo_codigo = request.data.get('motivo', 'OTRO')
+        observaciones = request.data.get('observaciones', 'Sin observaciones')
+
+        # 2. Traducimos el código a texto legible
+        mapa_motivos = {
+            'ERROR_ADMINISTRATIVO': 'Error administrativo en la orden',
+            'AJUSTE_INVENTARIO': 'Ajuste interno / Stock ya no requerido',
+            'INCUMPLIMIENTO_PLAZOS': 'Incumplimiento de plazos de entrega',
+            'FALTA_DISPONIBILIDAD': 'Falta de disponibilidad confirmada por proveedor',
+            'OTRO': 'Otros motivos operacionales'
+        }
+        motivo_texto = mapa_motivos.get(motivo_codigo, motivo_codigo)
+
+        # 3. Guardamos esto en las observaciones del pedido para que te quede el registro
+        nota_cancelacion = f"\n\n[❌ CANCELADO] Motivo: {motivo_texto} | Detalle: {observaciones}"
+        pedido.observaciones = f"{pedido.observaciones or ''}{nota_cancelacion}".strip()
+
+        # 4. Cambiamos el estado (usa tu método existente)
+        pedido.cancelar_pedido() 
+
+        # 5. Disparamos el correo por Celery
+        try:
+            from usuarios.tasks import enviar_email_cancelacion_proveedor
+            enviar_email_cancelacion_proveedor.delay(pedido.id, motivo_texto, observaciones)
+            print("🚀 Orden de enviar email de cancelación enviada a Celery.")
+        except Exception as celery_err:
+            print(f"⚠️ Error al llamar a Celery: {celery_err}")
+
         return Response({
-            'message': 'Pedido cancelado exitosamente.',
+            'message': 'Pedido cancelado y notificado al proveedor.',
             'pedido_id': pedido.id,
             'estado': pedido.estado
         })
@@ -3635,7 +3662,6 @@ def cancelar_pedido(request, pedido_id):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def recibir_pedido(request, pedido_id):
-    # 🛑 CHEQUEO DE CAJA
     sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
     if not sesion_abierta:
         return Response({'error': 'Debe abrir una caja para registrar el pago al proveedor.'}, status=400)
@@ -3643,8 +3669,8 @@ def recibir_pedido(request, pedido_id):
     try:
         pedido = get_object_or_404(Pedido, id=pedido_id)
         
-        if pedido.estado != 'CONFIRMADO':
-            return Response({'error': 'El pedido debe estar CONFIRMADO para recibirse.'}, status=400)
+        if pedido.estado not in ['CONFIRMADO', 'EN_CAMINO']:
+            return Response({'error': 'El pedido debe estar CONFIRMADO o EN_CAMINO para recibirse.'}, status=400)
 
         with transaction.atomic():
             for detalle in pedido.detalles.all():
@@ -3725,7 +3751,7 @@ def recibir_pedido(request, pedido_id):
 def pedidos_pendientes_recepcion(request):
     """Obtener lista de pedidos pendientes de recepción"""
     try:
-        pedidos = Pedido.objects.filter(estado__in=['PENDIENTE', 'PARCIAL'])\
+        pedidos = Pedido.objects.filter(estado__in=['CONFIRMADO', 'EN_CAMINO', 'PARCIAL'])\
             .select_related('proveedor', 'usuario_creador')\
             .prefetch_related('detalles__producto')\
             .order_by('fecha_pedido')
@@ -3900,6 +3926,25 @@ def confirmar_pedido_externo(request, token):
         print(f"Error confirmando pedido: {e}")
         return Response({'error': str(e)}, status=500)
 
+@api_view(['POST'])
+@permission_classes([AllowAny]) # Pública para que el proveedor acceda con el token
+def marcar_en_camino_externo(request, token):
+    """
+    El proveedor hace clic en el botón 'Despachar' de su portal web.
+    """
+    try:
+        pedido = get_object_or_404(Pedido, token=token)
+        
+        if pedido.estado != 'CONFIRMADO':
+            return Response({'error': 'El pedido debe estar Confirmado por la administración para poder despacharlo.'}, status=400)
+
+        pedido.estado = 'EN_CAMINO'
+        pedido.save()
+
+        return Response({'message': '¡Gracias! El local ya sabe que el pedido está en camino.'})
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -3991,7 +4036,7 @@ def evaluaciones_compras_unificadas(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def aprobar_pedido_manual(request, pedido_id):
-    """Pasa un pedido manual de COTIZADO a CONFIRMADO"""
+    """Pasa un pedido manual de COTIZADO a CONFIRMADO y notifica al proveedor"""
     try:
         with transaction.atomic():
             pedido = Pedido.objects.select_for_update().get(id=pedido_id)
@@ -4001,9 +4046,19 @@ def aprobar_pedido_manual(request, pedido_id):
             pedido.estado = 'CONFIRMADO'
             pedido.save()
             
-            return Response({'message': 'Presupuesto manual aprobado exitosamente. ¡Orden confirmada!'})
+        try:
+            from usuarios.tasks import enviar_email_pedido_confirmado
+            enviar_email_pedido_confirmado.delay(pedido.id)
+            print(f"🚀 Tarea de email de aprobación enviada a Celery para el pedido {pedido.id}")
+        except Exception as celery_err:
+            print(f"⚠️ Error al llamar a Celery: {celery_err}")
+
+        return Response({'message': 'Presupuesto manual aprobado exitosamente. ¡Orden confirmada!'})
+        
     except Pedido.DoesNotExist:
         return Response({'error': 'Pedido no encontrado'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
     
 #-----TEMPORAAAAAAAALLLLLL
 
@@ -4109,7 +4164,7 @@ def proponer_precios(request, pedido_id):
 @permission_classes([AllowAny])
 def confirmar_precios(request, pedido_id):
     """
-    El comercio confirma los precios propuestos y actualiza totales.
+    El comercio confirma los precios propuestos, actualiza totales y notifica al proveedor.
     """
     try:
         pedido = get_object_or_404(Pedido, id=pedido_id)
@@ -4126,15 +4181,21 @@ def confirmar_precios(request, pedido_id):
         pedido.estado = 'CONFIRMADO'
         pedido.save()
 
+        try:
+            from usuarios.tasks import enviar_email_pedido_confirmado
+            enviar_email_pedido_confirmado.delay(pedido.id)
+            print(f"🚀 Tarea de email de aprobación enviada a Celery para el pedido {pedido.id}")
+        except Exception as celery_err:
+            print(f"⚠️ Error al llamar a Celery: {celery_err}")
+
         return Response({
-            'mensaje': 'Precios confirmados correctamente.',
+            'mensaje': 'Precios confirmados correctamente y proveedor notificado.',
             'pedido_id': pedido.id,
             'total': pedido.total
         })
 
     except Exception as e:
         return Response({'error': str(e)}, status=400)
-
 
 ####proveedores
 class ListaPrecioProveedorViewSet(viewsets.ModelViewSet):
@@ -5386,7 +5447,7 @@ class SolicitudPresupuestoViewSet(viewsets.ReadOnlyModelViewSet):
     @transaction.atomic
     def generar_orden_compra(self, request, pk=None):
         """
-        Acción: El Gerente elige una cotización ganadora -> Se crea el Pedido (Orden de Compra).
+        Acción: El Gerente elige una cotización ganadora -> Se crea el Pedido (Orden de Compra) y se notifica al proveedor.
         """
         solicitud = self.get_object()
         cotizacion_id = request.data.get('cotizacion_id')
@@ -5394,7 +5455,6 @@ class SolicitudPresupuestoViewSet(viewsets.ReadOnlyModelViewSet):
         if not cotizacion_id:
             return Response({"error": "Debe proporcionar el ID de la cotización ganadora."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 1. Validar que la cotización existe y fue respondida
         try:
             cotizacion_ganadora = Cotizacion.objects.get(
                 id=cotizacion_id, 
@@ -5407,8 +5467,7 @@ class SolicitudPresupuestoViewSet(viewsets.ReadOnlyModelViewSet):
         if solicitud.estado == 'CERRADA':
             return Response({"error": "Esta solicitud ya tiene un pedido generado."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 2. DETERMINAR LA CANTIDAD REAL DE LA OFERTA (Ej: 18 en lugar de 20)
-        # Usamos la cantidad que el proveedor puso en su formulario externo
+        # 2. DETERMINAR LA CANTIDAD REAL DE LA OFERTA
         cantidad_final = cotizacion_ganadora.cantidad_ofertada 
 
         # 3. CÁLCULO DE FECHA ESPERADA
@@ -5420,23 +5479,22 @@ class SolicitudPresupuestoViewSet(viewsets.ReadOnlyModelViewSet):
             proveedor=cotizacion_ganadora.proveedor,
             usuario_creador=request.user if request.user.is_authenticated else None, 
             estado='CONFIRMADO', 
-            total=cotizacion_ganadora.precio_ofrecido, # El total que el proveedor pidió por esos 18
+            total=cotizacion_ganadora.precio_ofrecido, 
             fecha_esperada_recepcion=fecha_entrega_estimada,
             observaciones=f"Generado desde Solicitud #{solicitud.id}. Oferta ganadora por {cantidad_final} unidades."
         )
 
         # 5. CÁLCULO DEL PRECIO UNITARIO REAL
-        # Dividimos el total ofrecido por la cantidad realmente ofertada
         try:
             precio_unitario_real = cotizacion_ganadora.precio_ofrecido / cantidad_final
         except (ZeroDivisionError, TypeError):
             precio_unitario_real = 0
 
-        # 6. CREAR EL DETALLE (Acá es donde se graban los 18)
+        # 6. CREAR EL DETALLE
         DetallePedido.objects.create(
             pedido=nuevo_pedido,
             producto=solicitud.producto,
-            cantidad=cantidad_final,  # ✅ AHORA SÍ: Graba la oferta real (18)
+            cantidad=cantidad_final,
             precio_unitario=precio_unitario_real,
             cantidad_recibida=0
         )
@@ -5449,6 +5507,18 @@ class SolicitudPresupuestoViewSet(viewsets.ReadOnlyModelViewSet):
         # Marcar la cotización como la ganadora
         cotizacion_ganadora.es_la_mejor = True
         cotizacion_ganadora.save()
+
+        # 🔥 8. EL DISPARADOR DEL CORREO DE APROBACIÓN
+        try:
+            from usuarios.tasks import enviar_email_pedido_confirmado
+            from django.db import transaction
+            
+            # Usamos on_commit para asegurar que el pedido ya existe en la DB antes de que Celery lo busque
+            transaction.on_commit(lambda: enviar_email_pedido_confirmado.delay(nuevo_pedido.id))
+            print(f"🚀 Tarea de email enviada a Celery para el nuevo pedido {nuevo_pedido.id}")
+            
+        except Exception as celery_err:
+            print(f"⚠️ Error al llamar a Celery: {celery_err}")
 
         return Response({
             "mensaje": f"¡Orden de Compra #{nuevo_pedido.id} generada por {cantidad_final} unidades!",
@@ -6414,6 +6484,27 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         sesion.save()
         
         return Response({'mensaje': 'Caja cerrada correctamente.', 'sesion': self.get_serializer(sesion).data})
+    
+    @action(detail=True, methods=['GET'])
+    def reporte(self, request, pk=None):
+        """Genera y descarga el reporte PDF Z de cualquier caja cerrada (Historial)"""
+        sesion = self.get_object()
+        
+        if sesion.esta_abierta:
+            return Response({'error': 'La caja debe estar cerrada para emitir el reporte Z.'}, status=400)
+            
+        movimientos = sesion.movimientos.all().order_by('fecha')
+        
+        try:
+            config = ConfiguracionSistema.get_solo()
+        except:
+            config = None
+
+        pdf_bytes = generar_cierre_caja_pdf(sesion, movimientos, config)
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="Cierre_Caja_{sesion.id}.pdf"'
+        return response
 
     @action(detail=True, methods=['GET'])
     def balance(self, request, pk=None):

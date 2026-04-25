@@ -7,15 +7,36 @@
     </div>
 
     <div v-else-if="error" class="card error-card">
-      <div class="icon">❌</div>
+      <div class="icon">🚫</div>
       <h2>Enlace inválido o expirado</h2>
       <p>{{ mensajeError }}</p>
     </div>
 
-    <div v-else-if="enviado" class="card success-card">
+    <div v-else-if="datos.estado === 'COTIZADO' || (enviado && datos.estado !== 'CONFIRMADO')" class="card success-card" style="border-top: 4px solid #f59e0b;">
+      <div class="icon">⏳</div>
+      <h2>Cotización en Evaluación</h2>
+      <p>Hemos recibido tu respuesta. El local te confirmará a la brevedad.</p>
+    </div>
+
+    <div v-else-if="datos.estado === 'CONFIRMADO'" class="card success-card" style="border-top: 4px solid #10b981;">
       <div class="icon">✅</div>
-      <h2>¡Cotización Enviada!</h2>
-      <p>Gracias. Hemos registrado tu respuesta.</p>
+      <h2>¡Presupuesto Aprobado!</h2>
+      <p style="margin-bottom: 20px; color: #4b5563;">Por favor, despachá la mercadería. Hacé clic aquí cuando el envío salga para el local:</p>
+      <button @click="marcarEnCamino" :disabled="enviando" style="padding: 12px 24px; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; font-size: 16px; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3);">
+        🚚 {{ enviando ? 'Procesando...' : 'Marcar como "En Camino"' }}
+      </button>
+    </div>
+
+    <div v-else-if="datos.estado === 'EN_CAMINO'" class="card success-card" style="border-top: 4px solid #3b82f6;">
+      <div class="icon">🚚</div>
+      <h2>Pedido en Ruta</h2>
+      <p>Ya notificamos al local que la mercadería está en camino.</p>
+    </div>
+
+    <div v-else-if="['ENTREGADO', 'CANCELADO'].includes(datos.estado)" class="card success-card" style="border-top: 4px solid #94a3b8;">
+      <div class="icon">{{ datos.estado === 'ENTREGADO' ? '📦' : '❌' }}</div>
+      <h2>Pedido {{ datos.estado }}</h2>
+      <p>{{ datos.estado === 'ENTREGADO' ? 'La mercadería ya fue recibida.' : 'Este pedido ha sido anulado por la administración.' }}</p>
     </div>
 
     <div v-else class="card form-card">
@@ -109,14 +130,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue' // Agregamos computed
+import { ref, onMounted, watch, computed } from 'vue' 
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 
 const route = useRoute()
 const token = route.params.token
-// OJO: Asegúrate que esta URL sea accesible desde internet si el proveedor está fuera de tu red local
 const API_URL = 'http://127.0.0.1:8000/api/cotizacion-externa' 
+const API_RUTA_EN_CAMINO = 'http://127.0.0.1:8000/api/externo/pedido' // Ruta para marcar en camino
+
 const cargando = ref(true)
 const error = ref(false)
 const mensajeError = ref('')
@@ -135,22 +157,17 @@ const form = ref({
   comentarios: ''
 })
 
-// CAMBIO 4: Propiedad computada para validar la cantidad fácilmente
 const esCantidadInvalida = computed(() => {
-  // Si no hay datos cargados, no es inválido todavía
   if (!datos.value.cantidad_requerida) return false;
-  // Es inválido si lo que escribe el usuario es mayor a lo requerido
   return form.value.cantidad > datos.value.cantidad_requerida;
 })
 
-// Cálculo de total dinámico
 watch([precioUnitario, () => form.value.cantidad], () => {
   const q = Number(form.value.cantidad) || 0
   const p = Number(precioUnitario.value) || 0
   form.value.precio_ofrecido = (q * p).toFixed(2)
 })
 
-// Cálculo de días desde calendario
 watch(fechaSeleccionada, (val) => {
   if (val) {
     const hoy = new Date(); hoy.setHours(0,0,0,0)
@@ -163,23 +180,22 @@ watch(fechaSeleccionada, (val) => {
 onMounted(async () => {
   try {
     const response = await axios.get(`${API_URL}/${token}/`)    
-    console.log("📥 RESPUESTA DEL SERVER:", response.data)
-
+    
     if (typeof response.data === 'string') {
-        console.error("🚨 ERROR: Se recibió HTML en lugar de JSON. Revisar URLs de Django.")
         error.value = true
         return
     }
 
+    // 🔥 CRÍTICO: Guardamos toda la data, incluido el estado actual ('CONFIRMADO', etc)
+    datos.value = response.data 
+
     if (response.data.ya_respondido) {
       enviado.value = true
     } else {
-      datos.value = response.data
-      // Precarga con lo requerido (luego ellos pueden bajarlo si quieren)
       form.value.cantidad = Number(response.data.cantidad_requerida) || 0
     }
   } catch (e) {
-    console.error("❌ ERROR AXIOS:", e)
+    console.error("Error cargando el pedido:", e)
     error.value = true
     mensajeError.value = 'No se pudo cargar la información.'
   } finally {
@@ -188,7 +204,6 @@ onMounted(async () => {
 })
 
 const enviarCotizacion = async () => {
-  // Doble chequeo antes de enviar por si hackearon el HTML
   if (esCantidadInvalida.value) {
     alert("La cantidad no puede superar lo solicitado.");
     return;
@@ -198,12 +213,30 @@ const enviarCotizacion = async () => {
   try {
     await axios.post(`${API_URL}/${token}/`, form.value)
     enviado.value = true
+    datos.value.estado = 'COTIZADO' // Forzar actualización visual
   } catch (e) {
     alert('Error al enviar presupuesto.')
   } finally {
     enviando.value = false
   }
 }
+
+// NUEVA FUNCIÓN PARA MARCAR EN CAMINO
+const marcarEnCamino = async () => {
+  const result = confirm("¿Despachar pedido?\nLe avisaremos al local que la mercadería ya salió de tu depósito.");
+  if (!result) return;
+
+  enviando.value = true;
+  try {
+    await axios.post(`${API_RUTA_EN_CAMINO}/${token}/en-camino/`);
+    alert('¡El local ya fue notificado de que el pedido está en camino!');
+    datos.value.estado = 'EN_CAMINO'; // Forzar actualización visual
+  } catch (err) {
+    alert('Error al actualizar el estado.');
+  } finally {
+    enviando.value = false;
+  }
+};
 </script>
 
 <style scoped>

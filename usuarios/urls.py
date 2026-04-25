@@ -230,6 +230,7 @@ urlpatterns = [
     path('api/pedidos/<int:pedido_id>/enviar/', enviar_pedido_proveedor, name='enviar-pedido'),
     path('api/externo/pedido/<str:token>/', func_views.obtener_pedido_externo, name='pedido-externo-get'),
     path('api/externo/pedido/<str:token>/confirmar/', func_views.confirmar_pedido_externo, name='pedido-externo-post'),
+    path('api/externo/pedido/<str:token>/en-camino/', func_views.marcar_en_camino_externo, name='pedido-en-camino'),
     path('api/pedidos/<int:pedido_id>/proponer-precios/', func_views.proponer_precios, name='proponer-precios'),
     path('api/pedidos/<int:pedido_id>/confirmar-precios/', func_views.confirmar_precios, name='confirmar_precios'),
     # Rutas nuevas para la vista unificada de presupuestos

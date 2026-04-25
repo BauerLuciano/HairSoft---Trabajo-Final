@@ -806,9 +806,9 @@ const abrirCaja = async () => {
 
 const descargarPDFCaja = async (sesionId) => {
   try {
-    Swal.fire({ title: 'Generando Cierre de Caja...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    Swal.fire({ title: 'Generando Reporte Z...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     
-    const resPdf = await axios.get(`/api/sesiones-caja/${sesionId}/descargar_pdf/`, { responseType: 'blob' });
+    const resPdf = await axios.get(`/api/sesiones-caja/${sesionId}/reporte/`, { responseType: 'blob' });
     
     const url = window.URL.createObjectURL(new Blob([resPdf.data]));
     const link = document.createElement('a');
@@ -821,7 +821,9 @@ const descargarPDFCaja = async (sesionId) => {
     Swal.close();
   } catch (error) {
     console.error("Error descargando PDF", error);
-    Swal.fire('Error', 'No se pudo descargar el comprobante.', 'error');
+    let msg = 'No se pudo descargar el comprobante.';
+    if (error.response && error.response.status === 400) msg = 'La caja debe estar cerrada para emitir el reporte.';
+    Swal.fire('Error', msg, 'error');
   }
 };
 

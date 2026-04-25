@@ -701,8 +701,12 @@ def generar_cierre_caja_pdf(sesion, movimientos, config):
     bloque_izquierda = Table([[logo_img, col_izq]], colWidths=[2.5*cm, 9.5*cm]) if logo_img else col_izq
 
     # --- HEADER DATOS CAJA ---
+    from django.utils import timezone
+    
     fecha_apertura = sesion.fecha_apertura.strftime("%d/%m/%Y %H:%M")
     fecha_cierre = sesion.fecha_cierre.strftime("%d/%m/%Y %H:%M") if sesion.fecha_cierre else "Sin cerrar"
+    # Capturamos la hora exacta de emisión del reporte
+    fecha_emision = timezone.localtime(timezone.now()).strftime("%d/%m/%Y %H:%M")
     
     col_der = [
         Paragraph("PLANILLA DE ARQUEO", estilos['TituloDer']),
@@ -715,6 +719,9 @@ def generar_cierre_caja_pdf(sesion, movimientos, config):
         Spacer(1, 3),
         Paragraph("CIERRE", estilos['DatoDerL']),
         Paragraph(fecha_cierre, estilos['DatoDerV']),
+        Spacer(1, 3),
+        Paragraph("FECHA EMISIÓN", estilos['DatoDerL']),
+        Paragraph(fecha_emision, estilos['DatoDerV']),
     ]
 
     tabla_header = Table([[bloque_izquierda, col_der]], colWidths=[12*cm, 7*cm])

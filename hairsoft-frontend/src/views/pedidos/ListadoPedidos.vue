@@ -1,7 +1,6 @@
 <template>
   <div class="list-container">
     <div class="list-card" :class="{ 'overlay-activo': mostrarModalDetalle }">
-      <!-- Header -->
       <div class="list-header">
         <div class="header-content">
           <h1>Gestión de Pedidos</h1>
@@ -12,7 +11,6 @@
         </button>
       </div>
 
-      <!-- Filtros CORREGIDOS -->
       <div class="filters-container">
         <div class="filters-grid">
           <div class="filter-group">
@@ -57,12 +55,10 @@
         </div>
       </div>
 
-      <!-- Estado de carga -->
       <div v-if="cargando" class="loading-state">
         <p>🔄 Cargando pedidos...</p>
       </div>
 
-      <!-- Tabla de pedidos MEJORADA -->
       <div v-else class="table-container">
         <table class="users-table">
           <thead>
@@ -112,7 +108,6 @@
               <td><strong>${{ formatPrecio(pedido.total || pedido.total_calculado || 0) }}</strong></td>
               <td>{{ pedido.usuario_creador_nombre || 'Sistema' }}</td>
               <td class="action-buttons">
-                <!-- Ojo para ver detalle -->
                 <button 
                   @click="verDetallePedido(pedido.id)"
                   class="action-button info" 
@@ -120,7 +115,6 @@
                   👁️
                 </button>
                 
-                <!-- Lápiz para editar -->
                 <button 
                   v-if="pedido.estado === 'PENDIENTE'" 
                   @click="editarPedido(pedido)" 
@@ -129,7 +123,6 @@
                   ✏️
                 </button>
                 
-                <!-- Tacho para cancelar -->
                 <button 
                   v-if="pedido.puede_cancelar" 
                   @click="cancelarPedido(pedido)" 
@@ -138,9 +131,8 @@
                   🗑️
                 </button>
                 
-                <!-- Check para recibir - MEJORADO -->
                 <button 
-                  v-if="puedeRecibirPedido(pedido.estado)" 
+                  v-if="['CONFIRMADO', 'EN_CAMINO'].includes(pedido.estado)" 
                   @click="recibirPedido(pedido)" 
                   class="action-button receive" 
                   title="Recibir pedido"
@@ -160,12 +152,10 @@
         </div>
       </div>
 
-      <!-- Mostrando cantidad -->
       <div v-if="!cargando" class="usuarios-count">
         <p>📊 Mostrando {{ pedidosPaginados.length }} de {{ pedidosFiltrados.length }} pedidos</p>
       </div>
 
-      <!-- Paginación -->
       <div v-if="!cargando && pedidosFiltrados.length > 0" class="pagination">
         <button @click="paginaAnterior" :disabled="pagina === 1">← Anterior</button>
         <span>Página {{ pagina }} de {{ totalPaginas }}</span>
@@ -173,7 +163,6 @@
       </div>
     </div>
 
-    <!-- Modal de Detalle MEJORADO -->
     <div v-if="mostrarModalDetalle && pedidoSeleccionado" class="modal-overlay" @click.self="cerrarModal">
       <div class="modal-content">
         <button @click="cerrarModal" class="modal-close" title="Cerrar detalle">✖️</button>
@@ -187,7 +176,6 @@
           </div>
 
           <div class="pedido-detalle">
-            <!-- Información del pedido -->
             <div class="info-section" style="margin-bottom: 30px;">
               <h4 style="color: #0ea5e9; margin-bottom: 20px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">Información General</h4>
               <div class="info-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
@@ -214,7 +202,6 @@
               </div>
             </div>
 
-            <!-- Productos del pedido MEJORADO -->
             <div class="productos-section" v-if="pedidoSeleccionado.detalles && pedidoSeleccionado.detalles.length > 0">
               <h4 style="color: #0ea5e9; margin-bottom: 20px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">
                 Productos Solicitados ({{ pedidoSeleccionado.detalles.length }})
@@ -432,58 +419,79 @@ const editarPedido = (pedido) => {
   }
 }
 
-// Operaciones de estado
 const cancelarPedido = async (pedido) => {
-  const result = await Swal.fire({
-    title: '¿Cancelar Pedido?',
+  const { value: formValues } = await Swal.fire({
+    title: '🚫 Cancelar Pedido a Proveedor',
     html: `
-      <div style="text-align: left;">
-        <p><strong>Pedido #${pedido.id}</strong></p>
-        <p><strong>Proveedor:</strong> ${pedido.proveedor_nombre}</p>
-        <p><strong>Total:</strong> $${pedido.total || pedido.total_calculado || 0}</p>
-        <hr style="margin: 15px 0;">
-        <p style="color: #e53e3e; font-weight: bold;">
-          ⚠️ Esta acción no se puede deshacer
+      <div style="text-align: left; font-family: 'Inter', sans-serif;">
+        <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 15px;">
+          Atención: El pedido #${pedido.id} a <strong>${pedido.proveedor_nombre}</strong> será anulado.
         </p>
+        <label style="color: inherit; font-weight: 700; display: block; margin-bottom: 5px;">Motivo:</label>
+        <select id="swal-motivo" class="swal2-input" style="width: 100%; margin: 0 0 15px 0; background: transparent; color: inherit; border: 1px solid #334155; height: 44px; font-size: 16px;">
+          <option value="ERROR_ADMINISTRATIVO" style="color: #000;">Error administrativo en la orden</option>
+          <option value="AJUSTE_INVENTARIO" style="color: #000;">Ajuste interno / Stock ya no requerido</option>
+          <option value="INCUMPLIMIENTO_PLAZOS" style="color: #000;">Incumplimiento de plazos de entrega</option>
+          <option value="FALTA_DISPONIBILIDAD" style="color: #000;">Falta de disponibilidad confirmada por proveedor</option>
+          <option value="OTRO" style="color: #000;">Otros motivos operacionales</option>
+        </select>
+        <label style="color: inherit; font-weight: 700; display: block; margin-bottom: 5px;">Observaciones:</label>
+        <textarea id="swal-obs" class="swal2-textarea" style="width: 100%; margin: 0; background: transparent; color: inherit; border: 1px solid #334155; height: 80px;" placeholder="Explique brevemente..."></textarea>
       </div>
     `,
-    icon: 'warning',
+    focusConfirm: false,
     showCancelButton: true,
-    confirmButtonColor: '#d33',
-    cancelButtonColor: '#3085d6',
-    confirmButtonText: 'Sí, cancelar pedido',
-    cancelButtonText: 'Cancelar',
-    reverseButtons: true
-  })
-  
-  if (!result.isConfirmed) return
-  
+    confirmButtonText: 'Confirmar Cancelación',
+    cancelButtonText: 'Cerrar',
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#64748b',
+    background: document.documentElement.classList.contains('light-theme') ? '#ffffff' : '#1e293b',
+    color: document.documentElement.classList.contains('light-theme') ? '#0f172a' : '#ffffff',
+    preConfirm: () => {
+      return {
+        motivo: document.getElementById('swal-motivo').value,
+        obs: document.getElementById('swal-obs').value
+      }
+    }
+  });
+
+  if (!formValues) return;
+
   try {
-    cargando.value = true
-    // ✅ CORREGIDO: Ruta sin /usuarios/
-    await axios.post(`${API_BASE}/api/pedidos/${pedido.id}/cancelar/`)
+    cargando.value = true;
+    const token = localStorage.getItem('token');
+    
+    // Enviamos los datos al backend
+    await axios.post(`${API_BASE}/api/pedidos/${pedido.id}/cancelar/`, {
+      motivo: formValues.motivo,
+      observaciones: formValues.obs
+    }, {
+      headers: { 'Authorization': `Token ${token}` }
+    });
     
     Swal.fire({
       icon: 'success',
       title: 'Pedido Cancelado',
       text: 'El pedido se ha cancelado exitosamente',
       timer: 2000,
-      showConfirmButton: false
-    })
+      showConfirmButton: false,
+      background: document.documentElement.classList.contains('light-theme') ? '#ffffff' : '#1e293b',
+      color: document.documentElement.classList.contains('light-theme') ? '#0f172a' : '#ffffff',
+    });
     
-    await buscarPedidos()
+    await buscarPedidos();
   } catch (error) {
-    console.error('Error cancelando pedido:', error)
+    console.error('Error cancelando pedido:', error);
     Swal.fire({
       icon: 'error',
       title: 'Error',
       text: 'Error al cancelar el pedido',
       confirmButtonText: 'Entendido'
-    })
+    });
   } finally {
-    cargando.value = false
+    cargando.value = false;
   }
-}
+};
 
 const recibirPedido = async (pedido) => {
   console.log('🔄 Iniciando proceso de recepción para pedido:', pedido.id);

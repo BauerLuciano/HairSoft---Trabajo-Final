@@ -24,11 +24,40 @@
           </div>
         </header>
 
-        <div v-if="pedido.estado !== 'ENVIADO' && pedido.estado !== 'PENDIENTE'" class="banner-estado">
-          <div class="icon-check">✅</div>
-          <div>
-            <h3>Pedido Confirmado</h3>
-            <p>Ya hemos recibido tu respuesta para esta solicitud. ¡Muchas gracias!</p>
+        <div v-if="pedido.estado === 'COTIZADO'" class="banner-estado" style="background: #fffbeb; border-color: #f59e0b; color: #b45309;">
+          <div class="icon-check" style="font-size: 30px;">⏳</div>
+          <div style="margin-left: 15px;">
+            <h3 style="margin: 0 0 5px; color: #b45309;">Cotización en Evaluación</h3>
+            <p style="margin: 0; color: #78350f;">Hemos recibido tus precios y disponibilidad. El local te confirmará a la brevedad.</p>
+          </div>
+        </div>
+
+        <div v-else-if="pedido.estado === 'CONFIRMADO'" class="banner-estado" style="background: #ecfdf5; border-color: #10b981; flex-direction: column; align-items: flex-start;">
+          <div style="display: flex; align-items: center; gap: 15px; width: 100%;">
+            <div class="icon-check" style="font-size: 30px; color: #047857;">✅</div>
+            <div>
+              <h3 style="margin: 0 0 5px; color: #047857;">¡Tu presupuesto fue Aprobado!</h3>
+              <p style="margin: 0; color: #065f46;">Por favor, prepará la mercadería. Hacé clic en el botón de abajo cuando el transporte salga hacia el local.</p>
+            </div>
+          </div>
+          <button @click="marcarEnCamino" :disabled="enviando" style="margin-top: 20px; padding: 12px 24px; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; width: 100%; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3); transition: all 0.2s;">
+            🚚 {{ enviando ? 'Procesando...' : 'Marcar Pedido como "En Camino"' }}
+          </button>
+        </div>
+
+        <div v-else-if="pedido.estado === 'EN_CAMINO'" class="banner-estado" style="background: #eff6ff; border-color: #3b82f6;">
+          <div class="icon-check" style="font-size: 30px; color: #1d4ed8;">🚚</div>
+          <div style="margin-left: 15px;">
+            <h3 style="margin: 0 0 5px; color: #1d4ed8;">Pedido En Camino</h3>
+            <p style="margin: 0; color: #1e3a8a;">Gracias por avisarnos. Te esperamos en el local.</p>
+          </div>
+        </div>
+
+        <div v-else-if="['ENTREGADO', 'CANCELADO'].includes(pedido.estado)" class="banner-estado" style="background: #f1f5f9; border-color: #94a3b8;">
+          <div class="icon-check" style="font-size: 30px; color: #334155;">{{ pedido.estado === 'ENTREGADO' ? '📦' : '❌' }}</div>
+          <div style="margin-left: 15px;">
+            <h3 style="margin: 0 0 5px; color: #334155;">Pedido {{ pedido.estado }}</h3>
+            <p style="margin: 0; color: #475569;">{{ pedido.estado === 'ENTREGADO' ? 'La mercadería ya fue recibida en el local.' : 'Este pedido ha sido anulado por la administración.' }}</p>
           </div>
         </div>
 
@@ -213,6 +242,33 @@ const confirmarPedido = async () => {
     cargarPedido();
   } catch (err) {
     Swal.fire('Error', 'No se pudo guardar la respuesta.', 'error');
+  } finally {
+    enviando.value = false;
+  }
+};
+
+// NUEVA FUNCIÓN PARA MARCAR EN CAMINO
+const marcarEnCamino = async () => {
+  const result = await Swal.fire({
+    title: '¿Despachar Pedido?',
+    text: "Le avisaremos al local que la mercadería ya salió de tu depósito.",
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#3b82f6',
+    cancelButtonColor: '#64748b',
+    confirmButtonText: 'Sí, ya está en ruta',
+    cancelButtonText: 'Cancelar'
+  });
+
+  if (!result.isConfirmed) return;
+
+  enviando.value = true;
+  try {
+    await axios.post(`${API_URL}/externo/pedido/${token}/en-camino/`);
+    await Swal.fire('¡Aviso Enviado!', 'El local ya sabe que el pedido está en camino.', 'success');
+    cargarPedido(); // Refresca la vista para mostrar el banner azul
+  } catch (err) {
+    Swal.fire('Error', 'No se pudo actualizar el estado.', 'error');
   } finally {
     enviando.value = false;
   }
@@ -605,7 +661,7 @@ onMounted(() => { cargarPedido(); });
   cursor: not-allowed;
 }
 
-/* ─── BANNER CONFIRMADO ─────────────────────────────── */
+/* ─── BANNER ESTADOS ─────────────────────────────── */
 .banner-estado {
   margin: 36px 40px;
   background: #ecfdf5;
@@ -622,13 +678,11 @@ onMounted(() => { cargarPedido(); });
   margin: 0 0 4px;
   font-size: 1.05rem;
   font-weight: 800;
-  color: #065f46;
 }
 
 .banner-estado p {
   margin: 0;
   font-size: 0.93rem;
-  color: #047857;
 }
 
 .icon-check { font-size: 1.75rem; flex-shrink: 0; }

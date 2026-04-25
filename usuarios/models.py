@@ -8,6 +8,8 @@ from django.core.mail import get_connection, EmailMessage
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
 from django.apps import apps
+from django.db.models.signals import pre_save
+from django.dispatch import receiver
 from django.core.signing import Signer
 import secrets, time, threading, uuid, pytz
 
@@ -789,7 +791,8 @@ class Pedido(models.Model):
         ('PENDIENTE', 'Pendiente'),               
         ('ENVIADO', 'Enviado a Proveedor'),       
         ('COTIZADO', 'Cotizado por Proveedor'),   
-        ('CONFIRMADO', 'Confirmado por Proveedor'), 
+        ('CONFIRMADO', 'Confirmado por Proveedor'),
+        ('EN_CAMINO', 'En Camino / Despachado'),
         ('ENTREGADO', 'Recibido en Local'),       
         ('CANCELADO', 'Cancelado')
     ]
@@ -851,7 +854,7 @@ class Pedido(models.Model):
         Verifica si el pedido puede ser completado (recibido).
         El serializer busca este nombre exacto.
         """
-        return self.estado == 'CONFIRMADO'
+        return self.estado in ['CONFIRMADO', 'EN_CAMINO']
     
     def puede_ser_cancelado(self):
         return self.estado in ['PENDIENTE', 'ENVIADO', 'COTIZADO', 'CONFIRMADO']
@@ -1429,3 +1432,12 @@ class MovimientoCaja(models.Model):
     def __str__(self):
         estado = "Pendiente" if not self.sesion_caja else f"Caja {self.sesion_caja.id}"
         return f"{self.tipo} | {self.get_concepto_display()} | ${self.monto} ({estado})"
+
+def _disparar_correo_confirmacion(pedido):
+    """Función de ayuda para llamar a Celery sin romper si hay errores"""
+    try:
+        from usuarios.tasks import enviar_email_pedido_confirmado
+        enviar_email_pedido_confirmado.delay(pedido.id)
+        print(f"🚀 [SIGNAL] Tarea de email de aprobación enviada a Celery para el pedido {pedido.id}")
+    except Exception as e:
+        print(f"⚠️ [SIGNAL] Error al llamar a Celery: {e}")

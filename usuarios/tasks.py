@@ -1,5 +1,6 @@
 from celery import shared_task
 from django.utils import timezone
+from django.core.mail import send_mail
 from datetime import datetime, timedelta
 import logging
 import time
@@ -538,3 +539,156 @@ def procesar_alertas_stock_proveedores(producto_id):
 
     except Producto.DoesNotExist:
         logger.error("❌ Producto no encontrado")
+
+#cancelar pedido a proveedor
+@shared_task
+def enviar_email_cancelacion_proveedor(pedido_id, motivo_texto, observaciones):
+    try:
+        from usuarios.models import Pedido 
+        
+        pedido = Pedido.objects.get(id=pedido_id)
+        proveedor = pedido.proveedor
+        
+        if not proveedor.email:
+            return f"Pedido {pedido_id} cancelado, pero el proveedor {proveedor.nombre} no tiene email cargado."
+            
+        asunto = f"🚨 Pedido CANCELADO #{pedido.id} | HairSoft"
+        
+        # Armamos la lista de productos en HTML
+        productos_html = ""
+        for detalle in pedido.detalles.all():
+            productos_html += f"""
+            <tr>
+                <td style="padding: 8px 0; border-bottom: 1px solid #fecaca; color: #7f1d1d; font-size: 14px;">
+                    <strong>{detalle.cantidad}x</strong> {detalle.producto.nombre}
+                </td>
+            </tr>
+            """
+        
+        # Email HTML con el detalle de productos
+        mensaje_html = f"""
+        <!DOCTYPE html>
+        <html lang="es">
+        <body style="margin: 0; padding: 0; background-color: #fef2f2; font-family: 'Segoe UI', Tahoma, sans-serif;">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="padding: 40px 0;">
+                <tr>
+                    <td align="center">
+                        <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 16px; overflow: hidden; border-top: 6px solid #ef4444; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
+                            <tr>
+                                <td style="padding: 40px;">
+                                    <h2 style="color: #111827; margin-top: 0; font-size: 22px;">Aviso Importante, {proveedor.nombre}</h2>
+                                    <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">
+                                        Te informamos que el pedido de mercadería <strong>#{pedido.id}</strong> ha sido <strong>anulado</strong> desde nuestra administración.
+                                    </p>
+                                    
+                                    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; margin-top: 20px;">
+                                        <tr>
+                                            <td style="padding: 20px;">
+                                                <p style="margin: 0; color: #991b1b; font-size: 13px; text-transform: uppercase; font-weight: bold;">Motivo de Cancelación</p>
+                                                <p style="margin: 5px 0 15px; color: #7f1d1d; font-size: 16px; font-weight: bold;">{motivo_texto}</p>
+                                                
+                                                <p style="margin: 0; color: #991b1b; font-size: 13px; text-transform: uppercase; font-weight: bold;">Observaciones Adicionales</p>
+                                                <p style="margin: 5px 0 15px; color: #7f1d1d; font-size: 15px;">{observaciones}</p>
+                                                
+                                                <p style="margin: 0 0 10px 0; color: #991b1b; font-size: 13px; text-transform: uppercase; font-weight: bold;">Productos Cancelados</p>
+                                                <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                                    {productos_html}
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                    
+                                    <p style="color: #4b5563; font-size: 15px; margin-top: 30px;">
+                                        Por favor, <strong>desestimar el armado o envío</strong> de este pedido. Disculpá los inconvenientes ocasionados.
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+        
+        # Actualizamos el texto plano también
+        productos_texto = "\n".join([f"- {d.cantidad}x {d.producto.nombre}" for d in pedido.detalles.all()])
+        mensaje_plano = f"El pedido #{pedido.id} ha sido cancelado.\nMotivo: {motivo_texto}\nObservaciones: {observaciones}\n\nProductos:\n{productos_texto}"
+        
+        send_mail(
+            subject=asunto,
+            message=mensaje_plano,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[proveedor.email],
+            html_message=mensaje_html,
+            fail_silently=False,
+        )
+        return f"Email de cancelación enviado a {proveedor.email}"
+        
+    except Exception as e:
+        return f"Error enviando email de cancelación: {str(e)}"
+    
+@shared_task
+def enviar_email_pedido_confirmado(pedido_id):
+    try:
+        from usuarios.models import Pedido
+        pedido = Pedido.objects.get(id=pedido_id)
+        proveedor = pedido.proveedor
+        
+        if not proveedor.email:
+            return "El proveedor no tiene email."
+            
+        link = f"http://localhost:5173/externo/pedido/{pedido.token}"
+        asunto = f"✅ Presupuesto APROBADO - Pedido #{pedido.id} | HairSoft"
+        
+        mensaje_html = f"""
+        <!DOCTYPE html>
+        <html lang="es">
+        <body style="margin: 0; padding: 0; background-color: #f0fdf4; font-family: 'Segoe UI', Tahoma, sans-serif;">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="padding: 40px 0;">
+                <tr>
+                    <td align="center">
+                        <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 16px; overflow: hidden; border-top: 6px solid #10b981; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
+                            <tr>
+                                <td style="padding: 40px;">
+                                    <h2 style="color: #065f46; margin-top: 0; font-size: 22px;">¡Excelentes noticias, {proveedor.nombre}!</h2>
+                                    <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">
+                                        Hemos evaluado tu cotización para el pedido <strong>#{pedido.id}</strong> y ha sido <strong>APROBADA</strong>.
+                                    </p>
+                                    <p style="color: #4b5563; font-size: 16px; margin-bottom: 30px;">
+                                        Por favor, procedé con el armado de la mercadería. Una vez que el transporte o flete salga hacia nuestro local, te pedimos que nos avises haciendo clic en el siguiente botón:
+                                    </p>
+                                    
+                                    <div style="text-align: center; margin: 30px 0;">
+                                        <a href="{link}" style="background-color: #10b981; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block;">
+                                            🚚 Avisar que el pedido está En Camino
+                                        </a>
+                                    </div>
+                                    
+                                    <p style="margin-top: 30px; font-size: 13px; color: #9ca3af; text-align: center;">
+                                        Si el botón no funciona, copiá y pegá este enlace:<br>
+                                        <a href="{link}" style="color: #10b981;">{link}</a>
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+        
+        mensaje_plano = f"Tu presupuesto para el pedido #{pedido.id} fue aprobado. Por favor, ingresá aquí para avisarnos cuando lo despaches: {link}"
+        
+        send_mail(
+            subject=asunto,
+            message=mensaje_plano,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[proveedor.email],
+            html_message=mensaje_html,
+            fail_silently=False,
+        )
+        return f"Email de aprobación enviado a {proveedor.email}"
+    except Exception as e:
+        return f"Error enviando email de aprobación: {str(e)}"

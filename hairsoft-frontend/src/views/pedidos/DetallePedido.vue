@@ -14,13 +14,6 @@
           >
             <Truck :size="18" /> Recibir Mercadería
           </button>
-          <button 
-            v-if="pedido && pedido.puede_cancelar" 
-            @click="cancelarPedido" 
-            class="action-button delete"
-          >
-            <X :size="18" /> Cancelar
-          </button>
           <button @click="$router.push('/pedidos')" class="btn-volver">
             <ChevronLeft :size="18" /> Volver
           </button>
