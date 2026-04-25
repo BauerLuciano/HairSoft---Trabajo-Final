@@ -391,72 +391,94 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
         pedido = self.get_object()
         nuevo_estado = request.data.get('estado')
         repartidor = request.data.get('repartidor')
-        
-        motivo = request.data.get('motivo_cancelacion')
-        observacion = request.data.get('obs_cancelacion')
-        
-        if not (request.user.rol and request.user.rol.nombre in ['Administrador', 'Recepcionista']):
-             return Response({'error': 'No tienes permisos'}, status=status.HTTP_403_FORBIDDEN)
+        motivo_cancelacion = request.data.get('motivo_cancelacion')
+        obs_cancelacion = request.data.get('obs_cancelacion')
 
-        if nuevo_estado == 'CANCELADO' and pedido.estado != 'CANCELADO':
-            with transaction.atomic():
-                # 1. Devolver stock al inventario
-                for detalle in pedido.detalles.all():
-                    detalle.producto.stock_actual += detalle.cantidad
-                    detalle.producto.save()
-                
-                # 2. REEMBOLSO MERCADO PAGO Y MOVIMIENTO DE CAJA 💸
-                if pedido.mp_payment_id:
-                    from .mercadopago_service import MercadoPagoService 
+        if not nuevo_estado:
+            return Response({"error": "Estado no proporcionado"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 🔥 LÓGICA DE CANCELACIÓN Y REEMBOLSO 🔥
+        if nuevo_estado == 'CANCELADO':
+            if pedido.estado == 'CANCELADO':
+                return Response({"error": "El pedido ya está cancelado."}, status=status.HTTP_400_BAD_REQUEST)
+
+            from .models import SesionCaja, MovimientoCaja
+            sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+            if not sesion_abierta:
+                return Response(
+                    {"error": "Debe abrir una caja antes de procesar una cancelación y un reembolso."}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            reembolso_exitoso = False
+            mensaje_obs_final = obs_cancelacion or 'Cancelación aprobada por administrador'
+
+            # 1. Intentar hacer el reembolso en Mercado Pago
+            if pedido.mp_payment_id:
+                try:
+                    from .mercadopago_service import MercadoPagoService
                     mp_service = MercadoPagoService()
-                    resultado_reembolso = mp_service.devolver_pago(pedido.mp_payment_id)
+                    respuesta_mp = mp_service.reembolsar_pago(pedido.mp_payment_id)
                     
-                    if not resultado_reembolso.get('success'):
-                        return Response({
-                            'error': f"No se pudo reembolsar en MP. Motivo: {resultado_reembolso.get('error')}"
-                        }, status=status.HTTP_400_BAD_REQUEST)
-                    
-                    nota_mp = f"[Reembolso OK: {resultado_reembolso.get('refund_id')}]"
-                    observacion = f"{observacion} | {nota_mp}" if observacion else nota_mp
+                    if respuesta_mp.get("status") in ["approved", "refunded", "pending"]:
+                        mensaje_obs_final = "Reembolso automático realizado con éxito en Mercado Pago."
+                        reembolso_exitoso = True
+                    else:
+                        mensaje_obs_final = f"Reembolso automático omitido (Sandbox/Credenciales). Se requiere devolución manual."
+                        
+                except Exception as e:
+                    mensaje_obs_final = f"Entorno de Prueba: Reembolso omitido. Se requiere devolución manual."
 
-                    # 🔥 ACÁ REGISTRAMOS EL EGRESO EN TU MÓDULO DE CAJA
-                    from .models import SesionCaja, MovimientoCaja # Ajustá el import si están en otra app
-                    
-                    # Buscamos si hay alguna caja abierta en el local
-                    sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
-                    
-                    MovimientoCaja.objects.create(
-                        sesion_caja=sesion_abierta, 
-                        tipo='EGRESO',
-                        metodo_pago='MERCADO_PAGO',
-                        concepto='PEDIDO_WEB',
-                        monto=pedido.total,
-                        descripcion=f"Reembolso por cancelación Pedido Web #{pedido.id}"
-                    )
-                    print(f"💸 Egreso registrado en caja por ${pedido.total} (Reembolso MP)")
+            # 2. Cancelamos, devolvemos stock y egresamos de caja
+            with transaction.atomic():
+                for detalle in pedido.detalles.all():
+                    producto = detalle.producto
+                    if producto:
+                        from .models import HistorialStock
+                        stock_anterior = producto.stock_actual
+                        producto.stock_actual += detalle.cantidad
+                        producto.save()
 
-                # 3. Guardar motivos
-                pedido.motivo_cancelacion = motivo
-                if pedido.obs_cancelacion and observacion and "SOLICITUD DE CLIENTE" in pedido.obs_cancelacion:
-                    pedido.obs_cancelacion = f"{pedido.obs_cancelacion} || ADMIN: {observacion}"
-                else:
-                    pedido.obs_cancelacion = observacion
-                    
-                print(f"🚫 Pedido #{pedido.id} cancelado por: {motivo}")
+                        HistorialStock.objects.create(
+                            producto=producto,
+                            cantidad_anterior=stock_anterior,
+                            cantidad_nueva=producto.stock_actual,
+                            motivo=f"Reingreso por Pedido Web Cancelado (#{pedido.id})",
+                            usuario=request.user,
+                            tipo_ajuste='DEVOLUCION'
+                        )
 
-        if repartidor:
+                # 💵 REGISTRAR EGRESO DE CAJA
+                # 🔥 CORREGIDO: pedido.cliente.nombre en lugar de pedido.cliente_nombre
+                nombre_cliente = pedido.cliente.nombre if pedido.cliente else "Cliente Web"
+                
+                MovimientoCaja.objects.create(
+                    sesion_caja=sesion_abierta,
+                    tipo='EGRESO',
+                    metodo_pago='MERCADO_PAGO' if pedido.mp_payment_id else 'EFECTIVO',
+                    concepto='DEVOLUCION',
+                    monto=pedido.total,
+                    descripcion=f"Devolución Pedido Web #{pedido.id} ({nombre_cliente})"
+                )
+
+                pedido.estado = 'CANCELADO'
+                pedido.motivo_cancelacion = motivo_cancelacion or 'Solicitud de Cliente'
+                pedido.obs_cancelacion = mensaje_obs_final
+                pedido.save()
+
+            return Response({
+                "message": "Pedido cancelado.", 
+                "reembolso_exitoso": reembolso_exitoso
+            })
+
+        # --- Lógica para el resto de los estados ---
+        if nuevo_estado == 'EN_CAMINO':
             pedido.datos_entrega_interna = repartidor
-            print(f"📦 Asignando repartidor: {repartidor} al pedido {pedido.id}")
-
+        
         pedido.estado = nuevo_estado
         pedido.save()
-        
-        return Response({
-            'status': 'Estado actualizado', 
-            'nuevo_estado': pedido.get_estado_display(),
-            'repartidor': pedido.datos_entrega_interna,
-            'motivo': motivo
-        })
+
+        return Response({"message": f"Estado actualizado a {nuevo_estado}"})
     
 class SillaViewSet(viewsets.ModelViewSet):
     queryset = Silla.objects.all().order_by('orden')

@@ -22,6 +22,7 @@
               type="text" 
               placeholder="Ingresa tu nombre" 
               @blur="validarNombre"
+              @input="formatearNombre"
               :class="{ 'error': errores.nombre }"
               autocomplete="off"
               name="new_user_name_hs"
@@ -44,6 +45,7 @@
               type="text" 
               placeholder="Ingresa tu apellido" 
               @blur="validarApellido"
+              @input="formatearApellido"
               :class="{ 'error': errores.apellido }"
               autocomplete="off"
               name="new_user_lastname_hs"
@@ -209,7 +211,6 @@ import Swal from 'sweetalert2'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
-// Ajustá si tu puerto es diferente
 const API_BASE = 'http://127.0.0.1:8000' 
 
 const cargando = ref(false)
@@ -236,32 +237,60 @@ onMounted(async () => {
 
 const cargarUsuariosExistentes = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/usuarios/`) 
-    usuariosExistentes.value = res.data
+    const res = await axios.get(`${API_BASE}/api/usuarios/`) 
+    // DRF a veces manda { results: [...] } si hay paginación, o el array directo
+    const data = res.data.results || res.data
+    usuariosExistentes.value = Array.isArray(data) ? data : []
   } catch (error) {
-    console.warn('No se pudo cargar lista de usuarios (posiblemente requiere auth)', error)
+    console.warn('No se pudo cargar la lista de validación. Se validará en el servidor.')
+    usuariosExistentes.value = []
   }
 }
 
 const obtenerRolCliente = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/usuarios/api/roles/`)
-    const rol = res.data.find(r => r.nombre.toLowerCase().includes('cliente'))
+    const res = await axios.get(`${API_BASE}/api/roles/`)
+    let roles = []
+    
+    if (Array.isArray(res.data)) {
+      roles = res.data
+    } else if (res.data && Array.isArray(res.data.results)) {
+      roles = res.data.results
+    } else {
+      console.error('La API de roles no devolvió un formato reconocido:', res.data)
+      return
+    }
+
+    const rol = roles.find(r => r.nombre.toLowerCase().includes('cliente'))
+    
     if (rol) {
       idRolCliente.value = rol.id
+      console.log("Rol cliente asignado:", idRolCliente.value)
     } else {
-      Swal.fire('Error', 'No se encontró el rol CLIENTE en el sistema.', 'error')
+      console.warn('No se encontró un rol que contenga la palabra "cliente" en la lista.')
     }
   } catch (error) {
-    console.error('Error cargando roles:', error)
+    console.error('Error cargando roles desde la API:', error)
   }
 }
 
-// --- VALIDACIONES ---
-const formatearDNI = () => { form.value.dni = form.value.dni.replace(/\D/g, '').slice(0, 8) }
+// --- FORMATEOS EN TIEMPO REAL (BLOQUEO DE TECLAS) ---
+const formatearNombre = () => {
+  // Solo letras y espacios
+  form.value.nombre = String(form.value.nombre).replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]/g, '')
+}
+
+const formatearApellido = () => {
+  // Solo letras y espacios
+  form.value.apellido = String(form.value.apellido).replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]/g, '')
+}
+
+const formatearDNI = () => { 
+  form.value.dni = String(form.value.dni).replace(/\D/g, '').slice(0, 8) 
+}
 
 const formatearTelefono = () => {
-  let tel = form.value.telefono.replace(/\D/g, '')
+  let tel = String(form.value.telefono).replace(/\D/g, '')
   if (tel.length === 0) { form.value.telefono = ''; return }
   
   if (tel.startsWith('549')) form.value.telefono = '+54 ' + tel.slice(2)
@@ -276,22 +305,23 @@ const formatearTelefono = () => {
   }
 }
 
+// --- VALIDACIONES ---
 const validarUnico = (campo, valor) => {
-  if (!usuariosExistentes.value.length) return true 
-  return !usuariosExistentes.value.some(u => u[campo] === valor)
+  if (!Array.isArray(usuariosExistentes.value) || !usuariosExistentes.value.length) return true 
+  return !usuariosExistentes.value.some(u => String(u[campo]) === String(valor))
 }
 
 const validarNombre = () => {
   const v = form.value.nombre.trim()
   if (!v) errores.value.nombre = "Requerido"
-  else if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]{2,50}$/.test(v)) errores.value.nombre = "Solo letras"
+  else if (v.length < 2) errores.value.nombre = "Muy corto"
   else errores.value.nombre = ""
 }
 
 const validarApellido = () => {
   const v = form.value.apellido.trim()
   if (!v) errores.value.apellido = "Requerido"
-  else if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]{2,50}$/.test(v)) errores.value.apellido = "Solo letras"
+  else if (v.length < 2) errores.value.apellido = "Muy corto"
   else errores.value.apellido = ""
 }
 
@@ -338,9 +368,20 @@ const validarFormulario = () => {
 }
 
 const crearUsuario = async () => {
-  if (!validarFormulario()) return
+  // Si no valida, avisamos por qué no hace nada
+  if (!validarFormulario()) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Datos inválidos',
+      text: 'Por favor, revisá los campos en rojo.',
+      background: '#1e293b', color: '#f1f5f9'
+    })
+    return
+  }
+
   if (!idRolCliente.value) {
-    Swal.fire('Error', 'No se pudo asignar el rol de cliente.', 'error')
+    Swal.fire('Error', 'No se pudo asignar el rol de cliente. Reintentá en un momento.', 'error')
+    await obtenerRolCliente() // Reintenta cargar el rol
     return
   }
 
@@ -363,7 +404,7 @@ const crearUsuario = async () => {
       estado: 'ACTIVO'
     }
 
-    await axios.post(`${API_BASE}/usuarios/api/usuarios/crear/`, payload)
+    await axios.post(`${API_BASE}/api/usuarios/crear/`, payload)
 
     await Swal.fire({
       icon: 'success',
@@ -377,13 +418,17 @@ const crearUsuario = async () => {
     router.push('/login')
 
   } catch (err) {
-    console.error(err)
-    let msg = err.response?.data?.error || err.response?.data?.message || 'Error al registrarse'
-    if (msg.includes('dni')) errores.value.dni = "DNI ya registrado"
-    if (msg.includes('correo')) errores.value.correo = "Correo ya registrado"
+    console.error("Error API:", err.response?.data)
+    const data = err.response?.data || {}
+    
+    // Si el backend detecta duplicados que el front no vio
+    if (data.dni) errores.value.dni = "DNI ya registrado"
+    if (data.correo) errores.value.correo = "Correo ya registrado"
 
+    let msg = data.error || data.message || data.detail || 'Error al registrarse'
+    
     Swal.fire({ 
-      icon: 'error', title: 'Error', text: msg,
+      icon: 'error', title: 'Error', text: typeof msg === 'string' ? msg : 'Error de validación',
       background: '#1e293b', color: '#f1f5f9'
     })
   } finally {

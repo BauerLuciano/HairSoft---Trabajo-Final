@@ -95,7 +95,7 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     apellido = models.CharField(max_length=50)
     dni = models.CharField(max_length=20, unique=True)
     contrasena = models.CharField(max_length=128)
-    telefono = models.CharField(max_length=20)
+    telefono = models.CharField(max_length=20, blank=True, null=True)
     correo = models.EmailField(unique=True)
     
     is_active = models.BooleanField(default=True)

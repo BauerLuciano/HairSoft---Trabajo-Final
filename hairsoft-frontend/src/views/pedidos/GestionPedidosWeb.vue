@@ -180,7 +180,6 @@ const cargarPedidos = async () => {
   }
 };
 
-// 🔥 MODIFICADO: Agregamos parámetros para saltear el modal si viene del cliente
 const cambiarEstado = async (pedido, nuevoEstado, skipModal = false, motivoAuto = '', obsAuto = '') => {
   let repartidor = '';
   let motivoCancelacion = motivoAuto;
@@ -203,7 +202,7 @@ const cambiarEstado = async (pedido, nuevoEstado, skipModal = false, motivoAuto 
       repartidor = nombre || 'Moto Mandado'; 
   }
 
-  // 🚫 CASO 2: CANCELACIÓN CON MOTIVOS (NUEVO)
+  // 🚫 CASO 2: CANCELACIÓN CON MOTIVOS
   if (nuevoEstado === 'CANCELADO' && !skipModal) {
     const { value: formValues } = await Swal.fire({
       title: '🚫 Cancelar Pedido Web',
@@ -239,11 +238,10 @@ const cambiarEstado = async (pedido, nuevoEstado, skipModal = false, motivoAuto 
       }
     });
 
-    if (!formValues) return; // Canceló el modal
+    if (!formValues) return;
     motivoCancelacion = formValues.motivo;
     obsCancelacion = formValues.obs;
   } else if (!skipModal) {
-    // Confirmación simple para otros estados
     const result = await Swal.fire({
       title: '¿Confirmar cambio?',
       text: `Pasar pedido #${pedido.id} al estado: ${nuevoEstado}`,
@@ -259,7 +257,7 @@ const cambiarEstado = async (pedido, nuevoEstado, skipModal = false, motivoAuto 
   // Ejecutar petición
   try {
     const token = localStorage.getItem('token');
-    await axios.post(`${API_URL}${pedido.id}/cambiar_estado/`, 
+    const response = await axios.post(`${API_URL}${pedido.id}/cambiar_estado/`, 
       { 
         estado: nuevoEstado, 
         repartidor: repartidor,
@@ -268,25 +266,50 @@ const cambiarEstado = async (pedido, nuevoEstado, skipModal = false, motivoAuto 
       },
       { headers: { 'Authorization': `Token ${token}` } }
     );
-    Swal.fire({ title: '¡Éxito!', icon: 'success', timer: 1000, showConfirmButton: false });
+    
+    // 🔥 LÓGICA DE ALERTAS MEJORADA 🔥
+    if (nuevoEstado === 'CANCELADO') {
+      if (response.data.reembolso_exitoso) {
+        Swal.fire({ 
+          title: '¡Reembolso Exitoso!', 
+          text: 'Se devolvió el dinero por Mercado Pago y el pedido fue anulado.', 
+          icon: 'success', 
+          background: '#1e293b', color: '#fff' 
+        });
+      } else {
+        Swal.fire({ 
+          title: '¡Pedido Anulado!', 
+          html: `El pedido fue cancelado y el stock repuesto correctamente.<br><br><span style="color:#fbbf24;"></span>`, 
+          icon: 'info', 
+          background: '#1e293b', color: '#fff' 
+        });
+      }
+    } else {
+      Swal.fire({ title: '¡Éxito!', icon: 'success', timer: 1000, showConfirmButton: false });
+    }
+    
     cargarPedidos();
   } catch (e) {
-    // Si viene error de Mercado Pago desde el backend, lo mostramos
     const errorMsg = e.response?.data?.error || 'No se pudo actualizar el pedido.';
-    Swal.fire('Error', errorMsg, 'error');
+    Swal.fire({ title: 'Error', text: errorMsg, icon: 'error', background: '#1e293b', color: '#fff' });
   }
 };
 
-// 🔥 NUEVA FUNCIÓN: Aprobar directamente la solicitud del cliente
+// 🔥 NUEVA FUNCIÓN MEJORADA: Aprobar cancelación mostrando datos de MP
 const aprobarCancelacionCliente = async (pedido) => {
   const result = await Swal.fire({
     title: 'Aprobar Cancelación',
     html: `
-      <p style="color: #cbd5e1; font-size: 0.95rem;">El cliente solicitó cancelar este pedido con el siguiente motivo:</p>
-      <div style="background: rgba(239, 68, 68, 0.1); padding: 12px; border-radius: 8px; border: 1px dashed #ef4444; margin: 15px 0;">
-        <span style="color: #fca5a5; font-style: italic;">"${pedido.obs_cancelacion}"</span>
+      <div style="text-align: left; background: rgba(15, 23, 42, 0.6); padding: 15px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 15px;">
+        <p style="margin: 0 0 8px 0; color: #f8fafc;"><strong>Cliente:</strong> ${pedido.cliente_nombre}</p>
+        <p style="margin: 0 0 8px 0; color: #f8fafc;"><strong>ID Mercado Pago:</strong> ${pedido.mp_payment_id || 'Sin registro MP'}</p>
+        <p style="margin: 0; color: #10b981; font-size: 1.2rem; font-weight: bold;">Monto a devolver: $${Number(pedido.total).toLocaleString('es-AR')}</p>
       </div>
-      <p style="color: #f8fafc; font-weight: bold;">¿Deseas aprobarla y realizar el reembolso en Mercado Pago?</p>
+      <p style="color: #cbd5e1; font-size: 0.95rem;">El cliente solicitó cancelar con este motivo:</p>
+      <div style="background: rgba(239, 68, 68, 0.1); padding: 12px; border-radius: 8px; border: 1px dashed #ef4444; margin: 15px 0;">
+        <span style="color: #fca5a5; font-style: italic;">"${pedido.obs_cancelacion || 'Sin motivo especificado'}"</span>
+      </div>
+      <p style="color: #f8fafc; font-weight: bold;">¿Deseas aprobarla y realizar el reembolso automático?</p>
     `,
     icon: 'warning',
     showCancelButton: true,
@@ -299,13 +322,13 @@ const aprobarCancelacionCliente = async (pedido) => {
   });
 
   if (result.isConfirmed) {
-    Swal.fire({ title: 'Procesando Reembolso...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    Swal.fire({ title: 'Procesando Reembolso...', text: 'Conectando con Mercado Pago...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     await cambiarEstado(
       pedido, 
       'CANCELADO', 
       true, 
       'SOLICITUD_CLIENTE', 
-      'Reembolso aprobado por administrador'
+      'Reembolso procesado por administrador a través de Mercado Pago'
     );
   }
 };
@@ -411,7 +434,7 @@ const getEstadoClass = (e) => {
     'EN_CAMINO': 'estado-success', 
     'ENTREGADO': 'estado-completado', 
     'CANCELADO': 'estado-cancelado',
-    'SOLICITA_CANCELACION': 'estado-solicitud' // 🔥 NUEVO COLOR
+    'SOLICITA_CANCELACION': 'estado-solicitud'
   };
   return mapa[e] || 'estado-secondary';
 };

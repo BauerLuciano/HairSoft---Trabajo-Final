@@ -230,6 +230,7 @@ const cambiarEstadoMarca = async (marca) => {
     showCancelButton: true,
     confirmButtonColor: '#007bff',
     cancelButtonColor: '#d33',
+    cancelButtonText: 'Cancelar',
     confirmButtonText: 'Sí, confirmar'
   })
 

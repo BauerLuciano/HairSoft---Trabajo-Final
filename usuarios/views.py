@@ -823,15 +823,14 @@ def ajustar_stock_manual(request, producto_id):
         
         Producto.objects.filter(id=producto.id).update(stock_actual=int(nuevo_stock))
 
-        from .models import HistorialStock, Auditoria 
-        
+        # Guardamos en HistorialStock (Ajuste Manual)
         HistorialStock.objects.create(
             producto=producto,
             cantidad_anterior=stock_anterior,
             cantidad_nueva=int(nuevo_stock),
             motivo=motivo,
             usuario=request.user,
-            tipo_ajuste='AJUSTE_MANUAL'
+            tipo_ajuste='AJUSTE_MANUAL'  # <-- Guardamos el tipo
         )
 
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
@@ -850,6 +849,7 @@ def ajustar_stock_manual(request, producto_id):
             },
             ip_address=ip
         )
+        
         try:
             from .tasks import procesar_alertas_stock_proveedores 
             
@@ -1906,14 +1906,14 @@ def actualizar_pago_turno(request, turno_id):
 def modificar_turno(request, turno_id):
     """
     Modifica un turno existente.
-    CORRECCIÓN: Transacción Atómica. Si MP falla, se deshace todo para no dejar turnos "rotos".
+    CORRECCIÓN: El administrador puentea las reglas estrictas de penalidad del TurnoService.
     """
     import json
     from datetime import datetime
     from rest_framework.authtoken.models import Token
     from django.core.exceptions import ValidationError as DjangoValidationError
     from rest_framework.exceptions import ValidationError as DRFValidationError
-    from django.db import transaction # 🔥 LA CAJA FUERTE
+    from django.db import transaction 
     from .models import Turno, Usuario, Servicio
     from .turno_service import TurnoService
 
@@ -1935,12 +1935,14 @@ def modificar_turno(request, turno_id):
         
         data = json.loads(request.body)
         
-        # 🔥 ABRIMOS LA CAJA FUERTE: Si algo falla acá adentro, se deshace TODO en la BD
         with transaction.atomic():
             turno = Turno.objects.get(pk=turno_id)
             
-            # 2. Validar Reglas de Negocio
-            if hasattr(turno, 'puede_ser_modificado'):
+            # 🔥 CORRECCIÓN BACKEND: Detectamos si el que modifica es el STAFF / ADMIN
+            es_admin = user.is_staff or (user.rol and user.rol.nombre.upper() in ['ADMINISTRADOR', 'RECEPCIONISTA'])
+
+            # 2. Validar Reglas de Negocio (Solo para clientes, los Admins son Dios)
+            if not es_admin and hasattr(turno, 'puede_ser_modificado'):
                 puede, tiene_penalidad, mensaje = turno.puede_ser_modificado() 
                 if not puede:
                    return JsonResponse({'error': mensaje}, status=400)
@@ -1978,72 +1980,97 @@ def modificar_turno(request, turno_id):
                 )
                 if not disponible:
                     return JsonResponse({'error': 'El peluquero no está disponible en ese horario'}, status=400)
-            
-            # 5. Preparar datos para el Service
-            nuevos_datos = {
-                'fecha': nueva_fecha,
-                'hora': nueva_hora,
-                'peluquero': Usuario.objects.get(pk=nuevo_peluquero_id),
-                'cliente': turno.cliente,
-                'servicios': Servicio.objects.filter(pk__in=nuevos_servicios_ids) if nuevos_servicios_ids is not None else turno.servicios.all(),
-                'canal': 'WEB' if request.path.startswith('/api/') else turno.canal, 
-                'tipo_pago': nuevo_tipo_pago,
-                'medio_pago': nuevo_medio_pago,
-                'entidad_pago': nueva_entidad_pago,
-                'codigo_transaccion': nuevo_codigo_transaccion,
-                'monto_total': data.get('monto_total', turno.monto_total),
-                'duracion_total': data.get('duracion_total', turno.duracion_total),
-                'cup_codigo': data.get('cup_codigo')
-            }
 
-            try:
-                exito, mensaje_service, nuevo_turno = TurnoService.modificar_turno(turno_id, nuevos_datos, user)
-                if not exito:
-                    transaction.set_rollback(True) # Falla algo, rebobinamos
-                    return JsonResponse({'error': mensaje_service}, status=400)
-            except (DjangoValidationError, DRFValidationError) as ve:
-                transaction.set_rollback(True) # Falla algo, rebobinamos
-                error_msg = ve.detail.get('error') if hasattr(ve, 'detail') and isinstance(ve.detail, dict) else str(ve.message if hasattr(ve, 'message') else ve)
-                if isinstance(error_msg, list): error_msg = error_msg[0]
-                return JsonResponse({'error': error_msg}, status=400)
+            # 🔥 SI ES ADMIN: Modificamos directo para evitar que TurnoService lo cancele por llegar tarde
+            if es_admin:
+                turno.fecha = nueva_fecha
+                turno.hora = nueva_hora
+                turno.peluquero_id = nuevo_peluquero_id
+                
+                # Actualizamos los montos (que pueden subir si agregó servicios)
+                turno.monto_total = data.get('monto_total', turno.monto_total)
+                turno.duracion_total = data.get('duracion_total', turno.duracion_total)
+                turno.silla_id = data.get('silla', turno.silla_id)
+                
+                # Los pagos se mantienen o se actualizan según lo que mandó el frontend
+                turno.tipo_pago = nuevo_tipo_pago
+                turno.medio_pago = nuevo_medio_pago
+                turno.entidad_pago = nueva_entidad_pago
+                
+                if nuevo_codigo_transaccion:
+                    turno.codigo_transaccion = nuevo_codigo_transaccion
+                    
+                if nuevos_servicios_ids:
+                    servicios_obj = Servicio.objects.filter(pk__in=nuevos_servicios_ids)
+                    turno.servicios.set(servicios_obj)
+                    
+                turno.save()
+                nuevo_turno = turno
+                mensaje_service = "Turno actualizado exitosamente por Administración."
+                mp_data = None
 
-            # 6. 🔥 MERCADO PAGO 
-            mp_data = None
-            es_modificacion_tarde = "Fuera de término" in mensaje_service
-            
-            if es_modificacion_tarde and nuevo_turno.medio_pago == 'MERCADO_PAGO':
+            else:
+                # SI ES CLIENTE: Sigue pasando por las reglas de TurnoService
+                nuevos_datos = {
+                    'fecha': nueva_fecha,
+                    'hora': nueva_hora,
+                    'peluquero': Usuario.objects.get(pk=nuevo_peluquero_id),
+                    'cliente': turno.cliente,
+                    'servicios': Servicio.objects.filter(pk__in=nuevos_servicios_ids) if nuevos_servicios_ids is not None else turno.servicios.all(),
+                    'canal': turno.canal, 
+                    'tipo_pago': nuevo_tipo_pago,
+                    'medio_pago': nuevo_medio_pago,
+                    'entidad_pago': nueva_entidad_pago,
+                    'codigo_transaccion': nuevo_codigo_transaccion,
+                    'monto_total': data.get('monto_total', turno.monto_total),
+                    'duracion_total': data.get('duracion_total', turno.duracion_total),
+                    'cup_codigo': data.get('cup_codigo')
+                }
+
                 try:
-                    from .mercadopago_service import MercadoPagoService
-                    
-                    monto_total_float = float(nuevo_turno.monto_total or 0)
-                    monto_a_cobrar = monto_total_float / 2 if nuevo_turno.tipo_pago == 'SENA_50' else monto_total_float
-                    
-                    if monto_a_cobrar > 0:
-                        mp_service = MercadoPagoService()
-                        datos_pago = {
-                            "monto_seña": monto_a_cobrar, 
-                            "turno_id": nuevo_turno.id,
-                            "peluquero_nombre": nuevo_turno.peluquero.nombre if nuevo_turno.peluquero else "Servicio",
-                            "cliente_nombre": user.nombre if getattr(user, 'nombre', None) else "Cliente"
-                        }
-                        
-                        result = mp_service.crear_preferencia_seña(datos_pago)
-                        
-                        if result.get("success") and result.get("init_point"):
-                            mp_data = {'init_point': result["init_point"]}
-                            nuevo_turno.mp_payment_id = result.get("preference_id", "")
-                            nuevo_turno.save(update_fields=['mp_payment_id'])
-                        else:
-                            transaction.set_rollback(True) # Falla MP, REBOBINAMOS EL TURNO
-                            error_mp = result.get("error", "Error desconocido en MercadoPago")
-                            return JsonResponse({'error': f"Falla en MP: {error_mp}"}, status=400)
-                            
-                except Exception as mp_error:
-                    transaction.set_rollback(True) # Falla MP, REBOBINAMOS EL TURNO
-                    print(f"Error generando MP en modificación: {mp_error}")
-                    return JsonResponse({'error': f"Error generando MercadoPago: {str(mp_error)}"}, status=400)
+                    exito, mensaje_service, nuevo_turno = TurnoService.modificar_turno(turno_id, nuevos_datos, user)
+                    if not exito:
+                        transaction.set_rollback(True) 
+                        return JsonResponse({'error': mensaje_service}, status=400)
+                except (DjangoValidationError, DRFValidationError) as ve:
+                    transaction.set_rollback(True) 
+                    error_msg = ve.detail.get('error') if hasattr(ve, 'detail') and isinstance(ve.detail, dict) else str(ve.message if hasattr(ve, 'message') else ve)
+                    if isinstance(error_msg, list): error_msg = error_msg[0]
+                    return JsonResponse({'error': error_msg}, status=400)
 
-            # Si llega acá, todo salió bien. La caja fuerte se cierra y se guarda.
+                # MERCADO PAGO SOLO PARA CLIENTES QUE MODIFICAN TARDE
+                mp_data = None
+                es_modificacion_tarde = "Fuera de término" in mensaje_service
+                
+                if es_modificacion_tarde and nuevo_turno.medio_pago == 'MERCADO_PAGO':
+                    try:
+                        from .mercadopago_service import MercadoPagoService
+                        monto_total_float = float(nuevo_turno.monto_total or 0)
+                        monto_a_cobrar = monto_total_float / 2 if nuevo_turno.tipo_pago == 'SENA_50' else monto_total_float
+                        
+                        if monto_a_cobrar > 0:
+                            mp_service = MercadoPagoService()
+                            datos_pago = {
+                                "monto_seña": monto_a_cobrar, 
+                                "turno_id": nuevo_turno.id,
+                                "peluquero_nombre": nuevo_turno.peluquero.nombre if nuevo_turno.peluquero else "Servicio",
+                                "cliente_nombre": user.nombre if getattr(user, 'nombre', None) else "Cliente"
+                            }
+                            result = mp_service.crear_preferencia_seña(datos_pago)
+                            
+                            if result.get("success") and result.get("init_point"):
+                                mp_data = {'init_point': result["init_point"]}
+                                nuevo_turno.mp_payment_id = result.get("preference_id", "")
+                                nuevo_turno.save(update_fields=['mp_payment_id'])
+                            else:
+                                transaction.set_rollback(True) 
+                                error_mp = result.get("error", "Error desconocido en MercadoPago")
+                                return JsonResponse({'error': f"Falla en MP: {error_mp}"}, status=400)
+                                
+                    except Exception as mp_error:
+                        transaction.set_rollback(True) 
+                        return JsonResponse({'error': f"Error generando MercadoPago: {str(mp_error)}"}, status=400)
+
             return JsonResponse({
                 'status': 'ok',
                 'message': mensaje_service,
@@ -2878,8 +2905,6 @@ def registrar_venta(request):
                 return Response({"error": "Método de pago inválido o inactivo."}, status=400)
 
             # 3. Crear Cabecera de Venta 
-            # 🚨 Acá no usamos .create() porque .create() guarda instantáneamente y dispara la señal.
-            # Vamos a instanciarlo, apagarle la auditoría y luego guardarlo.
             venta = Venta(
                 cliente_id=cliente_id if cliente_id else None,
                 usuario=usuario_vendedor,
@@ -2914,8 +2939,20 @@ def registrar_venta(request):
                     raise Exception(f"Stock insuficiente para '{producto.nombre}'. Disponibles: {producto.stock_actual}, Solicitados: {cantidad}")
                 
                 # 📉 Descontar Stock con UPDATE para no disparar señal
+                stock_anterior = producto.stock_actual # 🔥 Rescatamos stock viejo
                 nuevo_stock = producto.stock_actual - cantidad
                 Producto.objects.filter(id=producto.id).update(stock_actual=nuevo_stock)
+
+                # 🔥 AGREGADO: HISTORIAL DE STOCK POR VENTA 🔥
+                from .models import HistorialStock
+                HistorialStock.objects.create(
+                    producto=producto,
+                    cantidad_anterior=stock_anterior,
+                    cantidad_nueva=nuevo_stock,
+                    motivo=f"Venta registrada en mostrador (Ticket #{venta.id})",
+                    usuario=usuario_vendedor,
+                    tipo_ajuste='VENTA'
+                )
 
                 precio_unitario = producto.precio 
                 subtotal = precio_unitario * cantidad
@@ -2938,7 +2975,6 @@ def registrar_venta(request):
             Venta.objects.filter(id=venta.id).update(total=total_acumulado)
 
             # 💵 2. REGISTRAR EL MOVIMIENTO DE CAJA
-            # 🔥 CORRECCIÓN: Lógica más robusta para detectar Mercado Pago
             tipo_mp = str(medio_pago.tipo).upper()
             nombre_mp = str(medio_pago.nombre).upper()
 
@@ -2960,7 +2996,6 @@ def registrar_venta(request):
             )
 
             # 6. 🔥 CREAR EL REGISTRO ÚNICO MAESTRO DE AUDITORÍA
-            from .models import Auditoria
             x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
             ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
 
@@ -3022,7 +3057,6 @@ class VentaViewSet(viewsets.ModelViewSet):
             import traceback
             print(f"🔍 Traceback: {traceback.format_exc()}")
             return Response({"error": f"Error en serialización: {str(e)}"}, status=500)
-
 
 @csrf_exempt
 def obtener_venta_para_edicion(request, venta_id):
@@ -3679,8 +3713,19 @@ def recibir_pedido(request, pedido_id):
                     continue
 
                 # 1. ACTUALIZACIÓN DE STOCK
-                # Sumamos lo que llegó al stock actual
+                stock_anterior = producto.stock_actual # 🔥 Rescatamos stock viejo
                 producto.stock_actual += detalle.cantidad
+                
+                # 🔥 AGREGADO: HISTORIAL DE STOCK POR COMPRA 🔥
+                from .models import HistorialStock
+                HistorialStock.objects.create(
+                    producto=producto,
+                    cantidad_anterior=stock_anterior,
+                    cantidad_nueva=producto.stock_actual,
+                    motivo=f"Ingreso por compra (Pedido #{pedido.id})",
+                    usuario=request.user,
+                    tipo_ajuste='COMPRA'
+                )
                 
                 # 2. LÓGICA DE PROTECCIÓN DE PRECIOS
                 costo_nuevo = detalle.precio_unitario
@@ -5377,14 +5422,13 @@ def contar_interesados(request, turno_id):
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 def gestionar_cotizacion_externa(request, token):
-    # --- DEBUG: Estos prints saldrán en tu terminal negra de Django ---
+    # --- DEBUG ---
     print(f"\n--- 🛰️ PETICIÓN RECIBIDA: {request.method} ---")
     print(f"🔑 TOKEN: {token}")
 
     # Buscamos la cotización
     cotizacion = get_object_or_404(Cotizacion, token=token)
     
-    # Log para confirmar qué producto estamos manejando
     try:
         producto_nombre = cotizacion.solicitud.producto.nombre
         print(f"📦 PRODUCTO: {producto_nombre} | ID: {cotizacion.id}")
@@ -5393,13 +5437,9 @@ def gestionar_cotizacion_externa(request, token):
 
     if request.method == 'GET':
         if cotizacion.respondio:
-            print("✅ ESTADO: Ya fue respondida anteriormente.")
             return Response({"ya_respondido": True})
         
-        # Serializamos los datos
         serializer = CotizacionExternaSerializer(cotizacion)
-        
-        print(f"📤 ENVIANDO JSON AL FRONT: {serializer.data}")
         return Response(serializer.data)
 
     if request.method == 'POST':
@@ -5407,11 +5447,22 @@ def gestionar_cotizacion_externa(request, token):
             return Response({"error": "Esta cotización ya fue completada."}, status=400)
         
         try:
-            # Capturamos y convertimos datos con seguridad
+            # Capturamos datos
             cantidad = request.data.get('cantidad', 0)
             precio = request.data.get('precio_ofrecido', 0)
             dias = request.data.get('dias_entrega', 0)
             comentarios = request.data.get('comentarios', '')
+
+            # 🚨 VALIDACIÓN DE NEGOCIO: Prohibir 0 o negativos 🚨
+            if int(cantidad) <= 0:
+                return Response({
+                    "error": f"La cantidad para {producto_nombre} debe ser mayor a 0."
+                }, status=400)
+            
+            if float(precio) <= 0:
+                return Response({
+                    "error": "El precio ofrecido debe ser mayor a 0."
+                }, status=400)
 
             print(f"💾 PROCESANDO POST: Cant={cantidad}, Precio={precio}, Días={dias}")
 
@@ -5841,7 +5892,6 @@ def solicitar_reset_password(request):
                     <a href="{link}" class="btn">Restablecer Contraseña</a>
                     
                     <div class="text" style="margin-top: 30px; font-size: 14px; color: #64748b;">
-                        Este enlace expirará en 1 hora. <br>
                         Si no solicitaste esto, podés ignorar este correo.
                     </div>
                 </div>

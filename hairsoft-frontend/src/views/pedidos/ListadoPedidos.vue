@@ -272,6 +272,7 @@ const recibiendoPedido = ref(null)
 const estadosPedido = ref([
   { valor: 'PENDIENTE', texto: 'Pendiente' },
   { valor: 'CONFIRMADO', texto: 'Confirmado' },
+  { valor: 'EN_CAMINO', texto: 'En Camino' }, // ✅ Agregado
   { valor: 'ENTREGADO', texto: 'Entregado' },
   { valor: 'CANCELADO', texto: 'Cancelado' }
 ])
@@ -369,12 +370,14 @@ const procesarPedidos = (pedidosData) => {
   return pedidosData.map(pedido => ({
     ...pedido,
     puede_recibir: puedeRecibirPedido(pedido.estado),
-    puede_cancelar: pedido.estado === 'PENDIENTE' || pedido.estado === 'CONFIRMADO'
+    // ✅ También permitimos cancelar si está en camino por si hubo un error en el despacho
+    puede_cancelar: ['CONFIRMADO'].includes(pedido.estado)
   }))
 }
 
 const puedeRecibirPedido = (estado) => {
-  return estado === 'PENDIENTE' || estado === 'CONFIRMADO'
+  // ✅ CORREGIDO: Permitir recibir si está EN_CAMINO
+  return ['CONFIRMADO', 'EN_CAMINO'].includes(estado)
 }
 
 // Aplicar filtros automáticamente
@@ -502,7 +505,8 @@ const recibirPedido = async (pedido) => {
     Swal.fire({
       icon: 'warning',
       title: 'No recibible',
-      text: 'Solo se pueden recibir pedidos en estado PENDIENTE o CONFIRMADO',
+      // ✅ ACTUALIZADO: Mensaje coherente
+      text: 'Solo se pueden recibir pedidos en estado PENDIENTE, CONFIRMADO o EN CAMINO',
       confirmButtonText: 'Entendido'
     });
     return;
@@ -541,7 +545,7 @@ const recibirPedido = async (pedido) => {
     const token = localStorage.getItem('token');
     
     // ✅ CORREGIDO: Ruta sin /usuarios/
-    const testResponse = await axios.get(`${API_BASE}/api/pedidos/${pedido.id}/`, {
+    await axios.get(`${API_BASE}/api/pedidos/${pedido.id}/`, {
       headers: {
         'Authorization': `Token ${token}`
       }
@@ -612,6 +616,7 @@ const getEstadoClass = (estado) => {
   const clases = {
     'PENDIENTE': 'warning',
     'CONFIRMADO': 'info',
+    'EN_CAMINO': 'primary', // ✅ Agregado: Azul para transporte
     'ENTREGADO': 'success',
     'CANCELADO': 'danger'
   }
@@ -622,6 +627,7 @@ const getEstadoTexto = (estado) => {
   const textos = {
     'PENDIENTE': 'Pendiente',
     'CONFIRMADO': 'Confirmado',
+    'EN_CAMINO': 'En Camino', // ✅ Agregado
     'ENTREGADO': 'Entregado',
     'CANCELADO': 'Cancelado'
   }

@@ -66,7 +66,7 @@
             <h2>Hola, {{ pedido.proveedor_nombre }} 👋</h2>
             <p>
               Por favor, revisá lo que te solicitamos. Podés modificar la cantidad si tenés menos stock, 
-              pero <strong>no podés superar la cantidad solicitada</strong>.
+              pero <strong>no podés superar la cantidad solicitada ni poner 0</strong>.
             </p>
           </div>
 
@@ -96,10 +96,10 @@
                     <input 
                       type="number" 
                       v-model.number="detalle.cantidad" 
-                      min="0" 
+                      min="1" 
                       :max="detalle.cantidad_original"
                       class="input-modern input-qty"
-                      :class="{ 'input-error': detalle.cantidad > detalle.cantidad_original }"
+                      :class="{ 'input-error': detalle.cantidad > detalle.cantidad_original || detalle.cantidad <= 0 }"
                     >
                   </td>
 
@@ -188,7 +188,9 @@ const cargarPedido = async () => {
     const res = await axios.get(`${API_URL}/externo/pedido/${token}/`);
     pedido.value = res.data;
     if (pedido.value.detalles) {
-      pedido.value.detalles.forEach(d => { d.cantidad_original = d.cantidad; });
+      pedido.value.detalles.forEach(d => { 
+        d.cantidad_original = d.cantidad; 
+      });
     }
   } catch (err) {
     error.value = 'El pedido no existe o el enlace ya caducó.';
@@ -213,9 +215,21 @@ const confirmarPedido = async () => {
     return;
   }
 
+  // VALIDACIÓN 1: No superar lo solicitado
   const excedidos = pedido.value.detalles.filter(d => d.cantidad > d.cantidad_original);
   if (excedidos.length > 0) {
     Swal.fire({ title: 'Cantidades Excedidas', text: 'No podés enviar más de lo solicitado.', icon: 'error' });
+    return;
+  }
+
+  // VALIDACIÓN 2: No permitir 0 ni negativos
+  const conCeros = pedido.value.detalles.filter(d => d.cantidad <= 0);
+  if (conCeros.length > 0) {
+    Swal.fire({ 
+      title: 'Cantidad inválida', 
+      text: 'La cantidad de los productos debe ser al menos 1.', 
+      icon: 'warning' 
+    });
     return;
   }
 
@@ -247,7 +261,6 @@ const confirmarPedido = async () => {
   }
 };
 
-// NUEVA FUNCIÓN PARA MARCAR EN CAMINO
 const marcarEnCamino = async () => {
   const result = await Swal.fire({
     title: '¿Despachar Pedido?',
@@ -266,7 +279,7 @@ const marcarEnCamino = async () => {
   try {
     await axios.post(`${API_URL}/externo/pedido/${token}/en-camino/`);
     await Swal.fire('¡Aviso Enviado!', 'El local ya sabe que el pedido está en camino.', 'success');
-    cargarPedido(); // Refresca la vista para mostrar el banner azul
+    cargarPedido();
   } catch (err) {
     Swal.fire('Error', 'No se pudo actualizar el estado.', 'error');
   } finally {

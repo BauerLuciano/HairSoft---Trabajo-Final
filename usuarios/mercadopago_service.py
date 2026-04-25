@@ -126,39 +126,16 @@ class MercadoPagoService:
         except Exception as e:
             raise e
 
-    def devolver_pago(self, payment_id, amount=None):
+    def reembolsar_pago(self, payment_id):
         """
-        REEMBOLSOS - Ajustado con Simulación para entorno Sandbox (Pruebas)
+        Reembolsa un pago aprobado usando el SDK oficial de Mercado Pago.
         """
-        import uuid
-        import mercadopago
-        try:
-            request_options = mercadopago.config.RequestOptions()
-            request_options.custom_headers = {'X-Idempotency-Key': str(uuid.uuid4())}
-            
-            refund_data = {} 
-            
-            result = self.sdk.refund().create(payment_id, refund_data, request_options)
-            
-            if result["status"] in [200, 201]:
-                return {
-                    "success": True, 
-                    "status": "refunded",
-                    "refund_id": result["response"].get("id")
-                }
-            
-            error_detail = result["response"].get("message", "Error desconocido")
-
-            if result["status"] == 401 and "live credentials" in error_detail:
-                print(f"⚠️ [SANDBOX] MP no permite reembolsos reales con credenciales TEST.")
-                print(f"⚠️ [SANDBOX] Simulando reembolso exitoso del pago {payment_id}...")
-                return {
-                    "success": True, 
-                    "status": "refunded_sandbox",
-                    "refund_id": f"simulated_{payment_id}"
-                }
-
-            return {"success": False, "error": f"MP Status {result['status']}: {error_detail}"}
-            
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+        # Usamos self.sdk que ya tenías inicializado con el token correcto en tu __init__
+        respuesta = self.sdk.refund().create(payment_id)
+        
+        # El SDK de MP devuelve HTTP 200 o 201 si anduvo bien
+        if respuesta.get("status") in [200, 201]:
+            return respuesta.get("response")
+        else:
+            mensaje_error = respuesta.get("response", {}).get("message", "Error desconocido de MP")
+            raise Exception(f"Fallo al reembolsar en MP: {mensaje_error}")

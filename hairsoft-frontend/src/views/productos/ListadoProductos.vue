@@ -188,8 +188,8 @@
           </button>
           <span>Página {{ pagina }} de {{ totalPaginas }}</span>
           <button @click="paginaSiguiente" :disabled="pagina === totalPaginas">
-            Siguiente
             <ChevronRight :size="16" />
+            Siguiente
           </button>
         </div>
       </div>
@@ -248,6 +248,7 @@
               <thead>
                 <tr>
                   <th>Fecha y Hora</th>
+                  <th>Tipo</th>
                   <th>Usuario</th>
                   <th style="text-align: center;">Stock Anterior</th>
                   <th style="text-align: center;">Movimiento</th>
@@ -258,15 +259,20 @@
               <tbody>
                 <tr v-for="reg in historialPaginado" :key="reg.id">
                   <td>{{ formatFechaHora(reg.fecha) }}</td>
+                  <td>
+                    <span class="badge-tipo" :class="getTipoAjusteClass(reg.tipo_ajuste)">
+                      {{ formatTipoAjuste(reg.tipo_ajuste) }}
+                    </span>
+                  </td>
                   <td><strong>{{ reg.usuario }}</strong></td>
                   
                   <td style="text-align: center; color: var(--text-secondary); font-weight: 600;">
-                    {{ reg.cantidad_nueva - reg.diferencia }} u.
+                    {{ reg.cantidad_anterior }} u.
                   </td>
 
                   <td style="text-align: center;">
-                    <span :class="reg.diferencia > 0 ? 'badge-positivo' : 'badge-negativo'">
-                      {{ reg.diferencia > 0 ? '+' : '' }}{{ reg.diferencia }}
+                    <span :class="(reg.cantidad_nueva - reg.cantidad_anterior) > 0 ? 'badge-positivo' : 'badge-negativo'">
+                      {{ (reg.cantidad_nueva - reg.cantidad_anterior) > 0 ? '+' : '' }}{{ reg.cantidad_nueva - reg.cantidad_anterior }}
                     </span>
                   </td>
                   
@@ -296,13 +302,13 @@
           </div>
           <div v-else class="no-results" style="padding: 40px;">
             <ClipboardList :size="40" style="color: #94a3b8; margin: 0 auto 10px;" />
-            <p>Este producto aún no tiene ajustes manuales registrados.</p>
+            <p>Este producto aún no tiene movimientos registrados.</p>
           </div>
         </div>
       </div>
     </div>
 
-</div>
+  </div>
 </template>
 
 <script setup>
@@ -403,6 +409,17 @@ const getRowClass = (p) => {
 const formatFechaHora = (isoString) => {
   const f = new Date(isoString);
   return f.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+// Formateo de tipos de ajuste
+const formatTipoAjuste = (tipo) => {
+  const tipos = { 'AJUSTE_MANUAL': 'Manual', 'VENTA': 'Venta', 'COMPRA': 'Compra', 'DEVOLUCION': 'Devolución' }
+  return tipos[tipo] || tipo || 'Manual'
+}
+
+const getTipoAjusteClass = (tipo) => {
+  const clases = { 'AJUSTE_MANUAL': 'tipo-manual', 'VENTA': 'tipo-venta', 'COMPRA': 'tipo-compra', 'DEVOLUCION': 'tipo-devolucion' }
+  return clases[tipo] || 'tipo-manual'
 }
 
 // --- FILTROS Y PAGINACIÓN PRINCIPAL ---
@@ -563,6 +580,10 @@ const abrirAjusteStock = async (producto) => {
       
       Swal.fire({ icon: 'success', title: '¡Inventario Actualizado!', text: 'El ajuste se registró en la auditoría.', confirmButtonColor: '#10b981' });
       producto.stock_actual = parseInt(formValues.nuevo_stock); 
+      // Si el historial está abierto, lo recargamos para que se vea el nuevo registro
+      if (mostrarHistorial.value && productoEditando.value?.id === producto.id) {
+          abrirHistorialStock(producto);
+      }
     } catch (error) {
       Swal.fire('Error', error.response?.data?.error || 'No se pudo actualizar.', 'error');
     }
@@ -736,6 +757,13 @@ onMounted(async () => {
 
 .badge-positivo { background: #d1fae5; color: #059669; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 0.9rem; }
 .badge-negativo { background: #fee2e2; color: #dc2626; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 0.9rem; }
+
+/* NUEVOS ESTILOS PARA LOS TIPOS DE MOVIMIENTO */
+.badge-tipo { padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+.tipo-manual { background: #fef3c7; color: #92400e; }
+.tipo-venta { background: #dcfce7; color: #166534; }
+.tipo-compra { background: #dbeafe; color: #1e40af; }
+.tipo-devolucion { background: #fce7f3; color: #9d174d; }
 
 .modal-close { position: absolute; top: 20px; right: 20px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; z-index: 10; }
 .modal-close:hover { background: var(--error-color); color: white; border-color: var(--error-color); transform: rotate(90deg); }

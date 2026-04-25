@@ -38,6 +38,15 @@
               </option>
             </select>
           </div>
+
+          <div class="filter-group">
+            <label>Estado</label>
+            <select v-model="filtros.estado" class="filter-input">
+              <option value="">Todos</option>
+              <option value="ACTIVO">Activos</option>
+              <option value="INACTIVO">Inactivos</option>
+            </select>
+          </div>
           
           <div class="filter-group">
             <label>&nbsp;</label>
@@ -173,7 +182,8 @@ const API_BASE = 'http://127.0.0.1:8000';
 
 const usuarios = ref([])
 const roles = ref([])
-const filtros = ref({ busqueda: '', rol: '', fechaDesde: '', fechaHasta: '' })
+// 🔥 AGREGADO: 'estado' al objeto de filtros
+const filtros = ref({ busqueda: '', rol: '', fechaDesde: '', fechaHasta: '', estado: '' })
 
 const pagina = ref(1)
 const itemsPorPagina = 7
@@ -250,7 +260,11 @@ const usuariosFiltrados = computed(() => {
        u.dni?.toLowerCase().includes(busca))
     const matchRol = !filtros.value.rol || (u.rol_id && u.rol_id == filtros.value.rol)
     const matchFecha = filtrarPorFecha(u)
-    return matchBusqueda && matchRol && matchFecha
+    
+    // 🔥 NUEVO: Lógica de filtrado por estado
+    const matchEstado = !filtros.value.estado || u.estado === filtros.value.estado
+
+    return matchBusqueda && matchRol && matchFecha && matchEstado
   })
   
   return filtrados.sort((a, b) => {
@@ -352,7 +366,8 @@ const getEstadoClass = (estado) => {
 }
 
 const limpiarFiltros = () => {
-  filtros.value = { busqueda: '', rol: '', fechaDesde: '', fechaHasta: '' }
+  // 🔥 AGREGADO: Limpiar estado también
+  filtros.value = { busqueda: '', rol: '', fechaDesde: '', fechaHasta: '', estado: '' }
   pagina.value = 1
 }
 
