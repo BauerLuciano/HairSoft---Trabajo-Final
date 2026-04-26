@@ -7,7 +7,10 @@
           <p>Gestión completa de categorías de servicios y productos</p>
         </div>
         <button @click="abrirModalCrear" class="register-button">
-          <span class="btn-text">➕ Registrar Categoría</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          <span>Registrar Categoría</span>
         </button>
       </div>
 
@@ -35,7 +38,13 @@
           </div>
           <div class="filter-group">
             <label>&nbsp;</label>
-            <button @click="limpiarFiltros" class="clear-filters-btn">🗑️ Limpiar</button>
+            <button @click="limpiarFiltros" class="clear-filters-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+              Limpiar
+            </button>
           </div>
         </div>
       </div>
@@ -111,11 +120,18 @@
           </div>
           <div class="form-group">
             <label>Tipo:</label>
-            <select v-model="form.tipo" class="modal-input" :disabled="form.id !== null">
+            <select 
+              v-model="form.tipo" 
+              class="modal-input"
+              :disabled="esEdicion"
+            >
               <option value="">-- Seleccione --</option>
               <option value="Servicio">Servicio</option>
               <option value="Producto">Producto</option>
             </select>
+            <small v-if="esEdicion" style="color: #dc3545; display: block; margin-top: 5px; font-weight: bold;">
+              * El tipo de categoría no se puede modificar una vez creado.
+            </small>
           </div>
           <div v-if="form.id" class="form-group-checkbox">
              <label class="switch-container">
@@ -132,7 +148,7 @@
       </div>
     </div>
   </div>
-</template>
+</template> 
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
@@ -143,7 +159,6 @@ import { Edit3, Trash2, CheckCircle } from 'lucide-vue-next'
 const API_BASE = 'http://127.0.0.1:8000';
 
 const categorias = ref([])
-// 🔥 CAMBIO: Estado 'todos' para ver las 11 manicuras de entrada
 const filtros = ref({ busqueda: '', tipo: '', estado: 'todos' }) 
 const pagina = ref(1)
 const itemsPorPagina = 8
@@ -154,6 +169,9 @@ const form = reactive({
 })
 
 const errores = reactive({ nombre: '' })
+
+// Computed para saber si estamos en modo edición
+const esEdicion = computed(() => form.id !== null)
 
 const getHeaders = () => {
   const token = localStorage.getItem('token');
@@ -203,7 +221,6 @@ const abrirModalCrear = () => {
 }
 
 const abrirModalEditar = (cat) => {
-  // 🔥 ASIGNAMOS EL TIPO para que guardarCategoria sepa a qué URL ir
   Object.assign(form, { 
     id: cat.id, 
     nombre: cat.nombre, 
@@ -219,22 +236,33 @@ const cerrarModal = () => { modalVisible.value = false }
 
 const guardarCategoria = async () => {
   if (!form.nombre.trim()) return errores.nombre = 'El nombre es requerido'
+  if (!form.id && !form.tipo) return errores.nombre = 'Seleccione un tipo'
+  
   try {
     const endpoint = form.tipo === 'Servicio' ? 'servicios' : 'productos'
-    const accion = form.id ? `editar/${form.id}` : 'crear'
-    const url = `${API_BASE}/api/categorias/${endpoint}/${accion}/`
     
-    await axios.post(url, { ...form }, getHeaders())
+    if (form.id) {
+      // Edición: solo nombre, descripción y activo. No enviamos 'tipo'.
+      const url = `${API_BASE}/api/categorias/${endpoint}/editar/${form.id}/`
+      await axios.post(url, {
+        nombre: form.nombre.trim(),
+        descripcion: form.descripcion || '',
+        activo: form.activo
+      }, getHeaders())
+    } else {
+      // Creación: enviamos todos los campos incluyendo 'tipo'
+      const url = `${API_BASE}/api/categorias/${endpoint}/crear/`
+      await axios.post(url, { ...form }, getHeaders())
+    }
+    
     cerrarModal()
     await cargarCategorias()
-    
     Swal.fire({ icon: 'success', title: '¡Guardado!', timer: 1000, showConfirmButton: false })
   } catch (err) {
     errores.nombre = err.response?.data?.message || 'Error al guardar'
   }
 }
 
-// 🔥 FUNCIÓN PARA ACTIVAR/DESACTIVAR DESDE LA TABLA
 const toggleEstado = async (cat) => {
   const nuevoEstado = !cat.activo
   const titulo = nuevoEstado ? '¿Reactivar?' : '¿Desactivar?'
@@ -253,7 +281,6 @@ const toggleEstado = async (cat) => {
       const endpoint = cat.tipo === 'Servicio' ? 'servicios' : 'productos'
       const url = `${API_BASE}/api/categorias/${endpoint}/editar/${cat.id}/`
       
-      // Enviamos el estado cambiado a la ruta de edición
       await axios.post(url, { ...cat, activo: nuevoEstado }, getHeaders())
       await cargarCategorias()
       Swal.fire(nuevoEstado ? 'Activada' : 'Desactivada', '', 'success')
@@ -277,7 +304,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
    🔥 ESTILO BARBERÍA MASCULINO ELEGANTE - CATEGORÍAS
    ======================================== */
 
-/* Tarjeta principal - CON VARIABLES */
 .list-card {
   background: var(--bg-secondary);
   color: var(--text-primary);
@@ -293,7 +319,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   border: 1px solid var(--border-color);
 }
 
-/* Borde superior azul acero */
 .list-card::before {
   content: '';
   position: absolute;
@@ -303,7 +328,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   border-radius: 24px 24px 0 0;
 }
 
-/* BADGES DE ESTADO - CON VARIABLES */
 .badge-estado {
   padding: 6px 12px;
   border-radius: 20px;
@@ -329,7 +353,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
 }
 
-/* HEADER - CON VARIABLES */
 .list-header {
   display: flex;
   justify-content: space-between;
@@ -359,7 +382,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   letter-spacing: 0.5px;
 }
 
-/* Botón registrar */
 .register-button {
   background: linear-gradient(135deg, #0ea5e9, #0284c7);
   color: white;
@@ -401,7 +423,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   background: linear-gradient(135deg, #0284c7, #0369a1);
 }
 
-/* FILTROS - CON VARIABLES */
 .filters-container {
   margin-bottom: 30px;
   background: var(--hover-bg);
@@ -475,15 +496,12 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 .row-inactiva { opacity: 0.6; background: rgba(0,0,0,0.05); }
 .badge-tipo { padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; }
 
-/* El Switch del Modal */
 .form-group-checkbox { margin: 15px 0; display: flex; align-items: center; }
 .switch-container { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 .switch-label { font-weight: 700; color: var(--text-primary); font-size: 0.9rem; }
 
-/* Estilos de tabla ya los tenés, solo asegurate que .badge-estado tenga colores para danger */
 .estado-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444; }
 
-/* TABLA - CON VARIABLES */
 .table-container {
   overflow-x: auto;
   margin-bottom: 25px;
@@ -534,7 +552,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   transition: all 0.2s ease;
 }
 
-/* Estilos específicos de categorías */
 .descripcion-cell {
   max-width: 300px;
   overflow: hidden;
@@ -542,7 +559,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   white-space: nowrap;
 }
 
-/* 🔥 BOTONES DE ACCIÓN MEJORADOS - ESTILO VENTAS */
 .action-buttons { 
   display: flex; 
   gap: 6px;
@@ -579,31 +595,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   background: rgba(239, 68, 68, 0.1);
 }
 
-/* CONTADOR Y MENSAJES - CON VARIABLES */
-.results-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: 25px 0;
-  padding: 18px;
-  background: var(--hover-bg);
-  border-radius: 12px;
-  flex-wrap: wrap;
-  gap: 15px;
-  border: 1px solid var(--border-color);
-}
-
-.results-info p {
-  color: var(--text-secondary);
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* ESTADOS DE CARGA - CON VARIABLES */
 .no-results {
   text-align: center;
   padding: 80px;
@@ -616,12 +607,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   color: var(--text-primary);
 }
 
-.no-results small {
-  font-size: 0.9em;
-  color: var(--text-tertiary);
-}
-
-/* PAGINACIÓN - CON VARIABLES */
 .pagination {
   display: flex;
   justify-content: center;
@@ -669,7 +654,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   font-size: 0.95rem;
 }
 
-/* MODAL - CON VARIABLES */
 .modal-backdrop {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -743,11 +727,25 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   box-sizing: border-box;
 }
 
+.modal-input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  background: var(--bg-tertiary);
+}
+
 .modal-input:focus {
   outline: none;
   border-color: var(--accent-color);
   box-shadow: 0 0 0 4px var(--accent-light);
   background: var(--bg-secondary);
+}
+
+.text-muted {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--text-tertiary, #94a3b8);
+  font-weight: 500;
 }
 
 .modal-actions {
@@ -801,7 +799,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   font-weight: 600;
 }
 
-/* SCROLLBAR PERSONALIZADO - CON VARIABLES */
 .table-container::-webkit-scrollbar {
   width: 12px;
   height: 12px;
@@ -822,100 +819,27 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   background: var(--accent-color);
 }
 
-/* RESPONSIVE */
 @media (max-width: 768px) {
-  .list-card {
-    padding: 25px;
-    border-radius: 20px;
-  }
-  
-  .list-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .header-content h1 {
-    font-size: 1.6rem;
-  }
-  
-  .filters-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .modal-card {
-    max-width: 95vw;
-    margin: 12px;
-    border-radius: 12px;
-  }
-  
-  .categories-table {
-    font-size: 0.85rem;
-  }
-  
-  .categories-table th {
-    font-size: 0.7rem;
-    padding: 14px 10px;
-  }
-  
-  .action-buttons {
-    flex-direction: row;
-    gap: 6px;
-  }
-  
-  .results-info {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-  
-  .pagination {
-    flex-direction: column;
-    gap: 12px;
-  }
+  .list-card { padding: 25px; border-radius: 20px; }
+  .list-header { flex-direction: column; align-items: flex-start; }
+  .header-content h1 { font-size: 1.6rem; }
+  .filters-grid { grid-template-columns: 1fr; }
+  .modal-card { max-width: 95vw; margin: 12px; border-radius: 12px; }
+  .categories-table { font-size: 0.85rem; }
+  .categories-table th { font-size: 0.7rem; padding: 14px 10px; }
+  .action-buttons { flex-direction: row; gap: 6px; }
+  .pagination { flex-direction: column; gap: 12px; }
 }
 
 @media (max-width: 480px) {
-  .list-card {
-    padding: 18px;
-    border-radius: 16px;
-  }
-  
-  .header-content h1 {
-    font-size: 1.4rem;
-  }
-  
-  .categories-table {
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap;
-  }
-  
-  .filter-input, .filter-select {
-    font-size: 0.9rem;
-  }
-  
-  .badge-estado {
-    font-size: 0.65rem;
-    padding: 5px 10px;
-  }
-  
-  .action-button {
-    width: 32px;
-    height: 32px;
-  }
-  
-  .register-button {
-    width: 100%;
-    justify-content: center;
-  }
-  
-  .modal-actions {
-    flex-direction: column;
-  }
-  
-  .modal-btn {
-    width: 100%;
-    justify-content: center;
-  }
+  .list-card { padding: 18px; border-radius: 16px; }
+  .header-content h1 { font-size: 1.4rem; }
+  .categories-table { display: block; overflow-x: auto; white-space: nowrap; }
+  .filter-input, .filter-select { font-size: 0.9rem; }
+  .badge-estado { font-size: 0.65rem; padding: 5px 10px; }
+  .action-button { width: 32px; height: 32px; }
+  .register-button { width: 100%; justify-content: center; }
+  .modal-actions { flex-direction: column; }
+  .modal-btn { width: 100%; justify-content: center; }
 }
 </style>

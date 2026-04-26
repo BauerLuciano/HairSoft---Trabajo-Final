@@ -52,7 +52,6 @@
             <tr>
               <th>Nombre</th>
               <th>Descripción</th>
-              <th>Productos</th>
               <th>Proveedores</th>
               <th>Estado</th>
               <th>Acciones</th>
@@ -63,11 +62,6 @@
                 :class="{'sin-proveedores-row': marca.total_proveedores === 0}">
               <td><strong>{{ marca.nombre }}</strong></td>
               <td class="descripcion-cell">{{ marca.descripcion || 'Sin descripción' }}</td>
-              <td>
-                <span class="badge-estado estado-info">
-                  {{ marca.productos_count || 0 }} producto{{ marca.productos_count !== 1 ? 's' : '' }}
-                </span>
-              </td>
               <td>
                 <div class="proveedores-lista">
                   <div v-if="marca.proveedores_nombres && marca.proveedores_nombres.length > 0">

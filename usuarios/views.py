@@ -20,6 +20,7 @@ from django.utils import timezone
 from django.core.paginator import Paginator
 from django.core.mail import send_mail
 from django.conf import settings
+from django.db import IntegrityError
 
 # 3. Third Party (Rest Framework / ZoneInfo)
 try:
@@ -460,7 +461,7 @@ def editar_usuario(request, pk):
 
         print(f"🔄 Editando Usuario {pk}. Datos recibidos:", data)
 
-        # 3. LOGICA CAMBIO DE CONTRASEÑA
+        # 3. LOGICA CAMBIO DE CONTRASEÑA (CORREGIDA PARA DOBLE COLUMNA)
         contrasena_nueva = data.get('contrasena_nueva')
         contrasena_actual = data.get('contrasena_actual')
 
@@ -469,10 +470,18 @@ def editar_usuario(request, pk):
                 return JsonResponse({'status': 'error', 'message': 'Para cambiar la contraseña, debés ingresar la actual.'}, status=400)
             
             from django.contrib.auth.hashers import check_password, make_password
-            if not check_password(contrasena_actual, usuario.contrasena):
+            
+            # 🔥 FIX DEFINITIVO: Chequeamos AMBAS columnas porque la BD tiene las dos
+            pass_valida_en_contrasena = check_password(contrasena_actual, usuario.contrasena)
+            pass_valida_en_password = usuario.check_password(contrasena_actual)
+            
+            if not (pass_valida_en_contrasena or pass_valida_en_password):
                 return JsonResponse({'status': 'error', 'message': 'La contraseña actual es incorrecta.'}, status=400)
             
-            usuario.contrasena = make_password(contrasena_nueva)
+            # Si es válida, actualizamos AMBAS columnas para que queden sincronizadas
+            hash_nuevo = make_password(contrasena_nueva)
+            usuario.contrasena = hash_nuevo
+            usuario.password = hash_nuevo
 
         # 4. CAMPOS PÚBLICOS (Cualquiera puede editar su propia data)
         if 'nombre' in data: usuario.nombre = data['nombre']
@@ -503,7 +512,6 @@ def editar_usuario(request, pk):
     except Usuario.DoesNotExist:
         return JsonResponse({'status': 'error', 'message': 'Usuario no encontrado'}, status=404)
         
-    # ATENCIÓN ACÁ: Atajamos si ponen un Correo o DNI repetido
     except IntegrityError as e:
         error_str = str(e).lower()
         print(f"⚠️ Error de Integridad BD: {error_str}")
@@ -517,7 +525,7 @@ def editar_usuario(request, pk):
     except Exception as e:
         print(f"❌ Error editar_usuario: {e}")
         return JsonResponse({'status': 'error', 'message': 'Ocurrió un error en el servidor'}, status=500)
-
+    
 @csrf_exempt
 def eliminar_usuario(request, pk):
     usuario = get_object_or_404(Usuario, pk=pk)
@@ -1684,8 +1692,13 @@ def obtener_turno_por_id(request, turno_id):
 @permission_classes([AllowAny]) 
 def cambiar_estado_turno(request, turno_id, nuevo_estado):
     """
-    Vista SIMPLIFICADA: Delega la creación de Venta al método save() del modelo Turno.
+    Vista que cambia el estado del turno.
+    Si se completa con saldo pendiente, el frontend envía 'metodo_pago_saldo'
+    para registrar el cobro extra en MovimientoCaja y saldar la deuda.
     """
+    from django.utils import timezone
+    from .models import MovimientoCaja, SesionCaja  # <-- Agregamos SesionCaja
+
     try:
         turno = get_object_or_404(Turno, id=turno_id)
         
@@ -1709,17 +1722,38 @@ def cambiar_estado_turno(request, turno_id, nuevo_estado):
                     if turno.estado not in ['RESERVADO', 'CONFIRMADO']:
                         return Response({'status': 'error', 'message': 'No tienes permisos.'}, status=400)
 
-                # Arreglar números para evitar errores en el modelo
+                # Arreglar números para evitar errores
                 if turno.monto_total <= 0:
                     total_calc = sum(s.precio for s in turno.servicios.all())
                     turno.monto_total = total_calc
 
-                # Si es SEÑA, pasamos a TOTAL (asumimos cobro del resto)
-                if turno.tipo_pago == 'SENA_50':
-                    turno.tipo_pago = 'TOTAL'
-                    turno.monto_seña = turno.monto_total
+                # 🔥 NUEVO: Procesar cobro del saldo si el frontend lo envía
+                metodo_pago_saldo = request.data.get('metodo_pago_saldo', None)
+                monto_a_cobrar = turno.monto_total - (turno.monto_seña or 0)
 
-            # --- GUARDAR (Esto dispara la creación de Venta en el modelo) ---
+                if monto_a_cobrar > 0 and metodo_pago_saldo:
+                    # Buscamos la caja abierta
+                    sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+                    if not sesion_abierta:
+                        return Response({'status': 'error', 'message': 'Debe abrir una caja antes de cobrar el saldo.'}, status=400)
+
+                    # Registrar el ingreso extra en caja
+                    MovimientoCaja.objects.create(
+                        sesion_caja=sesion_abierta,      # En qué caja entra la plata
+                        turno_relacionado=turno,         # El nombre correcto del modelo
+                        monto=monto_a_cobrar,
+                        tipo='INGRESO',                  # El nombre correcto del modelo
+                        concepto='TURNO_PRESENCIAL',
+                        descripcion=f'Cobro del saldo pendiente al completar turno #{turno.id} ({turno.cliente.nombre})',
+                        metodo_pago=metodo_pago_saldo
+                    )
+                    turno.monto_seña = turno.monto_total
+                    turno.tipo_pago = 'TOTAL'
+                else:
+                    if turno.tipo_pago == 'SENA_50':
+                        turno.tipo_pago = 'TOTAL'
+                        turno.monto_seña = turno.monto_total
+
             turno.estado = nuevo_estado
             turno.save() 
         
@@ -1731,7 +1765,6 @@ def cambiar_estado_turno(request, turno_id, nuevo_estado):
         
     except Exception as e:
         print(f"💥 Error crítico cambiando estado: {str(e)}")
-        # Logueamos el error completo para debug
         import traceback
         traceback.print_exc()
         return Response({'status': 'error', 'message': f'Error interno: {str(e)}'}, status=500)
@@ -1781,28 +1814,33 @@ def actualizar_pago_presencial(request, turno_id):
         
         nuevo_tipo = data.get('tipo_pago', 'TOTAL')
         metodo_pago_raw = data.get('medio_pago', 'EFECTIVO')
-        monto_a_cobrar = 0
         
-        # 🔥 MAGIA: Si ya tenía una seña, guardamos este segundo pago en el "restante"
-        if turno.tipo_pago == 'SENA_50' and nuevo_tipo == 'TOTAL':
-            monto_a_cobrar = turno.monto_total - (turno.monto_seña or 0)
-            turno.medio_pago_restante = metodo_pago_raw
-            turno.entidad_pago_restante = data.get('entidad_pago')
-            turno.codigo_transaccion_restante = data.get('nro_transaccion')
-        else:
-            # Si era pago PENDIENTE y paga todo de una, va a los campos principales
-            monto_a_cobrar = turno.monto_total
-            turno.medio_pago = metodo_pago_raw
-            turno.entidad_pago = data.get('entidad_pago')
-            turno.codigo_transaccion = data.get('nro_transaccion')
-            if 'MERCADO' in str(turno.medio_pago).upper(): 
-                turno.mp_payment_id = data.get('nro_transaccion', '')
+        # 🔥 MAGIA DEFINITIVA: Calculamos la deuda real matemáticamente
+        monto_a_cobrar = turno.monto_total - (turno.monto_seña or 0)
+        
+        if monto_a_cobrar > 0:
+            if turno.monto_seña and turno.monto_seña > 0:
+                # Si ya había puesto plata (Seña), guardamos este pago nuevo como el restante
+                turno.medio_pago_restante = metodo_pago_raw
+                turno.entidad_pago_restante = data.get('entidad_pago')
+                turno.codigo_transaccion_restante = data.get('nro_transaccion')
+            else:
+                # Si nunca pagó nada, es el primer pago principal
+                turno.medio_pago = metodo_pago_raw
+                turno.entidad_pago = data.get('entidad_pago')
+                turno.codigo_transaccion = data.get('nro_transaccion')
+                if 'MERCADO' in str(turno.medio_pago).upper(): 
+                    turno.mp_payment_id = data.get('nro_transaccion', '')
 
-        # El estado sigue siendo RESERVADO, solo cambia la guita
+        # Actualizamos la plata y liquidamos la deuda en el turno
         turno.tipo_pago = 'TOTAL'
+        
+        # 🟢 ESTO ARREGLA LA PANTALLA: Igualamos la seña al total porque ya canceló la deuda
+        turno.monto_seña = turno.monto_total
+        
         turno.save()
 
-        # 💵 REGISTRAR MOVIMIENTO
+        # 💵 REGISTRAR MOVIMIENTO EN LA CAJA (Solo por la guita nueva que entró)
         metodo_pago_caja = 'EFECTIVO'
         if 'MERCADO' in str(metodo_pago_raw).upper():
             metodo_pago_caja = 'MERCADO_PAGO'
@@ -1843,39 +1881,40 @@ def actualizar_pago_turno(request, turno_id):
         data = request.data if hasattr(request, 'data') and request.data else json.loads(request.body)
         
         tipo_pago = data.get('tipo_pago')
-        monto_total = Decimal(data.get('monto_total', turno.monto_total))
+        monto_total = Decimal(str(data.get('monto_total', turno.monto_total)))
         metodo_pago_raw = data.get('medio_pago', 'EFECTIVO')
-        monto_a_cobrar = 0
         
         if tipo_pago not in ['SENA_50', 'TOTAL']:
             return JsonResponse({'status': 'error', 'message': 'Tipo de pago no válido'}, status=400)
         
-        # 🔥 MAGIA 2: Misma lógica por si entra por este endpoint
-        if turno.tipo_pago == 'SENA_50' and tipo_pago == 'TOTAL':
-            monto_a_cobrar = monto_total - (turno.monto_seña or 0)
-            turno.medio_pago_restante = metodo_pago_raw
-            turno.entidad_pago_restante = data.get('entidad_pago')
-            turno.codigo_transaccion_restante = data.get('nro_transaccion')
-        else:
-            monto_a_cobrar = monto_total
-            turno.medio_pago = metodo_pago_raw
-            turno.entidad_pago = data.get('entidad_pago')
-            turno.codigo_transaccion = data.get('nro_transaccion')
-            if 'MERCADO' in str(turno.medio_pago).upper(): 
-                turno.mp_payment_id = data.get('nro_transaccion', '')
+        # 🔥 MAGIA DEFINITIVA: Calculamos la deuda real matemáticamente
+        monto_a_cobrar = monto_total - (turno.monto_seña or Decimal('0'))
+        
+        if monto_a_cobrar > 0:
+            if turno.monto_seña and turno.monto_seña > 0:
+                # Si ya había puesto plata (Seña), guardamos este pago nuevo como el restante
+                turno.medio_pago_restante = metodo_pago_raw
+                turno.entidad_pago_restante = data.get('entidad_pago')
+                turno.codigo_transaccion_restante = data.get('nro_transaccion')
+            else:
+                # Si nunca pagó nada, es el primer pago principal
+                turno.medio_pago = metodo_pago_raw
+                turno.entidad_pago = data.get('entidad_pago')
+                turno.codigo_transaccion = data.get('nro_transaccion')
+                if 'MERCADO' in str(turno.medio_pago).upper(): 
+                    turno.mp_payment_id = data.get('nro_transaccion', '')
 
-        # Actualizar datos de plata
-        turno.tipo_pago = tipo_pago
+        # Actualizamos la plata y liquidamos la deuda en el turno
+        turno.tipo_pago = 'TOTAL'
         if monto_total > 0:
             turno.monto_total = monto_total
-        
-        # Si es pago total desde cero, la seña se iguala al total
-        if tipo_pago == 'TOTAL' and not turno.medio_pago_restante:
-            turno.monto_seña = turno.monto_total
+            
+        # 🟢 ESTO ARREGLA LA PANTALLA: Igualamos la seña al total porque ya canceló la deuda
+        turno.monto_seña = turno.monto_total
             
         turno.save()
 
-        # 💵 REGISTRAR MOVIMIENTO
+        # 💵 REGISTRAR MOVIMIENTO EN LA CAJA (Solo por la guita nueva que entró)
         metodo_pago_caja = 'EFECTIVO'
         if 'MERCADO' in str(metodo_pago_raw).upper():
             metodo_pago_caja = 'MERCADO_PAGO'
@@ -2998,6 +3037,9 @@ def registrar_venta(request):
             # 6. 🔥 CREAR EL REGISTRO ÚNICO MAESTRO DE AUDITORÍA
             x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
             ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
+            
+            # ✅ ESTA LÍNEA ES LA QUE FALTABA
+            user_agent = request.META.get('HTTP_USER_AGENT', 'Desconocido')
 
             Auditoria.objects.create(
                 usuario=usuario_vendedor,
@@ -3007,7 +3049,12 @@ def registrar_venta(request):
                 detalles={
                     'total_venta': f"${total_acumulado}",
                     'metodo_pago': medio_pago.nombre,
-                    'productos_vendidos': " | ".join(productos_vendidos)
+                    'productos_vendidos': " | ".join(productos_vendidos),
+                    # 🔥 AHORA SÍ MANDAMOS EL NAVEGADOR PARA QUE EL SERIALIZER LO VEA
+                    '__meta__': {
+                        'navegador': user_agent,
+                        'ip': ip
+                    }
                 },
                 ip_address=ip
             )
@@ -5895,9 +5942,6 @@ def solicitar_reset_password(request):
                         Si no solicitaste esto, podés ignorar este correo.
                     </div>
                 </div>
-                <div class="footer">
-                    &copy; 2025 HairSoft. Todos los derechos reservados.
-                </div>
             </div>
         </body>
         </html>
@@ -6623,12 +6667,33 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
         })
 
     def perform_create(self, serializer):
-        """Si un empleado carga un gasto manual, lo metemos en la caja abierta actual"""
+        """Si un empleado carga un gasto manual, lo metemos en la caja abierta actual y auditamos"""
         sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
         if not sesion_abierta:
             raise serializers.ValidationError({"error": "No puede registrar movimientos manuales si la caja está cerrada."})
         
-        serializer.save(sesion_caja=sesion_abierta)
+        movimiento = serializer.save(sesion_caja=sesion_abierta)
+        
+        from .models import Auditoria
+        from .middleware import get_current_request_data
+        
+        req_data = get_current_request_data()
+        
+        accion_auditoria = 'INGRESO_MANUAL' if movimiento.tipo == 'INGRESO' else 'EGRESO_MANUAL'
+        
+        Auditoria.objects.create(
+            usuario=self.request.user,
+            modelo_afectado='MovimientoCaja',
+            objeto_id=str(movimiento.id),
+            accion=accion_auditoria,
+            detalles={
+                'monto': float(movimiento.monto),
+                'concepto': movimiento.concepto,
+                'descripcion': movimiento.descripcion,
+                'metodo_pago': movimiento.metodo_pago,
+            },
+            ip_address=req_data.get('ip', '127.0.0.1')
+        )
 
 #reportes de turnos y pedidos web
 @api_view(['GET'])

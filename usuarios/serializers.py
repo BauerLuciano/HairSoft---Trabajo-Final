@@ -971,7 +971,6 @@ class AuditoriaSerializer(serializers.ModelSerializer):
         model = Auditoria
         fields = '__all__'
         
-    # 🔥 NUEVA LÓGICA: Saca el rol, o le clava SUPER ADMIN
     def get_usuario_rol(self, obj):
         if not obj.usuario:
             return '-'
@@ -982,41 +981,40 @@ class AuditoriaSerializer(serializers.ModelSerializer):
         return 'SIN ROL'
     
     def get_navegador_info(self, obj):
-        if not obj.detalles:
-            return 'Desconocido'
+        if not obj.detalles: return 'Desconocido'
         
         detalles = obj.detalles
         if isinstance(detalles, str):
             try: detalles = json.loads(detalles)
             except: return 'Desconocido'
 
-        # 1. Buscamos en el formato nuevo que armamos recién
         ua = detalles.get('__meta__', {}).get('navegador', '')
-        
-        # 2. Si no está ahí, buscamos en cualquier otra clave posible (formato viejo)
         if not ua:
             for key in ['user_agent', 'browser', 'navegador', 'ua']:
                 if key in detalles:
                     ua = detalles[key]
                     break
-        
-        if not ua or ua == 'Desconocido':
-            return 'Sistema' # O 'Navegador'
 
-        ua_lower = str(ua).lower()
+        if not ua: return 'Sistema'
+
+        ua_low = str(ua).lower()
         
-        # Lógica de detección precisa
-        if 'brave' in ua_lower: return 'Brave'
-        if 'edg/' in ua_lower: return 'Edge'
-        if 'opr/' in ua_lower or 'opera' in ua_lower: return 'Opera'
-        if 'firefox' in ua_lower: return 'Firefox'
-        # Importante: Chrome está en casi todos los UA, por eso Edge y Brave van antes
-        if 'chrome' in ua_lower: return 'Chrome'
-        if 'safari' in ua_lower and 'chrome' not in ua_lower: return 'Safari'
-        if 'iphone' in ua_lower or 'ipad' in ua_lower: return 'iOS Device'
-        if 'android' in ua_lower: return 'Android'
+        if 'edg/' in ua_low or 'edge' in ua_low: 
+            return 'Edge'
         
-        return 'Navegador Web'
+        if 'brave' in ua_low: 
+            return 'Brave'
+        
+        if 'firefox' in ua_low: 
+            return 'Firefox'
+        
+        if 'chrome' in ua_low: 
+            return 'Chrome'
+        
+        if 'safari' in ua_low: 
+            return 'Safari'
+
+        return str(ua)[:20]
 
     def get_sistema_operativo(self, obj):
         """Extrae información del sistema operativo"""

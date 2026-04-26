@@ -148,53 +148,23 @@
                   </span>
                 </div>
               </td>
-              
               <td>
                 <div class="pago-info">
-                  <div class="medio-pago-wrapper" style="display: flex; flex-direction: column; gap: 6px;">
-                    
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                      <span v-if="turno.medio_pago_restante || turno.tipo_pago === 'SENA_50'" style="font-size: 0.65rem; color: #64748b; font-weight: 800; width: 40px;">SEÑA:</span>
-                      <span v-else style="font-size: 0.65rem; color: #64748b; font-weight: 800; width: 40px;">PAGO:</span>
-                      
-                      <span class="medio-pago-badge" :class="getMedioPagoClass(turno.medio_pago)">
-                        {{ getMedioPagoTexto(turno.medio_pago, turno.entidad_pago) }}
-                      </span>
-                    </div>
+                  <span class="payment-status-badge" :class="getPaymentBadgeClass(turno)">
+                    <template v-if="(parseFloat(turno.monto_total) || 0) > (parseFloat(turno.monto_seña) || 0)">
+                      ⚠️ FALTA COBRAR: ${{ formatPrecio((parseFloat(turno.monto_total) || 0) - (parseFloat(turno.monto_seña) || 0)) }}
+                    </template>
+                    <template v-else>
+                      ✅ PAGADO TOTAL
+                    </template>
+                  </span>
 
-                    <div v-if="turno.medio_pago_restante" style="display: flex; align-items: center; gap: 4px;">
-                      <span style="font-size: 0.65rem; color: #10b981; font-weight: 800; width: 40px;">RESTO:</span>
-                      <span class="medio-pago-badge" :class="getMedioPagoClass(turno.medio_pago_restante)">
-                        {{ getMedioPagoTexto(turno.medio_pago_restante, turno.entidad_pago_restante) }}
-                      </span>
-                    </div>
-                    
-                    <span v-if="esTurnoPorCanje(turno) && turno.nro_transaccion" class="badge-clonado" style="align-self: flex-start; margin-top: 4px;">
-                      <i class="bi bi-link-45deg me-1"></i>
-                      ID Clonado
-                    </span>
-                  </div>
-                  
-                  <div v-if="turno.tipo_pago === 'SENA_50'" class="detalle-pago" style="margin-top: 6px;">
-                    <div class="text-senia">Seña: ${{ formatPrecio(turno.monto_seña) }}</div>
-                    <div class="text-falta">Falta: ${{ formatPrecio(calcularFaltaPagar(turno)) }}</div>
-                  </div>
-                  <div v-else-if="turno.tipo_pago === 'TOTAL'" class="detalle-pago" style="margin-top: 6px;">
-                    <span class="text-pagado">Pagado total: ${{ formatPrecio(turno.monto_total) }}</span>
-                  </div>
-                  
-                  <div v-else-if="turno.descuento_aplicado && turno.descuento_aplicado > 0" style="margin-top: 5px;">
-                    <span class="badge-fidelizacion">
-                      <i class="bi bi-gift me-1"></i>
-                      {{ turno.descuento_aplicado }}% Fidelización
-                    </span>
+                  <div style="font-size: 0.85rem; color: #94a3b8; margin-top: 6px; font-weight: 500;">
+                    Seña: ${{ formatPrecio(turno.monto_seña || 0) }} ({{ getMedioPagoTexto(turno.medio_pago, turno.entidad_pago) }})
                   </div>
 
-                  <div v-if="esTurnoPorCanje(turno) && extraerSaldoAFavor(turno) > 0" class="saldo-favor-info">
-                    <span class="badge-saldo-favor">
-                      <i class="bi bi-wallet2 me-1"></i>
-                      Saldo a favor: ${{ formatPrecio(extraerSaldoAFavor(turno)) }}
-                    </span>
+                  <div style="font-size: 0.85rem; color: #94a3b8; opacity: 0.8;">
+                    Total Turno: ${{ formatPrecio(turno.monto_total || 0) }}
                   </div>
                 </div>
               </td>
@@ -219,7 +189,7 @@
                     <ArrowRightLeft :size="14"/>
                   </button>
                   
-                  <button v-if="esAdminORecep && esEstadoActivo(turno.estado) && turno.tipo_pago === 'SENA_50'" 
+                  <button v-if="esAdminORecep && esEstadoActivo(turno.estado) && (parseFloat(turno.monto_total) || 0) > (parseFloat(turno.monto_seña) || 0)" 
                           @click="confirmarPagoTotal(turno)" 
                           class="action-button pagar" 
                           title="Cobrar Restante">
@@ -457,6 +427,24 @@ const getMedioPagoClass = (medioPago) => {
   return 'otro'
 }
 
+// 🔥 INDICADORES DE PAGO
+const getPaymentBadgeData = (turno) => {
+  const total = parseFloat(turno.monto_total) || 0
+  const sena = parseFloat(turno.monto_seña) || 0
+  
+  if (sena >= total) {
+    return { class: 'badge-pagado-total', text: 'Pagado Total' }
+  } else if (sena > 0) {
+    const diff = total - sena
+    return { class: 'badge-saldo-pendiente', text: `Saldo: $${formatPrecio(diff)}` }
+  } else {
+    return { class: 'badge-a-pagar', text: `A Pagar: $${formatPrecio(total)}` }
+  }
+}
+
+const getPaymentBadgeClass = (turno) => getPaymentBadgeData(turno).class
+const getPaymentBadgeText = (turno) => getPaymentBadgeData(turno).text
+
 const cargarTurnos = async () => {
   try {
     loading.value = true
@@ -627,7 +615,9 @@ const cancelarTurno = async (turno) => {
 }
 
 const confirmarPagoTotal = async (turno) => {
-  const falta = calcularFaltaPagar(turno);
+  const total = parseFloat(turno.monto_total) || 0;
+  const pagado = parseFloat(turno.monto_seña) || 0;
+  const falta = total - pagado;
   
   const selectEntidadHtml = `
     <div id="entidadContainer" style="display: none; margin-top: 15px; text-align: left;">
@@ -1155,26 +1145,78 @@ const verDetalleTurno = async (turno) => {
   }
 };
 
+// 🔥 FLUJO COMPLETAR MEJORADO – COBRO DE SALDO PENDIENTE
 const completarTurno = async (turno) => {
-  const { isConfirmed } = await Swal.fire({
-    title: '¿Completar turno?',
-    text: 'Marcar como completado.',
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonColor: '#10b981',
-    confirmButtonText: 'Sí, completar'
-  })
+  const total = parseFloat(turno.monto_total) || 0;
+  const sena = parseFloat(turno.monto_seña) || 0;
+  const diff = total - sena;
 
-  if (isConfirmed) {
-    try {
-      await axios.post(`/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`)
-      await cargarTurnos()
-      Swal.fire('¡Turno completado!', '', 'success')
-    } catch (error) {
-      Swal.fire('Error', 'No se pudo completar el turno.', 'error')
+  if (diff > 0) {
+    // --- CASE: HAY SALDO PENDIENTE → MODAL DE COBRO ---
+    const { isConfirmed, value: formValues } = await Swal.fire({
+      title: 'Saldo Pendiente',
+      html: `
+        <div style="text-align: left;">
+          <div style="background: #f8fafc; padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+            <p><strong>Total del Turno:</strong> $${formatPrecio(total)}</p>
+            <p><strong>Ya Pagado (Seña):</strong> $${formatPrecio(sena)}</p>
+            <p style="font-size: 1.2rem; font-weight: 700; color: #f59e0b;"><strong>Saldo a Cobrar:</strong> $${formatPrecio(diff)}</p>
+          </div>
+          <label for="metodo_pago_saldo" style="display: block; font-weight: 600; margin-bottom: 8px; color: #1e293b;">
+            Método de Pago para el Saldo
+          </label>
+          <select id="metodo_pago_saldo" class="swal2-input" style="width: 100%;">
+            <option value="EFECTIVO">💵 Efectivo</option>
+            <option value="MERCADO_PAGO">🔵 Mercado Pago</option>
+            <option value="TRANSFERENCIA">🏦 Transferencia</option>
+          </select>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonColor: '#10b981',
+      confirmButtonText: 'Cobrar y Completar',
+      cancelButtonText: 'Cancelar',
+      preConfirm: () => {
+        const metodo = document.getElementById('metodo_pago_saldo').value;
+        if (!metodo) {
+          Swal.showValidationMessage('Seleccione un método de pago');
+          return false;
+        }
+        return { metodo_pago_saldo: metodo };
+      }
+    });
+
+    if (isConfirmed && formValues) {
+      try {
+        await axios.post(`/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`, formValues);
+        await cargarTurnos();
+        Swal.fire('¡Turno completado!', 'El saldo pendiente fue cobrado.', 'success');
+      } catch (error) {
+        Swal.fire('Error', 'No se pudo completar el turno.', 'error');
+      }
+    }
+  } else {
+    // --- CASE: SIN SALDO PENDIENTE → CONFIRMACIÓN SIMPLE ---
+    const { isConfirmed } = await Swal.fire({
+      title: '¿Completar turno?',
+      text: 'Marcar como completado.',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#10b981',
+      confirmButtonText: 'Sí, completar'
+    });
+
+    if (isConfirmed) {
+      try {
+        await axios.post(`/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`);
+        await cargarTurnos();
+        Swal.fire('¡Turno completado!', '', 'success');
+      } catch (error) {
+        Swal.fire('Error', 'No se pudo completar el turno.', 'error');
+      }
     }
   }
-}
+};
 
 const limpiarFiltros = () => {
   filtros.value = { busqueda: '', peluquero: '', estado: '', canal: '', fechaDesde: '', fechaHasta: '', medioPago: '' }
@@ -1186,12 +1228,29 @@ const turnosFiltrados = computed(() => {
   let filtrados = turnos.value
   
   if (filtros.value.busqueda) {
-    const busqueda = filtros.value.busqueda.toLowerCase()
-    filtrados = filtrados.filter(turno => 
-      `${turno.cliente_nombre} ${turno.cliente_apellido}`.toLowerCase().includes(busqueda) ||
-      `${turno.peluquero_nombre} ${turno.peluquero_apellido}`.toLowerCase().includes(busqueda)
-    )
+    const busqueda = filtros.value.busqueda.toLowerCase().trim()
+    
+    filtrados = filtrados.filter(turno => {
+      // 1. Buscamos por Nombres (con || '' para evitar undefined)
+      // Nota: busco peluquero.apellido dentro del objeto peluquero ya que no está aplanado en el serializer
+      const strCliente = `${turno.cliente_nombre || ''} ${turno.cliente_apellido || ''}`.toLowerCase()
+      const strPeluquero = `${turno.peluquero_nombre || ''} ${turno.peluquero?.apellido || ''}`.toLowerCase()
+      
+      const matchNombres = strCliente.includes(busqueda) || strPeluquero.includes(busqueda)
+      
+      // 2. Buscamos por IDs (Turno, MercadoPago y Transacciones manuales)
+      const matchId = turno.id ? String(turno.id).includes(busqueda) : false
+      const matchMp = turno.mp_payment_id ? String(turno.mp_payment_id).includes(busqueda) : false
+      const matchNroTrans = turno.nro_transaccion ? String(turno.nro_transaccion).includes(busqueda) : false
+      const matchCodTrans = turno.codigo_transaccion ? String(turno.codigo_transaccion).toLowerCase().includes(busqueda) : false
+      const matchCodRest = turno.codigo_transaccion_restante ? String(turno.codigo_transaccion_restante).toLowerCase().includes(busqueda) : false
+
+      // Si encuentra coincidencia en ALGUNO de todos estos campos, lo muestra
+      return matchNombres || matchId || matchMp || matchNroTrans || matchCodTrans || matchCodRest
+    })
   }
+
+  // Filtros fijos
   if (filtros.value.estado) filtrados = filtrados.filter(turno => turno.estado === filtros.value.estado)
   if (filtros.value.canal) filtrados = filtrados.filter(turno => turno.canal === filtros.value.canal)
   if (filtros.value.fechaDesde) filtrados = filtrados.filter(turno => turno.fecha >= filtros.value.fechaDesde)
@@ -1199,19 +1258,20 @@ const turnosFiltrados = computed(() => {
   
   if (filtros.value.medioPago) {
     filtrados = filtrados.filter(turno => {
-      const mp1 = (turno.medio_pago || '').toUpperCase();
-      const mp2 = (turno.medio_pago_restante || '').toUpperCase();
+      const mp1 = (turno.medio_pago || '').toUpperCase()
+      const mp2 = (turno.medio_pago_restante || '').toUpperCase()
       
       if (filtros.value.medioPago === 'MERCADO_PAGO') {
-        return mp1.includes('MERCADO') || mp2.includes('MERCADO');
+        return mp1.includes('MERCADO') || mp2.includes('MERCADO')
       } else if (filtros.value.medioPago === 'EFECTIVO') {
-        return mp1.includes('EFECTIVO') || mp2.includes('EFECTIVO');
+        return mp1.includes('EFECTIVO') || mp2.includes('EFECTIVO')
       } else if (filtros.value.medioPago === 'TRANSFERENCIA') {
-        return mp1.includes('TRANSF') || mp2.includes('TRANSF');
+        return mp1.includes('TRANSF') || mp2.includes('TRANSF')
       }
-      return true;
+      return true
     })
   }
+  
   return filtrados
 })
 
@@ -1479,6 +1539,38 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   0% { opacity: 1; }
   50% { opacity: 0.7; }
   100% { opacity: 1; }
+}
+
+/* ESTILOS PARA EL NUEVO INDICADOR DE ESTADO DE PAGO */
+.payment-status-badge {
+  display: block;
+  width: fit-content;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  white-space: nowrap;
+}
+
+.badge-pagado-total {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid #10b981;
+}
+
+.badge-saldo-pendiente {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid #f59e0b;
+}
+
+.badge-a-pagar {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid #ef4444;
 }
 
 /* ESTILOS ESPECÍFICOS PARA TRANSACCIONES Y ENTIDADES */

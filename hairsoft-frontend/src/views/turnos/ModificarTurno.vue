@@ -156,8 +156,8 @@
                 </select>
                 <ChevronDown class="select-icon" :size="18" />
               </div>
-              <small style="color: #6b7280; font-size: 0.85rem; margin-top: 8px; display: block; padding-left: 5px;">
-                <Info :size="14" style="vertical-align: middle; margin-right: 4px;" />
+              <small class="helper-text">
+                <Info :size="14" class="inline-icon" />
                 Si eliges automático, el sistema buscará la primera silla libre.
               </small>
             </div>
@@ -239,28 +239,57 @@
           <div v-if="form.hora" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon"><Receipt :size="20" /></div>
-              <h3>Confirmación</h3>
+              <h3>Confirmación y Saldos</h3>
             </div>
 
-            <div v-if="tienePagoPrevio" style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 10px; padding: 15px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px;">
-              <CheckCircle :size="24" style="color: #10b981; flex-shrink: 0;" />
+            <div v-if="tienePagoPrevio" class="pago-previo-banner">
+              <CheckCircle :size="24" class="pago-previo-icon" />
               <div>
-                <strong style="color: #10b981; display: block; font-size: 0.95rem; margin-bottom: 4px;">Pago Conservado</strong>
-                <p style="color: #120F0F; margin: 0; font-size: 0.85rem; line-height: 1.4;">
-                  Este turno ya cuenta con una seña o pago registrado (Ref: {{ form.codigo_transaccion }}). 
-                  La reprogramación mantendrá el comprobante original sin cargos extra.
+                <strong class="pago-previo-title">Pago Conservado</strong>
+                <p class="pago-previo-text">
+                  Este turno ya cuenta con una seña o pago registrado 
+                  <strong v-if="form.codigo_transaccion">(Ref: {{ form.codigo_transaccion }})</strong>
+                  <strong v-else-if="form.medio_pago === 'EFECTIVO'">(En Efectivo)</strong>. 
+                  La reprogramación mantendrá el comprobante original sin pedir un nuevo abono.
                 </p>
               </div>
             </div>
 
             <div class="resumen-grid">
-              <div class="resumen-item total">
-                <span>Total a Pagar:</span>
+              <div v-if="!tienePagoPrevio" class="resumen-item total">
+                <span>Total a Pagar hoy:</span>
                 <strong>${{ calcularTotal() }}</strong>
+              </div>
+
+              <div v-else class="boleta-detallada">
+                <div class="boleta-row">
+                  <span>Costo Total del Turno:</span>
+                  <strong>${{ calcularTotal() }}</strong>
+                </div>
+
+                <div v-if="serviciosNuevos.length > 0" class="boleta-servicios-nuevos">
+                  <span class="boleta-servicios-nuevos-title">➕ Servicios Agregados a la Reserva:</span>
+                  <div v-for="sn in serviciosNuevos" :key="sn.id" class="boleta-servicio-nuevo-item">
+                    <span>- {{ sn.nombre }}</span>
+                    <span>+${{ sn.precio }}</span>
+                  </div>
+                </div>
+
+                <div class="boleta-row pago-registrado-row">
+                  <span>Seña / Pago ya registrado:</span>
+                  <strong>- ${{ parseFloat(turnoOriginal.monto_seña || 0).toFixed(2) }}</strong>
+                </div>
+                
+                <div class="boleta-row diferencia-row">
+                  <span>Diferencia a cobrar en el local:</span>
+                  <strong :class="saldoACobrar() > 0 ? 'text-warning' : 'text-success'">
+                    ${{ saldoACobrar() }}
+                  </strong>
+                </div>
               </div>
             </div>
 
-            <div class="pago-section" :style="tienePagoPrevio ? 'opacity: 0.6; pointer-events: none;' : ''">
+            <div class="pago-section" :class="{ 'section-disabled': tienePagoPrevio }">
               <div class="pago-options">
                 <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'SENA_50' }">
                   <input type="radio" v-model="form.tipo_pago" value="SENA_50" class="hidden-radio" :disabled="tienePagoPrevio">
@@ -279,7 +308,7 @@
               </div>
             </div>
 
-            <div class="pago-detalles" :style="tienePagoPrevio ? 'opacity: 0.6; pointer-events: none;' : ''">
+            <div class="pago-detalles" :class="{ 'section-disabled': tienePagoPrevio }">
               <div class="input-group">
                 <label class="label-modern">Método de Pago</label>
                 <select v-model="form.medio_pago" class="select-modern" :disabled="tienePagoPrevio">
@@ -290,7 +319,6 @@
               </div>
               
               <div v-if="form.medio_pago !== 'EFECTIVO'" class="datos-transferencia-container slide-in">
-                
                 <div class="input-group" v-if="form.medio_pago === 'TRANSFERENCIA'">
                   <label class="label-modern">Billetera / Banco de Origen</label>
                   <select v-model="form.entidad_pago" class="select-modern" :disabled="tienePagoPrevio">
@@ -324,12 +352,9 @@
                   />
                   
                   <small class="helper-text">
-                    <Info :size="12" /> 
+                    <Info :size="12" class="inline-icon" /> 
                     {{ form.medio_pago === 'MERCADO_PAGO' ? 'ID de operación MP (Ej: #123...). Máx 14.' : 'Código del comprobante bancario. Máx 25.' }}
                   </small>
-                  <div v-if="errorValidacion && !form.codigo_transaccion" class="msg-error small">
-                    El código es obligatorio.
-                  </div>
                 </div>
               </div>
             </div>
@@ -469,6 +494,15 @@ const tienePagoPrevio = computed(() => {
   return false;
 })
 
+// 🔥 Detecta los servicios que el admin está agregando AHORA (que no estaban en el original)
+const serviciosNuevos = computed(() => {
+  if (!turnoOriginal.value || !turnoOriginal.value.servicios_ids) return [];
+  return form.value.servicios_ids
+    .filter(id => !turnoOriginal.value.servicios_ids.includes(id))
+    .map(id => servicios.value.find(s => Number(s.id) === id))
+    .filter(Boolean);
+})
+
 // Observadores
 watch(() => form.value.medio_pago, (newVal) => {
   if (cargando.value) return 
@@ -498,7 +532,6 @@ const serviciosFiltrados = computed(() => {
 
 const sillasActivas = computed(() => sillas.value.filter(s => s.activa))
 
-// 🔥 CORRECCIÓN FRONTEND: Ya no bloquea MP esperando un código
 const formularioValido = computed(() => {
   const tieneCliente = form.value.cliente || form.value.clienteNombre.trim().length > 0;
   const base = tieneCliente && form.value.peluquero && 
@@ -510,7 +543,6 @@ const formularioValido = computed(() => {
   
   if (!tienePagoPrevio.value) {
     if (!form.value.tipo_pago || !form.value.medio_pago) return false;
-    // Solo exigimos escribir código si es TRANSFERENCIA. Mercado Pago lo genera solo.
     if (form.value.medio_pago === 'TRANSFERENCIA' && !form.value.codigo_transaccion) return false;
   }
   
@@ -719,6 +751,14 @@ const calcularTotal = () => form.value.servicios_ids.reduce((acc, id) => {
 
 const calcularSena = () => (calcularTotal() / 2).toFixed(2)
 
+const saldoACobrar = () => {
+  const totalNuevo = parseFloat(calcularTotal() || 0);
+  const pagadoPrevio = tienePagoPrevio.value ? parseFloat(turnoOriginal.value.monto_seña || 0) : 0;
+  const diferencia = totalNuevo - pagadoPrevio;
+  
+  return diferencia > 0 ? diferencia.toFixed(2) : "0.00";
+}
+
 const volverAlListado = () => router.push('/turnos')
 
 const cargarDatosTurno = async () => {
@@ -748,6 +788,7 @@ const cargarDatosTurno = async () => {
     
     const turno = await turnoRes.json()
 
+    // 🔥 Guardamos también los ID de los servicios originales
     turnoOriginal.value = {
       fecha: turno.fecha,
       peluquero_id: Number(turno.peluquero_id || turno.peluquero?.id),
@@ -757,8 +798,9 @@ const cargarDatosTurno = async () => {
       tipo_pago: turno.tipo_pago,
       medio_pago: turno.medio_pago,
       entidad_pago: turno.entidad_pago,
-      codigo_transaccion: turno.codigo_transaccion || "",
-      mp_payment_id: turno.mp_payment_id || ""
+      codigo_transaccion: turno.codigo_transaccion || turno.mp_payment_id || "",
+      mp_payment_id: turno.mp_payment_id || "",
+      servicios_ids: (turno.servicios || []).map(s => Number(s.id))
     }
 
     form.value.cliente = Number(turno.cliente_id || turno.cliente?.id) || null
@@ -787,12 +829,27 @@ const cargarDatosTurno = async () => {
     categoriasSeleccionadas.value = Array.from(catsParaActivar)
 
     form.value.fecha = turno.fecha
-    form.value.hora = turno.hora.substring(0, 5) 
+    form.value.hora = turno.hora.substring(0, 5)
 
     form.value.tipo_pago = turno.tipo_pago || "SENA_50"
     form.value.medio_pago = turno.medio_pago || "EFECTIVO"
     form.value.entidad_pago = turno.entidad_pago || ""
     form.value.codigo_transaccion = turno.codigo_transaccion || turno.mp_payment_id || ""
+
+    // 🔥 BLOQUEO DE TURNOS PASADOS (Seguridad)
+    const turnoDateTime = new Date(`${turno.fecha}T${turno.hora}`)
+    const ahora = new Date()
+    if (turnoDateTime < ahora) {
+      cargando.value = false
+      await Swal.fire({
+        icon: 'error',
+        title: 'Turno Caducado',
+        text: 'No se pueden modificar los detalles de un turno que ya pasó en el tiempo. Si hay un error, registre un movimiento manual en la caja.',
+        confirmButtonText: 'Entendido'
+      })
+      router.push('/turnos')
+      return
+    }
 
     if (form.value.fecha) {
       const [year, month] = form.value.fecha.split('-').map(Number)
@@ -873,6 +930,7 @@ const modificarTurno = async () => {
   }
 }
 
+// Modal Cliente
 const abrirModalCambiarCliente = () => { 
   mostrarModalCliente.value = true; busquedaClienteModal.value = ""; clientesSugeridosModal.value = [] 
 }
@@ -914,6 +972,15 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* ============================================
+   VARIABLES SEMÁNTICAS PARA CONFIRMACIÓN Y SALDOS
+   ============================================ */
+.turno-container {
+  --color-success: #10b981;
+  --color-warning: #fbbf24;
+  --color-info: #38bdf8;
+}
+
 /* ============================================
    FONDO DE PÁGINA Y CONTENEDOR PRINCIPAL
    ============================================ */
@@ -1619,6 +1686,7 @@ onMounted(() => {
 /* Resumen y Pago */
 .resumen-grid { 
   display: flex; 
+  color: black;
   flex-direction: column; 
   gap: 12px; 
   margin-bottom: 25px; 
@@ -1628,7 +1696,7 @@ onMounted(() => {
   display: flex; 
   justify-content: space-between; 
   padding: 12px 0; 
-  border-bottom: 1px solid #e5e7eb; 
+  border-bottom: 1px solid #f7f7f7; 
   color: #1f2937;
 }
 
@@ -1641,6 +1709,104 @@ onMounted(() => {
   border-bottom: none; 
 }
 
+/* CONFIRMACIÓN Y SALDOS CON VARIABLES CSS */
+.pago-previo-banner {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid var(--color-success);
+  border-radius: 10px;
+  padding: 15px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pago-previo-icon {
+  color: var(--color-success);
+  flex-shrink: 0;
+}
+.pago-previo-title {
+  color: var(--color-success);
+  display: block;
+  font-size: 0.95rem;
+  margin-bottom: 4px;
+}
+.pago-previo-text {
+  color: var(--text-secondary);
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.boleta-detallada {
+  width: 100%;
+  background: var(--bg-secondary);
+  padding: 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+.boleta-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+.boleta-servicios-nuevos {
+  margin: 15px 0;
+  padding: 12px;
+  background: rgba(56, 189, 248, 0.1);
+  border-left: 3px solid var(--color-info);
+  border-radius: 4px;
+}
+.boleta-servicios-nuevos-title {
+  display: block;
+  color: var(--color-info);
+  font-size: 0.85rem;
+  font-weight: bold;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+.boleta-servicio-nuevo-item {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+}
+.pago-registrado-row {
+  margin-bottom: 15px;
+  color: var(--color-success);
+  font-size: 0.95rem;
+}
+.diferencia-row {
+  padding-top: 15px;
+  border-top: 1px dashed var(--border-color);
+  color: var(--text-primary);
+  font-size: 1.1rem;
+}
+.text-warning { color: var(--color-warning) !important; }
+.text-success { color: var(--color-success) !important; }
+
+/* Sections disabled */
+.section-disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Helper text */
+.helper-text {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-top: 8px;
+  display: block;
+  padding-left: 5px;
+}
+.inline-icon {
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+/* Pago */
 .pago-section {
   margin-bottom: 25px;
 }

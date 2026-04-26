@@ -106,23 +106,37 @@ def auditar_cambios(sender, instance, created, **kwargs):
             # Acción por defecto
             accion = 'CREAR' if created else 'EDITAR'
             
-            # 🔥 LÓGICA PERSONALIZADA PARA CAJA
+            # =========================================================
+            # 🔥 LÓGICA PERSONALIZADA PARA CAJA (CORREGIDA)
+            # =========================================================
             if nombre_modelo == 'SesionCaja':
                 if created:
                     accion = 'APERTURA_CAJA'
                 elif hasattr(instance, '_estado_anterior'):
-                    # Si antes NO tenía fecha de cierre, y ahora SÍ tiene, significa que cerró la caja
                     datos_viejos = instance._estado_anterior
                     if not datos_viejos.get('fecha_cierre') and datos_nuevos.get('fecha_cierre'):
                         accion = 'CIERRE_CAJA'
                         
             elif nombre_modelo == 'MovimientoCaja' and created:
-                # Dependiendo del tipo de movimiento le ponemos el nombre
-                if getattr(instance, 'tipo', '') == 'INGRESO':
-                    accion = 'INGRESO_MANUAL'
-                elif getattr(instance, 'tipo', '') == 'EGRESO':
-                    accion = 'EGRESO_MANUAL'
-            
+                # Revisamos si el movimiento tiene origen automático (Venta o Turno)
+                # Usamos getattr con _id para no disparar consultas extra a la DB
+                es_venta = getattr(instance, 'venta_relacionada_id', None)
+                es_turno = getattr(instance, 'turno_relacionado_id', None)
+                concepto = getattr(instance, 'concepto', '').upper()
+
+                if es_venta or concepto == 'VENTA':
+                    accion = 'INGRESO_VENTA'
+                elif es_turno or concepto == 'TURNO':
+                    accion = 'INGRESO_TURNO'
+                else:
+                    # Si no tiene relación, entonces sí es un movimiento manual de caja
+                    tipo_mov = getattr(instance, 'tipo', '').upper()
+                    if tipo_mov == 'INGRESO':
+                        accion = 'INGRESO_MANUAL'
+                    elif tipo_mov == 'EGRESO':
+                        accion = 'EGRESO_MANUAL'
+            # =========================================================
+
             reporte = {}
             hay_cambios = False
             
@@ -143,11 +157,7 @@ def auditar_cambios(sender, instance, created, **kwargs):
                         }
             
             if hay_cambios:
-                # 🔥 CAPTURAMOS LOS DATOS TÉCNICOS DEL MIDDLEWARE
-                req_data = get_current_request_data()
-                
-                # Agregamos la información del navegador al JSON de detalles
-                # para que el Serializer y Vue puedan mostrar los iconos.
+                # Agregamos la información técnica para el frontend
                 reporte['__meta__'] = {
                     'navegador': req_data.get('navegador', 'Desconocido'),
                     'ip': req_data.get('ip', '127.0.0.1')
@@ -158,7 +168,7 @@ def auditar_cambios(sender, instance, created, **kwargs):
                     modelo_afectado=nombre_modelo, 
                     objeto_id=str(instance.pk),
                     accion=accion, 
-                    detalles=reporte, 
+                    details=reporte, # Nota: Asegúrate si tu modelo usa 'detalles' o 'details'
                     ip_address=req_data.get('ip')
                 )
         except Exception as e:

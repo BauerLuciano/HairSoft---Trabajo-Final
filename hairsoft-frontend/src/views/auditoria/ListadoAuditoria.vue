@@ -327,19 +327,21 @@ const getColorNavegador = (navegadorInfo) => {
 }
 
 const getNombreNavegador = (navegadorInfo) => {
-  if (!navegadorInfo || navegadorInfo === 'Desconocido' || navegadorInfo === 'Sistema' || navegadorInfo === '-') {
-    return 'Sistema';
-  }
+  // Si no hay nada de nada, ponemos Sistema.
+  if (!navegadorInfo || navegadorInfo === '-') return 'Sistema';
+
   const navLower = navegadorInfo.toLowerCase();
-  if (navLower.includes('edge') || navLower.includes('edg')) return 'Edge';
+
+  if (navLower.includes('edg/') || navLower.includes('edge')) return 'Edge';
   if (navLower.includes('brave')) return 'Brave';
-  if (navLower.includes('opera') || navLower.includes('opr')) return 'Opera';
+  if (navLower.includes('opr/') || navLower.includes('opera')) return 'Opera';
   if (navLower.includes('firefox')) return 'Firefox';
+  
   if (navLower.includes('chrome')) return 'Chrome';
   if (navLower.includes('safari')) return 'Safari';
-  return navegadorInfo.split(' ')[0] || 'Navegador';
-}
 
+  return navegadorInfo; 
+}
 const parseDetalles = (detalles) => {
   if (!detalles) return {}
   let d = detalles
