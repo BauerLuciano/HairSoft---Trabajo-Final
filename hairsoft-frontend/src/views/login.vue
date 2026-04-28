@@ -27,7 +27,15 @@
               </svg>
             </div>
             <h1>HairSoft</h1>
-            <p>Bienvenido de vuelta</p>
+            <p>Bienvenido!</p>
+          </div>
+
+          <div class="google-auth-wrapper">
+            <GoogleLogin :callback="handleGoogleLogin" prompt />
+          </div>
+
+          <div class="divider">
+            <span>O continuá con tu email</span>
           </div>
 
           <form @submit.prevent="handleLogin" class="auth-form">
@@ -120,9 +128,6 @@
             </div>
           </form>
 
-          <div class="tagline">
-            Los Últimos Serán Los Primeros
-          </div>
         </div>
       </div>
     </div>
@@ -135,22 +140,14 @@ import { useRouter, useRoute } from 'vue-router';
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-vue-next';
+import { GoogleLogin } from 'vue3-google-login'; // Importamos el componente de Google
 
 const router = useRouter();
 const route = useRoute();
 
-// --- CORRECCIÓN DEFINITIVA DE LA URL ---
 const isProduction = window.location.hostname.includes('vercel.app');
-
-// 1. Dominio base (sin subcarpetas)
-const DOMAIN = isProduction 
-  ? 'https://web-production-ac47c.up.railway.app' 
-  : 'http://127.0.0.1:8000';
-
-// 2. Ruta exacta de la API (CONFIRMADO: SIN prefijo /usuarios)
+const DOMAIN = isProduction ? 'https://web-production-ac47c.up.railway.app' : 'http://127.0.0.1:8000';
 const API_URL = `${DOMAIN}/api/auth/login/`;
-
-console.log('🌐 Login apuntando a:', API_URL);
 
 const credentials = ref({
   username: '',
@@ -160,50 +157,93 @@ const credentials = ref({
 const loading = ref(false);
 const showPassword = ref(false);
 
-const formValid = computed(() => {
-  return credentials.value.username.trim() !== '' && 
-          credentials.value.password.trim() !== '';
-});
+const formValid = computed(() => credentials.value.username.trim() !== '' && credentials.value.password.trim() !== '');
 
 onMounted(() => {
   const savedEmail = localStorage.getItem('saved_email');
-  if (savedEmail) {
-    credentials.value.username = savedEmail;
-  }
+  if (savedEmail) credentials.value.username = savedEmail;
   
   const query = route.query;
   if (query.post_payment === 'true') {
     setTimeout(() => {
-      Swal.fire({
-        title: '¡Pago Confirmado! ✅',
-        text: 'Tu pago fue procesado exitosamente. Ahora inicia sesión.',
-        icon: 'success',
-        timer: 3000
-      });
+      Swal.fire({ title: '¡Pago Confirmado! ✅', text: 'Tu pago fue procesado exitosamente.', icon: 'success', timer: 3000 });
     }, 500);
-    
-    localStorage.setItem('pending_payment', JSON.stringify({
-      type: query.type,
-      id: query.id,
-      timestamp: new Date().getTime()
-    }));
+    localStorage.setItem('pending_payment', JSON.stringify({ type: query.type, id: query.id, timestamp: new Date().getTime() }));
   }
 });
 
+// 🟢 LA MAGIA DE GOOGLE ESTÁ ACÁ
+const handleGoogleLogin = async (response) => {
+  loading.value = true;
+  try {
+    const googleToken = response.credential;
+    
+    // Le mandamos el token al Backend
+    const res = await axios.post(`${DOMAIN}/api/auth/google/`, { token: googleToken });
+
+    if (res.status === 200 || res.status === 201) {
+      // ✅ ESCENARIO A: EL CORREO YA EXISTÍA EN LA BD -> Lo dejamos pasar
+      const data = res.data;
+      
+      // 🔥 ACÁ ESTÁN LAS VARIABLES CORREGIDAS PARA QUE COINCIDAN CON DJANGO 🔥
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user_id', data.user_id);
+      localStorage.setItem('user_rol', data.rol);
+      localStorage.setItem('user_nombre', data.nombre);
+      localStorage.setItem('user_apellido', data.apellido || '');
+      localStorage.setItem('login_fresh', 'true');
+      
+      Swal.fire({ title: '¡Bienvenido!', text: `Hola ${data.nombre}`, icon: 'success', timer: 1500 });
+      
+      setTimeout(() => {
+        if (data.rol === 'CLIENTE') router.push('/cliente/dashboard');
+        else router.push('/dashboard');
+      }, 1000);
+
+    } else if (res.status === 202) {
+      // 🟡 ESCENARIO B: ES UN USUARIO NUEVO -> A pedir DNI y Clave
+      const datosGoogle = res.data.datos_google;
+      
+      // Guardamos en memoria los datos que nos regaló Google para no hacérselos tipear de nuevo
+      sessionStorage.setItem('google_draft', JSON.stringify(datosGoogle));
+      
+      Swal.fire({
+        title: '¡Casi listo!',
+        text: 'Vemos que es tu primera vez. Necesitamos un par de datos más para crear tu cuenta.',
+        icon: 'info',
+        confirmButtonText: 'Completar Perfil',
+        background: '#1e293b',
+        color: '#f1f5f9',
+        confirmButtonColor: '#6366f1'
+      }).then(() => {
+        // Lo mandamos al registro, pero con una banderita en la URL
+        router.push('/web/registro?google=true');
+      });
+    }
+
+  } catch (error) {
+    console.error("❌ Error en Google Login:", error);
+    Swal.fire({
+      title: 'Error',
+      text: 'No se pudo iniciar sesión con Google.',
+      icon: 'error',
+      background: '#1e293b', color: '#f1f5f9'
+    });
+  } finally {
+    loading.value = false;
+  }
+};
+
+// LOGIN TRADICIONAL
 const handleLogin = async () => {
   if (!formValid.value) return;
   loading.value = true;
   
   try {
     const response = await axios.post(API_URL, credentials.value);
-    
-    // Extracción segura de datos
     const data = response.data || response; 
 
-    // Verificación anti-HTML (por si acaso)
-    if (typeof data === 'string' && data.startsWith('<!DOCTYPE')) {
-        throw new Error('Ruta API incorrecta (Recibí HTML). Revisa urls.py.');
-    }
+    if (typeof data === 'string' && data.startsWith('<!DOCTYPE')) throw new Error('Ruta API incorrecta');
 
     if (data.status === 'ok') {
       localStorage.setItem('token', data.token);
@@ -213,12 +253,7 @@ const handleLogin = async () => {
       localStorage.setItem('user_apellido', data.apellido || '');
       localStorage.setItem('login_fresh', 'true');
       
-      Swal.fire({
-        title: '¡Bienvenido!',
-        text: `Hola ${data.nombre}`,
-        icon: 'success',
-        timer: 1500
-      });
+      Swal.fire({ title: '¡Bienvenido!', text: `Hola ${data.nombre}`, icon: 'success', timer: 1500 });
 
       setTimeout(() => {
         const query = route.query;
@@ -231,11 +266,8 @@ const handleLogin = async () => {
                 return;
              }
         }
-        if (data.rol === 'CLIENTE') {
-            router.push('/cliente/dashboard');
-        } else {
-            router.push('/dashboard');
-        }
+        if (data.rol === 'CLIENTE') router.push('/cliente/dashboard');
+        else router.push('/dashboard');
       }, 1000);
 
     } else {
@@ -243,21 +275,11 @@ const handleLogin = async () => {
     }
 
   } catch (error) {
-    console.error("❌ Error Login:", error);
-    
     let mensaje = 'No se pudo conectar con el servidor.';
-    if (error.message.includes('HTML')) mensaje = 'Error interno: Ruta de API mal configurada.';
-    else if (error.response?.data?.error) mensaje = error.response.data.error;
+    if (error.response?.data?.error) mensaje = error.response.data.error;
     else if (error.response?.data?.message) mensaje = error.response.data.message;
 
-    Swal.fire({
-      title: 'Error de acceso',
-      text: mensaje,
-      icon: 'error',
-      confirmButtonColor: '#007bff',
-      background: '#1e293b',
-      color: '#f1f5f9'
-    });
+    Swal.fire({ title: 'Error de acceso', text: mensaje, icon: 'error', confirmButtonColor: '#007bff', background: '#1e293b', color: '#f1f5f9' });
   } finally {
     loading.value = false;
   }
@@ -268,47 +290,20 @@ const handleForgotPassword = async () => {
     title: 'Recuperar contraseña',
     input: 'email',
     inputLabel: 'Ingresá tu correo electrónico',
-    inputValue: credentials.value.username, // Usa el del form si ya lo escribió
+    inputValue: credentials.value.username,
     showCancelButton: true,
     confirmButtonText: 'Enviar enlace',
     cancelButtonText: 'Cancelar',
-    inputValidator: (value) => {
-      if (!value) {
-        return '¡Necesitás ingresar un correo!';
-      }
-    }
+    inputValidator: (value) => { if (!value) return '¡Necesitás ingresar un correo!'; }
   });
 
   if (email) {
     try {
-      Swal.fire({
-        title: 'Enviando...',
-        text: 'Por favor, esperá un momento.',
-        allowOutsideClick: false,
-        didOpen: () => {
-          Swal.showLoading();
-        }
-      });
-
-      const RESET_API_URL = `${DOMAIN}/api/password-reset/solicitar/`; 
-      
-      await axios.post(RESET_API_URL, { email: email });
-
-      Swal.fire({
-        title: '¡Correo enviado!',
-        text: 'Si el correo existe en nuestro sistema, recibirás un enlace para restablecer tu contraseña.',
-        icon: 'success',
-        confirmButtonColor: '#007bff'
-      });
-
+      Swal.fire({ title: 'Enviando...', text: 'Por favor, esperá un momento.', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+      await axios.post(`${DOMAIN}/api/password-reset/solicitar/`, { email: email });
+      Swal.fire({ title: '¡Correo enviado!', text: 'Recibirás un enlace para restablecer tu contraseña.', icon: 'success', confirmButtonColor: '#007bff' });
     } catch (error) {
-      console.error("❌ Error enviando correo:", error);
-      Swal.fire({
-        title: 'Error',
-        text: 'Hubo un problema al intentar enviar el correo. Intentá de nuevo más tarde.',
-        icon: 'error',
-        confirmButtonColor: '#007bff'
-      });
+      Swal.fire({ title: 'Error', text: 'Hubo un problema al intentar enviar el correo.', icon: 'error', confirmButtonColor: '#007bff' });
     }
   }
 };
@@ -464,7 +459,7 @@ const handleForgotPassword = async () => {
 /* BRAND HEADER */
 .brand-header {
   text-align: center;
-  margin-bottom: 40px;
+  margin-bottom: 30px; /* Reducido para dar espacio a Google */
 }
 
 .brand-icon {
@@ -515,6 +510,13 @@ const handleForgotPassword = async () => {
   font-size: 1rem;
   color: #64748b;
   font-weight: 600;
+}
+
+/* GOOGLE AUTH WRAPPER */
+.google-auth-wrapper {
+  display: flex;
+  justify-content: center;
+  width: 100%;
 }
 
 /* FORM */
@@ -722,15 +724,15 @@ const handleForgotPassword = async () => {
 .divider {
   display: flex;
   align-items: center;
-  margin: 32px 0;
+  margin: 24px 0; /* Ajustado para equilibrar el botón de Google */
   position: relative;
 }
 
-.divider::before {
+.divider::before, .divider::after {
   content: '';
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+  background: #e2e8f0;
 }
 
 .divider span {
@@ -801,190 +803,54 @@ const handleForgotPassword = async () => {
   font-weight: 800;
 }
 
-/* ==================== RESPONSIVE MEJORADO ==================== */
-
-/* Tablet grande */
+/* ==================== RESPONSIVE ==================== */
 @media (max-width: 1100px) {
-  .auth-container {
-    min-height: 650px;
-  }
-  
-  .content-block h1 {
-    font-size: 2.5rem;
-  }
-  
-  .content-block {
-    padding: 40px;
-  }
+  .auth-container { min-height: 650px; }
+  .content-block h1 { font-size: 2.5rem; }
+  .content-block { padding: 40px; }
 }
 
-/* Tablet */
 @media (max-width: 900px) {
-  .auth-page {
-    padding: 16px;
-  }
-  
-  .auth-container {
-    flex-direction: column;
-    min-height: auto;
-    max-width: 600px;
-    border-radius: 20px;
-  }
-  
-  .visual-panel {
-    min-height: 300px;
-    max-height: 300px;
-  }
-  
-  .content-block {
-    padding: 32px;
-  }
-  
-  .content-block h1 {
-    font-size: 2.25rem;
-  }
-  
-  .content-block p {
-    font-size: 1rem;
-  }
-  
-  .auth-panel {
-    padding: 40px 32px;
-  }
-  
-  .brand-header h1 {
-    font-size: 2.25rem;
-  }
+  .auth-page { padding: 16px; }
+  .auth-container { flex-direction: column; min-height: auto; max-width: 600px; border-radius: 20px; }
+  .visual-panel { min-height: 300px; max-height: 300px; }
+  .content-block { padding: 32px; }
+  .content-block h1 { font-size: 2.25rem; }
+  .content-block p { font-size: 1rem; }
+  .auth-panel { padding: 40px 32px; }
+  .brand-header h1 { font-size: 2.25rem; }
 }
 
-/* Mobile grande */
 @media (max-width: 600px) {
-  .auth-page {
-    padding: 0;
-    align-items: flex-start;
-  }
-  
-  .auth-container {
-    border-radius: 0;
-    min-height: 100vh;
-  }
-  
-  /* OCULTAR imagen en móvil para mejor UX */
-  .visual-panel {
-    display: none;
-  }
-  
-  .auth-panel {
-    padding: 32px 24px;
-    flex: 1;
-  }
-  
-  .brand-header {
-    margin-bottom: 32px;
-  }
-  
-  .brand-icon {
-    width: 70px;
-    height: 70px;
-    margin-bottom: 20px;
-  }
-  
-  .brand-icon svg {
-    width: 38px;
-    height: 38px;
-  }
-  
-  .brand-header h1 {
-    font-size: 2rem;
-  }
-  
-  .brand-header p {
-    font-size: 0.95rem;
-  }
-  
-  .input-field {
-    margin-bottom: 20px;
-  }
-  
-  .input-field label {
-    font-size: 0.875rem;
-    margin-bottom: 8px;
-  }
-  
-  .input-wrap {
-    border-radius: 10px;
-  }
-  
-  .input-wrap input {
-    height: 50px;
-    font-size: 0.9rem;
-  }
-  
-  .btn-primary {
-    height: 50px;
-    font-size: 0.95rem;
-  }
-  
-  .form-footer {
-    margin-bottom: 24px;
-  }
-  
-  .link-secondary {
-    font-size: 0.875rem;
-  }
-  
-  .divider {
-    margin: 28px 0;
-  }
-  
-  .register-prompt {
-    font-size: 0.875rem;
-    margin-bottom: 14px;
-  }
-  
-  .link-home {
-    font-size: 0.875rem;
-    padding: 9px 16px;
-  }
-  
-  .tagline {
-    margin-top: 28px;
-    font-size: 0.75rem;
-  }
+  .auth-page { padding: 0; align-items: flex-start; }
+  .auth-container { border-radius: 0; min-height: 100vh; }
+  .visual-panel { display: none; }
+  .auth-panel { padding: 32px 24px; flex: 1; }
+  .brand-header { margin-bottom: 24px; }
+  .brand-icon { width: 70px; height: 70px; margin-bottom: 20px; }
+  .brand-icon svg { width: 38px; height: 38px; }
+  .brand-header h1 { font-size: 2rem; }
+  .brand-header p { font-size: 0.95rem; }
+  .input-field { margin-bottom: 20px; }
+  .input-field label { font-size: 0.875rem; margin-bottom: 8px; }
+  .input-wrap { border-radius: 10px; }
+  .input-wrap input { height: 50px; font-size: 0.9rem; }
+  .btn-primary { height: 50px; font-size: 0.95rem; }
+  .form-footer { margin-bottom: 24px; }
+  .link-secondary { font-size: 0.875rem; }
+  .divider { margin: 24px 0; }
+  .register-prompt { font-size: 0.875rem; margin-bottom: 14px; }
+  .link-home { font-size: 0.875rem; padding: 9px 16px; }
+  .tagline { margin-top: 28px; font-size: 0.75rem; }
 }
 
-/* Mobile pequeño */
 @media (max-width: 380px) {
-  .auth-panel {
-    padding: 28px 20px;
-  }
-  
-  .brand-icon {
-    width: 64px;
-    height: 64px;
-  }
-  
-  .brand-icon svg {
-    width: 34px;
-    height: 34px;
-  }
-  
-  .brand-header h1 {
-    font-size: 1.75rem;
-  }
-  
-  .input-wrap input {
-    height: 48px;
-    font-size: 0.875rem;
-    padding: 0 14px 0 46px;
-  }
-  
-  .icon {
-    left: 14px;
-  }
-  
-  .btn-primary {
-    height: 48px;
-  }
+  .auth-panel { padding: 28px 20px; }
+  .brand-icon { width: 64px; height: 64px; }
+  .brand-icon svg { width: 34px; height: 34px; }
+  .brand-header h1 { font-size: 1.75rem; }
+  .input-wrap input { height: 48px; font-size: 0.875rem; padding: 0 14px 0 46px; }
+  .icon { left: 14px; }
+  .btn-primary { height: 48px; }
 }
 </style>

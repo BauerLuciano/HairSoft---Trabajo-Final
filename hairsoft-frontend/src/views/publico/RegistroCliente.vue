@@ -1,8 +1,16 @@
 <template>
   <div class="modern-form">
     <div class="form-header">
-      <h1>Crear Cuenta</h1>
-      <p class="subtitle">Reserva tus turnos online</p>
+      <h1>{{ vieneDeGoogle ? 'Completar Perfil' : 'Crear Cuenta' }}</h1>
+      <p class="subtitle">{{ vieneDeGoogle ? 'Completá los datos faltantes para terminar' : 'Reserva tus turnos online' }}</p>
+    </div>
+
+    <div v-if="vieneDeGoogle" class="google-notice">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="google-icon">
+        <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12s4.477 10 10 10 10-4.477 10-10z"></path>
+        <path d="M12 8v4l3 3"></path>
+      </svg>
+      <span>Los datos disponibles fueron importados desde Google. Por favor, completá el resto.</span>
     </div>
 
     <form @submit.prevent="crearUsuario" class="form-content" autocomplete="off">
@@ -16,7 +24,7 @@
             <label>Nombre</label>
             <span class="required-badge">Requerido</span>
           </div>
-          <div class="input-wrapper">
+          <div class="input-wrapper" :class="{ 'disabled-field': lockNombre }">
             <input 
               v-model="form.nombre" 
               type="text" 
@@ -26,6 +34,7 @@
               :class="{ 'error': errores.nombre }"
               autocomplete="off"
               name="new_user_name_hs"
+              :readonly="lockNombre"
             />
           </div>
           <div v-if="errores.nombre" class="field-error">
@@ -39,7 +48,7 @@
             <label>Apellido</label>
             <span class="required-badge">Requerido</span>
           </div>
-          <div class="input-wrapper">
+          <div class="input-wrapper" :class="{ 'disabled-field': lockApellido }">
             <input 
               v-model="form.apellido" 
               type="text" 
@@ -49,6 +58,7 @@
               :class="{ 'error': errores.apellido }"
               autocomplete="off"
               name="new_user_lastname_hs"
+              :readonly="lockApellido"
             />
           </div>
           <div v-if="errores.apellido" class="field-error">
@@ -112,15 +122,17 @@
           <label>Correo Electrónico</label>
           <span class="required-badge">Requerido</span>
         </div>
-        <div class="input-wrapper">
+        <div class="input-wrapper" :class="{ 'disabled-field': lockCorreo }">
           <input 
             v-model="form.correo" 
             type="email" 
             placeholder="ejemplo@email.com" 
             @blur="validarCorreo"
+            @input="validarCorreo"
             :class="{ 'error': errores.correo }"
             autocomplete="off" 
-            name="new_user_email_random_id" 
+            name="new_user_email_random_id"
+            :readonly="lockCorreo" 
           />
         </div>
         <div v-if="errores.correo" class="field-error">
@@ -141,6 +153,7 @@
               :type="mostrarContrasena ? 'text' : 'password'" 
               placeholder="Mínimo 6 caracteres"
               @blur="validarContrasena"
+              @input="validarContrasena"
               :class="{ 'error': errores.contrasena }"
               autocomplete="new-password"
               name="new_password_field"
@@ -170,6 +183,7 @@
               :type="mostrarConfirmarContrasena ? 'text' : 'password'" 
               placeholder="Repite la contraseña" 
               @blur="validarConfirmarContrasena"
+              @input="validarConfirmarContrasena"
               :class="{ 'error': errores.confirmarContrasena }"
               autocomplete="new-password"
               name="confirm_password_field"
@@ -189,15 +203,18 @@
         </div>
       </div>
 
-      <button type="submit" class="submit-button" :disabled="cargando">
+      <button type="submit" class="submit-button" :disabled="botonDeshabilitado" :class="{ 'opacity-50 cursor-not-allowed': botonDeshabilitado }">
         <span class="button-content">
-          <span class="button-text">{{ cargando ? 'Registrando...' : 'Crear Cuenta' }}</span>
+          <span class="button-text">{{ cargando ? 'Registrando...' : (vieneDeGoogle ? 'Finalizar Registro' : 'Crear Cuenta') }}</span>
           <span class="button-icon">{{ cargando ? '⏳' : '→' }}</span>
         </span>
       </button>
 
-      <div class="login-link">
+      <div v-if="!vieneDeGoogle" class="login-link">
         ¿Ya tienes cuenta? <router-link to="/login">Inicia Sesión aquí</router-link>
+      </div>
+      <div v-else class="login-link">
+        ¿Te arrepentiste? <a href="#" @click.prevent="cancelarGoogle">Volver al inicio de sesión</a>
       </div>
 
     </form>
@@ -205,19 +222,26 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
-const API_BASE = 'http://127.0.0.1:8000' 
+const route = useRoute()
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
 const cargando = ref(false)
 const mostrarContrasena = ref(false)
 const mostrarConfirmarContrasena = ref(false)
 const idRolCliente = ref(null)
 const usuariosExistentes = ref([])
+
+// 🟢 Banderas dinámicas
+const vieneDeGoogle = ref(false)
+const lockNombre = ref(false)
+const lockApellido = ref(false)
+const lockCorreo = ref(false)
 
 const form = ref({
   nombre: '', apellido: '', dni: '', telefono: '',
@@ -231,18 +255,61 @@ const errores = ref({
 
 // --- CARGA INICIAL ---
 onMounted(async () => {
+  const googleDraft = sessionStorage.getItem('google_draft')
+  if (route.query.google === 'true' || googleDraft) {
+    vieneDeGoogle.value = true
+    
+    // Autocompletamos y bloqueamos SOLO lo que nos haya dado Google
+    if (googleDraft) {
+      try {
+        const datos = JSON.parse(googleDraft)
+        
+        if (datos.nombre) {
+          form.value.nombre = datos.nombre
+          lockNombre.value = true
+          validarNombre()
+        }
+        
+        if (datos.apellido) {
+          form.value.apellido = datos.apellido
+          lockApellido.value = true
+          validarApellido()
+        }
+        
+        if (datos.correo) {
+          form.value.correo = datos.correo
+          lockCorreo.value = true
+          validarCorreo()
+        }
+      } catch(e) {
+        console.error("Error leyendo datos de Google", e)
+      }
+    }
+  }
+
   await cargarUsuariosExistentes()
   await obtenerRolCliente()
 })
 
+const cancelarGoogle = () => {
+  sessionStorage.removeItem('google_draft')
+  router.push('/login')
+}
+
 const cargarUsuariosExistentes = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/api/usuarios/`) 
-    // DRF a veces manda { results: [...] } si hay paginación, o el array directo
-    const data = res.data.results || res.data
-    usuariosExistentes.value = Array.isArray(data) ? data : []
+    const res = await axios.get(`${API_BASE}/api/usuarios/?limit=1000`) 
+    if (Array.isArray(res.data)) {
+      usuariosExistentes.value = res.data
+    } else if (res.data && Array.isArray(res.data.results)) {
+      usuariosExistentes.value = res.data.results
+    } else if (res.data && Array.isArray(res.data.data)) {
+      usuariosExistentes.value = res.data.data
+    } else {
+      usuariosExistentes.value = []
+    }
   } catch (error) {
-    console.warn('No se pudo cargar la lista de validación. Se validará en el servidor.')
+    console.warn('No se pudo cargar la lista.')
     usuariosExistentes.value = []
   }
 }
@@ -251,47 +318,37 @@ const obtenerRolCliente = async () => {
   try {
     const res = await axios.get(`${API_BASE}/api/roles/`)
     let roles = []
-    
-    if (Array.isArray(res.data)) {
-      roles = res.data
-    } else if (res.data && Array.isArray(res.data.results)) {
-      roles = res.data.results
-    } else {
-      console.error('La API de roles no devolvió un formato reconocido:', res.data)
-      return
-    }
+    if (Array.isArray(res.data)) roles = res.data
+    else if (res.data && Array.isArray(res.data.results)) roles = res.data.results
 
     const rol = roles.find(r => r.nombre.toLowerCase().includes('cliente'))
-    
-    if (rol) {
-      idRolCliente.value = rol.id
-      console.log("Rol cliente asignado:", idRolCliente.value)
-    } else {
-      console.warn('No se encontró un rol que contenga la palabra "cliente" en la lista.')
-    }
+    if (rol) idRolCliente.value = rol.id
   } catch (error) {
-    console.error('Error cargando roles desde la API:', error)
+    console.error('Error cargando roles:', error)
   }
 }
 
-// --- FORMATEOS EN TIEMPO REAL (BLOQUEO DE TECLAS) ---
+// --- FORMATEOS EN TIEMPO REAL ---
 const formatearNombre = () => {
-  // Solo letras y espacios
+  if (lockNombre.value) return 
   form.value.nombre = String(form.value.nombre).replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]/g, '')
+  validarNombre()
 }
 
 const formatearApellido = () => {
-  // Solo letras y espacios
+  if (lockApellido.value) return 
   form.value.apellido = String(form.value.apellido).replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]/g, '')
+  validarApellido()
 }
 
 const formatearDNI = () => { 
   form.value.dni = String(form.value.dni).replace(/\D/g, '').slice(0, 8) 
+  validarDNI()
 }
 
 const formatearTelefono = () => {
   let tel = String(form.value.telefono).replace(/\D/g, '')
-  if (tel.length === 0) { form.value.telefono = ''; return }
+  if (tel.length === 0) { form.value.telefono = ''; validarTelefono(); return }
   
   if (tel.startsWith('549')) form.value.telefono = '+54 ' + tel.slice(2)
   else if (tel.startsWith('54')) form.value.telefono = '+54 ' + tel.slice(2)
@@ -303,14 +360,18 @@ const formatearTelefono = () => {
     const codigo = tel.slice(0, 2); const resto = tel.slice(2, 13)
     form.value.telefono = `+${codigo} ${resto}`
   }
+  validarTelefono()
+}
+
+// --- ALERTAS ---
+const alertaDuplicado = (titulo, texto) => {
+  Swal.fire({
+    toast: true, position: 'top-end', icon: 'warning', title: titulo, text: texto,
+    showConfirmButton: false, timer: 4500, timerProgressBar: true, background: '#1e293b', color: '#f1f5f9'
+  })
 }
 
 // --- VALIDACIONES ---
-const validarUnico = (campo, valor) => {
-  if (!Array.isArray(usuariosExistentes.value) || !usuariosExistentes.value.length) return true 
-  return !usuariosExistentes.value.some(u => String(u[campo]) === String(valor))
-}
-
 const validarNombre = () => {
   const v = form.value.nombre.trim()
   if (!v) errores.value.nombre = "Requerido"
@@ -327,10 +388,18 @@ const validarApellido = () => {
 
 const validarDNI = () => {
   const v = form.value.dni.trim()
-  if (!v) errores.value.dni = "Requerido"
-  else if (!/^\d{7,8}$/.test(v)) errores.value.dni = "DNI inválido"
-  else if (!validarUnico('dni', v)) errores.value.dni = "Ya registrado"
-  else errores.value.dni = ""
+  if (!v) { errores.value.dni = "Requerido"; return }
+  if (!/^\d{7,8}$/.test(v)) { errores.value.dni = "DNI inválido"; return }
+  
+  if (usuariosExistentes.value && usuariosExistentes.value.length > 0) {
+    const existe = usuariosExistentes.value.some(u => String(u.dni) === String(v))
+    if (existe) {
+      errores.value.dni = "Ya registrado"
+      alertaDuplicado('DNI en uso', 'Este DNI ya tiene una cuenta. Intentá iniciar sesión.')
+      return
+    }
+  }
+  errores.value.dni = ""
 }
 
 const validarTelefono = () => {
@@ -340,11 +409,25 @@ const validarTelefono = () => {
 }
 
 const validarCorreo = () => {
-  const v = form.value.correo.trim()
-  if (!v) errores.value.correo = "Requerido"
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) errores.value.correo = "Correo inválido"
-  else if (!validarUnico('correo', v)) errores.value.correo = "Correo ya registrado"
-  else errores.value.correo = ""
+  // Si Google nos dio el correo y lo bloqueamos, no hace falta validar duplicados acá (ya lo hicimos en el backend)
+  if (lockCorreo.value) {
+    errores.value.correo = ""
+    return 
+  }
+
+  const v = form.value.correo.trim().toLowerCase()
+  if (!v) { errores.value.correo = "Requerido"; return }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { errores.value.correo = "Correo inválido"; return }
+  
+  if (usuariosExistentes.value && usuariosExistentes.value.length > 0) {
+    const existe = usuariosExistentes.value.some(u => u.correo && u.correo.toLowerCase() === v)
+    if (existe) {
+      errores.value.correo = "Correo ya registrado"
+      alertaDuplicado('Correo en uso', 'Este correo ya está registrado. Intentá recuperar tu contraseña.')
+      return
+    }
+  }
+  errores.value.correo = ""
 }
 
 const validarContrasena = () => {
@@ -357,7 +440,8 @@ const validarContrasena = () => {
 }
 
 const validarConfirmarContrasena = () => {
-  if (form.value.confirmarContrasena !== form.value.contrasena) errores.value.confirmarContrasena = "No coinciden"
+  if (!form.value.confirmarContrasena) errores.value.confirmarContrasena = "Requerido"
+  else if (form.value.confirmarContrasena !== form.value.contrasena) errores.value.confirmarContrasena = "No coinciden"
   else errores.value.confirmarContrasena = ""
 }
 
@@ -367,21 +451,25 @@ const validarFormulario = () => {
   return !Object.values(errores.value).some(e => e !== "")
 }
 
+// --- BOTÓN INTELIGENTE ---
+const botonDeshabilitado = computed(() => {
+  const hayErrores = Object.values(errores.value).some(e => e !== '')
+  const camposVacios = !form.value.nombre || !form.value.apellido || !form.value.dni || 
+                       !form.value.correo || !form.value.contrasena || !form.value.confirmarContrasena
+                       
+  return hayErrores || camposVacios || cargando.value
+})
+
+// --- ENVÍO AL BACKEND ---
 const crearUsuario = async () => {
-  // Si no valida, avisamos por qué no hace nada
-  if (!validarFormulario()) {
-    Swal.fire({
-      icon: 'warning',
-      title: 'Datos inválidos',
-      text: 'Por favor, revisá los campos en rojo.',
-      background: '#1e293b', color: '#f1f5f9'
-    })
+  if (!validarFormulario() || botonDeshabilitado.value) {
+    Swal.fire({ icon: 'warning', title: 'Datos incompletos', text: 'Por favor, revisá los campos en rojo.', background: '#1e293b', color: '#f1f5f9' })
     return
   }
 
   if (!idRolCliente.value) {
-    Swal.fire('Error', 'No se pudo asignar el rol de cliente. Reintentá en un momento.', 'error')
-    await obtenerRolCliente() // Reintenta cargar el rol
+    Swal.fire({ icon:'error', title:'Error', text:'No se pudo asignar el rol. Reintentá.', background: '#1e293b', color: '#f1f5f9' })
+    await obtenerRolCliente()
     return
   }
 
@@ -406,31 +494,33 @@ const crearUsuario = async () => {
 
     await axios.post(`${API_BASE}/api/usuarios/crear/`, payload)
 
+    if (vieneDeGoogle.value) sessionStorage.removeItem('google_draft')
+
     await Swal.fire({
-      icon: 'success',
-      title: '¡Bienvenido!',
-      text: 'Tu cuenta fue creada. Por favor inicia sesión.',
-      confirmButtonText: 'Ir al Login',
-      confirmButtonColor: '#0ea5e9',
-      background: '#1e293b', color: '#f1f5f9'
+      icon: 'success', title: '¡Cuenta creada!', text: 'Tu registro fue exitoso. Ya podés iniciar sesión.',
+      confirmButtonText: 'Ir al Login', confirmButtonColor: '#0ea5e9', background: '#1e293b', color: '#f1f5f9'
     })
 
     router.push('/login')
 
   } catch (err) {
-    console.error("Error API:", err.response?.data)
-    const data = err.response?.data || {}
+    console.error("❌ Error API:", err)
     
-    // Si el backend detecta duplicados que el front no vio
-    if (data.dni) errores.value.dni = "DNI ya registrado"
-    if (data.correo) errores.value.correo = "Correo ya registrado"
+    if (err.response && err.response.status === 400) {
+      const data = err.response.data
+      let mostroAlerta = false
+      if (data.dni) { errores.value.dni = "DNI ya registrado"; mostroAlerta = true }
+      if (data.correo) { errores.value.correo = "Correo ya registrado"; mostroAlerta = true }
 
-    let msg = data.error || data.message || data.detail || 'Error al registrarse'
-    
-    Swal.fire({ 
-      icon: 'error', title: 'Error', text: typeof msg === 'string' ? msg : 'Error de validación',
-      background: '#1e293b', color: '#f1f5f9'
-    })
+      if (mostroAlerta) {
+        Swal.fire({ icon: 'error', title: 'Datos duplicados', text: 'El DNI o Correo ingresado ya se encuentran registrados.', background: '#1e293b', color: '#f1f5f9' })
+        cargando.value = false; return
+      }
+    }
+
+    const data = err.response?.data || {}
+    let msg = data.error || data.message || data.detail || 'Ocurrió un error inesperado al registrarte.'
+    Swal.fire({ icon: 'error', title: 'Error', text: msg, background: '#1e293b', color: '#f1f5f9' })
   } finally {
     cargando.value = false
   }
@@ -439,6 +529,34 @@ const crearUsuario = async () => {
 
 <style scoped>
 /* ESTILOS PREMIUM OSCUROS (Idénticos a RegistrarUsuario) */
+
+.disabled-field input {
+  background-color: #f1f5f9 !important;
+  color: #64748b !important;
+  cursor: not-allowed;
+  border-color: #e2e8f0 !important;
+}
+
+.google-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background-color: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  padding: 12px 16px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  color: #6366f1;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.google-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
 .modern-form {
   max-width: 900px; margin: 0 auto; padding: 40px;
   background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
@@ -485,6 +603,41 @@ const crearUsuario = async () => {
 .login-link { text-align: center; margin-top: 25px; color: #94a3b8; font-size: 0.95rem; }
 .login-link a { color: #0ea5e9; text-decoration: none; font-weight: 700; transition: 0.2s; }
 .login-link a:hover { color: #38bdf8; text-decoration: underline; }
+
+/* --- FIX PARA EL OJITO DE CONTRASEÑA --- */
+.password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.password-wrapper input {
+  width: 100%;
+  padding-right: 45px; /* Le da espacio al texto para que no pise al ojito */
+}
+
+.password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  transition: transform 0.2s;
+  z-index: 10;
+}
+
+.password-toggle:hover {
+  transform: translateY(-50%) scale(1.1);
+}
 
 @keyframes slideIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
 

@@ -105,7 +105,6 @@
         </p>
 
         <div class="form-grid">
-          <!-- Contraseña actual -->
           <div class="form-group password-group">
             <label>Contraseña Actual</label>
             <div class="input-wrapper">
@@ -138,7 +137,6 @@
             </span>
           </div>
 
-          <!-- Nueva contraseña -->
           <div class="form-group password-group">
             <label>Nueva Contraseña</label>
             <div class="input-wrapper">
@@ -166,7 +164,6 @@
                 </svg>
               </button>
             </div>
-            <!-- Requisitos dinámicos -->
             <div v-if="isChangingPassword" class="password-requirements">
               <ul class="requirement-list">
                 <li :class="passwordValidations.minLength ? 'valid' : 'invalid'">
@@ -188,7 +185,6 @@
             </div>
           </div>
 
-          <!-- Confirmar nueva contraseña -->
           <div class="form-group password-group" style="grid-column: span 2">
             <label>Confirmar Nueva Contraseña</label>
             <div class="input-wrapper">
@@ -222,7 +218,7 @@
           </div>
         </div>
 
-        <button type="submit" class="btn-guardar" :disabled="saveButtonDisabled">
+        <button type="submit" class="btn-guardar" :disabled="saveButtonDisabled" :class="{ 'opacity-50 cursor-not-allowed': saveButtonDisabled }">
           {{ guardando ? 'Guardando cambios...' : 'Actualizar Perfil' }}
         </button>
       </form>
@@ -300,13 +296,39 @@ const canSave = computed(() => {
 
 const saveButtonDisabled = computed(() => guardando.value || !canSave.value)
 
+// ---------- ALERTAS ----------
+const alertaDuplicado = (titulo, texto) => {
+  Swal.fire({
+    toast: true,
+    position: 'top-end',
+    icon: 'warning',
+    title: titulo,
+    text: texto,
+    showConfirmButton: false,
+    timer: 4500,
+    timerProgressBar: true,
+    background: '#1e293b',
+    color: '#f1f5f9'
+  })
+}
+
 // ---------- CARGA DE DATOS ----------
+// 🔥 ARREGLO 1: Cargar toda la base forzando límite
 const cargarUsuariosExistentes = async () => {
   try {
-    const response = await api.get(`${DOMAIN}/api/usuarios/`)
-    usuariosExistentes.value = response.data || []
+    const response = await api.get(`${DOMAIN}/api/usuarios/?limit=1000`)
+    if (Array.isArray(response.data)) {
+      usuariosExistentes.value = response.data
+    } else if (response.data && Array.isArray(response.data.results)) {
+      usuariosExistentes.value = response.data.results
+    } else if (response.data && Array.isArray(response.data.data)) {
+      usuariosExistentes.value = response.data.data
+    } else {
+      usuariosExistentes.value = []
+    }
   } catch (error) {
-    console.error('Error cargando usuarios existentes:', error)
+    console.warn('Error cargando usuarios para validación en tiempo real:', error)
+    usuariosExistentes.value = []
   }
 }
 
@@ -325,7 +347,13 @@ const cargarDatos = async () => {
     form.value.telefono = (tel === 'No registrado' || tel.includes('@')) ? '' : tel
   } catch (error) {
     console.error('Error cargando perfil:', error)
-    Swal.fire('Error de conexión', 'No pudimos cargar tus datos.', 'error')
+    Swal.fire({
+      title: 'Error de conexión', 
+      text: 'No pudimos cargar tus datos.', 
+      icon: 'error',
+      background: '#1e293b', 
+      color: '#f1f5f9'
+    })
   } finally {
     cargando.value = false
   }
@@ -346,9 +374,11 @@ const validarApellido = () => {
   else errores.value.apellido = ''
 }
 
-// Validación de DNI (formato + unicidad)
+// 🔥 ARREGLO 2: Validación exluyendo el ID propio con Alert
 const validarDNI = () => {
-  const dni = form.value.dni.trim()
+  const dni = String(form.value.dni).replace(/\D/g, '').slice(0, 8)
+  form.value.dni = dni // Formateo de paso
+  
   const userId = localStorage.getItem('user_id')
 
   if (!dni) {
@@ -361,17 +391,21 @@ const validarDNI = () => {
   }
 
   // Unicidad
-  const existe = usuariosExistentes.value.some(u => u.id != userId && u.dni === dni)
-  if (existe) {
-    errores.value.dni = 'Este DNI ya está registrado por otro usuario'
-  } else {
-    errores.value.dni = ''
+  if (usuariosExistentes.value && usuariosExistentes.value.length > 0) {
+    const existe = usuariosExistentes.value.some(u => String(u.id) !== String(userId) && String(u.dni) === String(dni))
+    if (existe) {
+      errores.value.dni = 'Este DNI ya pertenece a otra cuenta'
+      alertaDuplicado('DNI en uso', 'El DNI ingresado ya está registrado por otro usuario.')
+      return
+    }
   }
+  
+  errores.value.dni = ''
 }
 
-// Validación de correo (formato + unicidad)
+// 🔥 ARREGLO 3: Validación exluyendo el ID propio con Alert
 const validarCorreo = () => {
-  const correo = form.value.correo.trim()
+  const correo = form.value.correo.trim().toLowerCase()
   const userId = localStorage.getItem('user_id')
 
   if (!correo) {
@@ -384,12 +418,16 @@ const validarCorreo = () => {
   }
 
   // Unicidad
-  const existe = usuariosExistentes.value.some(u => u.id != userId && u.correo?.toLowerCase() === correo.toLowerCase())
-  if (existe) {
-    errores.value.correo = 'Este correo ya está en uso por otro usuario'
-  } else {
-    errores.value.correo = ''
+  if (usuariosExistentes.value && usuariosExistentes.value.length > 0) {
+    const existe = usuariosExistentes.value.some(u => String(u.id) !== String(userId) && u.correo?.toLowerCase() === correo)
+    if (existe) {
+      errores.value.correo = 'Este correo ya pertenece a otra cuenta'
+      alertaDuplicado('Correo en uso', 'El correo ingresado ya está siendo usado por otro usuario.')
+      return
+    }
   }
+  
+  errores.value.correo = ''
 }
 
 const validarTelefono = () => {
@@ -416,7 +454,13 @@ const guardarCambios = async () => {
   validarTelefono()
 
   if (!canSave.value) {
-    Swal.fire('Formulario incompleto', 'Por favor, corregí los errores antes de guardar.', 'error')
+    Swal.fire({
+      title: 'Formulario incompleto', 
+      text: 'Por favor, corregí los errores en rojo antes de guardar.', 
+      icon: 'error',
+      background: '#1e293b', 
+      color: '#f1f5f9'
+    })
     return
   }
 
@@ -443,7 +487,9 @@ const guardarCambios = async () => {
       text: 'Tus datos han sido actualizados.',
       icon: 'success',
       timer: 2000,
-      showConfirmButton: false
+      showConfirmButton: false,
+      background: '#1e293b', 
+      color: '#f1f5f9'
     })
 
     // Limpiar contraseñas
@@ -452,14 +498,45 @@ const guardarCambios = async () => {
     form.value.confirmNewPassword = ''
   } catch (error) {
     console.error('Error guardando perfil:', error)
-    let msg = 'Error del servidor al guardar los cambios.'
-    if (error.response?.data) {
-      if (error.response.data.correo) msg = 'Ese correo ya está en uso por otro usuario.'
-      else if (error.response.data.dni) msg = 'Ese DNI ya está registrado en el sistema.'
-      else if (error.response.data.error) msg = error.response.data.error
-      else if (error.response.data.message) msg = error.response.data.message
+    
+    // 🔥 ARREGLO 4: Red de seguridad 400
+    if (error.response && error.response.status === 400) {
+      const datosError = error.response.data
+      let mostroAlerta = false
+
+      if (datosError.dni) {
+        errores.value.dni = 'Este DNI ya pertenece a otra cuenta.'
+        mostroAlerta = true
+      }
+      if (datosError.correo) {
+        errores.value.correo = 'Este correo ya está en uso por otro usuario.'
+        mostroAlerta = true
+      }
+
+      if (mostroAlerta) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Datos duplicados',
+          text: 'El DNI o Correo ingresado ya se encuentran registrados en otra cuenta.',
+          background: '#1e293b', 
+          color: '#f1f5f9'
+        })
+        guardando.value = false
+        return
+      }
     }
-    Swal.fire('Error', msg, 'error')
+
+    let msg = 'Error del servidor al guardar los cambios.'
+    if (error.response?.data?.error) msg = error.response.data.error
+    else if (error.response?.data?.message) msg = error.response.data.message
+
+    Swal.fire({
+      title: 'Error', 
+      text: msg, 
+      icon: 'error',
+      background: '#1e293b', 
+      color: '#f1f5f9'
+    })
   } finally {
     guardando.value = false
   }

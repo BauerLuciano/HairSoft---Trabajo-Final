@@ -4,6 +4,7 @@ from django.conf import settings
 from django.conf.urls.static import static 
 
 from . import views as func_views
+from . import api_views
 
 from .api_views import (
     AuditoriaViewSet,
@@ -307,6 +308,8 @@ urlpatterns = [
     path('api/estado-caja/', verificar_estado_caja, name='estado_caja'),    
 
     path('api/web/pedidos/<int:pedido_id>/comprobante-pdf/', func_views.descargar_comprobante_pedido_web, name='comprobante_pedido_web'),
+
+    path('api/auth/google/', api_views.google_login, name='google_login'),
     ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

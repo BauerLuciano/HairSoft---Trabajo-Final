@@ -119,6 +119,7 @@
             placeholder="ejemplo@dominio.com" 
             autocomplete="off"
             @blur="validarCorreo"
+            @input="validarCorreo"
             :class="{ 'error': errores.correo }"
           />
         </div>
@@ -216,7 +217,7 @@
         </div>
       </div>
 
-      <button type="submit" class="submit-button" :disabled="cargando">
+      <button type="submit" class="submit-button" :disabled="botonDeshabilitado" :class="{ 'opacity-50 cursor-not-allowed': botonDeshabilitado }">
         <span class="button-content">
           <span class="button-text">{{ 
             cargando 
@@ -231,7 +232,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2'
 import { useRouter, useRoute } from 'vue-router'
@@ -246,7 +247,7 @@ const mostrarConfirmarContrasena = ref(false)
 const roles = ref([])
 const usuariosExistentes = ref([])
 const vieneDeTurnos = ref(false)
-const idRolCliente = ref(null) // 🎯 PARA GUARDAR EL ID DEL ROL CLIENTE
+const idRolCliente = ref(null)
 
 // Formulario
 const form = ref({
@@ -272,28 +273,24 @@ const errores = ref({
   rol_id: ''
 })
 
-
 onMounted(async () => {
-  // Solo detectar de dónde venimos, NO redirigir automáticamente
   vieneDeTurnos.value = route.query.returnTo === 'turnos'
-  
   console.log("📌 Contexto:", vieneDeTurnos.value ? 'Desde Turnos Presenciales' : 'Registro Normal')
   
-  await cargarUsuariosExistentes()
+  // Cargamos roles y la lista de usuarios para la validación en tiempo real
   await cargarRoles()
+  await cargarUsuariosExistentes()
   
-  // 🎯 IMPORTANTE: Buscar el rol CLIENTE si venimos de turnos
   if (vieneDeTurnos.value && !idRolCliente.value) {
     const rolCliente = roles.value.find(r => r.nombre.toLowerCase().includes('cliente'))
     if (rolCliente) {
       idRolCliente.value = rolCliente.id
-      // 🟢 FORZAR EL ROL CLIENTE EN EL FORMULARIO
       form.value.rol_id = idRolCliente.value
     }
   }  
 })
 
-// Cargar roles
+// Cargar Roles
 const cargarRoles = async () => {
   try {
     const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
@@ -306,57 +303,47 @@ const cargarRoles = async () => {
     } else if (res.data && res.data.results) {
       roles.value = res.data.results.filter(r => r.activo !== false)
     }
-    
-    console.log("📋 Roles cargados:", roles.value.length)
   } catch (error) {
     console.error('Error cargando roles:', error)
-    if (error.response?.status === 401) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Sesión expirada',
-        text: 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.',
-        background: '#1e293b',
-        color: '#f1f5f9'
-      })
-    } else {
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'No se pudieron cargar los roles',
-        background: '#1e293b',
-        color: '#f1f5f9'
-      })
-    }
   }
 }
 
-// Cargar usuarios existentes para validar duplicados
+// 🔥 ARREGLO CLAVE 1: Extraer bien el array bancando paginación de Django y forzando límite alto
 const cargarUsuariosExistentes = async () => {
   try {
     const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
-    const res = await axios.get(`${API_BASE}/api/usuarios/`)
-    usuariosExistentes.value = res.data
+    // Le metemos un limite alto para que traiga todos a la vista de una vez
+    const res = await axios.get(`${API_BASE}/api/usuarios/?limit=1000`)
+    
+    if (Array.isArray(res.data)) {
+      usuariosExistentes.value = res.data
+    } else if (res.data && Array.isArray(res.data.results)) {
+      usuariosExistentes.value = res.data.results
+    } else if (res.data && Array.isArray(res.data.data)) {
+      usuariosExistentes.value = res.data.data
+    } else {
+      usuariosExistentes.value = [] // Fallback seguro
+    }
+    console.log(`✅ Usuarios cargados para validación: ${usuariosExistentes.value.length}`)
   } catch (error) {
     console.error('Error cargando usuarios existentes:', error)
+    usuariosExistentes.value = []
   }
 }
 
-// Formateo y validaciones
+// ==========================================
+// FORMATEOS EN TIEMPO REAL
+// ==========================================
 const formatearDNI = () => {
   form.value.dni = form.value.dni.replace(/\D/g, '').slice(0, 8)
+  validarDNI() // Validamos mientras tipea
 }
 
 const formatearTelefono = () => {
   let tel = form.value.telefono.replace(/\D/g, '')
+  if (!tel) { form.value.telefono = ''; validarTelefono(); return }
   
-  if (tel.length === 0) {
-    form.value.telefono = ''
-    return
-  }
-  
-  if (tel.startsWith('549')) {
-    form.value.telefono = '+54 ' + tel.slice(2)
-  } else if (tel.startsWith('54')) {
+  if (tel.startsWith('549') || tel.startsWith('54')) {
     form.value.telefono = '+54 ' + tel.slice(2)
   } else if (tel.startsWith('9')) {
     form.value.telefono = '+54 ' + tel
@@ -366,270 +353,161 @@ const formatearTelefono = () => {
   
   tel = form.value.telefono.replace(/\D/g, '')
   if (tel.length > 13) {
-    tel = tel.slice(0, 13)
-    const codigoPais = tel.slice(0, 2)
-    const resto = tel.slice(2)
-    form.value.telefono = `+${codigoPais} ${resto}`
+    form.value.telefono = `+${tel.slice(0, 2)} ${tel.slice(2, 13)}`
   }
+  validarTelefono()
 }
 
-// Validar que no exista otro usuario con el mismo nombre y apellido
-const validarNombreApellidoUnico = () => {
-  const nombre = form.value.nombre.trim().toLowerCase()
-  const apellido = form.value.apellido.trim().toLowerCase()
-  
-  if (!nombre || !apellido) return true
-  
-  const existeDuplicado = usuariosExistentes.value.some(usuario => {
-    const usuarioNombre = usuario.nombre?.toLowerCase() || ''
-    const usuarioApellido = usuario.apellido?.toLowerCase() || ''
-    
-    return usuarioNombre === nombre && usuarioApellido === apellido
-  })
-  
-  return !existeDuplicado
-}
-
-// Validar que no exista otro usuario con el mismo DNI
-const validarDNIUnico = () => {
-  const dni = form.value.dni.trim()
-  
-  if (!dni) return true
-  
-  const existeDuplicado = usuariosExistentes.value.some(usuario => {
-    return usuario.dni === dni
-  })
-  
-  return !existeDuplicado
-}
-
-// Validar que no exista otro usuario con el mismo correo
-const validarCorreoUnico = () => {
-  const correo = form.value.correo.trim().toLowerCase()
-  
-  if (!correo) return true
-  
-  const existeDuplicado = usuariosExistentes.value.some(usuario => {
-    const usuarioCorreo = usuario.correo?.toLowerCase() || ''
-    return usuarioCorreo === correo
-  })
-  
-  return !existeDuplicado
-}
-
+// ==========================================
+// VALIDACIONES INDIVIDUALES
+// ==========================================
 const validarNombre = () => {
   const val = form.value.nombre.trim()
-  if (!val) {
-    errores.value.nombre = 'El nombre es obligatorio'
-  } else if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]{2,50}$/.test(val)) {
-    errores.value.nombre = 'Solo letras (2-50 caracteres)'
-  } else if (!validarNombreApellidoUnico()) {
-    errores.value.nombre = 'Ya existe un usuario con este nombre y apellido'
-  } else {
-    errores.value.nombre = ''
-  }
+  errores.value.nombre = !val ? 'El nombre es obligatorio' : (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]{2,50}$/.test(val) ? 'Solo letras (2-50 caracteres)' : '')
 }
 
 const validarApellido = () => {
   const val = form.value.apellido.trim()
-  if (!val) {
-    errores.value.apellido = 'El apellido es obligatorio'
-  } else if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]{2,50}$/.test(val)) {
-    errores.value.apellido = 'Solo letras (2-50 caracteres)'
-  } else if (!validarNombreApellidoUnico()) {
-    errores.value.apellido = 'Ya existe un usuario con este nombre y apellido'
-  } else {
-    errores.value.apellido = ''
-  }
-}
-
-const validarDNI = () => {
-  const val = form.value.dni.trim()
-  if (!val) {
-    errores.value.dni = 'El DNI es obligatorio'
-  } else if (!/^\d{7,8}$/.test(val)) {
-    errores.value.dni = 'DNI inválido (7-8 dígitos)'
-  } else if (!validarDNIUnico()) {
-    errores.value.dni = 'Ya existe un usuario con este DNI'
-  } else {
-    errores.value.dni = ''
-  }
+  errores.value.apellido = !val ? 'El apellido es obligatorio' : (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]{2,50}$/.test(val) ? 'Solo letras (2-50 caracteres)' : '')
 }
 
 const validarTelefono = () => {
   const val = form.value.telefono.trim()
-  
-  // 1. Validar que no esté vacío
-  if (!val) {
-    errores.value.telefono = 'El teléfono es obligatorio'
-    return
-  }
-
-  // 2. Validar formato (el código que ya tenías)
   const limpio = val.replace(/\s+/g, '')
-  if (!/^\+54\s?9\d{10}$/.test(limpio)) {
-    errores.value.telefono = 'Formato: +54 9 3755 558911'
-  } else {
-    errores.value.telefono = ''
-  }
-}
-
-const validarCorreo = () => {
-  const val = form.value.correo.trim()
-  if (!val) {
-    errores.value.correo = 'El correo es obligatorio'
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
-    errores.value.correo = 'Correo electrónico inválido'
-  } else if (!validarCorreoUnico()) {
-    errores.value.correo = 'Ya existe un usuario con este correo'
-  } else {
-    errores.value.correo = ''
-  }
+  errores.value.telefono = !val ? 'El teléfono es obligatorio' : (!/^\+54\s?9\d{10}$/.test(limpio) ? 'Formato: +54 9 3755 558911' : '')
 }
 
 const validarContrasena = () => {
   const val = form.value.contrasena
-  if (!val) {
-    errores.value.contrasena = 'La contraseña es obligatoria'
-  } else if (val.length < 6) {
-    errores.value.contrasena = 'Mínimo 6 caracteres'
-  } else if (!/(?=.*[A-Z])(?=.*\d)/.test(val)) {
-    errores.value.contrasena = '1 mayúscula y 1 número'
-  } else {
-    errores.value.contrasena = ''
-  }
-  
-  if (form.value.confirmarContrasena) {
-    validarConfirmarContrasena()
-  }
+  errores.value.contrasena = !val ? 'La contraseña es obligatoria' : (val.length < 6 ? 'Mínimo 6 caracteres' : (!/(?=.*[A-Z])(?=.*\d)/.test(val) ? '1 mayúscula y 1 número' : ''))
+  if (form.value.confirmarContrasena) validarConfirmarContrasena()
 }
 
 const validarConfirmarContrasena = () => {
   const val = form.value.confirmarContrasena
-  if (!val) {
-    errores.value.confirmarContrasena = 'Confirma la contraseña'
-  } else if (val !== form.value.contrasena) {
-    errores.value.confirmarContrasena = 'Las contraseñas no coinciden'
-  } else {
-    errores.value.confirmarContrasena = ''
-  }
+  errores.value.confirmarContrasena = !val ? 'Confirma la contraseña' : (val !== form.value.contrasena ? 'Las contraseñas no coinciden' : '')
 }
 
-const validarRol = () => {
-  if (!form.value.rol_id) {
-    errores.value.rol_id = 'Selecciona un rol'
-  } else {
-    errores.value.rol_id = ''
-  }
-}
+const validarRol = () => { errores.value.rol_id = !form.value.rol_id ? 'Selecciona un rol' : '' }
 
-const validarFormulario = () => {
-  validarNombre()
-  validarApellido()
-  validarDNI()
-  validarTelefono()
-  validarCorreo()
-  validarContrasena()
-  validarConfirmarContrasena()
+// ==========================================
+// 🚨 VALIDACIONES DE DUPLICADOS EN TIEMPO REAL
+// ==========================================
+const validarDNI = () => {
+  const val = form.value.dni.trim()
   
-  // Solo validar rol si NO venimos de turnos
-  if (!vieneDeTurnos.value) {
-    validarRol()
+  if (!val) {
+    errores.value.dni = 'El DNI es obligatorio'
+    return
   }
-
-  return !Object.values(errores.value).some(e => e !== '')
+  if (!/^\d{7,8}$/.test(val)) {
+    errores.value.dni = 'DNI inválido (7-8 dígitos)'
+    return
+  }
+  
+  // Chequeo contra el array descargado
+  if (usuariosExistentes.value && usuariosExistentes.value.length > 0) {
+    const existe = usuariosExistentes.value.some(u => String(u.dni) === String(val))
+    if (existe) {
+      errores.value.dni = 'Ya existe un usuario con este DNI'
+      alertaDuplicado('DNI ya registrado', 'El DNI que ingresaste ya pertenece a otro usuario.')
+      return
+    }
+  }
+  
+  errores.value.dni = ''
 }
 
-const crearUsuario = async () => {
-  // Validar formulario primero
-  if (!validarFormulario()) {
-    Swal.fire({
-      icon: 'error',
-      title: 'Formulario incompleto',
-      text: 'Por favor, completa todos los campos requeridos correctamente',
-      background: '#1e293b',
-      color: '#f1f5f9'
-    })
+const validarCorreo = () => {
+  const val = form.value.correo.trim().toLowerCase()
+  
+  if (!val) {
+    errores.value.correo = 'El correo es obligatorio'
+    return
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+    errores.value.correo = 'Correo electrónico inválido'
     return
   }
 
-  // 🔥 VALIDAR ADMINISTRADOR ÚNICO (solo para registros normales)
-  if (!vieneDeTurnos.value) {
-    try {
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
-      const rolNombreSeleccionado = roles.value.find(r => r.id == form.value.rol_id)?.nombre?.toLowerCase()
-      
-      const usuariosRes = await axios.get(`${API_BASE}/api/usuarios/`)
-      
-      const hayOtroAdmin = usuariosRes.data.some(u => 
-        u.rol_nombre?.toLowerCase() === 'administrador' && 
-        u.estado === 'ACTIVO'
-      )
+  // Chequeo contra el array descargado
+  if (usuariosExistentes.value && usuariosExistentes.value.length > 0) {
+    const existe = usuariosExistentes.value.some(u => u.correo && u.correo.toLowerCase() === val)
+    if (existe) {
+      errores.value.correo = 'Ya existe un usuario con este correo'
+      alertaDuplicado('Correo ya registrado', 'Este correo ya está en uso. Por favor, usa otro.')
+      return
+    }
+  }
 
-      if (rolNombreSeleccionado === 'administrador' && hayOtroAdmin) {
-        Swal.fire({
-          icon: 'warning',
-          title: 'Administrador existente',
-          text: 'Ya existe un administrador activo. No se puede crear otro.',
-          background: '#1e293b',
-          color: '#f1f5f9'
-        })
-        return
-      }
-    } catch (error) {
-      console.error('Error validando administrador:', error)
+  errores.value.correo = ''
+}
+
+// Alerta genérica tipo Toast para no ser tan invasivos pero sí claros
+const alertaDuplicado = (titulo, texto) => {
+  Swal.fire({
+    toast: true,
+    position: 'top-end',
+    icon: 'warning',
+    title: titulo,
+    text: texto,
+    showConfirmButton: false,
+    timer: 4000,
+    timerProgressBar: true,
+    background: '#1e293b',
+    color: '#f1f5f9'
+  })
+}
+
+const forzarValidacionCompleta = () => {
+  validarNombre(); validarApellido(); validarDNI(); validarTelefono(); 
+  validarCorreo(); validarContrasena(); validarConfirmarContrasena();
+  if (!vieneDeTurnos.value) validarRol()
+}
+
+// ==========================================
+// 🔒 COMPUTADA PARA DESHABILITAR EL BOTÓN
+// ==========================================
+// Retorna TRUE si hay algún error o si los campos requeridos están vacíos
+const botonDeshabilitado = computed(() => {
+  // 1. Hay algún mensaje de error visible?
+  const hayErrores = Object.values(errores.value).some(e => e !== '')
+  
+  // 2. Faltan campos requeridos por llenar?
+  const camposVacios = !form.value.nombre || !form.value.apellido || !form.value.dni || 
+                       !form.value.telefono || !form.value.correo || !form.value.contrasena || 
+                       !form.value.confirmarContrasena || (!vieneDeTurnos.value && !form.value.rol_id)
+                       
+  return hayErrores || camposVacios || cargando.value
+})
+
+// ==========================================
+// ENVÍO AL BACKEND
+// ==========================================
+const crearUsuario = async () => {
+  forzarValidacionCompleta()
+  
+  if (botonDeshabilitado.value) {
+    Swal.fire({ icon: 'error', title: 'Formulario incompleto', text: 'Revisa los errores en rojo', background: '#1e293b', color: '#f1f5f9' })
+    return
+  }
+
+  // Validar administrador único
+  if (!vieneDeTurnos.value) {
+    const rolNombreSeleccionado = roles.value.find(r => r.id == form.value.rol_id)?.nombre?.toLowerCase()
+    const hayOtroAdmin = usuariosExistentes.value.some(u => u.rol_nombre?.toLowerCase() === 'administrador' && u.estado === 'ACTIVO')
+
+    if (rolNombreSeleccionado === 'administrador' && hayOtroAdmin) {
+      Swal.fire({ icon: 'warning', title: 'Administrador existente', text: 'Ya existe un administrador activo. No se puede crear otro.', background: '#1e293b', color: '#f1f5f9' })
+      return
     }
   }
 
   cargando.value = true
 
   try {
-    // Preparar el teléfono para el backend
-    let telefonoParaBackend = null
-    if (form.value.telefono.trim()) {
-      let telLimpio = form.value.telefono.replace(/\s+/g, '').replace('+', '')
-      
-      if (!telLimpio.startsWith('549')) {
-        if (telLimpio.startsWith('54')) {
-          telLimpio = '549' + telLimpio.slice(2)
-        } else if (telLimpio.startsWith('9')) {
-          telLimpio = '54' + telLimpio
-        } else {
-          telLimpio = '549' + telLimpio
-        }
-      }
-      
-      if (telLimpio.length === 13) {
-        telefonoParaBackend = '+' + telLimpio
-      } else {
-        errores.value.telefono = 'El teléfono debe tener 13 dígitos'
-        throw new Error('Teléfono inválido')
-      }
-    }
-
-    // 🎯 SI VENIMOS DE TURNOS, EL ROL ES FIJO = CLIENTE
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+    let telefonoParaBackend = '+' + form.value.telefono.replace(/\s+/g, '').replace('+', '')
     
-    // Buscar el rol CLIENTE si venimos de turnos
-    if (vieneDeTurnos.value && !idRolCliente.value) {
-      const rolCliente = roles.value.find(r => r.nombre.toLowerCase().includes('cliente'))
-      if (rolCliente) {
-        idRolCliente.value = rolCliente.id
-      } else {
-        // Si no encuentra el rol CLIENTE, buscar alternativas
-        console.warn('No se encontró rol CLIENTE, buscando alternativas...')
-        const rolAlternativo = roles.value.find(r => 
-          r.nombre.toLowerCase().includes('cliente') || 
-          r.nombre.toLowerCase().includes('usuario')
-        )
-        if (rolAlternativo) {
-          idRolCliente.value = rolAlternativo.id
-        } else {
-          throw new Error('No se encontró el rol CLIENTE en el sistema')
-        }
-      }
-    }
-
     const payload = {
       nombre: form.value.nombre.trim(),
       apellido: form.value.apellido.trim(),
@@ -641,98 +519,50 @@ const crearUsuario = async () => {
       estado: 'ACTIVO'
     }
 
-    console.log('📤 Enviando al backend:', payload)
-
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
     const response = await axios.post(`${API_BASE}/api/usuarios/crear/`, payload)
-    const nuevoUsuarioId = response.data.id
-
-    console.log("✅ CLIENTE CREADO - ID:", nuevoUsuarioId)
-
-    // 🎯 AQUÍ ESTÁ LA CLAVE CORREGIDA - DIFERENCIAR ENTRE VENIR DE TURNOS O NO
+    
     if (vieneDeTurnos.value) {
-      console.log("🔥 VENIMOS DE TURNOS - REDIRIGIENDO A TURNOS...")
-      
-      // Mostrar mensaje de éxito rápido
-      await Swal.fire({
-        icon: 'success',
-        title: '¡Cliente Registrado!',
-        text: 'Volviendo a turnos con el cliente seleccionado...',
-        showConfirmButton: false,
-        timer: 800,
-        timerProgressBar: true,
-        background: '#1e293b',
-        color: '#f1f5f9'
-      })
-      
-      // 🟢 CODIFICAR LOS NOMBRES PARA LA URL (usar + en lugar de %20 para espacios)
-      const nombreCodificado = encodeURIComponent(form.value.nombre.trim())
-      const apellidoCodificado = encodeURIComponent(form.value.apellido.trim())
-      const nombreCompleto = `${nombreCodificado}+${apellidoCodificado}`
-      
-      console.log("📍 Redirigiendo a turnos con:", {
-        id: nuevoUsuarioId,
-        nombre: nombreCompleto
-      })
-      
-      // 🟢 REDIRIGIR CON LOS PARÁMETROS CORRECTOS
-      router.push({
-        path: '/turnos/crear-presencial',
-        query: {
-          nuevo_cliente_id: nuevoUsuarioId,
-          nuevo_cliente_nombre: nombreCompleto
-        }
-      }).then(() => {
-        window.location.reload()
-      })
-      
+      const nombreCompleto = encodeURIComponent(payload.nombre) + '+' + encodeURIComponent(payload.apellido)
+      await Swal.fire({ icon: 'success', title: '¡Cliente Registrado!', text: 'Volviendo a turnos...', showConfirmButton: false, timer: 1000, background: '#1e293b', color: '#f1f5f9' })
+      router.push(`/turnos/crear-presencial?nuevo_cliente_id=${response.data.id}&nuevo_cliente_nombre=${nombreCompleto}`).then(() => window.location.reload())
     } else {
-      // 🔥 CASO 2: REGISTRO NORMAL (NO desde turnos)
-      Swal.fire({
-        icon: 'success',
-        title: 'Usuario creado',
-        text: 'El usuario se ha registrado exitosamente',
-        showConfirmButton: false,  // Quitado el botón de confirmación
-        timer: 1500,               // Redirige solo en 1.5 seg
-        timerProgressBar: true,
-        background: '#1e293b',
-        color: '#f1f5f9'
-      }).then(() => {
-        // Redirige al listado y fuerza recarga para esquivar la caché y actualizar datos.
-        router.push('/usuarios').then(() => {
-          window.location.reload()
-        })
-      })
+      await Swal.fire({ icon: 'success', title: 'Usuario creado', showConfirmButton: false, timer: 1000, background: '#1e293b', color: '#f1f5f9' })
+      router.push('/usuarios').then(() => window.location.reload())
     }
 
   } catch (error) {
     console.error('❌ Error creando usuario:', error)
     
-    let msg = 'Error al crear el usuario'
-    
-    if (error.response?.data?.error) {
-      msg = error.response.data.error
-    } else if (error.response?.data?.message) {
-      msg = error.response.data.message
-    } else if (error.message) {
-      msg = error.message
+    // 🔥 ARREGLO CLAVE 2: Red de seguridad en caso de que el backend mande un 400
+    if (error.response && error.response.status === 400) {
+      const datosError = error.response.data
+      let mostroAlerta = false
+      
+      if (datosError.dni) {
+        errores.value.dni = 'Este DNI ya pertenece a otro usuario registrado.'
+        mostroAlerta = true
+      }
+      if (datosError.correo) {
+        errores.value.correo = 'Este correo electrónico ya está en uso. Elige otro.'
+        mostroAlerta = true
+      }
+
+      if (mostroAlerta) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Datos duplicados',
+          text: 'El DNI o Correo ingresado ya se encuentran registrados.',
+          background: '#1e293b',
+          color: '#f1f5f9'
+        })
+        cargando.value = false
+        return
+      }
     }
     
-    // Manejar errores específicos de duplicados
-    if (msg.toLowerCase().includes('dni') || msg.toLowerCase().includes('duplicado')) {
-      errores.value.dni = 'Ya existe un usuario con este DNI'
-    }
-    
-    if (msg.toLowerCase().includes('correo') || msg.toLowerCase().includes('email')) {
-      errores.value.correo = 'Ya existe un usuario con este correo'
-    }
-    
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: msg,
-      background: '#1e293b',
-      color: '#f1f5f9'
-    })
+    const msg = error.response?.data?.error || error.response?.data?.message || 'Error al guardar el usuario.'
+    Swal.fire({ icon: 'error', title: 'Error', text: msg, background: '#1e293b', color: '#f1f5f9' })
   } finally {
     cargando.value = false
   }

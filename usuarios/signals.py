@@ -168,7 +168,7 @@ def auditar_cambios(sender, instance, created, **kwargs):
                     modelo_afectado=nombre_modelo, 
                     objeto_id=str(instance.pk),
                     accion=accion, 
-                    details=reporte, # Nota: Asegúrate si tu modelo usa 'detalles' o 'details'
+                    detalles=reporte, 
                     ip_address=req_data.get('ip')
                 )
         except Exception as e:

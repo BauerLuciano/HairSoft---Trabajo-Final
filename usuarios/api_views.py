@@ -1,5 +1,9 @@
 from rest_framework import viewsets, filters, generics, permissions, status, serializers
+from django.conf import settings
+from rest_framework.authtoken.models import Token
 from django_filters.rest_framework import DjangoFilterBackend
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -770,3 +774,84 @@ class EstadisticasDashboardAPIView(APIView):
             import traceback
             traceback.print_exc()
             return Response({'error': 'Error interno del servidor. Revisá la consola.'}, status=500)
+
+#google login
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def google_login(request):
+    token = request.data.get('token')
+    
+    if not token:
+        return Response({'error': 'Token no proporcionado'}, status=400)
+
+    try:
+        # 1. Validamos contra Google
+        idinfo = id_token.verify_oauth2_token(
+            token, google_requests.Request(), settings.GOOGLE_CLIENT_ID
+        )
+        
+        correo = idinfo.get('email')
+        nombre = idinfo.get('given_name', '')
+        apellido = idinfo.get('family_name', '')
+
+        usuario = Usuario.objects.filter(correo=correo).first()
+        
+        if usuario:
+            # ✅ ESCENARIO A: YA EXISTE
+            token_obj, created = Token.objects.get_or_create(user=usuario)
+            
+            # 🔥 REGISTRO BLINDADO DE AUDITORÍA (LOGIN GOOGLE) 🔥
+            try:
+                from .models import Auditoria
+                from .middleware import get_current_request_data
+                
+                print("--- INICIANDO AUDITORÍA DE LOGIN CON GOOGLE ---")
+                req_data = get_current_request_data() or {}
+                ip = req_data.get('ip', '127.0.0.1')
+                navegador = req_data.get('navegador', 'Desconocido')
+                
+                nombre_completo = f"{getattr(usuario, 'nombre', '')} {getattr(usuario, 'apellido', '')}".strip()
+                if not nombre_completo:
+                    nombre_completo = getattr(usuario, 'correo', str(usuario))
+                    
+                detalles_login = {
+                    '__meta__': {'navegador': navegador, 'ip': ip},
+                    'Mensaje del Sistema': {'tipo': 'VALOR', 'valor': f'El usuario {nombre_completo} inició sesión mediante Google.'}
+                }
+                
+                Auditoria.objects.create(
+                    usuario=usuario,
+                    modelo_afectado='SesionDeUsuario', 
+                    objeto_id=str(usuario.pk),
+                    accion='LOGIN_GOOGLE',
+                    detalles=detalles_login,
+                    ip_address=ip
+                )
+            except Exception as e:
+                print("❌ ERROR EN AUDITORIA DE LOGIN GOOGLE:")
+                import traceback
+                traceback.print_exc()
+
+            # Respondemos EXACTAMENTE igual que el login tradicional
+            return Response({
+                'status': 'ok',
+                'message': 'Login exitoso con Google',
+                'token': token_obj.key,
+                'user_id': usuario.id,
+                'nombre': getattr(usuario, 'nombre', ''),
+                'apellido': getattr(usuario, 'apellido', ''),
+                'rol': usuario.rol.nombre.upper() if getattr(usuario, 'rol', None) else 'SIN_ROL',
+            })
+        else:
+            # 🟡 ESCENARIO B: ES NUEVO -> 202
+            return Response({
+                'requiere_completar_perfil': True,
+                'datos_google': {
+                    'correo': correo,
+                    'nombre': nombre,
+                    'apellido': apellido
+                }
+            }, status=202) 
+
+    except ValueError:
+        return Response({'error': 'Token de Google inválido o expirado'}, status=401)

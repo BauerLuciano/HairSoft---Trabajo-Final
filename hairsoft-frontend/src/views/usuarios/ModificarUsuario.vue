@@ -7,7 +7,6 @@
 
     <form @submit.prevent="actualizarUsuario" class="form-content" autocomplete="off">
       
-      <!-- Primera fila -->
       <div class="form-row">
         <div class="input-field">
           <div class="field-header">
@@ -50,7 +49,6 @@
         </div>
       </div>
 
-      <!-- Segunda fila -->
       <div class="form-row">
         <div class="input-field">
           <div class="field-header">
@@ -96,7 +94,6 @@
         </div>
       </div>
 
-      <!-- Correo -->
       <div class="input-field full-width">
         <div class="field-header">
           <label>Correo Electrónico</label>
@@ -108,6 +105,7 @@
             type="email" 
             placeholder="ejemplo@dominio.com" 
             @blur="validarCorreo"
+            @input="validarCorreo"
             :class="{ 'error': errores.correo }"
           />
         </div>
@@ -117,7 +115,6 @@
         </div>
       </div>
 
-      <!-- Campos de contraseña (solo si se activa el cambio) -->
       <div v-if="mostrarCambioContrasena" class="password-section">
         <div class="input-field">
           <div class="field-header">
@@ -140,12 +137,10 @@
               @click="mostrarContrasenaActual = !mostrarContrasenaActual"
               aria-label="Mostrar contraseña"
             >
-              <!-- SVG ojo abierto -->
               <svg v-if="!mostrarContrasenaActual" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                 <circle cx="12" cy="12" r="3"/>
               </svg>
-              <!-- SVG ojo cerrado -->
               <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
                 <line x1="1" y1="1" x2="23" y2="23"/>
@@ -189,15 +184,12 @@
               </svg>
             </button>
           </div>
-          <!-- Requisitos dinámicos -->
           <div v-if="mostrarCambioContrasena" class="password-requirements">
             <ul class="requirement-list">
               <li :class="passwordRequisitos.minLength ? 'valid' : 'invalid'">
-                <!-- SVG check válido -->
                 <svg v-if="passwordRequisitos.minLength" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
-                <!-- SVG guion inválido -->
                 <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
                   <line x1="5" y1="12" x2="19" y2="12"/>
                 </svg>
@@ -267,7 +259,6 @@
         </div>
       </div>
 
-      <!-- Botón para mostrar/ocultar cambio de contraseña -->
       <div class="full-width">
         <button 
           type="button" 
@@ -278,7 +269,6 @@
         </button>
       </div>
 
-      <!-- Rol -->
       <div class="input-field full-width">
         <div class="field-header">
           <label>Rol del Usuario</label>
@@ -309,9 +299,8 @@
         </div>
       </div>
 
-      <!-- Botones -->
       <div class="form-row">
-        <button type="submit" class="submit-button" :disabled="cargando || !formularioValido">
+        <button type="submit" class="submit-button" :disabled="botonDeshabilitado" :class="{ 'opacity-50 cursor-not-allowed': botonDeshabilitado }">
           <span class="button-content">
             <span class="button-text">{{ cargando ? 'Actualizando...' : 'Actualizar Usuario' }}</span>
             <svg v-if="cargando" class="spinner-svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -405,6 +394,10 @@ const formularioValido = computed(() => {
   return true
 })
 
+const botonDeshabilitado = computed(() => {
+  return cargando.value || !formularioValido.value
+})
+
 // -------------------------------------------------------
 // Carga de datos
 // -------------------------------------------------------
@@ -424,12 +417,22 @@ const cargarRoles = async () => {
   }
 }
 
+// 🔥 ARREGLO 1: Cargar toda la base forzando límite
 const cargarUsuariosExistentes = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/api/usuarios/`)
-    usuariosExistentes.value = res.data
+    const res = await axios.get(`${API_BASE}/api/usuarios/?limit=1000`)
+    if (Array.isArray(res.data)) {
+      usuariosExistentes.value = res.data
+    } else if (res.data && Array.isArray(res.data.results)) {
+      usuariosExistentes.value = res.data.results
+    } else if (res.data && Array.isArray(res.data.data)) {
+      usuariosExistentes.value = res.data.data
+    } else {
+      usuariosExistentes.value = []
+    }
   } catch (error) {
     console.error('Error cargando usuarios existentes:', error)
+    usuariosExistentes.value = []
   }
 }
 
@@ -447,7 +450,9 @@ const formatearTelefonoParaMostrar = (telefono) => {
 const cargarUsuario = async () => {
   try {
     const res = await axios.get(`${API_BASE}/api/usuarios/`)
-    const usuario = res.data.find(u => u.id == props.usuarioId)
+    const data = Array.isArray(res.data) ? res.data : (res.data.results || [])
+    const usuario = data.find(u => u.id == props.usuarioId)
+    
     if (!usuario) {
       Swal.fire({ icon: 'error', title: 'Error', text: 'Usuario no encontrado', background: '#1e293b', color: '#f1f5f9' })
       emit('cancelar')
@@ -474,7 +479,10 @@ const cargarUsuario = async () => {
 // -------------------------------------------------------
 // Formateo y validaciones
 // -------------------------------------------------------
-const formatearDNI = () => { form.value.dni = form.value.dni.replace(/\D/g, '').slice(0, 8) }
+const formatearDNI = () => { 
+  form.value.dni = form.value.dni.replace(/\D/g, '').slice(0, 8) 
+  validarDNI()
+}
 
 const formatearTelefono = () => {
   let tel = form.value.telefono.replace(/\D/g, '')
@@ -488,59 +496,89 @@ const formatearTelefono = () => {
     tel = tel.slice(0, 13)
     form.value.telefono = `+${tel.slice(0,2)} ${tel.slice(2)}`
   }
+  validarTelefono()
 }
 
-const validarNombreApellidoUnico = () => {
-  const nombre = form.value.nombre.trim().toLowerCase()
-  const apellido = form.value.apellido.trim().toLowerCase()
-  if (!nombre || !apellido) return true
-  return !usuariosExistentes.value.some(u => u.id != props.usuarioId && u.nombre?.toLowerCase() === nombre && u.apellido?.toLowerCase() === apellido)
+// Alerta genérica tipo Toast
+const alertaDuplicado = (titulo, texto) => {
+  Swal.fire({
+    toast: true,
+    position: 'top-end',
+    icon: 'warning',
+    title: titulo,
+    text: texto,
+    showConfirmButton: false,
+    timer: 4000,
+    timerProgressBar: true,
+    background: '#1e293b',
+    color: '#f1f5f9'
+  })
 }
-const validarDNIUnico = () => {
-  const dni = form.value.dni.trim()
-  if (!dni) return true
-  return !usuariosExistentes.value.some(u => u.id != props.usuarioId && u.dni === dni)
+
+// 🔥 ARREGLO 2: Validación exluyendo el ID propio (DNI y Correo)
+const validarDNI = () => {
+  const val = form.value.dni.trim()
+  if (!val) {
+    errores.value.dni = 'El DNI es obligatorio'
+    return
+  }
+  if (!/^\d{7,8}$/.test(val)) {
+    errores.value.dni = 'DNI inválido (7-8 dígitos)'
+    return
+  }
+  
+  if (usuariosExistentes.value && usuariosExistentes.value.length > 0) {
+    const existe = usuariosExistentes.value.some(u => String(u.id) !== String(props.usuarioId) && String(u.dni) === String(val))
+    if (existe) {
+      errores.value.dni = 'Ya existe un usuario con este DNI'
+      alertaDuplicado('DNI ya registrado', 'El DNI que ingresaste ya pertenece a otro usuario.')
+      return
+    }
+  }
+  errores.value.dni = ''
 }
-const validarCorreoUnico = () => {
-  const correo = form.value.correo.trim().toLowerCase()
-  if (!correo) return true
-  return !usuariosExistentes.value.some(u => u.id != props.usuarioId && u.correo?.toLowerCase() === correo)
+
+const validarCorreo = () => {
+  const val = form.value.correo.trim().toLowerCase()
+  if (!val) {
+    errores.value.correo = 'El correo es obligatorio'
+    return
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+    errores.value.correo = 'Correo electrónico inválido'
+    return
+  }
+
+  if (usuariosExistentes.value && usuariosExistentes.value.length > 0) {
+    const existe = usuariosExistentes.value.some(u => String(u.id) !== String(props.usuarioId) && u.correo?.toLowerCase() === val)
+    if (existe) {
+      errores.value.correo = 'Ya existe un usuario con este correo'
+      alertaDuplicado('Correo ya registrado', 'Este correo ya está en uso. Por favor, usa otro.')
+      return
+    }
+  }
+  errores.value.correo = ''
 }
 
 const validarNombre = () => {
   const val = form.value.nombre.trim()
   if (!val) errores.value.nombre = 'El nombre es obligatorio'
   else if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]{2,50}$/.test(val)) errores.value.nombre = 'Solo letras (2-50 caracteres)'
-  else if (!validarNombreApellidoUnico()) errores.value.nombre = 'Ya existe un usuario con este nombre y apellido'
   else errores.value.nombre = ''
 }
 const validarApellido = () => {
   const val = form.value.apellido.trim()
   if (!val) errores.value.apellido = 'El apellido es obligatorio'
   else if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]{2,50}$/.test(val)) errores.value.apellido = 'Solo letras (2-50 caracteres)'
-  else if (!validarNombreApellidoUnico()) errores.value.apellido = 'Ya existe un usuario con este nombre y apellido'
   else errores.value.apellido = ''
 }
-const validarDNI = () => {
-  const val = form.value.dni.trim()
-  if (!val) errores.value.dni = 'El DNI es obligatorio'
-  else if (!/^\d{7,8}$/.test(val)) errores.value.dni = 'DNI inválido (7-8 dígitos)'
-  else if (!validarDNIUnico()) errores.value.dni = 'Ya existe un usuario con este DNI'
-  else errores.value.dni = ''
-}
+
 const validarTelefono = () => {
   const val = form.value.telefono.trim()
   if (!val) { errores.value.telefono = ''; return }
   const limpio = val.replace(/\s+/g, '')
   if (!/^\+54\s?9\d{10}$/.test(limpio)) errores.value.telefono = 'Formato: +54 9 3755 558911'
   else errores.value.telefono = ''
-}
-const validarCorreo = () => {
-  const val = form.value.correo.trim()
-  if (!val) errores.value.correo = 'El correo es obligatorio'
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) errores.value.correo = 'Correo electrónico inválido'
-  else if (!validarCorreoUnico()) errores.value.correo = 'Ya existe un usuario con este correo'
-  else errores.value.correo = ''
 }
 
 const validarContrasenaActual = () => {
@@ -588,8 +626,7 @@ const actualizarUsuario = async () => {
 
   try {
     const rolNombreSeleccionado = roles.value.find(r => r.id == form.value.rol_id)?.nombre?.toLowerCase()
-    const usuariosRes = await axios.get(`${API_BASE}/api/usuarios/`)
-    const hayOtroAdmin = usuariosRes.data.some(u => u.rol_nombre?.toLowerCase() === 'administrador' && u.id != props.usuarioId && u.estado === 'ACTIVO')
+    const hayOtroAdmin = usuariosExistentes.value.some(u => u.rol_nombre?.toLowerCase() === 'administrador' && u.id != props.usuarioId && u.estado === 'ACTIVO')
     if (rolNombreSeleccionado === 'administrador' && hayOtroAdmin) {
       Swal.fire({ icon: 'warning', title: 'Administrador existente', text: 'Ya existe un administrador activo.', background: '#1e293b', color: '#f1f5f9' })
       return
@@ -620,7 +657,6 @@ const actualizarUsuario = async () => {
       estado: form.value.estado
     }
 
-    // Solo se envía la contraseña si se está cambiando
     if (mostrarCambioContrasena.value && form.value.contrasena_nueva) {
       payload.contrasena_actual = form.value.contrasena_actual
       payload.contrasena_nueva = form.value.contrasena_nueva
@@ -631,6 +667,34 @@ const actualizarUsuario = async () => {
     emit('usuario-actualizado', response.data)
   } catch (error) {
     console.error('Error:', error)
+    
+    // 🔥 ARREGLO 3: Red de seguridad para el 400
+    if (error.response && error.response.status === 400) {
+      const datosError = error.response.data
+      let mostroAlerta = false
+      
+      if (datosError.dni) {
+        errores.value.dni = 'Este DNI ya pertenece a otro usuario registrado.'
+        mostroAlerta = true
+      }
+      if (datosError.correo) {
+        errores.value.correo = 'Este correo electrónico ya está en uso. Elige otro.'
+        mostroAlerta = true
+      }
+
+      if (mostroAlerta) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Datos duplicados',
+          text: 'El DNI o Correo ingresado ya se encuentran registrados en otro usuario.',
+          background: '#1e293b',
+          color: '#f1f5f9'
+        })
+        cargando.value = false
+        return
+      }
+    }
+
     let msg = 'Error al actualizar el usuario'
     if (error.response?.status === 401) msg = 'No estás autenticado. Por favor, inicia sesión nuevamente.'
     else if (error.response?.status === 403) msg = 'No tienes permisos para realizar esta acción.'
