@@ -566,7 +566,7 @@ const horariosGenerados = computed(() => {
   ]
   bloques.forEach(b => {
     for (let h = b.inicio; h < b.fin; h++) {
-      for (let m = 0; m < 60; m += 20) {
+      for (let m = 0; m < 60; m += 10) {
         const horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
         horariosBase.push(horaStr)
       }

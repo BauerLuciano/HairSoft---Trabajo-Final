@@ -7,6 +7,7 @@
 
     <form @submit.prevent="actualizarUsuario" class="form-content" autocomplete="off">
       
+      <!-- NOMBRES Y APELLIDOS -->
       <div class="form-row">
         <div class="input-field">
           <div class="field-header">
@@ -49,6 +50,7 @@
         </div>
       </div>
 
+      <!-- DNI Y TELÉFONO -->
       <div class="form-row">
         <div class="input-field">
           <div class="field-header">
@@ -94,6 +96,7 @@
         </div>
       </div>
 
+      <!-- CORREO ELECTRÓNICO -->
       <div class="input-field full-width">
         <div class="field-header">
           <label>Correo Electrónico</label>
@@ -115,150 +118,7 @@
         </div>
       </div>
 
-      <div v-if="mostrarCambioContrasena" class="password-section">
-        <div class="input-field">
-          <div class="field-header">
-            <label>Contraseña Actual</label>
-            <span class="required-badge">Requerido</span>
-          </div>
-          <div class="input-wrapper password-wrapper">
-            <input 
-              v-model="form.contrasena_actual" 
-              :type="mostrarContrasenaActual ? 'text' : 'password'" 
-              placeholder="Ingresa tu contraseña actual"
-              @blur="validarContrasenaActual"
-              @input="validarContrasenaActual"
-              :class="{ 'error': errores.contrasena_actual }"
-              autocomplete="new-password"
-            />
-            <button 
-              type="button" 
-              class="password-toggle"
-              @click="mostrarContrasenaActual = !mostrarContrasenaActual"
-              aria-label="Mostrar contraseña"
-            >
-              <svg v-if="!mostrarContrasenaActual" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-              <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                <line x1="1" y1="1" x2="23" y2="23"/>
-              </svg>
-            </button>
-          </div>
-          <div v-if="errores.contrasena_actual" class="field-error">
-            <span class="error-dot"></span>
-            {{ errores.contrasena_actual }}
-          </div>
-        </div>
-
-        <div class="input-field">
-          <div class="field-header">
-            <label>Nueva Contraseña</label>
-            <span class="required-badge">Requerido</span>
-          </div>
-          <div class="input-wrapper password-wrapper">
-            <input 
-              v-model="form.contrasena_nueva" 
-              :type="mostrarNuevaContrasena ? 'text' : 'password'" 
-              placeholder="Mín 6 caracteres, 1 mayúscula, 1 número"
-              @blur="validarNuevaContrasena"
-              @input="validarNuevaContrasena"
-              :class="{ 'error': errores.contrasena_nueva }"
-              autocomplete="new-password"
-            />
-            <button 
-              type="button" 
-              class="password-toggle"
-              @click="mostrarNuevaContrasena = !mostrarNuevaContrasena"
-              aria-label="Mostrar contraseña"
-            >
-              <svg v-if="!mostrarNuevaContrasena" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-              <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                <line x1="1" y1="1" x2="23" y2="23"/>
-              </svg>
-            </button>
-          </div>
-          <div v-if="mostrarCambioContrasena" class="password-requirements">
-            <ul class="requirement-list">
-              <li :class="passwordRequisitos.minLength ? 'valid' : 'invalid'">
-                <svg v-if="passwordRequisitos.minLength" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                Al menos 6 caracteres
-              </li>
-              <li :class="passwordRequisitos.hasUpper ? 'valid' : 'invalid'">
-                <svg v-if="passwordRequisitos.hasUpper" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                Al menos 1 mayúscula
-              </li>
-              <li :class="passwordRequisitos.hasNumber ? 'valid' : 'invalid'">
-                <svg v-if="passwordRequisitos.hasNumber" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                Al menos 1 número
-              </li>
-            </ul>
-          </div>
-          <div v-if="errores.contrasena_nueva" class="field-error">
-            <span class="error-dot"></span>
-            {{ errores.contrasena_nueva }}
-          </div>
-        </div>
-
-        <div class="input-field">
-          <div class="field-header">
-            <label>Repetir Nueva Contraseña</label>
-            <span class="required-badge">Requerido</span>
-          </div>
-          <div class="input-wrapper password-wrapper">
-            <input 
-              v-model="form.repetir_contrasena" 
-              :type="mostrarRepetirContrasena ? 'text' : 'password'" 
-              placeholder="Repetí la nueva contraseña"
-              @blur="validarRepetirContrasena"
-              @input="validarRepetirContrasena"
-              :class="{ 'error': errores.repetir_contrasena }"
-              autocomplete="new-password"
-            />
-            <button 
-              type="button" 
-              class="password-toggle"
-              @click="mostrarRepetirContrasena = !mostrarRepetirContrasena"
-              aria-label="Mostrar contraseña"
-            >
-              <svg v-if="!mostrarRepetirContrasena" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-              <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                <line x1="1" y1="1" x2="23" y2="23"/>
-              </svg>
-            </button>
-          </div>
-          <div v-if="errores.repetir_contrasena" class="field-error">
-            <span class="error-dot"></span>
-            {{ errores.repetir_contrasena }}
-          </div>
-        </div>
-      </div>
-
+      <!-- BOTÓN CAMBIAR CONTRASEÑA -->
       <div class="full-width">
         <button 
           type="button" 
@@ -269,6 +129,127 @@
         </button>
       </div>
 
+      <!-- SECCIÓN CONTRASEÑA -->
+      <div v-if="mostrarCambioContrasena" class="password-section">
+        
+        <!-- CONTRASEÑA ACTUAL (Solo visible si soy el mismo usuario) -->
+        <div class="input-field" v-if="esMismoUsuario">
+          <div class="field-header">
+            <label>Contraseña Actual</label>
+            <span class="required-badge">Requerido</span>
+          </div>
+          <!-- 🔥 OJITO FORZADO POR CSS EN LÍNEA Y FONTAWESOME -->
+          <div class="input-wrapper" style="position: relative;">
+            <input 
+              v-model="form.contrasena_actual" 
+              :type="mostrarContrasenaActual ? 'text' : 'password'" 
+              placeholder="Ingresa tu contraseña actual"
+              @blur="validarContrasenaActual"
+              @input="validarContrasenaActual"
+              :class="{ 'error': errores.contrasena_actual }"
+              autocomplete="new-password"
+              style="padding-right: 40px;"
+            />
+            <button 
+              type="button" 
+              @click="mostrarContrasenaActual = !mostrarContrasenaActual"
+              aria-label="Mostrar contraseña"
+              style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; color: var(--text-tertiary, #94a3b8); font-size: 1.1rem; padding: 0;"
+            >
+              <i :class="mostrarContrasenaActual ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+            </button>
+          </div>
+          <div v-if="errores.contrasena_actual" class="field-error">
+            <span class="error-dot"></span>
+            {{ errores.contrasena_actual }}
+          </div>
+        </div>
+
+        <!-- NUEVA CONTRASEÑA -->
+        <div class="input-field">
+          <div class="field-header">
+            <label>Nueva Contraseña</label>
+            <span class="required-badge">Requerido</span>
+          </div>
+          <!-- 🔥 OJITO FORZADO POR CSS EN LÍNEA Y FONTAWESOME -->
+          <div class="input-wrapper" style="position: relative;">
+            <input 
+              v-model="form.contrasena_nueva" 
+              :type="mostrarNuevaContrasena ? 'text' : 'password'" 
+              placeholder="Mín 6 caracteres, 1 mayúscula, 1 número"
+              @blur="validarNuevaContrasena"
+              @input="validarNuevaContrasena"
+              :class="{ 'error': errores.contrasena_nueva }"
+              autocomplete="new-password"
+              style="padding-right: 40px;"
+            />
+            <button 
+              type="button" 
+              @click="mostrarNuevaContrasena = !mostrarNuevaContrasena"
+              aria-label="Mostrar contraseña"
+              style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; color: var(--text-tertiary, #94a3b8); font-size: 1.1rem; padding: 0;"
+            >
+              <i :class="mostrarNuevaContrasena ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+            </button>
+          </div>
+          <!-- REQUISITOS NUEVA CONTRASEÑA -->
+          <div v-if="mostrarCambioContrasena" class="password-requirements">
+            <ul class="requirement-list">
+              <li :class="passwordRequisitos.minLength ? 'valid' : 'invalid'">
+                <i :class="passwordRequisitos.minLength ? 'fas fa-check' : 'fas fa-times'" style="margin-right: 5px;"></i>
+                Al menos 6 caracteres
+              </li>
+              <li :class="passwordRequisitos.hasUpper ? 'valid' : 'invalid'">
+                <i :class="passwordRequisitos.hasUpper ? 'fas fa-check' : 'fas fa-times'" style="margin-right: 5px;"></i>
+                Al menos 1 mayúscula
+              </li>
+              <li :class="passwordRequisitos.hasNumber ? 'valid' : 'invalid'">
+                <i :class="passwordRequisitos.hasNumber ? 'fas fa-check' : 'fas fa-times'" style="margin-right: 5px;"></i>
+                Al menos 1 número
+              </li>
+            </ul>
+          </div>
+          <div v-if="errores.contrasena_nueva" class="field-error">
+            <span class="error-dot"></span>
+            {{ errores.contrasena_nueva }}
+          </div>
+        </div>
+
+        <!-- REPETIR NUEVA CONTRASEÑA -->
+        <div class="input-field">
+          <div class="field-header">
+            <label>Repetir Nueva Contraseña</label>
+            <span class="required-badge">Requerido</span>
+          </div>
+          <!-- 🔥 OJITO FORZADO POR CSS EN LÍNEA Y FONTAWESOME -->
+          <div class="input-wrapper" style="position: relative;">
+            <input 
+              v-model="form.repetir_contrasena" 
+              :type="mostrarRepetirContrasena ? 'text' : 'password'" 
+              placeholder="Repetí la nueva contraseña"
+              @blur="validarRepetirContrasena"
+              @input="validarRepetirContrasena"
+              :class="{ 'error': errores.repetir_contrasena }"
+              autocomplete="new-password"
+              style="padding-right: 40px;"
+            />
+            <button 
+              type="button" 
+              @click="mostrarRepetirContrasena = !mostrarRepetirContrasena"
+              aria-label="Mostrar contraseña"
+              style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; color: var(--text-tertiary, #94a3b8); font-size: 1.1rem; padding: 0;"
+            >
+              <i :class="mostrarRepetirContrasena ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+            </button>
+          </div>
+          <div v-if="errores.repetir_contrasena" class="field-error">
+            <span class="error-dot"></span>
+            {{ errores.repetir_contrasena }}
+          </div>
+        </div>
+      </div>
+
+      <!-- ROL DEL USUARIO -->
       <div class="input-field full-width">
         <div class="field-header">
           <label>Rol del Usuario</label>
@@ -289,9 +270,7 @@
               {{ rol.nombre }}
             </option>
           </select>
-          <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
+          <i class="fas fa-chevron-down select-arrow" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748b;"></i>
         </div>
         <div v-if="errores.rol_id" class="field-error">
           <span class="error-dot"></span>
@@ -299,26 +278,20 @@
         </div>
       </div>
 
+      <!-- BOTONES DE ACCIÓN -->
       <div class="form-row">
         <button type="submit" class="submit-button" :disabled="botonDeshabilitado" :class="{ 'opacity-50 cursor-not-allowed': botonDeshabilitado }">
           <span class="button-content">
             <span class="button-text">{{ cargando ? 'Actualizando...' : 'Actualizar Usuario' }}</span>
-            <svg v-if="cargando" class="spinner-svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round" class="spin-animation"/>
-            </svg>
-            <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
+            <i v-if="cargando" class="fas fa-circle-notch fa-spin"></i>
+            <i v-else class="fas fa-check"></i>
           </span>
         </button>
         
         <button type="button" @click="cancelar" class="cancel-button">
           <span class="button-content">
             <span class="button-text">Cancelar</span>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+            <i class="fas fa-times"></i>
           </span>
         </button>
       </div>
@@ -345,6 +318,12 @@ const mostrarNuevaContrasena = ref(false)
 const mostrarRepetirContrasena = ref(false)
 const roles = ref([])
 const usuariosExistentes = ref([])
+
+const idUsuarioLogueado = ref(null)
+
+const esMismoUsuario = computed(() => {
+  return String(idUsuarioLogueado.value) === String(props.usuarioId)
+})
 
 const form = ref({
   nombre: '',
@@ -386,7 +365,8 @@ const formularioValido = computed(() => {
   if (errores.value.telefono) return false
 
   if (mostrarCambioContrasena.value) {
-    if (!form.value.contrasena_actual) return false
+    if (esMismoUsuario.value && !form.value.contrasena_actual) return false
+    
     if (!passwordRequisitos.value.minLength || !passwordRequisitos.value.hasUpper || !passwordRequisitos.value.hasNumber) return false
     if (errores.value.contrasena_actual || errores.value.contrasena_nueva || errores.value.repetir_contrasena) return false
     if (!form.value.repetir_contrasena) return false
@@ -398,9 +378,6 @@ const botonDeshabilitado = computed(() => {
   return cargando.value || !formularioValido.value
 })
 
-// -------------------------------------------------------
-// Carga de datos
-// -------------------------------------------------------
 const cargarRoles = async () => {
   try {
     const res = await axios.get(`${API_BASE}/api/roles/`)
@@ -417,7 +394,6 @@ const cargarRoles = async () => {
   }
 }
 
-// 🔥 ARREGLO 1: Cargar toda la base forzando límite
 const cargarUsuariosExistentes = async () => {
   try {
     const res = await axios.get(`${API_BASE}/api/usuarios/?limit=1000`)
@@ -476,9 +452,6 @@ const cargarUsuario = async () => {
   }
 }
 
-// -------------------------------------------------------
-// Formateo y validaciones
-// -------------------------------------------------------
 const formatearDNI = () => { 
   form.value.dni = form.value.dni.replace(/\D/g, '').slice(0, 8) 
   validarDNI()
@@ -499,7 +472,6 @@ const formatearTelefono = () => {
   validarTelefono()
 }
 
-// Alerta genérica tipo Toast
 const alertaDuplicado = (titulo, texto) => {
   Swal.fire({
     toast: true,
@@ -515,7 +487,6 @@ const alertaDuplicado = (titulo, texto) => {
   })
 }
 
-// 🔥 ARREGLO 2: Validación exluyendo el ID propio (DNI y Correo)
 const validarDNI = () => {
   const val = form.value.dni.trim()
   if (!val) {
@@ -582,9 +553,10 @@ const validarTelefono = () => {
 }
 
 const validarContrasenaActual = () => {
-  if (!mostrarCambioContrasena.value) return
+  if (!mostrarCambioContrasena.value || !esMismoUsuario.value) return
   errores.value.contrasena_actual = form.value.contrasena_actual ? '' : 'La contraseña actual es obligatoria'
 }
+
 const validarNuevaContrasena = () => {
   if (!mostrarCambioContrasena.value) return
   const val = form.value.contrasena_nueva
@@ -595,6 +567,7 @@ const validarNuevaContrasena = () => {
   else if (!passwordRequisitos.value.hasNumber) errores.value.contrasena_nueva = 'Falta 1 número'
   else errores.value.contrasena_nueva = ''
 }
+
 const validarRepetirContrasena = () => {
   if (!mostrarCambioContrasena.value) return
   const original = form.value.contrasena_nueva
@@ -603,6 +576,7 @@ const validarRepetirContrasena = () => {
   else if (repetir !== original) errores.value.repetir_contrasena = 'Las contraseñas no coinciden'
   else errores.value.repetir_contrasena = ''
 }
+
 const validarRol = () => {
   errores.value.rol_id = form.value.rol_id ? '' : 'Selecciona un rol'
 }
@@ -615,9 +589,6 @@ const validarFormulario = () => {
   return formularioValido.value
 }
 
-// -------------------------------------------------------
-// Envío del formulario
-// -------------------------------------------------------
 const actualizarUsuario = async () => {
   if (!validarFormulario()) {
     Swal.fire({ icon: 'error', title: 'Formulario incompleto', text: 'Completá los campos requeridos correctamente', background: '#1e293b', color: '#f1f5f9' })
@@ -658,7 +629,9 @@ const actualizarUsuario = async () => {
     }
 
     if (mostrarCambioContrasena.value && form.value.contrasena_nueva) {
-      payload.contrasena_actual = form.value.contrasena_actual
+      if (esMismoUsuario.value) {
+        payload.contrasena_actual = form.value.contrasena_actual
+      }
       payload.contrasena_nueva = form.value.contrasena_nueva
     }
 
@@ -668,7 +641,6 @@ const actualizarUsuario = async () => {
   } catch (error) {
     console.error('Error:', error)
     
-    // 🔥 ARREGLO 3: Red de seguridad para el 400
     if (error.response && error.response.status === 400) {
       const datosError = error.response.data
       let mostroAlerta = false
@@ -712,6 +684,11 @@ const actualizarUsuario = async () => {
 const cancelar = () => emit('cancelar')
 
 onMounted(async () => {
+  const usrId = localStorage.getItem('usuario_id');
+  if (usrId) {
+    idUsuarioLogueado.value = usrId;
+  }
+
   await cargarUsuariosExistentes()
   await cargarRoles()
   await cargarUsuario()

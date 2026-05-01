@@ -255,11 +255,13 @@ const mostrarModal = ref(false)
 const logSeleccionado = ref(null)
 const loading = ref(false)
 
+// Agregado el módulo de SERVICIOS para respetar la arquitectura
 const modulosDisponibles = [
   { id: '', label: 'Todos', icon: 'fas fa-layer-group' },
   { id: 'AUTENTICACION', label: 'Accesos', icon: 'fas fa-user-shield' },
   { id: 'VENTAS', label: 'Ventas', icon: 'fas fa-cash-register' },
   { id: 'TURNOS', label: 'Turnos', icon: 'fas fa-calendar-check' },
+  { id: 'SERVICIOS', label: 'Servicios', icon: 'fas fa-cut' }, 
   { id: 'CAJA', label: 'Caja', icon: 'fas fa-box-open' },
   { id: 'INVENTARIO', label: 'Inventario', icon: 'fas fa-boxes' },
   { id: 'USUARIOS', label: 'Usuarios', icon: 'fas fa-users' }
@@ -270,11 +272,25 @@ const determinarModulo = (log) => {
   const modelo = (log.modelo_afectado || '').toLowerCase();
   const accion = (log.accion || '').toLowerCase();
 
-  if (accion.includes('login') || accion.includes('logout') || modelo.includes('sesion') && !modelo.includes('caja')) return 'AUTENTICACION';
+  // 1. Autenticación
+  if (accion.includes('login') || accion.includes('logout') || (modelo.includes('sesion') && !modelo.includes('caja'))) return 'AUTENTICACION';
+  
+  // 2. Ventas
   if (modelo.includes('venta') || modelo.includes('nota') || accion.includes('anular_venta')) return 'VENTAS';
-  if (modelo.includes('turno') || modelo.includes('servicio')) return 'TURNOS';
+  
+  // 3. Turnos (Exclusivo de turnos)
+  if (modelo.includes('turno')) return 'TURNOS';
+
+  // 4. Servicios (Servicio y CategoriaServicio)
+  if (modelo.includes('servicio') || modelo.includes('categoriaservicio')) return 'SERVICIOS';
+  
+  // 5. Caja
   if (modelo.includes('caja') || modelo.includes('movimiento') || accion.includes('caja') || accion.includes('ingreso') || accion.includes('egreso')) return 'CAJA';
-  if (modelo.includes('producto') || modelo.includes('stock') || modelo.includes('categoria') || accion.includes('ajuste')) return 'INVENTARIO';
+  
+  // 6. Inventario
+  if (modelo.includes('producto') || modelo.includes('stock') || modelo.includes('categoriaproducto') || accion.includes('ajuste')) return 'INVENTARIO';
+  
+  // 7. Usuarios
   if (modelo.includes('usuario') || modelo.includes('cliente') || modelo.includes('peluquero')) return 'USUARIOS';
 
   return 'OTROS';
@@ -327,21 +343,17 @@ const getColorNavegador = (navegadorInfo) => {
 }
 
 const getNombreNavegador = (navegadorInfo) => {
-  // Si no hay nada de nada, ponemos Sistema.
   if (!navegadorInfo || navegadorInfo === '-') return 'Sistema';
-
   const navLower = navegadorInfo.toLowerCase();
-
   if (navLower.includes('edg/') || navLower.includes('edge')) return 'Edge';
   if (navLower.includes('brave')) return 'Brave';
   if (navLower.includes('opr/') || navLower.includes('opera')) return 'Opera';
   if (navLower.includes('firefox')) return 'Firefox';
-  
   if (navLower.includes('chrome')) return 'Chrome';
   if (navLower.includes('safari')) return 'Safari';
-
   return navegadorInfo; 
 }
+
 const parseDetalles = (detalles) => {
   if (!detalles) return {}
   let d = detalles

@@ -461,24 +461,28 @@ def editar_usuario(request, pk):
 
         print(f"🔄 Editando Usuario {pk}. Datos recibidos:", data)
 
-        # 3. LOGICA CAMBIO DE CONTRASEÑA (CORREGIDA PARA DOBLE COLUMNA)
+        # 3. LÓGICA CAMBIO DE CONTRASEÑA (REFACTORIZADA)
         contrasena_nueva = data.get('contrasena_nueva')
         contrasena_actual = data.get('contrasena_actual')
 
         if contrasena_nueva:
-            if not contrasena_actual:
-                return JsonResponse({'status': 'error', 'message': 'Para cambiar la contraseña, debés ingresar la actual.'}, status=400)
+            # Si el usuario se está editando a SÍ MISMO
+            if request.user.id == usuario.id:
+                if not contrasena_actual:
+                    return JsonResponse({'status': 'error', 'message': 'Para cambiar tu contraseña, debés ingresar la actual.'}, status=400)
+                
+                # Chequeamos AMBAS columnas porque la BD tiene las dos
+                pass_valida_en_contrasena = check_password(contrasena_actual, usuario.contrasena)
+                pass_valida_en_password = usuario.check_password(contrasena_actual)
+                
+                if not (pass_valida_en_contrasena or pass_valida_en_password):
+                    return JsonResponse({'status': 'error', 'message': 'La contraseña actual es incorrecta.'}, status=400)
+
+            # Si soy ADMIN editando a OTRO, forzamos el reset sin pedir la actual
+            elif es_admin and not contrasena_actual:
+                print(f"⚠️ ADMIN está forzando el cambio de password para el usuario {usuario.id}")
             
-            from django.contrib.auth.hashers import check_password, make_password
-            
-            # 🔥 FIX DEFINITIVO: Chequeamos AMBAS columnas porque la BD tiene las dos
-            pass_valida_en_contrasena = check_password(contrasena_actual, usuario.contrasena)
-            pass_valida_en_password = usuario.check_password(contrasena_actual)
-            
-            if not (pass_valida_en_contrasena or pass_valida_en_password):
-                return JsonResponse({'status': 'error', 'message': 'La contraseña actual es incorrecta.'}, status=400)
-            
-            # Si es válida, actualizamos AMBAS columnas para que queden sincronizadas
+            # Si pasó las validaciones (ya sea por ser Admin o por poner bien la clave actual), seteamos la nueva
             hash_nuevo = make_password(contrasena_nueva)
             usuario.contrasena = hash_nuevo
             usuario.password = hash_nuevo
