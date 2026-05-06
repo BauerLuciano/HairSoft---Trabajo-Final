@@ -1441,3 +1441,24 @@ def _disparar_correo_confirmacion(pedido):
         print(f"🚀 [SIGNAL] Tarea de email de aprobación enviada a Celery para el pedido {pedido.id}")
     except Exception as e:
         print(f"⚠️ [SIGNAL] Error al llamar a Celery: {e}")
+
+class Notificacion(models.Model):
+    TIPO_CHOICES = [
+        ('PEDIDO', 'Pedido Web'),
+        ('TURNO', 'Turno'),
+        ('PROVEEDOR', 'Proveedor'),
+        ('SISTEMA', 'Sistema'),
+    ]
+    # Si querés que sea global para los admins, no le ponemos usuario específico.
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='SISTEMA')
+    mensaje = models.CharField(max_length=255)
+    link = models.CharField(max_length=255, blank=True, null=True) # A dónde te lleva al hacer clic
+    leida = models.BooleanField(default=False)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "notificaciones"
+        ordering = ['-fecha_creacion']
+
+    def __str__(self):
+        return f"[{self.tipo}] {self.mensaje}"

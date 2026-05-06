@@ -10,7 +10,6 @@
             </div>
             <div class="brand-info">
               <span class="brand-name">HairSoft</span>
-              <span class="brand-subtitle" v-if="usuarioLogueado">CLIENTE</span>
             </div>
           </router-link>
         </div>

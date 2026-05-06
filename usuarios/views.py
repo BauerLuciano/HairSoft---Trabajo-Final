@@ -15,6 +15,7 @@ from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.signals import user_logged_in
 from django.contrib.auth.decorators import login_required
 from django.utils.html import strip_tags
+from django.utils.timezone import now
 from django.utils.decorators import method_decorator
 from django.utils import timezone
 from django.core.paginator import Paginator
@@ -44,7 +45,7 @@ from .models import (
     DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, 
     InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, 
     PromocionReactivacion, Auditoria, PasswordResetToken, PedidoWeb, 
-    ConfiguracionSistema, Silla, NotaCredito, Caja, SesionCaja, MovimientoCaja
+    ConfiguracionSistema, Silla, NotaCredito, Caja, SesionCaja, MovimientoCaja, HistorialStock
 )
 from .serializers import (
     LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, 
@@ -1311,6 +1312,15 @@ def crear_turno(request):
         # 11. RESPUESTA FINAL
         # ---------------------------------------------------------
         print(f"✅ Turno creado exitosamente: ID {turno.id}")
+        
+        # 🔥 DISPARADOR DE NOTIFICACIÓN AGREGADO AQUÍ 🔥
+        if canal == 'WEB':
+            from usuarios.models import Notificacion
+            Notificacion.objects.create(
+                tipo='TURNO',
+                mensaje=f'{cliente.nombre} reservó turno web para el {fecha_str}.',
+                link='/turnos'
+            )
         
         return Response({
             'status': 'ok',
@@ -4037,6 +4047,14 @@ def marcar_en_camino_externo(request, token):
         pedido.estado = 'EN_CAMINO'
         pedido.save()
 
+        # 🔥 DISPARADOR DE NOTIFICACIÓN: PEDIDO DESPACHADO 🔥
+        from usuarios.models import Notificacion
+        Notificacion.objects.create(
+            tipo='PROVEEDOR',
+            mensaje=f'El proveedor {pedido.proveedor.nombre} despachó el pedido #{pedido.id}.',
+            link='/pedidos'
+        )
+
         return Response({'message': '¡Gracias! El local ya sabe que el pedido está en camino.'})
 
     except Exception as e:
@@ -5189,7 +5207,7 @@ def cancelar_turno_unificado(request, turno_id):
             return Response({'error': message}, status=400)
         
         # Auditoría
-        from usuarios.models import Auditoria, Turno
+        from usuarios.models import Auditoria, Turno, Notificacion
         try:
             turno = Turno.objects.get(id=turno_id)
             Auditoria.objects.create(
@@ -5203,6 +5221,14 @@ def cancelar_turno_unificado(request, turno_id):
                 },
                 ip_address=request.META.get('REMOTE_ADDR')
             )
+            
+            # 🔥 DISPARADOR DE NOTIFICACIÓN AGREGADO AQUÍ 🔥
+            Notificacion.objects.create(
+                tipo='TURNO',
+                mensaje=f'Turno cancelado: {request.user.nombre} canceló un turno.',
+                link='/turnos'
+            )
+            
         except Exception as e:
             print(f"⚠️ Error en auditoría: {e}")
         
@@ -5484,6 +5510,7 @@ def gestionar_cotizacion_externa(request, token):
         producto_nombre = cotizacion.solicitud.producto.nombre
         print(f"📦 PRODUCTO: {producto_nombre} | ID: {cotizacion.id}")
     except AttributeError:
+        producto_nombre = "Producto desconocido"
         print("⚠️ ERROR: Esta cotización no tiene una solicitud o producto asociado.")
 
     if request.method == 'GET':
@@ -5528,6 +5555,15 @@ def gestionar_cotizacion_externa(request, token):
             cotizacion.save()
             
             print(f"✅ COTIZACIÓN #{cotizacion.id} GUARDADA EXITOSAMENTE")
+            
+            # 🔥 DISPARADOR DE NOTIFICACIÓN: PROVEEDOR COTIZÓ 🔥
+            from usuarios.models import Notificacion
+            Notificacion.objects.create(
+                tipo='PROVEEDOR',
+                mensaje=f'El proveedor {cotizacion.proveedor.nombre} envió presupuesto para {producto_nombre}.',
+                link='/proveedores/evaluacion'
+            )
+            
             return Response({"mensaje": "Éxito", "status": "OK"}, status=200)
             
         except (ValueError, TypeError) as e:
@@ -6082,13 +6118,20 @@ def mercadopago_webhook(request):
             elif 'PEDIDO' in referencia.upper():
                 concepto_caja = 'PEDIDO_WEB'
                 descripcion_mov = f"Pago Pedido Web #{id_obj} (MP: {payment_id})"
-                from usuarios.models import PedidoWeb
+                from usuarios.models import PedidoWeb, Notificacion
                 pedido_rel = PedidoWeb.objects.filter(id=id_obj).first()
                 if pedido_rel:
                     pedido_rel.estado = 'PAGADO'
                     pedido_rel.mp_payment_id = payment_id
                     pedido_rel.save()
                     print(f"✅ Pedido {id_obj} actualizado en BD.")
+                    
+                    # 🔥 DISPARADOR DE NOTIFICACIÓN AGREGADO AQUÍ 🔥
+                    Notificacion.objects.create(
+                        tipo='PEDIDO',
+                        mensaje=f'Nuevo pedido web #{id_obj} abonado (${monto}).',
+                        link='/pedidos-web-admin'
+                    )
 
             # 4. CREACIÓN DEL MOVIMIENTO DE CAJA
             from usuarios.models import MovimientoCaja, SesionCaja
@@ -6729,3 +6772,68 @@ def descargar_comprobante_pedido_web(request, pedido_id):
         return response
     except Exception as e:
         return HttpResponse(f"Error generando comprobante: {str(e)}", status=500)
+
+def retorno_mercadopago(request):
+    """
+    Ataja la redirección HTTPS de Mercado Pago, captura los parámetros
+    y redirige al frontend conservando la info para que Vue muestre el cartelito.
+    """
+    query_string = request.GET.urlencode()
+    external_reference = request.GET.get('external_reference', '')
+    
+    # 🔥 FIX 1: Poné la URL exacta desde donde estás navegando. 
+    # Si estás en ngrok, poné la de ngrok. Si estás en producción, la de producción.
+    # Si probás en local sin ngrok, usá 'http://localhost:5173'
+    FRONTEND_BASE_URL = "https://brandi-palmar-pickily.ngrok-free.dev" 
+    
+    # 🔥 FIX 2: Separamos las aguas. Si es pedido va a un lado, si es turno al otro.
+    if external_reference.startswith('PEDIDO_'):
+        # Ruta en tu router para los pedidos es /client/mis-pedidos
+        url_frontend = f"{FRONTEND_BASE_URL}/client/mis-pedidos?{query_string}"
+    else:
+        # Por defecto (o si es TURNO_), va al historial
+        url_frontend = f"{FRONTEND_BASE_URL}/cliente/historial?{query_string}"
+        
+    return redirect(url_frontend)
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def api_notificaciones(request):
+    from usuarios.models import Notificacion
+
+    if request.method == 'GET':
+        # 🔥 EL CAMBIO ESTÁ ACÁ: Sacamos el .filter(leida=False) para que traiga TODAS
+        # Traemos las últimas 15 notificaciones (leídas y no leídas)
+        notifs = Notificacion.objects.all().order_by('-fecha_creacion')[:15]
+        data = []
+        for n in notifs:
+            diff = now() - n.fecha_creacion
+            minutos = int(diff.total_seconds() / 60)
+            if minutos < 60:
+                tiempo = f"Hace {minutos} min" if minutos > 0 else "Justo ahora"
+            elif minutos < 1440:
+                tiempo = f"Hace {minutos // 60} horas"
+            else:
+                tiempo = f"Hace {minutos // 1440} días"
+
+            data.append({
+                'id': n.id,
+                'tipo': n.tipo,
+                'mensaje': n.mensaje,
+                'link': n.link,
+                'leida': n.leida,
+                'tiempo_hace': tiempo
+            })
+        return Response(data)
+
+    elif request.method == 'POST':
+        # Marcar como leídas
+        marcar_todas = request.data.get('marcar_todas', False)
+        notif_id = request.data.get('id')
+        
+        if marcar_todas:
+            Notificacion.objects.filter(leida=False).update(leida=True)
+        elif notif_id:
+            Notificacion.objects.filter(id=notif_id).update(leida=True)
+            
+        return Response({'status': 'ok'})

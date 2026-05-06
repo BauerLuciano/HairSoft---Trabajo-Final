@@ -30,13 +30,13 @@
             <p>Bienvenido!</p>
           </div>
 
-          <div class="google-auth-wrapper">
+          <!--div class="google-auth-wrapper">
             <GoogleLogin :callback="handleGoogleLogin" prompt />
-          </div>
+          </div-->
 
-          <div class="divider">
+          <!--div class="divider">
             <span>O continuá con tu email</span>
-          </div>
+          </div-->
 
           <form @submit.prevent="handleLogin" class="auth-form">
             

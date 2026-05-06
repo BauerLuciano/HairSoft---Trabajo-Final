@@ -46,8 +46,8 @@
             <option value="nombre">Nombre A-Z</option>
             <option value="precio_asc">Precio: Menor a mayor</option>
             <option value="precio_desc">Precio: Mayor a menor</option>
-            <option value="duracion_asc">Duración: Corto a largo</option>
-            <option value="duracion_desc">Duración: Largo a corto</option>
+            <option value="duracion_asc">Duración: Menor a mayor</option>
+            <option value="duracion_desc">Duración: Mayor a menor</option>
           </select>
         </div>
 
@@ -80,14 +80,6 @@
         </div>
 
         <!-- Encabezado del servicio -->
-        <div class="servicio-header">
-          <div class="servicio-codigo">
-            #{{ servicio.id.toString().padStart(4, '0') }}
-          </div>
-          <div class="servicio-categoria">
-            {{ servicio.categoria || 'General' }}
-          </div>
-        </div>
 
         <!-- Información principal -->
         <div class="servicio-info">
@@ -215,7 +207,7 @@ const filtros = ref({
 })
 
 const pagina = ref(1)
-const itemsPorPagina = 8
+const itemsPorPagina = 9
 
 const cargarServicios = async () => {
   cargando.value = true 

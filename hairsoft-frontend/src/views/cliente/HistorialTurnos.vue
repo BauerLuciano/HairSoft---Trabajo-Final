@@ -220,14 +220,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import axios from 'axios'
 import Swal from 'sweetalert2'
 import api from '@/services/api'
 import {
   Calendar, CalendarPlus, CalendarX, Clock, History,
-  ChevronLeft, ChevronRight, User, XCircle, AlertCircle,
+  ChevronLeft, ChevronRight, User, XCircle,
   Eye, MessageSquare
 } from 'lucide-vue-next'
 
@@ -313,10 +312,8 @@ const descargarComprobantePDF = async (id, tipo = 'turnos') => {
   }
 }
 
-// 🔥 LÓGICA DE MODIFICAR TURNO (CLIENTE)
 const modificarTurno = async (turno) => {
   try {
-    // 1. Obtener límite de cancelación
     let margenConfig = 3;
     try {
       const resConfig = await api.get('/api/configuracion/');
@@ -325,21 +322,19 @@ const modificarTurno = async (turno) => {
       }
     } catch (e) { console.error('Error cargando config para modificar', e) }
 
-    // 2. Calcular tiempo restante
     const ahora = new Date();
     const fechaTurno = new Date(`${turno.fecha}T${turno.hora}`);
     const horasFaltantes = (fechaTurno - ahora) / (1000 * 60 * 60);
 
-    // 3. Evaluar Penalidad
     if (horasFaltantes < margenConfig) {
-      // PENALIDAD: Faltan menos horas que el margen
       const confirmacion = await Swal.fire({
         title: '⚠️ Modificación Tardía',
         html: `
           <div style="text-align: left; font-size: 0.95rem; line-height: 1.5;">
-            <p>Estás intentando modificar tu turno faltando menos de <strong>${margenConfig} horas</strong>.</p>
+            <p>Según políticas de la empresa, el tiempo límite para modificar es de <strong>${margenConfig} horas</strong> de anticipación.</p>
+            <p>Estás intentando modificar tu turno faltando menos tiempo.</p>
             <p style="color: #b91c1c; background: #fef2f2; padding: 10px; border-radius: 8px; border: 1px solid #fecaca;">
-              Según nuestras políticas, esto se considera una cancelación tardía. 
+              Esto se considera una cancelación tardía. 
               <strong>Se retendrá tu pago/seña actual</strong> y deberás abonar nuevamente el valor del nuevo turno.
             </p>
             <p>¿Estás seguro de que querés continuar y perder tu pago actual?</p>
@@ -354,18 +349,22 @@ const modificarTurno = async (turno) => {
       });
 
       if (confirmacion.isConfirmed) {
-        // Redirigir a la vista de creación mandándole el ID del turno viejo para que el Backend lo mate.
         router.push({ 
           path: '/turnos/crear-web', 
           query: { modificar_tarde_id: turno.id } 
         });
       }
     } else {
-      // GRATIS: Faltan más horas que el margen
       const confirmacion = await Swal.fire({
         title: '✏️ Modificar Turno',
-        html: `<p>Estás dentro del tiempo permitido para reprogramar tu turno sin costo adicional.</p>
-               <p>Tu pago será transferido al nuevo horario que elijas.</p>`,
+        html: `
+          <div style="text-align: left; font-size: 0.95rem; line-height: 1.5;">
+            <p>Según las políticas de la empresa, tenés un tiempo límite de <strong>${margenConfig} horas</strong> de anticipación para modificar tu turno.</p>
+            <p style="color: #15803d; background: #f0fdf4; padding: 10px; border-radius: 8px; border: 1px solid #bbf7d0;">
+              Estás dentro del tiempo permitido para reprogramar sin costo adicional. Tu pago o seña será transferido al nuevo horario que elijas.
+            </p>
+          </div>
+        `,
         icon: 'info',
         showCancelButton: true,
         confirmButtonColor: '#0ea5e9',
@@ -401,7 +400,6 @@ const cancelarTurno = async (turno) => {
   const horasFaltantes = (fechaTurno - ahora) / (1000 * 60 * 60);
   const hayReembolso = horasFaltantes >= margenConfig;
 
-  // Armamos el mensaje dinámico
   const mensajeReembolso = hayReembolso 
     ? `Como estás cancelando con anticipación (más de ${margenConfig}hs), te corresponde la devolución de tu dinero.`
     : `Estás cancelando con menos de ${margenConfig}hs de anticipación. Según nuestras políticas de cancelación tardía, se pierde el valor de la reserva.`;
@@ -411,7 +409,6 @@ const cancelarTurno = async (turno) => {
     width: '500px',
     html: `
       <div style="text-align: left; font-family: 'Inter', -apple-system, sans-serif;">
-        
         <div style="background: ${hayReembolso ? '#f0fdf4' : '#fef2f2'}; padding: 18px; border-radius: 14px; margin-bottom: 20px; border: 1px solid ${hayReembolso ? '#bbf7d0' : '#fecaca'}; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
           <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
             <span style="font-size: 1.6rem;">${hayReembolso ? '✅' : '⚠️'}</span>
@@ -425,7 +422,6 @@ const cancelarTurno = async (turno) => {
         </div>
 
         <div style="background: #f8fafc; padding: 18px; border-radius: 14px; border: 1px solid #e2e8f0;">
-          
           ${hayReembolso ? `
           <label style="display:block; margin-bottom:8px; font-weight:700; color: #0f172a; font-size: 0.95rem;">¿Cómo preferís recibir tu dinero?</label>
           <select id="preferencia_reembolso" class="swal2-input" style="width: 100%; margin: 0 0 20px 0; height: 48px; border-radius: 10px; font-size: 0.95rem; font-weight: 600; color: #0f172a; border: 1px solid #0ea5e9; background-color: #f0f9ff;">
@@ -464,15 +460,16 @@ const cancelarTurno = async (turno) => {
     preConfirm: () => {
       const motivo = document.getElementById('motivo').value;
       const obsCliente = document.getElementById('obs').value.trim();
-      const preferencia = document.getElementById('preferencia_reembolso').value;
+      const preferencia = document.getElementById('preferencia_reembolso') ? document.getElementById('preferencia_reembolso').value : null;
       
-      // Inyectamos la preferencia bien clarito
-      const observacionFinal = `PREFIERE DEVOLUCIÓN EN: ${preferencia}. ${obsCliente}`;
+      const observacionFinal = preferencia 
+        ? `PREFIERE DEVOLUCIÓN EN: ${preferencia}. ${obsCliente}`
+        : obsCliente;
 
       return { 
         motivo: motivo, 
         observaciones: observacionFinal,
-        obs_cancelacion: observacionFinal // Mandamos ambos para asegurar el backend
+        obs_cancelacion: observacionFinal 
       };
     }
   });
@@ -637,18 +634,70 @@ const mostrarAlertaFelicidades = async (turnoId) => {
     const res = await api.get(`/api/turnos/${turnoId}/`);
     const t = res.data;
     
+    // Lógica para diferenciar qué texto mostrar según si pagó total o seña
+    const esSena = t.tipo_pago !== 'TOTAL';
+    const textoPago = esSena ? 'Seña abonada (50%)' : 'Total abonado';
+    const montoPagado = esSena ? t.monto_seña : t.monto_total;
+    const montoPendiente = esSena ? (t.monto_total - t.monto_seña) : 0;
+
     const result = await Swal.fire({
-      title: '¡Felicidades! 🎉',
-      html: `<div style="text-align: left; background: #f0f9ff; padding: 1.2rem; border-radius: 12px; border: 1px solid #bae6fd;">
-          <p style="font-size: 1.1rem; margin-bottom: 1rem;">Tu reserva ha sido confirmada con éxito.</p>
-          <p>📅 <b>Día:</b> ${formatFecha(t.fecha)}</p><p>⏰ <b>Hora:</b> ${t.hora} hs</p><p>💇‍♂️ <b>Profesional:</b> ${t.peluquero_nombre}</p><p>💰 <b>Monto:</b> $${t.monto_total}</p>
-        </div>`,
-      icon: 'success', 
+      title: '<span style="color: #047857; font-weight: 800; font-size: 1.5rem;">¡Reserva Confirmada! 🎉</span>',
+      html: `
+        <div style="text-align: left; background: #f8fafc; padding: 1.5rem; border-radius: 16px; font-family: 'Inter', -apple-system, sans-serif;">
+          
+          <p style="font-size: 1.05rem; color: #475569; margin-bottom: 1.5rem; text-align: center; line-height: 1.5;">
+            Tu turno ha sido agendado exitosamente.
+          </p>
+          
+          <div style="background: white; padding: 1.2rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 1rem; border: 1px solid #e2e8f0;">
+            <div style="display: flex; align-items: center; margin-bottom: 12px;">
+              <span style="background: #eff6ff; color: #3b82f6; padding: 6px; border-radius: 8px; margin-right: 10px;">📅</span>
+              <div style="display: flex; flex-direction: column;">
+                <span style="font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Fecha y Hora</span>
+                <span style="color: #0f172a; font-weight: 700; font-size: 1.05rem;">${formatFecha(t.fecha)} - ${t.hora} hs</span>
+              </div>
+            </div>
+            
+            <div style="display: flex; align-items: center;">
+              <span style="background: #fdf4ff; color: #d946ef; padding: 6px; border-radius: 8px; margin-right: 10px;">💇‍♂️</span>
+              <div style="display: flex; flex-direction: column;">
+                <span style="font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Profesional</span>
+                <span style="color: #0f172a; font-weight: 700; font-size: 1.05rem;">${t.peluquero_nombre}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="background: linear-gradient(145deg, #10b981, #059669); padding: 1.2rem; border-radius: 12px; color: white; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: ${esSena ? '8px' : '0'};">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                <span style="font-weight: 600; font-size: 0.95rem;">${textoPago}</span>
+              </div>
+              <span style="font-weight: 800; font-size: 1.2rem;">$${formatPrecio(montoPagado)}</span>
+            </div>
+            
+            ${esSena ? `
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.4); padding-top: 8px; margin-top: 4px;">
+              <span style="font-weight: 500; font-size: 0.85rem; opacity: 0.9;">Saldo a pagar en el local</span>
+              <span style="font-weight: 700; font-size: 1rem;">$${formatPrecio(montoPendiente)}</span>
+            </div>
+            ` : ''}
+          </div>
+
+        </div>
+      `,
+      icon: 'none', // Lo quitamos para no pisar el estilo moderno del HTML
       showCancelButton: true,
-      confirmButtonColor: '#0ea5e9',
+      confirmButtonColor: '#10b981',
       cancelButtonColor: '#64748b',
-      confirmButtonText: '📄 Descargar Comprobante',
-      cancelButtonText: 'Cerrar'
+      confirmButtonText: '<i class="bi bi-file-earmark-pdf me-2"></i>Descargar Comprobante',
+      cancelButtonText: 'Entendido',
+      width: '480px',
+      padding: '1.5em',
+      customClass: {
+        popup: 'swal-custom-radius',
+        confirmButton: 'swal-btn-shadow'
+      }
     });
 
     if (result.isConfirmed) {
@@ -664,8 +713,15 @@ onMounted(async () => {
   if (token) {
     await cargarMisTurnos();
   }
+  
   const query = route.query;
-  if (query.pago_exitoso === 'true') {
+  
+  // 🔥 FIX DE LA LÓGICA DE MERCADO PAGO 🔥
+  if (query.status === 'approved' && query.external_reference) {
+    const turnoId = query.external_reference.replace('TURNO_', '');
+    mostrarAlertaFelicidades(turnoId);
+  } 
+  else if (query.pago_exitoso === 'true' && query.turno_id) {
     if (query.tipo !== 'pedido') mostrarAlertaFelicidades(query.turno_id); 
     router.replace({ query: {} }); 
   }

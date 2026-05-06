@@ -21,7 +21,7 @@ class Migration(migrations.Migration):
                 ('telefono', models.CharField(default='(3755) 12-3456', max_length=50)),
                 ('email', models.EmailField(default='contacto@hairsoft.com', max_length=254)),
                 ('margen_horas_cancelacion', models.PositiveIntegerField(default=24, help_text='Horas antes para no perder la seña')),
-                ('politica_senia', models.TextField(default='Si cancela antes de las horas establecidas, se pierde la seña.')),
+                ('politica_senia', models.TextField(default='Si cancela o modifica antes de las horas establecidas, se pierde la seña.')),
             ],
             options={
                 'verbose_name': 'Configuración del Sistema',

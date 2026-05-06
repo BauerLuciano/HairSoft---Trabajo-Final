@@ -3,14 +3,14 @@
     <div class="offer-card animate-in">
       
       <div class="card-header">
-        <div class="brand-tag">✨ OPORTUNIDAD EXCLUSIVA</div>
         <h1>¡Turno Disponible!</h1>
         <p class="subtitle" v-if="info.descuento_porcentaje">
-          Se liberó un espacio y tenés el {{ info.descuento_porcentaje }}% de descuento!
+          Se liberó un espacio y tenés el <span class="highlight-text">{{ info.descuento_porcentaje }}% de descuento</span>.
         </p>
         <p class="subtitle" v-else>
           ¡Se liberó un espacio exclusivo para vos!
         </p>
+        <div class="header-glow"></div>
       </div>
 
       <div class="card-body">
@@ -28,11 +28,11 @@
         </div>
 
         <div v-else-if="successMsg" class="state-box success">
-          <div class="emoji-icon">🥳</div>
+          <div class="emoji-icon">✨</div>
           <h3>¡Turno Canjeado!</h3>
           <p class="msg-text">{{ successMsg }}</p>
           <div class="ticket-cut"></div>
-          <p class="sub-msg">Te esperamos el {{ formatFecha(info.fecha) }} a las {{ formatHora(info.hora) }}hs.</p>
+          <p class="sub-msg">Te esperamos el <strong>{{ formatFecha(info.fecha) }}</strong> a las <strong>{{ formatHora(info.hora) }}hs</strong>.</p>
           <button @click="volver" class="btn-primary full">Ver en Mis Turnos</button>
         </div>
 
@@ -40,19 +40,19 @@
           
           <div class="turno-preview">
             <div class="tp-row">
-              <span class="tp-label">Profesional:</span>
+              <span class="tp-label">Profesional</span>
               <span class="tp-val">{{ info.profesional }}</span>
             </div>
             <div class="tp-row">
-              <span class="tp-label">Fecha:</span>
-              <span class="tp-val highlight">{{ formatFecha(info.fecha) }}</span>
+              <span class="tp-label">Fecha</span>
+              <span class="tp-val date-val">{{ formatFecha(info.fecha) }}</span>
             </div>
             <div class="tp-row">
-              <span class="tp-label">Hora:</span>
-              <span class="tp-val highlight">{{ formatHora(info.hora) }}hs</span>
+              <span class="tp-label">Hora</span>
+              <span class="tp-val time-val">{{ formatHora(info.hora) }}hs</span>
             </div>
             <div class="tp-row">
-              <span class="tp-label">Servicio:</span>
+              <span class="tp-label">Servicio</span>
               <span class="tp-val">{{ info.servicio }}</span>
             </div>
           </div>
@@ -64,6 +64,9 @@
                 <span>Precio Regular</span>
                 <del>${{ formatPrecio(info.precio_original) }}</del>
               </div>
+              <div class="p-divider">
+                <i class="bi bi-arrow-right"></i>
+              </div>
               <div class="p-new">
                 <span>Precio Oferta</span>
                 <strong>${{ formatPrecio(info.precio_final) }}</strong>
@@ -73,30 +76,34 @@
 
           <div class="wallet-section">
             <div class="wallet-header">
-              <span>💳 Tu Pago Anterior</span>
+              <div class="wallet-title">
+                <i class="bi bi-wallet2 me-2"></i> Tu Pago Anterior
+              </div>
               <span class="wallet-amount">${{ formatPrecio(info.pagado_anterior) }}</span>
             </div>
 
             <div v-if="info.saldo_a_favor > 0" class="result-box winner">
-              <div class="result-title">¡TE SOBRA DINERO! 🎉</div>
+              <div class="result-icon"><i class="bi bi-check-circle-fill"></i></div>
+              <div class="result-title">¡TE SOBRA DINERO!</div>
               <div class="result-amount">
                 + ${{ formatPrecio(info.saldo_a_favor) }}
               </div>
               <p class="result-desc">
-                Este saldo queda a tu favor para usar en productos o retirar en el local.
-                <strong>¡El cambio de turno te sale GRATIS!</strong>
+                Este saldo queda a tu favor. <strong>¡El cambio te sale GRATIS!</strong>
               </p>
             </div>
 
             <div v-else-if="info.monto_final_a_pagar > 0" class="result-box owing">
-              <div class="result-title">Solo abonas la diferencia</div>
+              <div class="result-icon"><i class="bi bi-exclamation-circle-fill"></i></div>
+              <div class="result-title">Solo abonás la diferencia</div>
               <div class="result-amount">
                 ${{ formatPrecio(info.monto_final_a_pagar) }}
               </div>
-              <p class="result-desc">Se descuenta lo que ya pagaste. Pagarás en el local.</p>
+              <p class="result-desc">Se descuenta lo que ya pagaste. Pagarás el resto en el local.</p>
             </div>
             
             <div v-else class="result-box zero">
+              <div class="result-icon"><i class="bi bi-shield-check"></i></div>
               <div class="result-title">¡Cubierto al 100%!</div>
               <div class="result-amount">$0.00</div>
               <p class="result-desc">Tu pago anterior cubre todo el costo.</p>
@@ -105,11 +112,13 @@
 
           <div class="actions">
             <button @click="confirmarOferta" class="btn-primary full shine-effect" :disabled="procesando">
-              <span v-if="!procesando">
-                <i class="bi bi-stars"></i> 
+              <span v-if="!procesando" class="btn-content">
+                <i class="bi bi-check2-circle"></i> 
                 {{ info.saldo_a_favor > 0 ? 'ACEPTAR Y CANJEAR GRATIS' : 'CONFIRMAR CANJE' }}
               </span>
-              <span v-else>Procesando canje...</span>
+              <span v-else class="btn-content">
+                <i class="bi bi-arrow-repeat spin"></i> Procesando...
+              </span>
             </button>
             <button @click="volver" class="btn-text">Mantener mi turno anterior</button>
           </div>
@@ -140,7 +149,6 @@ const procesando = ref(false);
 const turnoId = route.params.turno_id;
 const token = route.params.token;
 
-// Helpers de formato
 const formatPrecio = (v) => {
   if (v === undefined || v === null) return '0.00';
   const num = parseFloat(v);
@@ -149,7 +157,6 @@ const formatPrecio = (v) => {
 
 const formatFecha = (f) => { 
   if(!f) return '-'; 
-  
   if (typeof f === 'string' && f.includes('-')) {
     try {
       const [year, month, day] = f.split('-');
@@ -158,18 +165,14 @@ const formatFecha = (f) => {
       return f;
     }
   }
-  
   if (f instanceof Date || (typeof f === 'string' && Date.parse(f))) {
     try {
       const dateObj = new Date(f);
       return dateObj.toLocaleDateString('es-AR', {
-        day: '2-digit',
-        month: '2-digit', 
-        year: 'numeric'
+        day: '2-digit', month: '2-digit', year: 'numeric'
       });
     } catch (e) {}
   }
-  
   return f;
 };
 
@@ -186,18 +189,14 @@ const formatHora = (h) => {
 
 onMounted(async () => {
   const userToken = localStorage.getItem('token'); 
-  
   if (!userToken) {
     router.push({ name: 'login', query: { redirect: route.fullPath } });
     return;
   }
-
   try {
     const { data } = await axios.get(`/api/turnos/${turnoId}/oferta-info/${token}/`);
     info.value = data;
-    console.log("Datos de oferta recibidos:", info.value);
   } catch (error) {
-    console.error("Error cargando oferta:", error);
     if (error.response && error.response.status === 401) {
       router.push({ path: '/login', query: { redirect: route.fullPath } });
       return; 
@@ -214,167 +213,202 @@ const confirmarOferta = async () => {
     const { data } = await axios.post(`/api/turnos/${turnoId}/aceptar-oferta/${token}/`);
     
     if (data.success || data.status === 'ok') {
+      // Bloque de saldo a favor con colores fuertes y fondo verde clarito para que resalte
       const saldoMsg = data.saldo_a_favor > 0 ? 
-        `<br><strong>💚 Saldo a favor: $${formatPrecio(data.saldo_a_favor)}</strong>` : '';
+        `<div style="margin-top: 15px; padding: 12px; background: #ecfdf5; border: 1px dashed #10b981; border-radius: 12px; color: #059669; font-weight: 800; font-size: 1.15rem;">
+          💚 Saldo a favor: $${formatPrecio(data.saldo_a_favor)}
+        </div>` : '';
       
       successMsg.value = data.message || "¡Listo! Tu turno ha sido canjeado.";
       
       await Swal.fire({
-        title: '¡Felicitaciones!',
-        html: `Tu turno fue canjeado con éxito.${saldoMsg}`,
+        // Forzamos el título en azul oscuro
+        title: '<span style="color: #1e3a8a; font-weight: 800; font-size: 1.8rem;">¡Felicitaciones! 🎉</span>',
+        // Forzamos el texto en gris oscuro
+        html: `
+          <div style="font-family: 'Inter', sans-serif; text-align: center;">
+            <p style="color: #334155; font-size: 1.1rem; font-weight: 500; margin-bottom: 5px;">
+              Tu turno fue canjeado con éxito y ya está confirmado.
+            </p>
+            ${saldoMsg}
+          </div>
+        `,
         icon: 'success',
-        confirmButtonColor: '#D4AF37',
-        confirmButtonText: 'Genial'
+        background: '#ffffff', // Forzamos el fondo blanco
+        confirmButtonColor: '#1e3a8a',
+        confirmButtonText: 'Genial',
+        customClass: { popup: 'swal-custom-radius' }
       });
       
-      router.push('/cliente/dashboard');
+      router.push('/cliente/historial'); 
     } else {
       throw new Error(data.error || 'Error desconocido');
     }
   } catch (error) {
-    console.error("Error aceptando oferta:", error);
     Swal.fire({
-      title: 'Error',
-      text: error.response?.data?.error || 'No se pudo procesar el canje.',
-      icon: 'error'
+      title: '<span style="color: #b91c1c; font-weight: 800;">Error</span>',
+      html: `<span style="color: #475569; font-size: 1.05rem;">${error.response?.data?.error || 'No se pudo procesar el canje.'}</span>`,
+      icon: 'error',
+      background: '#ffffff',
+      confirmButtonColor: '#1e3a8a'
     });
   } finally {
     procesando.value = false;
   }
 };
 
-const volver = () => router.push('/cliente/dashboard');
+const volver = () => router.push('/cliente/historial');
 </script>
 
 <style scoped>
-/* ESTILOS PREMIUM PARA LA EXPERIENCIA DE "GANAR" */
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 .page-container {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f3f4f6;
-  font-family: 'Montserrat', sans-serif;
-  padding: 20px;
+  background-color: #f1f5f9;
+  background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+  background-size: 24px 24px;
+  font-family: 'Inter', sans-serif;
+  padding: 40px 20px;
 }
 
 .offer-card {
   background: #ffffff;
   width: 100%;
-  max-width: 450px;
-  border-radius: 24px;
+  max-width: 580px;
+  border-radius: 28px;
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.1);
-  border: 1px solid rgba(0,0,0,0.05);
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15), 0 0 0 1px rgba(15, 23, 42, 0.05);
 }
 
+/* HEADER AZUL PROFUNDO Y MODERNO */
 .card-header {
-  background: #111827;
-  color: #D4AF37;
-  padding: 35px 25px;
+  background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
+  color: #ffffff;
+  padding: 45px 35px;
   text-align: center;
   position: relative;
-  overflow: hidden;
 }
 
-.card-header::after {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: linear-gradient(45deg, transparent 45%, rgba(212, 175, 55, 0.1) 50%, transparent 55%);
-    background-size: 200% 200%;
-    animation: shine 3s infinite;
+.header-glow {
+  position: absolute;
+  top: -50px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 100px;
+  background: #3b82f6;
+  filter: blur(80px);
+  opacity: 0.4;
+  pointer-events: none;
 }
-
-@keyframes shine { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
 .brand-tag {
-  background: #D4AF37;
-  color: #000;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  color: #fbbf24; /* Ámbar/Oro sutil */
   display: inline-block;
-  padding: 4px 12px;
+  padding: 8px 16px;
   border-radius: 50px;
   font-size: 0.75rem;
   font-weight: 800;
-  margin-bottom: 12px;
+  margin-bottom: 20px;
   letter-spacing: 1px;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
 .card-header h1 { 
   margin: 0; 
-  font-size: 1.8rem; 
-  color: #fff; 
+  font-size: 2.2rem; 
+  color: #ffffff; 
   font-weight: 800; 
-  line-height: 1.2;
+  letter-spacing: -0.5px;
 }
 
 .subtitle { 
-  margin: 8px 0 0; 
-  color: #9ca3af; 
-  font-size: 0.9rem; 
-  line-height: 1.4;
+  margin: 12px 0 0; 
+  color: #94a3b8; 
+  font-size: 1.05rem; 
+  line-height: 1.5;
+}
+
+.highlight-text {
+  color: #fbbf24;
+  font-weight: 700;
 }
 
 .card-body { 
-  padding: 30px 25px; 
+  padding: 40px 35px; 
+  background: #ffffff;
 }
 
-/* TURNO PREVIEW */
+/* TURNO PREVIEW - LIMPIO Y ELEGANTE */
 .turno-preview { 
+  background: #f8fafc;
+  border-radius: 20px;
+  padding: 25px;
   margin-bottom: 25px; 
-  border-bottom: 1px solid #f3f4f6; 
-  padding-bottom: 20px; 
+  border: 1px solid #e2e8f0;
 }
 
 .tp-row { 
   display: flex; 
   justify-content: space-between; 
-  margin-bottom: 12px; 
-  font-size: 0.95rem; 
-  line-height: 1.4;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px dashed #cbd5e1;
+}
+
+.tp-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.tp-row:first-child {
+  padding-top: 0;
 }
 
 .tp-label { 
-  color: #6b7280; 
+  color: #64748b; 
   font-weight: 600;
+  font-size: 0.95rem;
 }
 
 .tp-val { 
-  font-weight: 600; 
-  color: #1f2937; 
+  font-weight: 700; 
+  color: #0f172a; 
+  font-size: 1.05rem;
   text-align: right;
-  max-width: 60%;
-  word-break: break-word;
 }
 
-.highlight { 
-  color: #D4AF37; 
-  font-weight: 700;
+.date-val, .time-val {
+  color: #1e3a8a;
 }
 
-/* OFFER BOX */
+/* OFFER BOX - PREMIUM */
 .offer-box { 
-    background: #fdfbf7; 
-    border: 2px dashed #D4AF37; 
-    border-radius: 16px; 
-    padding: 20px; 
-    position: relative;
-    margin-bottom: 25px;
+  background: linear-gradient(to right, #eff6ff, #f0fdf4); 
+  border-radius: 20px; 
+  padding: 25px; 
+  position: relative;
+  margin-bottom: 25px;
+  border: 1px solid #bae6fd;
 }
 
 .offer-badge {
-    position: absolute;
-    top: -12px; 
-    right: 15px;
-    background: #ef4444; 
-    color: white;
-    font-weight: 800; 
-    font-size: 0.8rem;
-    padding: 4px 10px; 
-    border-radius: 20px;
-    transform: rotate(2deg);
+  position: absolute;
+  top: -15px; 
+  right: 25px;
+  background: linear-gradient(135deg, #ef4444, #b91c1c); 
+  color: white;
+  font-weight: 800; 
+  font-size: 0.85rem;
+  padding: 6px 16px; 
+  border-radius: 50px;
+  box-shadow: 0 8px 15px rgba(239, 68, 68, 0.25);
 }
 
 .price-compare { 
@@ -383,88 +417,74 @@ const volver = () => router.push('/cliente/dashboard');
   align-items: center; 
 }
 
-.p-old { 
+.p-old, .p-new { 
   display: flex; 
   flex-direction: column; 
-  font-size: 0.85rem; 
-  color: #9ca3af; 
 }
 
-.p-old del {
-  font-size: 1rem;
-  color: #9ca3af;
+.p-old span { font-size: 0.85rem; color: #64748b; font-weight: 600; margin-bottom: 4px;}
+.p-old del { font-size: 1.2rem; color: #94a3b8; font-weight: 700;}
+
+.p-divider {
+  color: #94a3b8;
+  font-size: 1.5rem;
+  opacity: 0.5;
 }
 
-.p-new { 
-  display: flex; 
-  flex-direction: column; 
-  text-align: right; 
-}
-
-.p-new span { 
-  font-size: 0.85rem; 
-  color: #059669; 
-  font-weight: 600; 
-}
-
-.p-new strong { 
-  font-size: 1.8rem; 
-  color: #059669; 
-  font-weight: 900; 
-}
+.p-new { text-align: right; }
+.p-new span { font-size: 0.85rem; color: #1e3a8a; font-weight: 700; margin-bottom: 4px;}
+.p-new strong { font-size: 2.2rem; color: #1e3a8a; font-weight: 900; line-height: 1;}
 
 /* WALLET SECTION */
 .wallet-section { 
-  background: #f9fafb; 
-  border-radius: 16px; 
-  padding: 20px; 
-  margin-bottom: 25px; 
-  border: 1px solid #e5e7eb;
+  background: #ffffff; 
+  border-radius: 20px; 
+  margin-bottom: 35px; 
+  border: 2px solid #f1f5f9;
+  overflow: hidden;
 }
 
 .wallet-header { 
+  background: #f8fafc;
   display: flex; 
   justify-content: space-between; 
-  font-size: 0.95rem; 
-  color: #4b5563; 
-  margin-bottom: 20px; 
-  font-weight: 600;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #e5e7eb;
+  align-items: center;
+  padding: 18px 25px;
+  border-bottom: 2px solid #f1f5f9;
+}
+
+.wallet-title {
+  color: #475569;
+  font-weight: 700;
+  font-size: 0.95rem;
 }
 
 .wallet-amount {
-  color: #1f2937;
-  font-weight: 700;
+  color: #0f172a;
+  font-weight: 800;
+  font-size: 1.2rem;
 }
 
 .result-box { 
   text-align: center; 
-  padding: 20px; 
-  border-radius: 12px; 
-  margin-top: 15px;
+  padding: 30px 25px; 
+  position: relative;
 }
 
-.result-box.winner { 
-  background: #ecfdf5; 
-  border: 2px solid #10b981; 
+.result-icon {
+  font-size: 2.5rem;
+  margin-bottom: 10px;
 }
 
-.result-box.owing { 
-  background: #fffbeb; 
-  border: 2px solid #f59e0b; 
-}
-
-.result-box.zero { 
-  background: #eff6ff; 
-  border: 2px solid #3b82f6; 
-}
+.winner .result-icon { color: #10b981; }
+.owing .result-icon { color: #f59e0b; }
+.zero .result-icon { color: #3b82f6; }
 
 .result-title { 
-  font-size: 0.9rem; 
+  font-size: 1rem; 
   font-weight: 800; 
   text-transform: uppercase; 
-  margin-bottom: 8px; 
+  margin-bottom: 10px; 
   letter-spacing: 0.5px;
 }
 
@@ -473,20 +493,21 @@ const volver = () => router.push('/cliente/dashboard');
 .zero .result-title { color: #1d4ed8; }
 
 .result-amount { 
-  font-size: 2.2rem; 
+  font-size: 3rem; 
   font-weight: 900; 
-  margin-bottom: 12px; 
+  margin-bottom: 15px; 
   line-height: 1;
+  letter-spacing: -1px;
 }
 
-.winner .result-amount { color: #059669; }
-.owing .result-amount { color: #d97706; }
-.zero .result-amount { color: #1d4ed8; }
+.winner .result-amount { color: #10b981; }
+.owing .result-amount { color: #f59e0b; }
+.zero .result-amount { color: #3b82f6; }
 
 .result-desc { 
-  font-size: 0.85rem; 
+  font-size: 0.95rem; 
   line-height: 1.5; 
-  color: #6b7280; 
+  color: #64748b; 
   margin: 0; 
 }
 
@@ -495,114 +516,146 @@ const volver = () => router.push('/cliente/dashboard');
   display: flex; 
   flex-direction: column; 
   gap: 15px; 
-  margin-bottom: 20px;
+  margin-bottom: 25px;
 }
 
 .btn-primary {
-  background: #111827; 
-  color: #D4AF37; 
+  background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+  color: #ffffff; 
   border: none;
-  padding: 18px; 
-  border-radius: 50px; 
+  padding: 20px; 
+  border-radius: 16px; 
   font-weight: 700; 
-  font-size: 1rem;
+  font-size: 1.1rem;
   cursor: pointer; 
-  transition: all 0.3s;
-  display: flex; 
-  justify-content: center; 
-  align-items: center; 
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 10px 25px -5px rgba(30, 58, 138, 0.4);
+}
+
+.btn-primary .btn-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 10px;
 }
 
-.btn-primary:hover { 
+.btn-primary:hover:not(:disabled) { 
   transform: translateY(-3px); 
-  box-shadow: 0 10px 20px rgba(0,0,0,0.2); 
-  background: #1f2937;
+  box-shadow: 0 20px 35px -5px rgba(30, 58, 138, 0.5); 
 }
 
 .btn-primary:disabled {
-  opacity: 0.6;
+  background: #cbd5e1;
+  box-shadow: none;
   cursor: not-allowed;
-  transform: none;
 }
 
 .btn-text { 
   background: none; 
   border: none; 
-  color: #9ca3af; 
+  color: #64748b; 
   cursor: pointer; 
-  text-decoration: underline; 
-  font-size: 0.9rem; 
+  font-size: 0.95rem; 
   padding: 10px;
+  font-weight: 600;
+  transition: color 0.2s;
 }
 
 .btn-text:hover {
-  color: #6b7280;
+  color: #0f172a;
 }
 
 .disclaimer { 
-  font-size: 0.75rem; 
+  font-size: 0.8rem; 
   text-align: center; 
-  color: #9ca3af; 
-  margin-top: 15px;
-  line-height: 1.4;
-  padding: 0 10px;
+  color: #94a3b8; 
+  margin: 0;
+  line-height: 1.5;
 }
 
-/* LOADING & MESSAGES */
+/* EXTRA ANIMATIONS */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-in { 
+  animation: scaleUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; 
+}
+
+@keyframes scaleUp { 
+  0% { opacity: 0; transform: scale(0.95) translateY(20px); } 
+  100% { opacity: 1; transform: scale(1) translateY(0); } 
+}
+
+@media (max-width: 640px) {
+  .card-body { padding: 30px 20px; }
+  .card-header { padding: 35px 20px; }
+  .card-header h1 { font-size: 1.8rem; }
+  .result-amount { font-size: 2.5rem; }
+  .p-new strong { font-size: 1.8rem; }
+}
+
+/* 🔥 CORRECCIÓN PARA ESTADOS: CARGA, ERROR Y ÉXITO 🔥 */
+
 .state-box { 
   text-align: center; 
   padding: 40px 20px; 
 }
 
+.state-box h3 {
+  font-weight: 800;
+  font-size: 1.8rem;
+  margin-bottom: 10px;
+}
+
+/* Color para el texto de Error (Pena) */
+.state-box.error h3 { color: #b91c1c; }
+.state-box.error p { color: #475569; font-weight: 500; }
+
+/* Color para el texto de Éxito */
+.state-box.success h3 { color: #1e3a8a; }
+.state-box.success .msg-text { color: #334155; font-weight: 600; }
+.state-box.success .sub-msg { color: #64748b; }
+
+/* Color para el texto de Carga */
+.state-box p { color: #1e3a8a; font-weight: 600; }
+
 .emoji-icon { 
-  font-size: 3rem; 
+  font-size: 4rem; 
   margin-bottom: 15px; 
+  display: block;
+}
+
+/* Botón de "Volver al inicio" en el error */
+.btn-outline {
+  background: transparent;
+  border: 2px solid #1e3a8a;
+  color: #1e3a8a;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 20px;
+}
+
+.btn-outline:hover {
+  background: #1e3a8a;
+  color: #ffffff;
 }
 
 .spinner { 
-  border: 4px solid #f3f4f6; 
-  border-top: 4px solid #D4AF37; 
+  border: 4px solid #f1f5f9; 
+  border-top: 4px solid #1e3a8a; 
   border-radius: 50%; 
-  width: 40px; 
-  height: 40px; 
+  width: 45px; 
+  height: 45px; 
   animation: spin 1s linear infinite; 
-  margin: 0 auto 15px; 
+  margin: 0 auto 20px; 
 }
 
 @keyframes spin { 
   0% { transform: rotate(0deg); } 
   100% { transform: rotate(360deg); } 
-}
-
-.animate-in { 
-  animation: fadeInUp 0.6s ease-out; 
-}
-
-@keyframes fadeInUp { 
-  from { opacity: 0; transform: translateY(30px); } 
-  to { opacity: 1; transform: translateY(0); } 
-}
-
-.shine-effect {
-  position: relative;
-  overflow: hidden;
-}
-
-.shine-effect::after {
-  content: '';
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: linear-gradient(
-    to right,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.3) 50%,
-    rgba(255, 255, 255, 0) 100%
-  );
-  transform: rotate(30deg);
-  animation: shine 2s infinite;
 }
 </style>

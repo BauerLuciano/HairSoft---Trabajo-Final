@@ -191,6 +191,7 @@ urlpatterns = [
     path('api/mercadopago/pago-error/', func_views.pago_error, name='mp_pago_error'),
     path('api/mercadopago/pago-pendiente/', func_views.pago_pendiente, name='mp_pago_pendiente'),
     path('api/mercadopago/webhook/', func_views.mercadopago_webhook, name='mercadopago_webhook'),
+    path('api/mercadopago/retorno/', func_views.retorno_mercadopago, name='mp_retorno'),
 
     # ================================
     # Proveedores
@@ -310,6 +311,9 @@ urlpatterns = [
     path('api/web/pedidos/<int:pedido_id>/comprobante-pdf/', func_views.descargar_comprobante_pedido_web, name='comprobante_pedido_web'),
 
     path('api/auth/google/', api_views.google_login, name='google_login'),
+
+    #Notificaciones (Campanita)
+    path('api/notificaciones/', func_views.api_notificaciones, name='api_notificaciones'),
     ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

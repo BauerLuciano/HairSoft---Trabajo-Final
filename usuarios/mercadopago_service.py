@@ -4,7 +4,6 @@ from django.conf import settings
 
 class MercadoPagoService:
     def __init__(self):
-        # SDK iniciado con las credenciales del settings
         self.sdk = mercadopago.SDK(settings.MERCADO_PAGO['ACCESS_TOKEN'])
         self.config = settings.MERCADO_PAGO 
         self.statement_descriptor = "HAIRSOFT"
@@ -13,21 +12,21 @@ class MercadoPagoService:
         """
         CREA PAGO PARA SEÑA DE TURNOS - 100% MODO SANDBOX
         """
-        # 🔥 CORTA: Clavamos tu URL fija de Ngrok acá y nos olvidamos del localtunnel
         base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
 
+        # 🔥 FIX DEFINITIVO: Usamos la URL de ngrok (HTTPS) para engañar a MP.
+        # Esto va a golpear la ruta que agregaste en urls.py y la función en views.py,
+        # la cual te va a redirigir automáticamente a Vue.
         back_urls_dict = {
-            "success": f"{base_url}/api/mercadopago/pago-exitoso/", 
-            "failure": f"{base_url}/api/mercadopago/pago-error/",
-            "pending": f"{base_url}/api/mercadopago/pago-pendiente/"
+            "success": f"{base_url}/api/mercadopago/retorno/", 
+            "failure": f"{base_url}/api/mercadopago/retorno/",
+            "pending": f"{base_url}/api/mercadopago/retorno/"
         }
 
-        # ✅ FIX: Buscamos el monto bajo cualquier nombre para que no tire KeyError
         monto = turno_data.get("monto_pago") or turno_data.get("monto_seña")
-        monto_pago = round(float(monto), 2)
-        turno_id = str(turno_data['turno_id'])
+        monto_pago = round(float(monto), 2) if monto else 0.1
+        turno_id = str(turno_data.get('turno_id', uuid.uuid4()))
         
-        # ✅ Email del COMPRADOR de la misma familia que el Token
         email_comprador_prueba = "test_user_1860959446082982366@testuser.com"
         
         preference_data = {
@@ -44,11 +43,10 @@ class MercadoPagoService:
                 "email": email_comprador_prueba, 
             },
             "back_urls": back_urls_dict,
-            "auto_return": "approved", 
+            "auto_return": "approved", # 🔥 MP lo va a aceptar porque back_urls tiene HTTPS
             "external_reference": f"TURNO_{turno_id}",
             "binary_mode": True,
             "statement_descriptor": self.statement_descriptor,
-            # 🔥 Le pasamos el webhook directo con tu ngrok
             "notification_url": f"{base_url}/api/mercadopago/webhook/"
         }
 
@@ -56,7 +54,10 @@ class MercadoPagoService:
             result = self.sdk.preference().create(preference_data)
             res = result["response"]
             
-            # Devolvemos el sandbox_init_point explícitamente
+            if result.get("status") not in [200, 201]:
+                print(f"🔥 ERROR REAL DE MERCADO PAGO 🔥: {res}")
+                return {"success": False, "error": res.get("message", "Error al crear preferencia en MP")}
+            
             return {
                 "success": True, 
                 "init_point": res.get("sandbox_init_point"), 
@@ -69,13 +70,13 @@ class MercadoPagoService:
         """
         CREA PAGO PARA CARRITO - 100% MODO SANDBOX
         """
-        # 🔥 CORTA: Clavamos tu URL fija de Ngrok acá también
         base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
 
+        # 🔥 FIX: Aplicar el mismo puente de ngrok acá
         back_urls_dict = {
-            "success": f"{base_url}/api/mercadopago/pago-exitoso/", 
-            "failure": f"{base_url}/api/mercadopago/pago-error/",
-            "pending": f"{base_url}/api/mercadopago/pago-pendiente/"
+            "success": f"{base_url}/api/mercadopago/retorno/", 
+            "failure": f"{base_url}/api/mercadopago/retorno/",
+            "pending": f"{base_url}/api/mercadopago/retorno/"
         }
 
         items_mp = []
@@ -95,7 +96,6 @@ class MercadoPagoService:
                 "unit_price": float(pedido.costo_envio)
             })
 
-        # ✅ Mismo email de comprador de prueba
         email_comprador_prueba = "test_user_1860959446082982366@testuser.com"
 
         preference_data = {
@@ -109,20 +109,21 @@ class MercadoPagoService:
             "external_reference": f"PEDIDO_{pedido.id}",
             "binary_mode": True,
             "statement_descriptor": self.statement_descriptor,
-            # 🔥 Le pasamos el webhook directo con tu ngrok
             "notification_url": f"{base_url}/api/mercadopago/webhook/"
         }
 
         try:
-            res_sdk = self.sdk.preference().create(preference_data)
-            data = res_sdk["response"]
-            if res_sdk["status"] in [200, 201]:
-                return {
-                    "url_pago": data.get("sandbox_init_point"), 
-                    "preference_id": data["id"]
-                }
-            else:
-                raise Exception(f"MP Error: {data.get('message', 'Error desconocido')}")
+            result = self.sdk.preference().create(preference_data)
+            res = result["response"]
+            
+            if result.get("status") not in [200, 201]:
+                print(f"🔥 ERROR REAL DE MERCADO PAGO 🔥: {res}")
+                return {"success": False, "error": res.get("message", "Error al crear preferencia en MP")}
+
+            return {
+                "url_pago": res.get("sandbox_init_point"), 
+                "preference_id": res["id"]
+            }
         except Exception as e:
             raise e
 
@@ -130,10 +131,8 @@ class MercadoPagoService:
         """
         Reembolsa un pago aprobado usando el SDK oficial de Mercado Pago.
         """
-        # Usamos self.sdk que ya tenías inicializado con el token correcto en tu __init__
         respuesta = self.sdk.refund().create(payment_id)
         
-        # El SDK de MP devuelve HTTP 200 o 201 si anduvo bien
         if respuesta.get("status") in [200, 201]:
             return respuesta.get("response")
         else:
