@@ -3,7 +3,7 @@
     <div class="list-card">
       <div class="list-header">
         <div class="header-content">
-          <h1>Gestión de categorías</h1>
+          <h1>Gestión de Categorías</h1>
           <p>Gestión completa de categorías de servicios y productos</p>
         </div>
         <button @click="abrirModalCrear" class="register-button">
@@ -105,43 +105,47 @@
       </div>
     </div>
 
+    <!-- MODAL DE CREACIÓN / EDICIÓN -->
     <div v-if="modalVisible" class="modal-backdrop">
       <div class="modal-card">
         <h2>{{ form.id ? 'Editar Categoría' : 'Registrar Categoría' }}</h2>
         <form @submit.prevent="guardarCategoria">
           <div class="form-group">
             <label>Nombre:</label>
+            <!-- Input totalmente limpio, la reactividad manda -->
             <input v-model="form.nombre" type="text" class="modal-input" required />
-            <span class="error" v-if="errores.nombre">{{ errores.nombre }}</span>
+            <span class="error" style="color: #dc3545; font-size: 0.875rem;" v-if="errores.nombre">{{ errores.nombre }}</span>
           </div>
+          
           <div class="form-group">
             <label>Descripción:</label>
             <input v-model="form.descripcion" type="text" class="modal-input" />
           </div>
+          
           <div class="form-group">
             <label>Tipo:</label>
-            <select 
-              v-model="form.tipo" 
-              class="modal-input"
-              :disabled="esEdicion"
-            >
+            <select v-model="form.tipo" class="modal-input" :disabled="esEdicion">
               <option value="">-- Seleccione --</option>
               <option value="Servicio">Servicio</option>
               <option value="Producto">Producto</option>
             </select>
-            <small v-if="esEdicion" style="color: #dc3545; display: block; margin-top: 5px; font-weight: bold;">
+            <span class="error" style="color: #dc3545; font-size: 0.875rem;" v-if="errores.tipo">{{ errores.tipo }}</span>
+            <small v-if="esEdicion" style="color: #6c757d; display: block; margin-top: 5px; font-weight: bold;">
               * El tipo de categoría no se puede modificar una vez creado.
             </small>
           </div>
-          <div v-if="form.id" class="form-group-checkbox">
-             <label class="switch-container">
+          
+          <div v-if="form.id" class="form-group-checkbox" style="margin-top: 15px;">
+             <label class="switch-container" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
                 <input type="checkbox" v-model="form.activo">
                 <span class="switch-label">¿Categoría Activa?</span>
              </label>
           </div>
 
-          <div class="modal-actions">
-            <button type="submit" class="modal-btn primary">{{ form.id ? 'Actualizar' : 'Crear' }}</button>
+          <div class="modal-actions" style="margin-top: 20px;">
+            <button type="submit" class="modal-btn primary" :disabled="errores.nombre !== ''">
+              {{ form.id ? 'Actualizar' : 'Crear' }}
+            </button>
             <button type="button" @click="cerrarModal" class="modal-btn secondary">Cancelar</button>
           </div>
         </form>
@@ -156,7 +160,10 @@ import axios from 'axios'
 import Swal from 'sweetalert2'
 import { Edit3, Trash2, CheckCircle } from 'lucide-vue-next'
 
-const API_BASE = 'http://127.0.0.1:8000';
+const isProduction = window.location.hostname.includes('vercel.app');
+const API_BASE = isProduction 
+  ? 'https://web-production-ac47c.up.railway.app' 
+  : 'http://127.0.0.1:8000';
 
 const categorias = ref([])
 const filtros = ref({ busqueda: '', tipo: '', estado: 'todos' }) 
@@ -168,9 +175,8 @@ const form = reactive({
   id: null, nombre: '', descripcion: '', tipo: '', activo: true 
 })
 
-const errores = reactive({ nombre: '' })
+const errores = reactive({ nombre: '', tipo: '' })
 
-// Computed para saber si estamos en modo edición
 const esEdicion = computed(() => form.id !== null)
 
 const getHeaders = () => {
@@ -195,9 +201,44 @@ const cargarCategorias = async () => {
   } catch (err) { console.error("Error al cargar:", err) }
 }
 
+const normalizarTexto = (texto) => {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+// 🔥 LÓGICA DE VALIDACIÓN CENTRALIZADA
+const validarNombre = () => {
+  errores.nombre = ''
+  
+  if (!form.nombre) return
+  
+  const valorLimpio = normalizarTexto(form.nombre.trim())
+  if (!valorLimpio) return
+
+  const duplicado = categorias.value.find(c => {
+    const mismoNombre = normalizarTexto(c.nombre) === valorLimpio
+    const mismoTipo = form.tipo ? c.tipo === form.tipo : true 
+    
+    // Convertimos los IDs a string por seguridad y evitamos chocar con nosotros mismos al editar
+    const distintoId = form.id ? String(c.id) !== String(form.id) : true
+    
+    return mismoNombre && mismoTipo && distintoId
+  })
+
+  if (duplicado) {
+    errores.nombre = form.tipo
+      ? `Ya existe una categoría de ${form.tipo} con este nombre.`
+      : `Ya existe una categoría con este nombre (es un ${duplicado.tipo}).`
+  }
+}
+
+// 🔥 WATCH: Escucha los cambios del form en tiempo real
+watch([() => form.nombre, () => form.tipo], () => {
+  validarNombre()
+})
+
 const categoriasFiltradas = computed(() => {
   return categorias.value.filter(c => {
-    const b = c.nombre.toLowerCase().includes(filtros.value.busqueda.toLowerCase())
+    const b = normalizarTexto(c.nombre).includes(normalizarTexto(filtros.value.busqueda))
     const t = !filtros.value.tipo || c.tipo === filtros.value.tipo
     
     let matchEstado = true
@@ -217,6 +258,7 @@ const categoriasPaginadas = computed(() => {
 const abrirModalCrear = () => {
   Object.assign(form, { id: null, nombre: '', descripcion: '', tipo: '', activo: true })
   errores.nombre = ''
+  errores.tipo = ''
   modalVisible.value = true
 }
 
@@ -229,20 +271,23 @@ const abrirModalEditar = (cat) => {
     activo: cat.activo 
   })
   errores.nombre = ''
+  errores.tipo = ''
   modalVisible.value = true
 }
 
 const cerrarModal = () => { modalVisible.value = false }
 
 const guardarCategoria = async () => {
-  if (!form.nombre.trim()) return errores.nombre = 'El nombre es requerido'
-  if (!form.id && !form.tipo) return errores.nombre = 'Seleccione un tipo'
+  validarNombre() // Forzamos un último chequeo de seguridad antes de guardar
+
+  if (errores.nombre !== '') return 
+  if (!form.nombre.trim()) return errores.nombre = 'El nombre es obligatorio'
+  if (!form.tipo) return errores.tipo = 'Seleccione un tipo'
   
   try {
     const endpoint = form.tipo === 'Servicio' ? 'servicios' : 'productos'
     
     if (form.id) {
-      // Edición: solo nombre, descripción y activo. No enviamos 'tipo'.
       const url = `${API_BASE}/api/categorias/${endpoint}/editar/${form.id}/`
       await axios.post(url, {
         nombre: form.nombre.trim(),
@@ -250,30 +295,34 @@ const guardarCategoria = async () => {
         activo: form.activo
       }, getHeaders())
     } else {
-      // Creación: enviamos todos los campos incluyendo 'tipo'
       const url = `${API_BASE}/api/categorias/${endpoint}/crear/`
-      await axios.post(url, { ...form }, getHeaders())
+      await axios.post(url, { 
+        nombre: form.nombre.trim(),
+        descripcion: form.descripcion || '',
+        activo: form.activo
+       }, getHeaders())
     }
     
     cerrarModal()
     await cargarCategorias()
-    Swal.fire({ icon: 'success', title: '¡Guardado!', timer: 1000, showConfirmButton: false })
+    Swal.fire({ icon: 'success', title: '¡Guardado!', text: 'La categoría se guardó correctamente', timer: 1500, showConfirmButton: false })
   } catch (err) {
-    errores.nombre = err.response?.data?.message || 'Error al guardar'
+    errores.nombre = err.response?.data?.message || 'Error al comunicarse con el servidor'
   }
 }
 
 const toggleEstado = async (cat) => {
   const nuevoEstado = !cat.activo
-  const titulo = nuevoEstado ? '¿Reactivar?' : '¿Desactivar?'
+  const titulo = nuevoEstado ? '¿Reactivar Categoría?' : '¿Desactivar Categoría?'
   
   const res = await Swal.fire({
     title: titulo,
-    text: nuevoEstado ? "La categoría volverá a aparecer." : "Se ocultará de los formularios.",
+    text: nuevoEstado ? "La categoría volverá a estar disponible." : "Se ocultará de los formularios.",
     icon: nuevoEstado ? 'question' : 'warning',
     showCancelButton: true,
     confirmButtonText: nuevoEstado ? 'Sí, activar' : 'Sí, desactivar',
-    confirmButtonColor: nuevoEstado ? '#10b981' : '#ef4444'
+    confirmButtonColor: nuevoEstado ? '#10b981' : '#ef4444',
+    cancelButtonText: 'Cancelar'
   })
 
   if (res.isConfirmed) {
@@ -281,7 +330,12 @@ const toggleEstado = async (cat) => {
       const endpoint = cat.tipo === 'Servicio' ? 'servicios' : 'productos'
       const url = `${API_BASE}/api/categorias/${endpoint}/editar/${cat.id}/`
       
-      await axios.post(url, { ...cat, activo: nuevoEstado }, getHeaders())
+      await axios.post(url, { 
+        nombre: cat.nombre,
+        descripcion: cat.descripcion || '',
+        activo: nuevoEstado 
+      }, getHeaders())
+      
       await cargarCategorias()
       Swal.fire(nuevoEstado ? 'Activada' : 'Desactivada', '', 'success')
     } catch (err) {
@@ -293,7 +347,7 @@ const toggleEstado = async (cat) => {
 const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 const limpiarFiltros = () => { filtros.value = { busqueda: '', tipo: '', estado: 'todos' }; pagina.value = 1 }
-const getTipoClass = (t) => t === 'Servicio' ? 'estado-info' : 'estado-success'
+const getTipoClass = (t) => t === 'Servicio' ? 'estado-info' : 'estado-warning'
 
 onMounted(cargarCategorias)
 watch(filtros, () => { pagina.value = 1 }, { deep: true })

@@ -33,7 +33,9 @@
           @blur="validarNombre"
           :class="{ 'campo-invalido': errores.nombre }"
         />
-        <div class="mensaje-error" v-if="errores.nombre">{{ errores.nombre }}</div>
+        <div class="mensaje-error" style="color: #dc3545; font-size: 0.875rem; margin-top: 5px;" v-if="errores.nombre">
+          {{ errores.nombre }}
+        </div>
       </div>
 
       <div class="input-group">
@@ -113,7 +115,7 @@
 
     <button 
       @click="guardarCambios" 
-      :disabled="cargando" 
+      :disabled="cargando || errores.nombre !== ''" 
       class="btn-registrar-premium"
       :class="{'btn-processing': cargando}"
     >
@@ -142,7 +144,11 @@ import {
 
 const route = useRoute()
 const router = useRouter()
-const API_BASE = 'http://127.0.0.1:8000'
+
+const isProduction = window.location.hostname.includes('vercel.app');
+const API_BASE = isProduction 
+  ? 'https://web-production-ac47c.up.railway.app' 
+  : 'http://127.0.0.1:8000';
 
 // OBTENER ID DIRECTAMENTE DE LA RUTA
 const marcaId = route.params.id
@@ -201,12 +207,48 @@ const toggleProveedor = (id) => {
   else marca.proveedores.splice(index, 1)
 }
 
-const validarNombre = () => {
-  errores.value.nombre = marca.nombre.trim() ? '' : 'El nombre es obligatorio'
+// Función ninja para limpiar acentos y mayúsculas
+const normalizarTexto = (texto) => {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+// 🔥 Validación asíncrona: verifica contra el backend en el blur excluyendo la marca actual
+const validarNombre = async () => {
+  const valor = marca.nombre.trim()
+  
+  if (!valor) {
+    errores.value.nombre = 'El nombre es obligatorio'
+    return
+  }
+
+  try {
+    const res = await axios.get(`${API_BASE}/api/marcas/`)
+    const marcasExistentes = Array.isArray(res.data) ? res.data : (res.data.results || [])
+    
+    // Buscamos coincidencia exacta ignorando acentos y mayúsculas/minúsculas, 
+    // PERO ignoramos la marca actual (m.id !== marcaId)
+    const duplicado = marcasExistentes.find(m => 
+      normalizarTexto(m.nombre) === normalizarTexto(valor) && 
+      m.id.toString() !== marcaId.toString()
+    )
+    
+    if (duplicado) {
+      errores.value.nombre = `La marca "${valor}" ya está registrada.`
+    } else {
+      errores.value.nombre = '' // Todo en orden
+    }
+  } catch (err) {
+    console.error("Error al validar el nombre de la marca:", err)
+    errores.value.nombre = '' 
+  }
 }
 
 const guardarCambios = async () => {
-  validarNombre()
+  // Aseguramos que se ejecute la validación antes de intentar guardar
+  await validarNombre()
   if (errores.value.nombre) return
 
   cargando.value = true

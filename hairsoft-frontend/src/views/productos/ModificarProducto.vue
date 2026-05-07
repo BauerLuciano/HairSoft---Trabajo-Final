@@ -50,12 +50,13 @@
               <Award :size="16" />
               Marca *
             </label>
+            <!-- Lo cambiamos a @change para que valide al instante si le cambian la marca -->
             <select
               v-model.number="producto.marca"
               required
               class="select-modern"
               :disabled="cargandoMarcas || marcas.length === 0"
-              @blur="validarMarca"
+              @change="validarMarca"
               :class="{ 'campo-invalido': errores.marca }"
             >
               <option value="">Seleccione una marca</option>
@@ -205,6 +206,7 @@
               type="number"
               min="1"
               required
+              placeholder="Ej: 5"
               class="input-modern warning-border"
               @blur="validarStockMinimo"
               :class="{ 'campo-invalido': errores.stock_minimo }"
@@ -223,6 +225,7 @@
               type="number"
               min="1"
               required
+              placeholder="Ej: 12"
               class="input-modern info-border"
             />
             <div class="mensaje-feedback info">Sugerido para compra</div>
@@ -331,7 +334,6 @@ const producto = ref({
   proveedores_seleccionados: []
 })
 
-// Variables para imagen
 const imagenArchivo = ref(null)
 const imagenPreview = ref(null)
 const fileInput = ref(null)
@@ -350,7 +352,6 @@ const cargandoMarcas = ref(false)
 const cargandoCategorias = ref(false)
 const cargandoProveedores = ref(false)
 
-// --- Lógica de Imagen ---
 const seleccionarImagen = (event) => {
   const file = event.target.files[0]
   if (file) {
@@ -369,15 +370,37 @@ const quitarImagen = () => {
   if (fileInput.value) fileInput.value.value = ''
 }
 
-// --- Validaciones (Iguales a Registrar) ---
-const validarNombre = () => {
+// 🔥 ACÁ ESTÁ LA MAGIA DE LA VALIDACIÓN CORREGIDA PARA EDICIÓN
+const validarNombre = async () => {
   const valor = producto.value.nombre.trim()
   if (!valor) { errores.value.nombre = "El nombre es obligatorio"; return }
   if (valor.length < 2) { errores.value.nombre = "Mínimo 2 caracteres"; return }
+  
+  if (producto.value.marca) {
+    try {
+      const response = await axios.get(`/usuarios/api/productos/?nombre=${valor}&marca=${producto.value.marca}`)
+      const data = Array.isArray(response.data) ? response.data : (response.data.results || [])
+      
+      // Verificamos si existe un duplicado CULLO ID SEA DISTINTO AL PRODUCTO ACTUAL
+      const duplicado = data.find(p => p.id !== Number(props.productoId))
+      
+      if (duplicado) {
+        errores.value.nombre = `Ya existe "${valor}" para esta marca`
+        return
+      }
+    } catch (e) {
+      console.error("Error validando el nombre:", e)
+    }
+  }
   errores.value.nombre = ""
 }
 
-const validarMarca = () => errores.value.marca = !producto.value.marca ? "Seleccione una marca" : ""
+const validarMarca = () => {
+  errores.value.marca = !producto.value.marca ? "Seleccione una marca" : ""
+  // Si cambia la marca, re-validamos el nombre contra el backend
+  if (producto.value.nombre) validarNombre() 
+}
+
 const validarCategoria = () => errores.value.categoria = !producto.value.categoria ? "Seleccione una categoría" : ""
 const validarPrecio = () => errores.value.precio = (!producto.value.precio || producto.value.precio <= 0) ? "Mayor a 0" : ""
 const validarStock = () => errores.value.stock = (producto.value.stock_actual < 0) ? "No negativo" : ""
@@ -406,7 +429,6 @@ const toggleProveedor = (id) => {
   else producto.value.proveedores_seleccionados.push(id)
 }
 
-// --- Carga de Datos ---
 const cargarProducto = async () => {
   cargandoProducto.value = true
   try {
@@ -435,7 +457,6 @@ const cargarProducto = async () => {
       proveedores_seleccionados: proveedoresSeleccionados
     }
 
-    // Cargar imagen existente
     if (data.imagen) {
         const imgUrl = data.imagen.startsWith('http') 
             ? data.imagen 
@@ -468,7 +489,6 @@ const cargarAuxiliares = async () => {
   }
 }
 
-// --- Modificar Producto ---
 const modificarProducto = async () => {
   if (!formularioValido.value) {
     Swal.fire({ icon: 'error', title: 'Error', text: 'Revise los campos requeridos' })

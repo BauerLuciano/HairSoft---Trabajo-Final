@@ -32,13 +32,14 @@
               <Tag :size="16" />
               Nombre del Servicio *
             </label>
+            <!-- ✅ CAMBIO: @input en lugar de @blur para validar en tiempo real -->
             <input
               v-model="form.nombre"
               type="text"
               required
               placeholder="Ej: Corte de Cabello..."
               class="input-modern"
-              @blur="validarNombre"
+              @input="validarNombre"
               :class="{ 'campo-invalido': errores.nombre }"
             />
             <div class="mensaje-error" v-if="errores.nombre">
@@ -199,14 +200,37 @@ const categorias = ref([])
 const cargandoDatos = ref(true)
 const cargandoGuardado = ref(false)
 
+// ✅ ARRAYS EN MEMORIA PARA VALIDACIÓN
+const nombresExistentes = reactive([])
+let nombreOriginal = ''
+
 const formularioValido = computed(() => {
-  return form.nombre && form.precio > 0 && form.duracion > 0 && !errores.nombre && !errores.precio
+  return form.nombre.trim() && form.precio > 0 && form.duracion > 0 && !errores.nombre && !errores.precio
 })
 
+// ✅ LÓGICA DE VALIDACIÓN EN TIEMPO REAL
 const validarNombre = () => {
-  if (!form.nombre.trim()) errores.nombre = "El nombre es obligatorio"
-  else errores.nombre = ""
+  const valor = form.nombre.trim().toLowerCase()
+  
+  if (!valor) {
+    errores.nombre = "El nombre es obligatorio"
+    return
+  }
+
+  // Si el usuario vuelve a escribir exactamente el mismo nombre que ya tenía (ignora mayúsculas)
+  if (valor === nombreOriginal) {
+    errores.nombre = ""
+    return
+  }
+
+  // Comprueba contra la lista de nombres de la base de datos
+  if (nombresExistentes.includes(valor)) {
+    errores.nombre = "Ya existe un servicio con este nombre."
+  } else {
+    errores.nombre = ""
+  }
 }
+
 const validarPrecio = () => {
   if (form.precio <= 0) errores.precio = "Precio inválido"
   else errores.precio = ""
@@ -219,23 +243,30 @@ const validarDuracion = () => {
 const cargarDatosIniciales = async () => {
   cargandoDatos.value = true
   try {
-    // ✅ CORRECCIÓN: URLs actualizadas sin "/usuarios/"
-    const [resCat, resServ] = await Promise.all([
+    // ✅ Traemos TODO de una sola vez: Categorías, el Servicio actual y la Lista de todos los servicios
+    const [resCat, resServ, resAllServ] = await Promise.all([
       axios.get(`${API_BASE}/api/categorias/servicios/`),
-      axios.get(`${API_BASE}/api/servicios/${servicioId}/`)
+      axios.get(`${API_BASE}/api/servicios/${servicioId}/`),
+      axios.get(`${API_BASE}/api/servicios/`) // Ajusta esta URL si tu endpoint para listar es diferente
     ])
     
     categorias.value = resCat.data
     const s = resServ.data
     
-    console.log('Datos del servicio cargados:', s) // Para debug
-    
+    // Poblamos el formulario
     form.nombre = s.nombre
     form.precio = s.precio
     form.porcentaje_comision = s.porcentaje_comision || 0
     form.duracion = s.duracion
     form.categoria = s.categoria
     form.descripcion = s.descripcion || ''
+
+    // ✅ Guardamos el nombre original en minúsculas para compararlo después
+    nombreOriginal = s.nombre.toLowerCase()
+
+    // ✅ Llenamos el array de validación (pasando todo a minúsculas)
+    nombresExistentes.length = 0
+    nombresExistentes.push(...resAllServ.data.map(item => item.nombre.toLowerCase()))
 
   } catch (err) {
     console.error('Error cargando datos:', err.response || err)
@@ -276,7 +307,6 @@ const actualizarServicio = async () => {
   }
 
   try {
-    // ✅ CORRECCIÓN: URL actualizada y usando POST (no PUT)
     await axios.post(`${API_BASE}/api/servicios/editar/${servicioId}/`, payload)
     
     Swal.fire({
@@ -291,10 +321,17 @@ const actualizarServicio = async () => {
     setTimeout(() => router.push('/servicios'), 1500)
   } catch (err) {
     console.error('Error actualizando servicio:', err.response?.data || err)
+    
+    // Si la DB (nuestro backend) ataja un error que se nos escapó, lo mostramos
+    const errorMsg = err.response?.data?.message || 'No se pudo guardar los cambios'
+    if (errorMsg.toLowerCase().includes('ya existe')) {
+      errores.nombre = "Ya existe un servicio con este nombre."
+    }
+
     Swal.fire({
       icon: 'error', 
       title: 'Error', 
-      text: err.response?.data?.message || 'No se pudo guardar los cambios',
+      text: errorMsg,
       confirmButtonColor: '#007bff'
     })
   } finally {
@@ -306,12 +343,10 @@ const cancelar = () => router.push('/servicios')
 
 onMounted(() => cargarDatosIniciales())
 
-// Limitar descripción a 500 caracteres
 watch(() => form.descripcion, (nuevo) => {
   if (nuevo.length > 500) form.descripcion = nuevo.substring(0, 500)
 })
 </script>
-
 <style scoped>
 .servicio-container { max-width: 1000px; margin: 0 auto; padding: 25px; background: #fff; border-radius: 16px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12); font-family: 'Segoe UI', sans-serif; }
 .header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #f1f3f4; }

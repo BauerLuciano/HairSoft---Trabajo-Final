@@ -646,7 +646,7 @@ def crear_servicio(request):
         if not nombre or precio is None:
             return JsonResponse({'status': 'error', 'message': 'Faltan campos obligatorios'}, status=400)
 
-        # Validar duplicados
+        # Validar duplicados (Ignora mayúsculas/minúsculas)
         if Servicio.objects.filter(nombre__iexact=nombre).exists():
             return JsonResponse({'status': 'error', 'message': 'El servicio ya existe'}, status=400)
 
@@ -661,7 +661,6 @@ def crear_servicio(request):
             precio=precio,
             duracion=duracion,
             categoria=categoria,
-            # Agregar campos faltantes que podrían venir del form
             descripcion=data.get('descripcion', ''),
             porcentaje_comision=data.get('porcentaje_comision', 0)
         )
@@ -718,10 +717,9 @@ def editar_servicio(request, pk):
 
     try:
         data = json.loads(request.body)
-        
         nombre = data.get('nombre', '').strip()
         
-        # Validar nombre duplicado (excluyendo el actual)
+        # Validar nombre duplicado (excluyendo el actual y case-insensitive)
         if nombre and Servicio.objects.filter(nombre__iexact=nombre).exclude(pk=pk).exists():
             return JsonResponse({'status': 'error', 'message': 'Ya existe un servicio con ese nombre'}, status=400)
 
@@ -732,7 +730,7 @@ def editar_servicio(request, pk):
         if 'descripcion' in data: servicio.descripcion = data['descripcion']
         if 'porcentaje_comision' in data: servicio.porcentaje_comision = data['porcentaje_comision']
 
-        # Actualizar Categoría (Manejo robusto de ID)
+        # Actualizar Categoría
         if 'categoria' in data:
             cat_id = data['categoria']
             if cat_id in [None, ""]:

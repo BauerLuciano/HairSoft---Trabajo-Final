@@ -25,13 +25,14 @@
             <Tag :size="16" />
             Nombre del Servicio *
           </label>
+          <!-- Se usa @input para validación instantánea -->
           <input
             v-model="form.nombre"
             type="text"
             required
             placeholder="Ej: Corte de Cabello, Coloración, Peinado..."
             class="input-modern"
-            @blur="validarNombre"
+            @input="validarNombre"
             :class="{ 'campo-invalido': errores.nombre }"
           />
           <div class="mensaje-error" v-if="errores.nombre">
@@ -82,6 +83,7 @@
               placeholder="20"
               class="input-modern with-suffix"
               @blur="validarDuracion"
+              :class="{ 'campo-invalido': errores.duracion }"
             />
             <span class="input-suffix">min</span>
           </div>
@@ -262,6 +264,10 @@ const categorias = reactive([])
 const cargando = ref(false)
 const cargandoCategorias = ref(false)
 
+// Lista en memoria de nombres de servicios (en minúsculas)
+const nombresExistentes = reactive([])
+let nombreOriginal = ''
+
 const formularioValido = computed(() => {
   return (
     form.nombre.trim() &&
@@ -281,11 +287,31 @@ const categoriaSeleccionada = computed(() => {
   return categorias.find(cat => cat.id === form.categoria)
 })
 
+// Validación local en tiempo real
 const validarNombre = () => {
-  const valor = form.nombre.trim()
-  if (!valor) errores.nombre = "El nombre es obligatorio"
-  else if (valor.length < 2) errores.nombre = "El nombre debe tener al menos 2 caracteres"
-  else errores.nombre = ""
+  const valor = form.nombre.trim().toLowerCase()
+  
+  if (!valor) {
+    errores.nombre = "El nombre es obligatorio"
+    return
+  }
+  if (valor.length < 2) {
+    errores.nombre = "El nombre debe tener al menos 2 caracteres"
+    return
+  }
+
+  // Si estamos editando y es el mismo nombre original, pasa la validación
+  if (form.id && valor === nombreOriginal.toLowerCase()) {
+    errores.nombre = ""
+    return
+  }
+
+  // Verificamos si existe en la lista local
+  if (nombresExistentes.includes(valor)) {
+    errores.nombre = "Este servicio ya está registrado."
+  } else {
+    errores.nombre = ""
+  }
 }
 
 const validarPrecio = () => {
@@ -306,21 +332,25 @@ const formatPrecio = (precio) => {
 const cargarCategorias = async () => {
   cargandoCategorias.value = true
   try {
-    // ✅ CORRECCIÓN CRÍTICA: URL CORREGIDA - REMOVER "/usuarios"
     const res = await axios.get(`${API_BASE}/api/categorias/servicios/`)
-    console.log('Categorías cargadas exitosamente:', res.data)
     categorias.length = 0
     categorias.push(...res.data)
   } catch (err) {
-    console.error('Error cargando categorías:', err.response || err)
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'No se pudieron cargar las categorías',
-      confirmButtonColor: '#007bff'
-    })
+    console.error('Error cargando categorías:', err)
   } finally {
     cargandoCategorias.value = false
+  }
+}
+
+// Carga inicial silenciosa para tener los datos de validación
+const cargarNombresServicios = async () => {
+  try {
+    const res = await axios.get(`${API_BASE}/api/servicios/`)
+    nombresExistentes.length = 0
+    // Guardamos solo los nombres pasados a minúsculas
+    nombresExistentes.push(...res.data.map(s => s.nombre.toLowerCase()))
+  } catch (err) {
+    console.error('No se pudieron cargar los servicios para validación', err)
   }
 }
 
@@ -328,6 +358,7 @@ watch(() => props.servicioEditar, (nuevo) => {
   if (nuevo) {
     form.id = nuevo.id
     form.nombre = nuevo.nombre
+    nombreOriginal = nuevo.nombre // Guardamos para la validación local
     form.precio = nuevo.precio
     form.porcentaje_comision = nuevo.porcentaje_comision || 0
     form.duracion = nuevo.duracion || 30
@@ -341,7 +372,9 @@ watch(() => form.descripcion, (nuevo) => {
 })
 
 const guardarServicio = async () => {
-  validarNombre(); validarPrecio(); validarDuracion();
+  validarNombre()
+  validarPrecio()
+  validarDuracion()
 
   if (errores.nombre || errores.precio || errores.duracion) {
     Swal.fire({
@@ -366,22 +399,11 @@ const guardarServicio = async () => {
 
   try {
     if (form.id) {
-      // ✅ CORRECCIÓN: URL CORREGIDA - REMOVER "/usuarios"
       await axios.post(`${API_BASE}/api/servicios/editar/${form.id}/`, payload)
-      Swal.fire({ 
-        icon: 'success', 
-        title: 'Servicio actualizado', 
-        showConfirmButton: false, 
-        timer: 1500 
-      })
+      Swal.fire({ icon: 'success', title: 'Servicio actualizado', showConfirmButton: false, timer: 1500 })
     } else {
       await axios.post(`${API_BASE}/api/servicios/crear/`, payload)
-      Swal.fire({ 
-        icon: 'success', 
-        title: 'Servicio creado', 
-        showConfirmButton: false, 
-        timer: 1500 
-      })
+      Swal.fire({ icon: 'success', title: 'Servicio creado', showConfirmButton: false, timer: 1500 })
     }
     
     resetForm()
@@ -390,10 +412,17 @@ const guardarServicio = async () => {
 
   } catch (err) {
     console.error('Error guardando servicio:', err.response?.data || err)
+    
+    // El backend es nuestra red de seguridad. Si el backend tira el error (status 400), lo capturamos.
+    const msgError = err.response?.data?.message || 'No se pudo guardar el servicio.'
+    if (msgError.toLowerCase().includes('ya existe')) {
+      errores.nombre = "Este servicio ya está registrado."
+    }
+
     Swal.fire({ 
       icon: 'error', 
       title: 'Error', 
-      text: err.response?.data?.message || 'No se pudo guardar el servicio.' 
+      text: msgError 
     })
   } finally {
     cargando.value = false
@@ -401,21 +430,17 @@ const guardarServicio = async () => {
 }
 
 const resetForm = () => {
-  Object.assign(form, { 
-    id: null, 
-    nombre: '', 
-    precio: 0, 
-    porcentaje_comision: 0, 
-    duracion: 30, 
-    categoria: null, 
-    descripcion: '' 
-  })
+  Object.assign(form, { id: null, nombre: '', precio: 0, porcentaje_comision: 0, duracion: 30, categoria: null, descripcion: '' })
   Object.assign(errores, { nombre: '', precio: '', duracion: '' })
+  nombreOriginal = ''
 }
 
 const cancelar = () => router.push('/servicios')
 
-onMounted(() => cargarCategorias())
+onMounted(() => {
+  cargarCategorias()
+  cargarNombresServicios() // Llenamos el array en memoria
+})
 </script>
 
 <style scoped>

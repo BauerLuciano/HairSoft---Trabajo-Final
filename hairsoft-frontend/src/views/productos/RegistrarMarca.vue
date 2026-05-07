@@ -33,7 +33,9 @@
           @blur="validarNombre"
           :class="{ 'campo-invalido': errores.nombre }"
         />
-        <div class="mensaje-error" v-if="errores.nombre">{{ errores.nombre }}</div>
+        <div class="mensaje-error" style="color: #dc3545; font-size: 0.875rem; margin-top: 5px;" v-if="errores.nombre">
+          {{ errores.nombre }}
+        </div>
       </div>
 
       <div class="input-group">
@@ -76,7 +78,7 @@
 
     <button 
       @click="guardarMarca" 
-      :disabled="cargando" 
+      :disabled="cargando || errores.nombre !== ''" 
       class="btn-registrar-premium"
       :class="{'btn-processing': cargando}"
     >
@@ -94,7 +96,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router' // Importamos router para redireccionar si se usa como pagina
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 import Swal from 'sweetalert2'
 import { 
@@ -103,7 +105,6 @@ import {
   Check, ToggleLeft
 } from 'lucide-vue-next'
 
-// Definimos emits para cuando se usa como modal
 const emit = defineEmits(['marca-registrada', 'cancelar'])
 
 const isProduction = window.location.hostname.includes('vercel.app');
@@ -121,7 +122,6 @@ const errores = reactive({ nombre: '' })
 const proveedores = ref([])
 const cargando = ref(false)
 
-// Cargar proveedores al iniciar
 const cargarProveedores = async () => {
   try {
     const res = await axios.get(`${API_BASE}/api/proveedores/?estado=ACTIVO`)
@@ -147,17 +147,50 @@ const toggleProveedor = (id) => {
   else marca.proveedores.splice(index, 1)
 }
 
-const validarNombre = () => {
-  errores.nombre = marca.nombre.trim() ? '' : 'El nombre es obligatorio'
+// Función ninja para limpiar acentos y mayúsculas
+const normalizarTexto = (texto) => {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+// 🔥 Validación asíncrona: verifica contra el backend en el blur
+const validarNombre = async () => {
+  const valor = marca.nombre.trim()
+  
+  if (!valor) {
+    errores.nombre = 'El nombre es obligatorio'
+    return
+  }
+
+  try {
+    // Pegamos a la API para ver si la marca ya existe
+    const res = await axios.get(`${API_BASE}/api/marcas/`)
+    const marcasExistentes = Array.isArray(res.data) ? res.data : (res.data.results || [])
+    
+    // Buscamos coincidencia exacta ignorando acentos y mayúsculas/minúsculas
+    const duplicado = marcasExistentes.find(m => normalizarTexto(m.nombre) === normalizarTexto(valor))
+    
+    if (duplicado) {
+      errores.nombre = `La marca "${valor}" ya está registrada.`
+    } else {
+      errores.nombre = '' // Todo en orden
+    }
+  } catch (err) {
+    console.error("Error al validar el nombre de la marca:", err)
+    errores.nombre = '' // Si falla la red, lo atajamos en el guardado
+  }
 }
 
 const guardarMarca = async () => {
-  validarNombre()
+  // Aseguramos que se ejecute la validación antes de intentar guardar
+  await validarNombre()
+  
   if (errores.nombre) return
 
   cargando.value = true
   try {
-    // 🔥 ENVÍO CORRECTO: Nombre, Descripción y lista de IDs de proveedores
     await axios.post(`${API_BASE}/api/marcas/crear/`, {
       nombre: marca.nombre.trim(),
       descripcion: marca.descripcion.trim(),
@@ -174,7 +207,6 @@ const guardarMarca = async () => {
       color: '#1a1a1a'
     })
     
-    // Emitir evento para cerrar modal y recargar lista
     emit('marca-registrada')
 
   } catch (err) {
