@@ -6121,6 +6121,12 @@ def mercadopago_webhook(request):
             turno_rel = None
             pedido_rel = None
 
+            # Suspender auditoría durante el webhook (cambios automáticos, no del usuario)
+            from usuarios.middleware import _thread_locals
+            if not hasattr(_thread_locals, 'request_data') or _thread_locals.request_data is None:
+                _thread_locals.request_data = {}
+            _thread_locals._suspender_auditoria = True
+
             # Actualizar Turno
             if 'TURNO' in referencia.upper():
                 concepto_caja = 'TURNO_WEB'
@@ -6128,6 +6134,7 @@ def mercadopago_webhook(request):
                 from usuarios.models import Turno
                 turno_rel = Turno.objects.filter(id=id_obj).first()
                 if turno_rel:
+                    _thread_locals.request_data['user'] = getattr(turno_rel, 'cliente', None)
                     turno_rel.mp_payment_id = payment_id
                     if turno_rel.estado == 'PENDIENTE': 
                         turno_rel.estado = 'RESERVADO'
@@ -6141,6 +6148,7 @@ def mercadopago_webhook(request):
                 from usuarios.models import PedidoWeb, Notificacion
                 pedido_rel = PedidoWeb.objects.filter(id=id_obj).first()
                 if pedido_rel:
+                    _thread_locals.request_data['user'] = pedido_rel.cliente
                     pedido_rel.estado = 'PAGADO'
                     pedido_rel.mp_payment_id = payment_id
                     pedido_rel.save()
@@ -6177,6 +6185,8 @@ def mercadopago_webhook(request):
             
             estado_caja = f"en Caja #{sesion_abierta.id}" if sesion_abierta else "como HUÉRFANO (caja cerrada)"
             print(f"💰 ¡PAGO APROBADO! ${monto} guardado {estado_caja}")
+
+            _thread_locals._suspender_auditoria = False
             
         else:
             print(f"⏳ El pago está '{estado}'. Esperando que MP lo marque como 'approved'.")
@@ -6187,6 +6197,9 @@ def mercadopago_webhook(request):
         print(f"❌ Error webhook crítico: {e}")
         import traceback
         print(traceback.format_exc())
+    finally:
+        from usuarios.middleware import _thread_locals
+        _thread_locals._suspender_auditoria = False
         
     return HttpResponse(status=200)
 

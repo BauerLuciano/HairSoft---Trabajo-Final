@@ -12,7 +12,8 @@ from .models import (
     Turno, Producto, Auditoria, Usuario, Venta, Pedido, Rol,
     Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago,
     InteresTurnoLiberado, PromocionReactivacion, SesionCaja, MovimientoCaja,
-    Liquidacion
+    Liquidacion, PedidoWeb, DetallePedidoWeb, ConfiguracionLocal,
+    ConfiguracionSistema, Envio
 )
 from .middleware import get_current_request_data
 from .tasks import procesar_reactivacion_clientes_inactivos
@@ -47,7 +48,8 @@ def disparar_analisis_fidelizacion(sender, instance, **kwargs):
 MODELOS_A_AUDITAR = [
     Usuario, Producto, Turno, Venta, Pedido, Rol,
     Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago,
-    SesionCaja, MovimientoCaja, Liquidacion
+    SesionCaja, MovimientoCaja, Liquidacion,
+    PedidoWeb, ConfiguracionLocal, ConfiguracionSistema, Envio
 ]
 
 def serializar(valor):
@@ -91,6 +93,11 @@ def capturar_estado_previo(sender, instance, **kwargs):
 def auditar_cambios(sender, instance, created, **kwargs):
     # Fix para evitar bucles infinitos en auditoría
     if getattr(instance, '_disable_audit', False): 
+        return
+
+    # Suspender auditoría durante procesamiento automático (ej. webhook MP)
+    from usuarios.middleware import _thread_locals
+    if getattr(_thread_locals, '_suspender_auditoria', False):
         return
 
     if sender in MODELOS_A_AUDITAR and sender != Auditoria:
@@ -176,6 +183,10 @@ def auditar_cambios(sender, instance, created, **kwargs):
 
 @receiver(post_delete)
 def auditar_borrado(sender, instance, **kwargs):
+    from usuarios.middleware import _thread_locals
+    if getattr(_thread_locals, '_suspender_auditoria', False):
+        return
+
     if sender in MODELOS_A_AUDITAR:
         try:
             req_data = get_current_request_data()

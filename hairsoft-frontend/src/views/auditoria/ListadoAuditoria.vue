@@ -260,11 +260,14 @@ const modulosDisponibles = [
   { id: '', label: 'Todos', icon: 'fas fa-layer-group' },
   { id: 'AUTENTICACION', label: 'Accesos', icon: 'fas fa-user-shield' },
   { id: 'VENTAS', label: 'Ventas', icon: 'fas fa-cash-register' },
+  { id: 'PEDIDOS_WEB', label: 'Pedidos Web', icon: 'fas fa-shopping-cart' },
+  { id: 'ENVIOS', label: 'Envíos', icon: 'fas fa-truck' },
   { id: 'TURNOS', label: 'Turnos', icon: 'fas fa-calendar-check' },
   { id: 'SERVICIOS', label: 'Servicios', icon: 'fas fa-cut' }, 
   { id: 'CAJA', label: 'Caja', icon: 'fas fa-box-open' },
   { id: 'INVENTARIO', label: 'Inventario', icon: 'fas fa-boxes' },
-  { id: 'USUARIOS', label: 'Usuarios', icon: 'fas fa-users' }
+  { id: 'USUARIOS', label: 'Usuarios', icon: 'fas fa-users' },
+  { id: 'CONFIGURACION', label: 'Configuración', icon: 'fas fa-cog' }
 ]
 
 const determinarModulo = (log) => {
@@ -276,22 +279,31 @@ const determinarModulo = (log) => {
   if (accion.includes('login') || accion.includes('logout') || (modelo.includes('sesion') && !modelo.includes('caja'))) return 'AUTENTICACION';
   
   // 2. Ventas
-  if (modelo.includes('venta') || modelo.includes('nota') || accion.includes('anular_venta')) return 'VENTAS';
+  if ((modelo.includes('venta') && !modelo.includes('pedidoweb')) || modelo.includes('nota') || accion.includes('anular_venta')) return 'VENTAS';
   
-  // 3. Turnos (Exclusivo de turnos)
+  // 3. Pedidos Web
+  if (modelo.includes('pedidoweb') || modelo.includes('detallepedidoweb')) return 'PEDIDOS_WEB';
+
+  // 4. Envíos
+  if (modelo.includes('envio')) return 'ENVIOS';
+
+  // 5. Turnos (Exclusivo de turnos)
   if (modelo.includes('turno')) return 'TURNOS';
 
-  // 4. Servicios (Servicio y CategoriaServicio)
+  // 6. Servicios (Servicio y CategoriaServicio)
   if (modelo.includes('servicio') || modelo.includes('categoriaservicio')) return 'SERVICIOS';
   
-  // 5. Caja
+  // 7. Caja
   if (modelo.includes('caja') || modelo.includes('movimiento') || accion.includes('caja') || accion.includes('ingreso') || accion.includes('egreso')) return 'CAJA';
   
-  // 6. Inventario
+  // 8. Inventario
   if (modelo.includes('producto') || modelo.includes('stock') || modelo.includes('categoriaproducto') || accion.includes('ajuste')) return 'INVENTARIO';
   
-  // 7. Usuarios
+  // 9. Usuarios
   if (modelo.includes('usuario') || modelo.includes('cliente') || modelo.includes('peluquero')) return 'USUARIOS';
+
+  // 10. Configuración
+  if (modelo.includes('configuracion')) return 'CONFIGURACION';
 
   return 'OTROS';
 }
