@@ -252,6 +252,11 @@
               </div>
             </div>
 
+            <AsignarEnvio
+              @envio-confirmado="onEnvioConfirmado"
+              @envio-quitado="onEnvioQuitado"
+            />
+
             <button 
               @click="registrarVenta" 
               :disabled="!formularioValido || procesandoVenta || carrito.length === 0" 
@@ -306,11 +311,15 @@
 <script>
 import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2';
+import AsignarEnvio from '@/components/AsignarEnvio.vue';
+import { envioService } from '@/services/envioService';
 
 const API_BASE_URL = 'http://127.0.0.1:8000';
 
 export default {
     name: 'RegistrarVenta',
+    
+    components: { AsignarEnvio },
     
     inject: ['router'] || [],
     
@@ -330,6 +339,7 @@ export default {
                 codigo_transaccion: '',
                 usuario: 1 
             },
+            envioData: null,
             mensaje: '',
             mensajeTipo: 'success'
         }
@@ -344,7 +354,8 @@ export default {
             })
         },
         total() {
-            return this.carrito.reduce((acc, item) => acc + item.subtotal, 0)
+            const subtotal = this.carrito.reduce((acc, item) => acc + item.subtotal, 0)
+            return this.envioData ? subtotal + this.envioData.costo_envio : subtotal
         },
         
         // 🔥 LOGICA MÉTODOS DE PAGO
@@ -773,7 +784,7 @@ export default {
                 entidadFinal = this.datosVenta.entidad_pago;
             }
 
-            return { 
+            const payload = { 
                 total: parseFloat(this.total),
                 tipo: 'PRODUCTO', 
                 medio_pago: parseInt(this.datosVenta.medio_pago),
@@ -783,6 +794,16 @@ export default {
                 entidad_pago: entidadFinal,
                 codigo_transaccion: (this.esMercadoPago || this.esTransferencia) ? this.datosVenta.codigo_transaccion : null
             };
+
+            if (this.envioData) {
+                payload.costo_envio = this.envioData.costo_envio
+                payload.direccion_entrega = this.envioData.direccion_entrega
+                payload.latitud_destino = this.envioData.latitud_destino
+                payload.longitud_destino = this.envioData.longitud_destino
+                payload.distancia_km = this.envioData.distancia_km
+            }
+
+            return payload
         },
 
         manejarErrorVenta(err) {
@@ -825,8 +846,21 @@ export default {
             setTimeout(() => { this.mensaje = ''; }, 4000);
         },
 
+        onEnvioConfirmado(data) {
+            this.envioData = data
+        },
+
+        onEnvioQuitado() {
+            this.envioData = null
+        },
+
+        quitarEnvio() {
+            this.envioData = null
+        },
+
         limpiarFormulario() {
             this.carrito = [];
+            this.envioData = null;
             if (this.metodosPago.length > 0) {
                 const efectivo = this.metodosPago.find(m => m.tipo === 'EFECTIVO');
                 this.datosVenta.medio_pago = efectivo ? efectivo.id : this.metodosPago[0].id;

@@ -323,7 +323,12 @@ const verDetalle = async (p) => {
           <h3 class="section-title">Logística</h3>
           <div class="logistics-info">
             <p><strong>Entrega:</strong> ${p.tipo_entrega}</p>
-            ${p.direccion_envio ? `<p><strong>Destino:</strong> ${p.direccion_envio}</p>` : ''}
+            ${(() => {
+              const dir = p.calle_entrega
+                ? [p.calle_entrega, p.altura_entrega].filter(Boolean).join(' ') + (p.ciudad_entrega ? `, ${p.ciudad_entrega}` : '') + (p.provincia_entrega ? `, ${p.provincia_entrega}` : '')
+                : (p.direccion_envio || '')
+              return dir ? `<p><strong>Destino:</strong> ${dir}</p>` : ''
+            })()}
             ${p.datos_entrega_interna ? `<p><strong>Repartidor:</strong> ${p.datos_entrega_interna}</p>` : ''}
           </div>
         </div>
@@ -331,6 +336,10 @@ const verDetalle = async (p) => {
         ${mpHTML}
 
         <div class="receipt-totals">
+          <div class="totals-row">
+            <span>Subtotal productos</span>
+            <span>${formatearDinero(p.total - (p.costo_envio || 0))}</span>
+          </div>
           ${Number(p.costo_envio) > 0 ? `
           <div class="totals-row">
             <span>Costo de Envío</span>

@@ -2760,11 +2760,12 @@ def pago_exitoso(request):
     """
     PROCESA EL PAGO Y REDIRIGE AL CLIENTE A SU HISTORIAL EN EL FRONTEND
     """
+    from django.conf import settings
     try:
         payment_id = request.GET.get('payment_id')
         external_reference = request.GET.get('external_reference', '')
         
-        frontend_url = "http://localhost:5173"
+        frontend_url = settings.FRONTEND_URL
 
         if "PEDIDO_" in external_reference:
             pedido_id = external_reference.split('_')[1]
@@ -3022,7 +3023,24 @@ def registrar_venta(request):
                 total_acumulado += subtotal
                 productos_vendidos.append(f"{cantidad}x {producto.nombre}")
 
-            # 5. Guardar Total Final con UPDATE para no disparar señal
+            # 5. Procesar Envío (Motomandados) si viene en el payload
+            costo_envio = data.get('costo_envio')
+            tiene_envio = costo_envio is not None and float(costo_envio) > 0
+
+            if tiene_envio:
+                total_acumulado += float(costo_envio)
+                from .models import Envio as EnvioModel
+                EnvioModel.objects.create(
+                    venta=venta,
+                    direccion_entrega=data.get('direccion_entrega', ''),
+                    latitud_destino=float(data.get('latitud_destino', 0)),
+                    longitud_destino=float(data.get('longitud_destino', 0)),
+                    distancia_km=float(data.get('distancia_km', 0)),
+                    costo_envio=float(costo_envio),
+                    estado='PENDIENTE'
+                )
+
+            # 6. Guardar Total Final con UPDATE para no disparar señal
             Venta.objects.filter(id=venta.id).update(total=total_acumulado)
 
             # 💵 2. REGISTRAR EL MOVIMIENTO DE CAJA
@@ -3071,14 +3089,18 @@ def registrar_venta(request):
                 ip_address=ip
             )
 
-            print(f"✅ Venta #{venta.id} registrada con éxito. Total: ${total_acumulado}")
+            print(f"✅ Venta #{venta.id} registrada con éxito. Total: ${total_acumulado} {'(Incluye envío)' if tiene_envio else ''}")
             
-            return Response({
+            response_data = {
                 "success": True,
                 "message": "Venta registrada correctamente",
                 "id": venta.id,
                 "total": float(total_acumulado)
-            }, status=status.HTTP_201_CREATED)
+            }
+            if tiene_envio:
+                response_data["envio_creado"] = True
+
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
     except Exception as e:
         print(f"❌ Error al registrar venta: {str(e)}")
@@ -6776,21 +6798,20 @@ def retorno_mercadopago(request):
     Ataja la redirección HTTPS de Mercado Pago, captura los parámetros
     y redirige al frontend conservando la info para que Vue muestre el cartelito.
     """
-    query_string = request.GET.urlencode()
+    from django.conf import settings
+    from .models import PedidoWeb
     external_reference = request.GET.get('external_reference', '')
+    payment_id = request.GET.get('payment_id', '')
     
-    # 🔥 FIX 1: Poné la URL exacta desde donde estás navegando. 
-    # Si estás en ngrok, poné la de ngrok. Si estás en producción, la de producción.
-    # Si probás en local sin ngrok, usá 'http://localhost:5173'
-    FRONTEND_BASE_URL = "https://brandi-palmar-pickily.ngrok-free.dev" 
-    
-    # 🔥 FIX 2: Separamos las aguas. Si es pedido va a un lado, si es turno al otro.
     if external_reference.startswith('PEDIDO_'):
-        # Ruta en tu router para los pedidos es /client/mis-pedidos
-        url_frontend = f"{FRONTEND_BASE_URL}/client/mis-pedidos?{query_string}"
+        pedido_id = external_reference.split('_')[1]
+        pedido = PedidoWeb.objects.filter(id=pedido_id).first()
+        # Usa el origen donde se creó el pedido para mantener el token de auth
+        frontend_url = pedido.frontend_origen if pedido and pedido.frontend_origen else settings.FRONTEND_URL
+        url_frontend = f"{frontend_url}/client/mis-pedidos?pago_exitoso=true&pedido_id={pedido_id}&payment_id={payment_id}"
     else:
-        # Por defecto (o si es TURNO_), va al historial
-        url_frontend = f"{FRONTEND_BASE_URL}/cliente/historial?{query_string}"
+        frontend_url = settings.FRONTEND_URL
+        url_frontend = f"{frontend_url}/cliente/historial?pago_exitoso=true&{external_reference}"
         
     return redirect(url_frontend)
 

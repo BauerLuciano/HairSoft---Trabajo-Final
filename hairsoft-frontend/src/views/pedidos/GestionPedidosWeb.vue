@@ -373,7 +373,12 @@ const verDetalle = (p) => {
                       Logística y Entrega
                     </h4>
                     <p style="margin: 4px 0;"><strong style="color:#f8fafc;">Método:</strong> ${p.tipo_entrega}</p>
-                    <p style="margin: 4px 0;"><strong style="color:#f8fafc;">Dirección:</strong> ${p.direccion_envio || 'Retiro en Local'}</p>
+                    ${(() => {
+                      const dir = p.calle_entrega
+                        ? [p.calle_entrega, p.altura_entrega].filter(Boolean).join(' ') + (p.ciudad_entrega ? `, ${p.ciudad_entrega}` : '') + (p.provincia_entrega ? `, ${p.provincia_entrega}` : '')
+                        : (p.direccion_envio || '')
+                      return dir ? `<p style="margin: 4px 0;"><strong style="color:#f8fafc;">Dirección:</strong> ${dir}</p>` : '<p style="margin: 4px 0;"><strong style="color:#f8fafc;">Dirección:</strong> Retiro en Local</p>'
+                    })()}
                     <p style="margin: 4px 0;"><strong style="color:#f8fafc;">Chofer:</strong> ${p.datos_entrega_interna || 'Aún no asignado'}</p>
                 </div>
 
@@ -391,9 +396,20 @@ const verDetalle = (p) => {
                             ${p.mp_payment_id ? 'MP: ' + p.mp_payment_id : 'Sin MP ID'}
                         </div>
 
-                        <div style="font-size:1.2rem; text-align:right;">
-                            <span style="color:#94a3b8; font-size: 0.9rem; text-transform: uppercase; font-weight: 700; margin-right: 10px;">Total:</span> 
-                            <strong style="color:#10b981;"> $${Number(p.total).toLocaleString('es-AR')}</strong>
+                        <div style="text-align:right;">
+                            <div style="font-size:0.9rem; color:#94a3b8; margin-bottom:4px;">
+                                <span>Subtotal:</span>
+                                <strong style="color:#f8fafc; margin-left:8px;">$${Number(p.total - (p.costo_envio || 0)).toLocaleString('es-AR')}</strong>
+                            </div>
+                            ${Number(p.costo_envio) > 0 ? `
+                            <div style="font-size:0.9rem; color:#94a3b8; margin-bottom:4px;">
+                                <span>Envío:</span>
+                                <strong style="color:#0ea5e9; margin-left:8px;">$${Number(p.costo_envio).toLocaleString('es-AR')}</strong>
+                            </div>` : ''}
+                            <div style="font-size:1.2rem;">
+                                <span style="color:#94a3b8; font-size: 0.9rem; text-transform: uppercase; font-weight: 700; margin-right: 10px;">Total:</span> 
+                                <strong style="color:#10b981;">$${Number(p.total).toLocaleString('es-AR')}</strong>
+                            </div>
                         </div>
                     </div>
                 </div>

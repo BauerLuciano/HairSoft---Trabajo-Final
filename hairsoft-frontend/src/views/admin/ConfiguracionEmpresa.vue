@@ -145,13 +145,55 @@
 
             <div class="process-group">
               <div class="filter-group">
-                <label class="label-success">Logística: Tarifa de Moto Mandado</label>
-                <div style="display: flex; align-items: center; gap: 15px;">
-                  <span class="currency-symbol">$</span>
-                  <input v-model.number="config.costo_envio_moto" type="number" class="filter-input input-short" min="0" step="100" />
+                <label class="label-success">Logística: Motomandados / Envíos</label>
+                <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: #94a3b8;">El costo se calcula como: Tarifa base + (distancia en km × precio por km)</p>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 15px;">
+                  <div>
+                    <label>Tarifa Base ($)</label>
+                    <input v-model.number="configEnvios.tarifa_base_envio" type="number" class="filter-input input-short" min="0" step="50" style="width: 100% !important;" />
+                  </div>
+                  <div>
+                    <label>Precio por Km ($)</label>
+                    <input v-model.number="configEnvios.precio_por_km" type="number" class="filter-input input-short" min="0" step="10" style="width: 100% !important;" />
+                  </div>
+                  <div>
+                    <label>Radio de Cobertura (km)</label>
+                    <input v-model.number="configEnvios.radio_cobertura_km" type="number" class="filter-input input-short" min="0" step="1" style="width: 100% !important;" />
+                    <small style="color: #94a3b8; display: block; margin-top: 4px;">Máx. distancia para envío</small>
+                  </div>
                 </div>
-                <small class="hint-text">
-                  * Este es el precio fijo que pagará el cliente si elige envío a domicilio.
+
+                <div style="margin-top: 15px;">
+                  <label>Ubicación del Local (arrastrá el marcador)</label>
+                  <div style="height: 350px; border-radius: 12px; overflow: hidden; border: 2px solid var(--border-color); margin-top: 8px;">
+                    <l-map
+                      ref="mapRef"
+                      :zoom="15"
+                      :center="[configEnvios.latitud_local, configEnvios.longitud_local]"
+                      @click="moverMarcador"
+                      style="height: 100%; width: 100%;"
+                    >
+                      <l-tile-layer
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        layer-type="base"
+                        name="OpenStreetMap"
+                      ></l-tile-layer>
+                      <l-marker
+                        :lat-lng="[configEnvios.latitud_local, configEnvios.longitud_local]"
+                        draggable
+                        @dragend="marcadorArrastrado"
+                      ></l-marker>
+                    </l-map>
+                  </div>
+                  <div style="display: flex; gap: 20px; margin-top: 10px;">
+                    <small class="hint-text">Lat: {{ configEnvios.latitud_local?.toFixed(4) }}</small>
+                    <small class="hint-text">Lng: {{ configEnvios.longitud_local?.toFixed(4) }}</small>
+                  </div>
+                </div>
+
+                <small class="hint-text" style="margin-top: 10px; display: block;">
+                  * El costo se calcula como: Tarifa base + (distancia en km × precio por km)
                 </small>
               </div>
             </div>
@@ -178,12 +220,22 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import axios from '../../utils/axiosConfig'
 import { Building2, Clock, Save, Loader2, Info, Store } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 import GestionSillas from '@/components/GestionSillas.vue'; 
 import GestionCajas from '@/components/GestionCajas.vue';
+import { LMap, LTileLayer, LMarker } from '@vue-leaflet/vue-leaflet'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
+
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+})
 
 const config = ref({
   razon_social: '',
@@ -200,15 +252,36 @@ const config = ref({
   costo_envio_moto: 1500 
 })
 
+const configEnvios = ref({
+  latitud_local: -26.8083,
+  longitud_local: -54.4362,
+  tarifa_base_envio: 500,
+  precio_por_km: 300,
+  radio_cobertura_km: 10
+})
+
 const cargando = ref(true)
 const guardando = ref(false)
 const previewLogo = ref(null)
 const logoFile = ref(null)
 
+const moverMarcador = (event) => {
+  configEnvios.value.latitud_local = event.latlng.lat
+  configEnvios.value.longitud_local = event.latlng.lng
+}
+
+const marcadorArrastrado = (event) => {
+  configEnvios.value.latitud_local = event.target.getLatLng().lat
+  configEnvios.value.longitud_local = event.target.getLatLng().lng
+}
+
 const obtenerConfig = async () => {
   try {
-    const res = await axios.get('/api/configuracion/')
-    const data = res.data
+    const [resConfig, resEnvios] = await Promise.all([
+      axios.get('/api/configuracion/'),
+      axios.get('/api/configuracion-local/').catch(() => ({ data: {} }))
+    ])
+    const data = resConfig.data
 
     if (data.logo) {
       data.logo = `${data.logo}?t=${new Date().getTime()}`;
@@ -219,6 +292,10 @@ const obtenerConfig = async () => {
     if(data.porcentaje_descuento_reoferta === undefined) data.porcentaje_descuento_reoferta = 15;
 
     config.value = data
+
+    if (resEnvios.data && Object.keys(resEnvios.data).length > 0) {
+      configEnvios.value = resEnvios.data
+    }
   } catch (e) {
     console.error(e)
     Swal.fire({
@@ -288,11 +365,18 @@ const guardarCambios = async () => {
   }
 
   try {
-    await axios.post('/api/configuracion/', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
+    await Promise.all([
+      axios.post('/api/configuracion/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      }),
+      axios.post('/api/configuracion-local/', {
+        latitud_local: configEnvios.value.latitud_local,
+        longitud_local: configEnvios.value.longitud_local,
+        tarifa_base_envio: configEnvios.value.tarifa_base_envio,
+        precio_por_km: configEnvios.value.precio_por_km,
+        radio_cobertura_km: configEnvios.value.radio_cobertura_km
+      })
+    ])
     
     await Swal.fire({
       icon: 'success',

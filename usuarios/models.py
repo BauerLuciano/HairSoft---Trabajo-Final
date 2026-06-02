@@ -1078,14 +1078,24 @@ class PedidoWeb(models.Model):
     
     direccion_envio = models.TextField(null=True, blank=True, help_text="Dirección completa si es envío")
     costo_envio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    latitud_entrega = models.FloatField(null=True, blank=True, help_text="Latitud del punto de entrega")
+    longitud_entrega = models.FloatField(null=True, blank=True, help_text="Longitud del punto de entrega")
+    calle_entrega = models.CharField(max_length=255, blank=True, default='', help_text="Calle de la dirección de entrega")
+    altura_entrega = models.CharField(max_length=50, blank=True, default='', help_text="Altura/número de la dirección de entrega")
+    ciudad_entrega = models.CharField(max_length=255, blank=True, default='', help_text="Ciudad de la dirección de entrega")
+    provincia_entrega = models.CharField(max_length=255, blank=True, default='', help_text="Provincia de la dirección de entrega")
+    observaciones_entrega = models.TextField(blank=True, default='', help_text="Observaciones para la entrega (color casa, referencias, etc)")
     
     mp_payment_id = models.CharField(max_length=100, null=True, blank=True, help_text="ID de pago de MercadoPago")
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Total productos + envío")
     motivo_cancelacion = models.CharField(max_length=100, blank=True, null=True)
     obs_cancelacion = models.TextField(blank=True, null=True)
 
-    # Campo para trazabilidad de la moto
     datos_entrega_interna = models.CharField(max_length=255, null=True, blank=True, help_text="Nombre del cadete")
+
+    # Origen del frontend para redirigir correctamente después del pago
+    frontend_origen = models.CharField(max_length=500, blank=True, default='', help_text="URL del frontend donde se inició la compra")
 
     def __str__(self):
         return f"Pedido Web #{self.id} - {self.cliente.nombre} {self.cliente.apellido}"
@@ -1276,6 +1286,52 @@ class Liquidacion(models.Model):
 
     def __str__(self):
         return f"Pago a {self.empleado} - ${self.total_pagado} ({self.fecha_pago.date()})"
+
+class ConfiguracionLocal(models.Model):
+    """Configuración de ubicación y tarifas de envío (Singleton)"""
+    latitud_local = models.FloatField(default=-26.8083, help_text="Latitud de la peluquería")
+    longitud_local = models.FloatField(default=-54.4362, help_text="Longitud de la peluquería")
+    tarifa_base_envio = models.DecimalField(max_digits=10, decimal_places=2, default=500.00, help_text="Tarifa base del envío en $")
+    precio_por_km = models.DecimalField(max_digits=10, decimal_places=2, default=300.00, help_text="Precio por kilómetro recorrido en $")
+    radio_cobertura_km = models.DecimalField(max_digits=10, decimal_places=2, default=10.00, help_text="Radio máximo de cobertura de envío en km")
+
+    class Meta:
+        verbose_name = "Configuración de Envíos"
+        verbose_name_plural = "Configuración de Envíos"
+
+    def __str__(self):
+        return f"Config. Envío - Base: ${self.tarifa_base_envio} / Km: ${self.precio_por_km}"
+
+    @classmethod
+    def get_solo(cls):
+        obj, created = cls.objects.get_or_create(pk=1)
+        return obj
+
+class Envio(models.Model):
+    ESTADO_CHOICES = [
+        ('PENDIENTE', 'Pendiente'),
+        ('EN_CAMINO', 'En Camino'),
+        ('ENTREGADO', 'Entregado'),
+    ]
+
+    venta = models.OneToOneField('Venta', on_delete=models.CASCADE, related_name='envio')
+    direccion_entrega = models.CharField(max_length=255)
+    latitud_destino = models.FloatField()
+    longitud_destino = models.FloatField()
+    distancia_km = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    costo_envio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='PENDIENTE')
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Envío #{self.id} - Venta #{self.venta_id} ({self.get_estado_display()})"
+
+    class Meta:
+        db_table = "envios"
+        verbose_name = "Envío"
+        verbose_name_plural = "Envíos"
+        ordering = ['-fecha_creacion']
 
 class ConfiguracionSistema(models.Model):
     razon_social = models.CharField(max_length=255, default="Los Últimos Serán Los Primeros")

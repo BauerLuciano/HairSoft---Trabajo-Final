@@ -17,7 +17,10 @@ from .api_views import (
     SillaViewSet,
     ConfigWebView,
     verificar_estado_caja,
-    EstadisticasDashboardAPIView
+    EstadisticasDashboardAPIView,
+    ConfiguracionLocalView,
+    CalcularEnvioView,
+    EnvioViewSet,
 )
 
 from .views import (
@@ -60,6 +63,7 @@ router.register(r'sillas', SillaViewSet, basename='silla')
 router.register(r'cajas', CajaViewSet, basename='caja')
 router.register(r'sesiones-caja', SesionCajaViewSet, basename='sesion-caja')
 router.register(r'movimientos-caja', MovimientoCajaViewSet, basename='movimiento-caja')
+router.register(r'envios', EnvioViewSet, basename='envio')
 
 venta_list = VentaViewSet.as_view({
     'get': 'list',
@@ -73,6 +77,10 @@ venta_detail = VentaViewSet.as_view({
 urlpatterns = [
     #Cotizaciones
     path('api/cotizacion-externa/<str:token>/', func_views.gestionar_cotizacion_externa, name='cotizacion_externa'),
+
+    # Envíos (Motomandados) — ANTES del router para evitar conflicto con EnvioViewSet
+    path('api/envios/calcular/', CalcularEnvioView.as_view(), name='calcular-envio'),
+    path('api/configuracion-local/', ConfiguracionLocalView.as_view(), name='configuracion-local'),
 
     # ÚNICA INCLUSIÓN DEL ROUTER
     path('api/', include(router.urls)),

@@ -14,8 +14,10 @@ from django.http import HttpResponse
 from django.db.models.functions import TruncDate, Coalesce
 from django.utils.dateparse import parse_date
 from django.utils import timezone
-from .models import Auditoria, Servicio, Turno, Usuario, Producto, Liquidacion, PedidoWeb, ConfiguracionSistema, Silla, SesionCaja, Venta, DetalleVenta, Pedido
-from .serializers import AuditoriaSerializer, ServicioSerializer, TurnoSerializer, UsuarioSerializer, ProductoCatalogoSerializer, LiquidacionSerializer, PedidoWebSerializer, SillaSerializer
+from .models import Auditoria, Servicio, Turno, Usuario, Producto, Liquidacion, PedidoWeb, ConfiguracionSistema, ConfiguracionLocal, Envio, Silla, SesionCaja, Venta, DetalleVenta, Pedido
+from .serializers import (AuditoriaSerializer, ServicioSerializer, TurnoSerializer, UsuarioSerializer,
+                          ProductoCatalogoSerializer, LiquidacionSerializer, PedidoWebSerializer,
+                          SillaSerializer, ConfiguracionLocalSerializer, EnvioSerializer, CrearEnvioSerializer)
 import io
 import datetime
 from reportlab.lib import colors
@@ -344,7 +346,8 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
 
         try:
             with transaction.atomic():
-                pedido = serializer.save(cliente=self.request.user, estado='PENDIENTE_PAGO') 
+                frontend_origen = request.META.get('HTTP_ORIGIN') or request.META.get('HTTP_REFERER') or settings.FRONTEND_URL
+                pedido = serializer.save(cliente=self.request.user, estado='PENDIENTE_PAGO', frontend_origen=frontend_origen) 
                 
                 mp_service = MercadoPagoService()
                 detalles = pedido.detalles.all()
@@ -855,3 +858,61 @@ def google_login(request):
 
     except ValueError:
         return Response({'error': 'Token de Google inválido o expirado'}, status=401)
+
+# ============================================
+# ENVÍOS (Motomandados)
+# ============================================
+
+class ConfiguracionLocalView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        config = ConfiguracionLocal.get_solo()
+        serializer = ConfiguracionLocalSerializer(config)
+        return Response(serializer.data)
+
+    def post(self, request):
+        config = ConfiguracionLocal.get_solo()
+        serializer = ConfiguracionLocalSerializer(config, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
+class CalcularEnvioView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        lat = request.data.get('latitud')
+        lng = request.data.get('longitud')
+        if lat is None or lng is None:
+            return Response({'error': 'latitud y longitud son requeridos'}, status=400)
+        from .envio_service import calcular_costo_envio
+        costo, distancia, dentro_cobertura = calcular_costo_envio(float(lat), float(lng))
+        return Response({
+            'costo_envio': costo,
+            'distancia_km': distancia,
+            'dentro_cobertura': dentro_cobertura
+        })
+
+class EnvioViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    queryset = Envio.objects.all().select_related('venta').order_by('-fecha_creacion')
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return CrearEnvioSerializer
+        return EnvioSerializer
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+    @action(detail=True, methods=['patch'])
+    def cambiar_estado(self, request, pk=None):
+        envio = self.get_object()
+        nuevo_estado = request.data.get('estado')
+        if nuevo_estado not in dict(Envio.ESTADO_CHOICES):
+            return Response({'error': 'Estado inválido'}, status=400)
+        envio.estado = nuevo_estado
+        envio.save()
+        return Response(EnvioSerializer(envio).data)

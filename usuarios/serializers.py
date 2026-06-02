@@ -761,12 +761,15 @@ class PedidoWebSerializer(serializers.ModelSerializer):
             'total', 'detalles',
             'datos_entrega_interna',
             'mp_payment_id',
-            # 🔥 AGREGAMOS ESTOS DOS PARA QUE VIAJEN AL FRONTEND:
             'motivo_cancelacion',
-            'obs_cancelacion'
+            'obs_cancelacion',
+            'latitud_entrega', 'longitud_entrega',
+            'calle_entrega', 'altura_entrega',
+            'ciudad_entrega', 'provincia_entrega',
+            'observaciones_entrega',
+            'frontend_origen',
         ]
-        # ✅ Los marcamos como read_only porque se cargan vía el action 'cambiar_estado'
-        read_only_fields = ['cliente', 'fecha_creacion', 'estado', 'total', 'mp_payment_id', 'motivo_cancelacion', 'obs_cancelacion']
+        read_only_fields = ['cliente', 'fecha_creacion', 'estado', 'total', 'mp_payment_id', 'motivo_cancelacion', 'obs_cancelacion', 'frontend_origen']
 
     def get_cliente_nombre(self, obj):
         if obj.cliente:
@@ -1228,3 +1231,39 @@ class SesionCajaSerializer(serializers.ModelSerializer):
         esperado = Decimal(str(self.get_total_esperado_cierre(obj)))
         real = obj.saldo_final_efectivo_real + obj.saldo_final_mp_real + obj.saldo_final_transf_real
         return float(real - esperado)
+
+# ----------------------------------------------------------------------
+# ENVÍOS (Motomandados)
+# ----------------------------------------------------------------------
+class ConfiguracionLocalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConfiguracionLocal
+        fields = '__all__'
+
+class EnvioSerializer(serializers.ModelSerializer):
+    venta_id = serializers.IntegerField(source='venta.id', read_only=True)
+    estado_display = serializers.CharField(source='get_estado_display', read_only=True)
+
+    class Meta:
+        model = Envio
+        fields = [
+            'id', 'venta', 'venta_id', 'direccion_entrega',
+            'latitud_destino', 'longitud_destino',
+            'distancia_km', 'costo_envio', 'estado', 'estado_display',
+            'fecha_creacion', 'fecha_actualizacion'
+        ]
+        read_only_fields = ['distancia_km', 'costo_envio', 'fecha_creacion', 'fecha_actualizacion']
+
+class CrearEnvioSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Envio
+        fields = ['venta', 'direccion_entrega', 'latitud_destino', 'longitud_destino']
+
+    def validate(self, data):
+        from .envio_service import calcular_costo_envio
+        costo, distancia, _ = calcular_costo_envio(
+            data['latitud_destino'], data['longitud_destino']
+        )
+        data['distancia_km'] = distancia
+        data['costo_envio'] = costo
+        return data

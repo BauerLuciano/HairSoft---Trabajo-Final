@@ -68,7 +68,9 @@ MODELOS = [
     Auditoria, HistorialStock, ConfiguracionSistema,
 
     # 💰 MÓDULO DE CAJA
-    Caja, SesionCaja, MovimientoCaja
+    Caja, SesionCaja, MovimientoCaja,
+    # 🚚 MÓDULO DE ENVÍOS
+    ConfiguracionLocal, Envio
 ]
 
 for modelo in MODELOS:
