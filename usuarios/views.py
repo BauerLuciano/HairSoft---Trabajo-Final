@@ -6121,11 +6121,9 @@ def mercadopago_webhook(request):
             turno_rel = None
             pedido_rel = None
 
-            # Suspender auditoría durante el webhook (cambios automáticos, no del usuario)
             from usuarios.middleware import _thread_locals
             if not hasattr(_thread_locals, 'request_data') or _thread_locals.request_data is None:
                 _thread_locals.request_data = {}
-            _thread_locals._suspender_auditoria = True
 
             # Actualizar Turno
             if 'TURNO' in referencia.upper():
@@ -6172,21 +6170,23 @@ def mercadopago_webhook(request):
             # Buscamos caja abierta
             sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
 
-            MovimientoCaja.objects.create(
-                sesion_caja=sesion_abierta, 
-                tipo='INGRESO',
-                metodo_pago='MERCADO_PAGO',
-                concepto=concepto_caja,
-                monto=monto,
-                descripcion=descripcion_mov,
-                turno_relacionado=turno_rel,
-                # pedido_proveedor_relacionado=pedido_rel  <-- Lo dejo comentado por si no tenés este campo en el modelo para pedidos web
-            )
+            # Solo suprimimos auditoría para el MovimientoCaja (es automático del sistema)
+            _thread_locals._suspender_auditoria = True
+            try:
+                MovimientoCaja.objects.create(
+                    sesion_caja=sesion_abierta, 
+                    tipo='INGRESO',
+                    metodo_pago='MERCADO_PAGO',
+                    concepto=concepto_caja,
+                    monto=monto,
+                    descripcion=descripcion_mov,
+                    turno_relacionado=turno_rel,
+                )
+            finally:
+                _thread_locals._suspender_auditoria = False
             
             estado_caja = f"en Caja #{sesion_abierta.id}" if sesion_abierta else "como HUÉRFANO (caja cerrada)"
             print(f"💰 ¡PAGO APROBADO! ${monto} guardado {estado_caja}")
-
-            _thread_locals._suspender_auditoria = False
             
         else:
             print(f"⏳ El pago está '{estado}'. Esperando que MP lo marque como 'approved'.")
