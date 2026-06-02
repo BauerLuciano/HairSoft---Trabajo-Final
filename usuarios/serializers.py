@@ -793,7 +793,12 @@ class PedidoWebSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(f"Stock insuficiente para {producto_db.nombre}.")
 
                 producto_db.stock_actual -= cantidad
-                producto_db.save()
+                from usuarios.middleware import _thread_locals
+                _thread_locals._suspender_auditoria = True
+                try:
+                    producto_db.save()
+                finally:
+                    _thread_locals._suspender_auditoria = False
 
                 total_acumulado += (producto_db.precio * cantidad)
                 productos_actualizados.append((producto_db, cantidad))
