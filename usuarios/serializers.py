@@ -781,8 +781,8 @@ class PedidoWebSerializer(serializers.ModelSerializer):
         detalles_data = validated_data.pop('detalles')
         
         with transaction.atomic():
-            pedido = PedidoWeb.objects.create(**validated_data)
             total_acumulado = 0
+            productos_actualizados = []
 
             for detalle_data in detalles_data:
                 producto = detalle_data['producto']
@@ -795,16 +795,20 @@ class PedidoWebSerializer(serializers.ModelSerializer):
                 producto_db.stock_actual -= cantidad
                 producto_db.save()
 
+                total_acumulado += (producto_db.precio * cantidad)
+                productos_actualizados.append((producto_db, cantidad))
+
+            validated_data['total'] = total_acumulado + validated_data.get('costo_envio', 0)
+            pedido = PedidoWeb.objects.create(**validated_data)
+
+            for producto_db, cantidad in productos_actualizados:
                 DetallePedidoWeb.objects.create(
                     pedido=pedido,
                     producto=producto_db,
                     cantidad=cantidad,
                     precio_unitario=producto_db.precio
                 )
-                total_acumulado += (producto_db.precio * cantidad)
 
-            pedido.total = total_acumulado + pedido.costo_envio
-            pedido.save()
             return pedido
 # ----------------------------------------------------------------------
 # LISTAS DE PRECIOS DE PROVEEDORES
