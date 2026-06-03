@@ -1523,3 +1523,15 @@ class Notificacion(models.Model):
 
     def __str__(self):
         return f"[{self.tipo}] {self.mensaje}"
+
+
+class PagoTemporal(models.Model):
+    uid = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    mp_payment_id = models.CharField(max_length=50, null=True, blank=True)
+    pagado = models.BooleanField(default=False)
+    usado = models.BooleanField(default=False)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "pagos_temporales"

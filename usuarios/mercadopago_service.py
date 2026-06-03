@@ -66,6 +66,46 @@ class MercadoPagoService:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    def crear_preferencia_temporal(self, monto, uid_str):
+        base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
+        back_urls_dict = {
+            "success": f"{base_url}/api/mercadopago/retorno/",
+            "failure": f"{base_url}/api/mercadopago/retorno/",
+            "pending": f"{base_url}/api/mercadopago/retorno/"
+        }
+        monto_pago = round(float(monto), 2) if monto else 0.1
+        email_comprador_prueba = "test_user_1860959446082982366@testuser.com"
+
+        preference_data = {
+            "items": [
+                {
+                    "title": "Pago Turno Presencial",
+                    "quantity": 1,
+                    "currency_id": "ARS",
+                    "unit_price": monto_pago,
+                }
+            ],
+            "payer": {"email": email_comprador_prueba},
+            "back_urls": back_urls_dict,
+            "auto_return": "approved",
+            "external_reference": f"TEMP_{uid_str}",
+            "binary_mode": True,
+            "statement_descriptor": self.statement_descriptor,
+            "notification_url": f"{base_url}/api/mercadopago/webhook/"
+        }
+        try:
+            result = self.sdk.preference().create(preference_data)
+            res = result["response"]
+            if result.get("status") not in [200, 201]:
+                return {"success": False, "error": res.get("message", "Error al crear preferencia")}
+            return {
+                "success": True,
+                "init_point": res.get("sandbox_init_point"),
+                "preference_id": res["id"]
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
     def crear_preferencia_compra_web(self, pedido, items_pedido):
         """
         CREA PAGO PARA CARRITO - 100% MODO SANDBOX

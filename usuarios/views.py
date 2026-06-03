@@ -1209,6 +1209,17 @@ def crear_turno(request):
         codigo_transaccion = data.get('codigo_transaccion')
         entidad_pago = data.get('entidad_pago')
         mp_payment_id = data.get('mp_payment_id')
+        pago_uuid = data.get('pago_uuid')
+
+        if pago_uuid:
+            from .models import PagoTemporal
+            pago_temp = PagoTemporal.objects.filter(uid=pago_uuid, pagado=True, usado=False).first()
+            if pago_temp:
+                mp_payment_id = pago_temp.mp_payment_id
+                pago_temp.usado = True
+                pago_temp.save()
+            else:
+                return Response({'status': 'error', 'error': 'Pago no encontrado o ya utilizado'}, status=400)
         
         # ---------------------------------------------------------
         # 8. CREAR TURNO CON SILLA ASIGNADA
@@ -1254,10 +1265,8 @@ def crear_turno(request):
         mp_data = None
         procesar_pago = False
         
-        if (canal == 'WEB' and medio_pago == 'MERCADO_PAGO') or \
-           (canal == 'PRESENCIAL' and medio_pago == 'MERCADO_PAGO' and data.get('generar_qr')):
-            is_qr = data.get('generar_qr', False)
-            print(f"{'📱' if is_qr else '💳'} Iniciando {'QR' if is_qr else 'Checkout'} MercadoPago...")
+        if canal == 'WEB' and medio_pago == 'MERCADO_PAGO':
+            print("💳 Iniciando Checkout MercadoPago...")
             try:
                 from .mercadopago_service import MercadoPagoService
                 mp_service = MercadoPagoService()
@@ -1281,9 +1290,7 @@ def crear_turno(request):
                         'preference_id': res_mp.get('preference_id'),
                         'monto': float(monto_seña)
                     }
-                    if is_qr:
-                        mp_data['generar_qr'] = True
-                    print(f"✅ {'QR' if is_qr else 'Link MP'} generado: {link}")
+                    print(f"✅ Link MP generado: {link}")
                 else:
                     print(f"❌ Error MP: {res_mp.get('error')}")
                     
@@ -2387,6 +2394,51 @@ def completar_pago_turno(request, turno_id):
             'message': f'Error interno: {str(e)}'
         }, status=500)
     
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def generar_qr_temporal(request):
+    try:
+        monto = request.data.get('monto', 0.1)
+        uid_obj = uuid.uuid4()
+        uid_str = str(uid_obj)
+
+        from .models import PagoTemporal
+        PagoTemporal.objects.create(uid=uid_obj, monto=monto)
+
+        from .mercadopago_service import MercadoPagoService
+        mp_service = MercadoPagoService()
+        res_mp = mp_service.crear_preferencia_temporal(monto, uid_str)
+
+        if res_mp.get('success'):
+            return JsonResponse({
+                'status': 'ok',
+                'uid': uid_str,
+                'init_point': res_mp['init_point'],
+                'preference_id': res_mp['preference_id'],
+                'monto': monto
+            })
+        else:
+            return JsonResponse({'status': 'error', 'error': res_mp.get('error')}, status=500)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'error': str(e)}, status=500)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def check_pago_temporal(request, uid):
+    try:
+        from .models import PagoTemporal
+        pago = PagoTemporal.objects.filter(uid=uid).first()
+        if not pago:
+            return JsonResponse({'status': 'error', 'error': 'No encontrado'}, status=404)
+        return JsonResponse({
+            'pagado': pago.pagado,
+            'mp_payment_id': pago.mp_payment_id,
+            'monto': float(pago.monto)
+        })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'error': str(e)}, status=500)
+
 @csrf_exempt
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -6258,8 +6310,23 @@ def mercadopago_webhook(request):
             if not hasattr(_thread_locals, 'request_data') or _thread_locals.request_data is None:
                 _thread_locals.request_data = {}
 
+            # Pago Temporal (previo a crear turno presencial)
+            if 'TEMP_' in referencia.upper():
+                uid_str = referencia.split('_')[1]
+                from .models import PagoTemporal
+                pago = PagoTemporal.objects.filter(uid=uid_str).first()
+                if pago:
+                    pago.mp_payment_id = str(payment_id)
+                    pago.pagado = True
+                    pago.save()
+                    print(f"✅ Pago temporal {uid_str} actualizado con payment_id {payment_id}")
+                else:
+                    print(f"⚠️ Pago temporal {uid_str} no encontrado")
+                # No crear MovimientoCaja todavia — se crea al confirmar reserva
+                concepto_caja = None
+
             # Saldo de Turno (pago del restante)
-            if 'TURNO_SALDO' in referencia.upper():
+            elif 'TURNO_SALDO' in referencia.upper():
                 turno_id = referencia.split('_')[2]
                 concepto_caja = 'COBRO_RESTANTE'
                 descripcion_mov = f"Pago saldo Turno #{turno_id} (MP: {payment_id})"
@@ -6320,23 +6387,27 @@ def mercadopago_webhook(request):
             # Buscamos caja abierta
             sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
 
-            # Solo suprimimos auditoría para el MovimientoCaja (es automático del sistema)
-            _thread_locals._suspender_auditoria = True
-            try:
-                MovimientoCaja.objects.create(
-                    sesion_caja=sesion_abierta, 
-                    tipo='INGRESO',
-                    metodo_pago='MERCADO_PAGO',
-                    concepto=concepto_caja,
-                    monto=monto,
-                    descripcion=descripcion_mov,
-                    turno_relacionado=turno_rel,
-                )
-            finally:
-                _thread_locals._suspender_auditoria = False
+            if concepto_caja:
+                # Solo suprimimos auditoría para el MovimientoCaja (es automático del sistema)
+                _thread_locals._suspender_auditoria = True
+                try:
+                    MovimientoCaja.objects.create(
+                        sesion_caja=sesion_abierta, 
+                        tipo='INGRESO',
+                        metodo_pago='MERCADO_PAGO',
+                        concepto=concepto_caja,
+                        monto=monto,
+                        descripcion=descripcion_mov,
+                        turno_relacionado=turno_rel,
+                    )
+                finally:
+                    _thread_locals._suspender_auditoria = False
             
-            estado_caja = f"en Caja #{sesion_abierta.id}" if sesion_abierta else "como HUÉRFANO (caja cerrada)"
-            print(f"💰 ¡PAGO APROBADO! ${monto} guardado {estado_caja}")
+            if concepto_caja:
+                estado_caja = f"en Caja #{sesion_abierta.id}" if sesion_abierta else "como HUÉRFANO (caja cerrada)"
+                print(f"💰 ¡PAGO APROBADO! ${monto} guardado {estado_caja}")
+            else:
+                print(f"💰 ¡PAGO APROBADO! ${monto} - Temporal (sin caja aún)")
             
         else:
             print(f"⏳ El pago está '{estado}'. Esperando que MP lo marque como 'approved'.")

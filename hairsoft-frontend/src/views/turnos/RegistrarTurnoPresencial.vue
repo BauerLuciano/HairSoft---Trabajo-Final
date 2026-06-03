@@ -295,68 +295,64 @@
             <div class="pago-detalles">
               <div class="input-group">
                 <label class="label-modern">Medio de Pago</label>
-                <select v-model="form.medio_pago" class="select-modern" @change="subMetodoPago = 'QR'">
+                <select v-model="form.medio_pago" class="select-modern" @change="onCambioMedioPago">
                   <option value="EFECTIVO">Efectivo</option>
                   <option value="MERCADO_PAGO">Mercado Pago</option>
                 </select>
               </div>
-  
+
               <div v-if="form.medio_pago === 'MERCADO_PAGO'" class="datos-transferencia-container slide-in">
-                <div class="input-group" style="margin-bottom: 12px;">
-                  <label class="label-modern">Modalidad de cobro</label>
-                  <div class="mp-opciones">
-                    <label class="mp-card" :class="{ 'mp-card-active': subMetodoPago === 'QR' }">
-                      <input type="radio" v-model="subMetodoPago" value="QR" class="hidden-radio">
-                      <div class="mp-card-icon mp-card-icon-qr">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="4" height="4"/></svg>
-                      </div>
-                      <div class="mp-card-text">
-                        <span class="mp-card-title">Código QR</span>
-                        <span class="mp-card-sub">Cliente escanea con su celular</span>
-                      </div>
-                      <div class="mp-card-check">
-                        <svg v-if="subMetodoPago === 'QR'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                      </div>
-                    </label>
-                    <label class="mp-card" :class="{ 'mp-card-active': subMetodoPago === 'ALIAS' }">
-                      <input type="radio" v-model="subMetodoPago" value="ALIAS" class="hidden-radio">
-                      <div class="mp-card-icon mp-card-icon-alias">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="8" y1="18" x2="16" y2="18"/></svg>
-                      </div>
-                      <div class="mp-card-text">
-                        <span class="mp-card-title">Transferencia por Alias</span>
-                        <span class="mp-card-sub">Admin confirma manualmente</span>
-                      </div>
-                      <div class="mp-card-check">
-                        <svg v-if="subMetodoPago === 'ALIAS'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                      </div>
-                    </label>
+                <label class="label-modern" style="margin-bottom: 8px; display: block;">Modalidad de cobro</label>
+                <div class="mp-seleccion">
+                  <label class="mp-option" :class="{ 'mp-option-active': subMetodoPago === 'QR' }">
+                    <input type="radio" v-model="subMetodoPago" value="QR" class="hidden-radio" @change="onCambioSubMetodo">
+                    <div class="mp-option-content">
+                      <span class="mp-option-title">Código QR</span>
+                      <span class="mp-option-desc">Cliente escanea</span>
+                    </div>
+                  </label>
+                  <label class="mp-option" :class="{ 'mp-option-active': subMetodoPago === 'ALIAS' }">
+                    <input type="radio" v-model="subMetodoPago" value="ALIAS" class="hidden-radio" @change="onCambioSubMetodo">
+                    <div class="mp-option-content">
+                      <span class="mp-option-title">Alias</span>
+                      <span class="mp-option-desc">Admin confirma</span>
+                    </div>
+                  </label>
+                </div>
+
+                <div v-if="subMetodoPago === 'ALIAS'" class="alias-section">
+                  <div v-if="aliasCargando" class="helper-text" style="margin-bottom: 8px;">
+                    <Loader2 :size="12" class="spinner-icon" /> Cargando alias...
+                  </div>
+                  <div v-else-if="aliasValor" class="alias-display">
+                    <span class="alias-label">Alias:</span>
+                    <span class="alias-text">{{ aliasValor }}</span>
+                  </div>
+                  <div v-else class="helper-text" style="margin-bottom: 8px; color: #ef4444;">
+                    No hay alias configurado
+                  </div>
+                  <div class="input-group" style="margin-top: 8px;">
+                    <label class="label-modern">Comprobante (opcional)</label>
+                    <input type="text" v-model="nroComprobante" class="input-modern" placeholder="ID de operacin (12 dgitos)" maxlength="12" @input="nroComprobante = nroComprobante.replace(/\D/g, '')" />
+                    <small class="helper-text"><Info :size="12" /> Ingrese el ID de operacin si el cliente transfiri.</small>
                   </div>
                 </div>
 
-                <div v-if="subMetodoPago === 'ALIAS'" class="input-group">
-                  <label class="label-modern">ID Transacción Mercado Pago *</label>
-                  <input 
-                    type="text" 
-                    v-model="form.codigo_transaccion" 
-                    class="input-modern" 
-                    placeholder="Ej: 145025893768"
-                    maxlength="14"
-                    @input="form.codigo_transaccion = form.codigo_transaccion.replace(/\D/g, '')"
-                    :class="{ 'input-error': errorValidacion && !form.codigo_transaccion }"
-                  />
-                  <small class="helper-text">
-                    <Info :size="12" /> Ingrese solo los números del ID de operación (Máx 14).
-                  </small>
-                  <div v-if="errorValidacion && !form.codigo_transaccion" class="msg-error small">
-                    El código de transacción es obligatorio.
+                <div v-if="subMetodoPago === 'QR'" class="qr-section">
+                  <div v-if="!pagoUuid">
+                    <small class="helper-text" style="display: block; margin-bottom: 10px;">
+                      <Info :size="12" /> Genere el QR para que el cliente pague con su celular.
+                    </small>
+                    <button @click="generarQR" class="btn-generar-qr" :disabled="qrGenerando">
+                      <span v-if="!qrGenerando">Generar QR</span>
+                      <span v-else>Generando...</span>
+                    </button>
                   </div>
-                </div>
-
-                <div v-if="subMetodoPago === 'QR'" class="input-group">
-                  <small class="helper-text">
-                    <Info :size="12" /> Se generar un QR para que el cliente pague con su celular.
-                  </small>
+                  <div v-else class="qr-pagado-indicator">
+                    <CheckCircle :size="18" />
+                    <span v-if="pagoConfirmado">Pago confirmado</span>
+                    <span v-else>Esperando pago...</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -497,7 +493,15 @@ const procesando = ref(false)
 const cargandoHorarios = ref(false)
 const errorValidacion = ref(false)
 const cargandoDatos = ref(true)
-const subMetodoPago = ref('QR') 
+const subMetodoPago = ref('QR')
+
+const aliasValor = ref('')
+const aliasCargando = ref(false)
+const nroComprobante = ref('')
+const pagoUuid = ref(null)
+const pagoConfirmado = ref(false)
+const qrGenerando = ref(false)
+let pollId = null 
 
 const intervaloMinutos = 10
 const STORAGE_KEY = 'turno_presencial_context'
@@ -884,9 +888,54 @@ const calcularTotal = () => {
 
 const calcularSena = () => (calcularTotal() / 2).toFixed(2)
 
-const mostrarQRPresencial = async (turnoId, mpData) => {
+const onCambioMedioPago = () => {
+  subMetodoPago.value = 'QR'
+  nroComprobante.value = ''
+  pagoUuid.value = null
+  pagoConfirmado.value = false
+  if (pollId) { clearInterval(pollId); pollId = null }
+}
+
+const onCambioSubMetodo = async () => {
+  if (subMetodoPago.value === 'ALIAS') {
+    aliasCargando.value = true
+    try {
+      const resp = await axios.get('/api/configuracion-local/')
+      aliasValor.value = resp.data?.mp_alias || ''
+    } catch { aliasValor.value = '' }
+    finally { aliasCargando.value = false }
+  } else {
+    aliasValor.value = ''
+    nroComprobante.value = ''
+  }
+}
+
+const generarQR = async () => {
+  qrGenerando.value = true
+  try {
+    const monto = form.value.tipo_pago.includes('SENA')
+      ? parseFloat(calcularSena())
+      : parseFloat(calcularTotal())
+
+    const res = await axios.post('/api/generar-qr-temporal/', { monto })
+    const data = res.data
+
+    if (data.status !== 'ok') {
+      Swal.fire({ icon: 'error', title: 'Error', text: data.error || 'No se pudo generar el QR' })
+      return
+    }
+
+    pagoUuid.value = data.uid
+    mostrarQRPresencial(data)
+  } catch (e) {
+    Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo conectar con el servidor.' })
+  } finally {
+    qrGenerando.value = false
+  }
+}
+
+const mostrarQRPresencial = (mpData) => {
   const init_point = mpData.init_point
-  let pollId = null
   let aprobado = false
 
   Swal.fire({
@@ -916,30 +965,25 @@ const mostrarQRPresencial = async (turnoId, mpData) => {
       if (canvas) {
         try {
           await QRCode.toCanvas(canvas, init_point, {
-            width: 220,
-            margin: 2,
+            width: 220, margin: 2,
             color: { dark: '#1e293b', light: '#ffffff' }
           })
-        } catch (e) {
-          console.error('Error generando QR:', e)
-        }
+        } catch (e) { console.error('Error generando QR:', e) }
       }
 
       pollId = setInterval(async () => {
         try {
-          const check = await axios.get(`/api/turnos/${turnoId}/`)
-          if (check.data.mp_payment_id) {
+          const check = await axios.get(`/api/check-pago-temporal/${pagoUuid.value}/`)
+          if (check.data.pagado) {
             aprobado = true
             clearInterval(pollId)
+            pollId = null
+            pagoConfirmado.value = true
             const statusEl = document.getElementById('poll-status')
             if (statusEl) {
               statusEl.innerHTML = '<span style="color: #10b981; font-size: 1.1rem; font-weight: 600;">Pago aprobado</span>'
             }
-            setTimeout(() => {
-              Swal.close()
-              limpiarContexto()
-              router.push('/turnos')
-            }, 1200)
+            setTimeout(() => Swal.close(), 1200)
           }
         } catch (e) {}
       }, 3000)
@@ -947,32 +991,30 @@ const mostrarQRPresencial = async (turnoId, mpData) => {
       setTimeout(() => {
         if (!aprobado) {
           clearInterval(pollId)
+          pollId = null
           const statusEl = document.getElementById('poll-status')
-          if (statusEl) {
-            statusEl.innerHTML = '<span style="color: #ef4444;">Tiempo de espera agotado</span>'
-          }
+          if (statusEl) statusEl.innerHTML = '<span style="color: #ef4444;">Tiempo de espera agotado</span>'
         }
       }, 600000)
     },
     willClose: () => {
-      if (pollId) clearInterval(pollId)
+      if (pollId) { clearInterval(pollId); pollId = null }
     }
   })
 }
 
 const crearTurno = async () => {
-  const esQR = form.value.medio_pago === 'MERCADO_PAGO' && subMetodoPago.value === 'QR'
   const esAlias = form.value.medio_pago === 'MERCADO_PAGO' && subMetodoPago.value === 'ALIAS'
+  const esQR = form.value.medio_pago === 'MERCADO_PAGO' && subMetodoPago.value === 'QR'
 
-  if (esAlias && !form.value.codigo_transaccion) {
-    errorValidacion.value = true
-    Swal.fire({ icon: 'error', title: 'Error', text: 'Falta el cdigo de transaccin de Mercado Pago', confirmButtonText: 'Entendido' })
+  if (esQR && !pagoConfirmado.value && pagoUuid.value) {
+    Swal.fire({ icon: 'warning', title: 'Atencin', text: 'Espere a que el pago se confirme o cancele el QR.' })
     return
   }
-  
+
   errorValidacion.value = false
   procesando.value = true
-  
+
   const duracion = form.value.servicios_ids.reduce((acc, id) => {
     const s = servicios.value.find(x => x.id === id)
     return acc + (s ? parseInt(s.duracion) : 0)
@@ -996,9 +1038,9 @@ const crearTurno = async () => {
     monto_seña: montoSena,
     duracion_total: duracion,
     entidad_pago: esAlias ? 'MERCADOPAGO' : null,
-    mp_payment_id: esAlias ? form.value.codigo_transaccion : null,
+    mp_payment_id: esAlias ? nroComprobante.value || null : null,
     codigo_transaccion: null,
-    generar_qr: esQR || null
+    pago_uuid: esQR && pagoConfirmado.value ? pagoUuid.value : null
   }
 
   try {
@@ -1007,49 +1049,31 @@ const crearTurno = async () => {
       headers: getAuthHeaders(),
       body: JSON.stringify(payload)
     })
-    
+
     const data = await res.json()
-    
+
     if (res.ok && (data.status === 'ok' || res.status === 201)) {
-      if (esQR && data.mp_data && data.mp_data.generar_qr) {
-        await mostrarQRPresencial(data.turno_id, data.mp_data)
-      } else if (esAlias) {
-        await Swal.fire({
-          icon: 'success',
-          title: 'Turno creado',
-          text: 'Pago registrado correctamente',
-          confirmButtonText: 'Aceptar',
-          timer: 2000,
-          timerProgressBar: true
-        })
-        limpiarContexto()
-        router.push('/turnos')
-      } else {
-        await Swal.fire({
-          icon: 'success',
-          title: 'Turno creado',
-          text: 'El turno se ha creado exitosamente',
-          confirmButtonText: 'Aceptar',
-          timer: 2000,
-          timerProgressBar: true
-        })
-        limpiarContexto()
-        router.push('/turnos')
-      }
+      await Swal.fire({
+        icon: 'success',
+        title: 'Turno creado',
+        text: 'El turno se ha creado exitosamente',
+        confirmButtonText: 'Aceptar',
+        timer: 2000,
+        timerProgressBar: true
+      })
+      limpiarContexto()
+      router.push('/turnos')
     } else {
-      let errorMsg = "Error al crear turno"
-      if (data.error) {
-        errorMsg = data.error 
-      } else if (data.message) {
-        errorMsg = data.message
-      } else if (data.errors) {
-        errorMsg = Object.entries(data.errors).map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`).join('; ')
+      let errorMsg = 'Error al crear turno'
+      if (data.error) errorMsg = data.error
+      else if (data.message) errorMsg = data.message
+      else if (data.errors) {
+        errorMsg = Object.entries(data.errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
       }
-      
       await Swal.fire({ icon: 'warning', title: 'Atencin', text: errorMsg, confirmButtonText: 'Entendido' })
     }
   } catch (e) {
-    await Swal.fire({ icon: 'error', title: 'Error de conexin', text: "No se pudo conectar con el servidor.", confirmButtonText: 'Entendido' })
+    await Swal.fire({ icon: 'error', title: 'Error de conexin', text: 'No se pudo conectar con el servidor.', confirmButtonText: 'Entendido' })
   } finally {
     procesando.value = false
   }
@@ -1092,6 +1116,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (pollId) { clearInterval(pollId); pollId = null }
   if (!window.location.pathname.includes('/usuarios/crear')) {
     limpiarContexto()
   }
@@ -1961,96 +1986,114 @@ onBeforeUnmount(() => {
 }
 
 /* MP Opciones (QR / Alias) */
-.mp-opciones {
+.mp-seleccion {
   display: flex;
-  flex-direction: column;
   gap: 10px;
+  margin-bottom: 14px;
 }
 
-.mp-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  background: #1e293b;
-  border: 2px solid #334155;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  position: relative;
-}
-
-.mp-card:hover {
-  border-color: #475569;
-  background: #1a2636;
-  transform: translateY(-1px);
-}
-
-.mp-card-active {
-  border-color: #0ea5e9;
-  background: rgba(14, 165, 233, 0.08);
-  box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.15);
-}
-
-.mp-card-active:has(input[value="ALIAS"]:checked) {
-  border-color: #eab308;
-  background: rgba(234, 179, 8, 0.08);
-  box-shadow: 0 0 0 1px rgba(234, 179, 8, 0.15);
-}
-
-.mp-card-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.mp-card-icon-qr {
-  background: rgba(14, 165, 233, 0.15);
-  color: #38bdf8;
-}
-
-.mp-card-active .mp-card-icon-qr {
-  background: rgba(14, 165, 233, 0.25);
-}
-
-.mp-card-icon-alias {
-  background: rgba(234, 179, 8, 0.15);
-  color: #facc15;
-}
-
-.mp-card-active .mp-card-icon-alias {
-  background: rgba(234, 179, 8, 0.25);
-}
-
-.mp-card-text {
+.mp-option {
   flex: 1;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: #ffffff;
+}
+
+.mp-option:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.mp-option-active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.mp-option-content {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
-.mp-card-title {
+.mp-option-title {
   font-weight: 600;
-  color: #f1f5f9;
   font-size: 0.95rem;
+  color: #1e293b;
 }
 
-.mp-card-sub {
-  color: #94a3b8;
+.mp-option-desc {
   font-size: 0.75rem;
+  color: #64748b;
 }
 
-.mp-card-check {
-  width: 24px;
-  height: 24px;
+.alias-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.alias-display {
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.alias-label {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.alias-text {
+  font-family: monospace;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 1px;
+}
+
+.qr-section {
+  padding: 4px 0;
+}
+
+.btn-generar-qr {
+  width: 100%;
+  padding: 12px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-generar-qr:hover {
+  background: #2563eb;
+}
+
+.btn-generar-qr:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+
+.qr-pagado-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 10px;
+  color: #16a34a;
+  font-weight: 500;
 }
 
 .pago-section {
