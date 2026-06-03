@@ -1254,8 +1254,10 @@ def crear_turno(request):
         mp_data = None
         procesar_pago = False
         
-        if canal == 'WEB' and medio_pago == 'MERCADO_PAGO':
-            print("💳 Iniciando Checkout MercadoPago...")
+        if (canal == 'WEB' and medio_pago == 'MERCADO_PAGO') or \
+           (canal == 'PRESENCIAL' and medio_pago == 'MERCADO_PAGO' and data.get('generar_qr')):
+            is_qr = data.get('generar_qr', False)
+            print(f"{'📱' if is_qr else '💳'} Iniciando {'QR' if is_qr else 'Checkout'} MercadoPago...")
             try:
                 from .mercadopago_service import MercadoPagoService
                 mp_service = MercadoPagoService()
@@ -1279,7 +1281,9 @@ def crear_turno(request):
                         'preference_id': res_mp.get('preference_id'),
                         'monto': float(monto_seña)
                     }
-                    print(f"✅ Link MP generado: {link}")
+                    if is_qr:
+                        mp_data['generar_qr'] = True
+                    print(f"✅ {'QR' if is_qr else 'Link MP'} generado: {link}")
                 else:
                     print(f"❌ Error MP: {res_mp.get('error')}")
                     
@@ -1287,7 +1291,7 @@ def crear_turno(request):
                 print(f"💥 Error crítico MP: {e}")
                 traceback.print_exc()
         
-        # 💵 SI ES PRESENCIAL Y SE PAGÓ ALGO, LO REGISTRAMOS EN LA CAJA
+        # 💵 SI ES PRESENCIAL (NO QR) Y SE PAGÓ ALGO, LO REGISTRAMOS EN LA CAJA
         elif canal == 'PRESENCIAL' and sesion_abierta and monto_seña > 0:
             metodo_pago_caja = 'EFECTIVO'
             if 'MERCADO' in str(medio_pago).upper():
@@ -1303,6 +1307,15 @@ def crear_turno(request):
                 monto=monto_seña,
                 descripcion=f"Cobro Turno (Presencial) #{turno.id} - Cliente: {cliente.nombre}",
                 turno_relacionado=turno
+            )
+            ip = request.META.get('REMOTE_ADDR')
+            Auditoria.objects.create(
+                usuario=request.user,
+                modelo_afectado='Turno',
+                objeto_id=str(turno.id),
+                accion='COBRO_RESTANTE',
+                detalles={'metodo': metodo_pago_caja, 'monto': monto_seña, 'canal': 'PRESENCIAL'},
+                ip_address=ip
             )
             print(f"✅ Ingreso a caja registrado por ${monto_seña}")
 
@@ -2414,10 +2427,20 @@ def pagar_saldo_turno(request, turno_id):
             sesion_caja=sesion_abierta,
             tipo='INGRESO',
             metodo_pago='EFECTIVO',
-            concepto='TURNO_PRESENCIAL',
+            concepto='COBRO_RESTANTE',
             monto=saldo,
-            descripcion=f"Cobro saldo Turno #{turno.id} - Efectivo",
+            descripcion=f"Cobro restante Turno #{turno.id} - Efectivo",
             turno_relacionado=turno
+        )
+
+        ip = request.META.get('REMOTE_ADDR')
+        Auditoria.objects.create(
+            usuario=request.user,
+            modelo_afectado='Turno',
+            objeto_id=str(turno.id),
+            accion='COBRO_RESTANTE',
+            detalles={'metodo': 'EFECTIVO', 'monto': saldo},
+            ip_address=ip
         )
 
         return Response({'status': 'ok', 'metodo': 'EFECTIVO', 'saldo': saldo})
@@ -2450,10 +2473,20 @@ def pagar_saldo_turno(request, turno_id):
             sesion_caja=sesion_abierta,
             tipo='INGRESO',
             metodo_pago='MERCADO_PAGO',
-            concepto='TURNO_PRESENCIAL',
+            concepto='COBRO_RESTANTE',
             monto=saldo,
-            descripcion=f"Cobro saldo Turno #{turno.id} - Alias MP" + (f" (Comp: {nro_comprobante})" if nro_comprobante else ""),
+            descripcion=f"Cobro restante Turno #{turno.id} - Alias MP" + (f" (Comp: {nro_comprobante})" if nro_comprobante else ""),
             turno_relacionado=turno
+        )
+
+        ip = request.META.get('REMOTE_ADDR')
+        Auditoria.objects.create(
+            usuario=request.user,
+            modelo_afectado='Turno',
+            objeto_id=str(turno.id),
+            accion='COBRO_RESTANTE',
+            detalles={'metodo': 'ALIAS', 'monto': saldo, 'comprobante': nro_comprobante or ''},
+            ip_address=ip
         )
 
         return Response({'status': 'ok', 'metodo': 'ALIAS', 'saldo': saldo})
@@ -6228,7 +6261,7 @@ def mercadopago_webhook(request):
             # Saldo de Turno (pago del restante)
             if 'TURNO_SALDO' in referencia.upper():
                 turno_id = referencia.split('_')[2]
-                concepto_caja = 'TURNO_PRESENCIAL'
+                concepto_caja = 'COBRO_RESTANTE'
                 descripcion_mov = f"Pago saldo Turno #{turno_id} (MP: {payment_id})"
                 from usuarios.models import Turno
                 turno_rel = Turno.objects.filter(id=turno_id).first()

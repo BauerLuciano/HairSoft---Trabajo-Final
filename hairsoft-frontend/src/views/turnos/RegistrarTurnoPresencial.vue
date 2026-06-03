@@ -295,14 +295,34 @@
             <div class="pago-detalles">
               <div class="input-group">
                 <label class="label-modern">Medio de Pago</label>
-                <select v-model="form.medio_pago" class="select-modern">
-                  <option value="EFECTIVO">💵 Efectivo</option>
-                  <option value="MERCADO_PAGO">🔵 Mercado Pago</option>
+                <select v-model="form.medio_pago" class="select-modern" @change="subMetodoPago = 'QR'">
+                  <option value="EFECTIVO">Efectivo</option>
+                  <option value="MERCADO_PAGO">Mercado Pago</option>
                 </select>
               </div>
   
               <div v-if="form.medio_pago === 'MERCADO_PAGO'" class="datos-transferencia-container slide-in">
-                <div class="input-group">
+                <div class="input-group" style="margin-bottom: 12px;">
+                  <label class="label-modern">Modalidad de cobro</label>
+                  <div class="pago-options" style="display: flex; gap: 8px;">
+                    <label class="radio-box" style="flex: 1; margin: 0;" :class="{ 'radio-active': subMetodoPago === 'QR' }">
+                      <input type="radio" v-model="subMetodoPago" value="QR" class="hidden-radio">
+                      <div class="radio-content">
+                        <span style="font-weight: 600;">QR</span>
+                        <small style="color: #64748b; font-size: 0.7rem;">Cliente escanea</small>
+                      </div>
+                    </label>
+                    <label class="radio-box" style="flex: 1; margin: 0;" :class="{ 'radio-active': subMetodoPago === 'ALIAS' }">
+                      <input type="radio" v-model="subMetodoPago" value="ALIAS" class="hidden-radio">
+                      <div class="radio-content">
+                        <span style="font-weight: 600;">Alias</span>
+                        <small style="color: #64748b; font-size: 0.7rem;">Transferencia manual</small>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <div v-if="subMetodoPago === 'ALIAS'" class="input-group">
                   <label class="label-modern">ID Transacción Mercado Pago *</label>
                   <input 
                     type="text" 
@@ -319,6 +339,12 @@
                   <div v-if="errorValidacion && !form.codigo_transaccion" class="msg-error small">
                     El código de transacción es obligatorio.
                   </div>
+                </div>
+
+                <div v-if="subMetodoPago === 'QR'" class="input-group">
+                  <small class="helper-text">
+                    <Info :size="12" /> Se generar un QR para que el cliente pague con su celular.
+                  </small>
                 </div>
               </div>
             </div>
@@ -413,6 +439,7 @@ import {
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 import axios from '@/utils/axiosConfig'
+import QRCode from 'qrcode'
 
 const router = useRouter()
 const API_BASE_URL = 'http://127.0.0.1:8000'; 
@@ -457,7 +484,8 @@ const mensajeTipo = ref("success")
 const procesando = ref(false)
 const cargandoHorarios = ref(false)
 const errorValidacion = ref(false)
-const cargandoDatos = ref(true) 
+const cargandoDatos = ref(true)
+const subMetodoPago = ref('QR') 
 
 const intervaloMinutos = 10
 const STORAGE_KEY = 'turno_presencial_context'
@@ -844,10 +872,89 @@ const calcularTotal = () => {
 
 const calcularSena = () => (calcularTotal() / 2).toFixed(2)
 
+const mostrarQRPresencial = async (turnoId, mpData) => {
+  const init_point = mpData.init_point
+  let pollId = null
+  let aprobado = false
+
+  Swal.fire({
+    title: 'Pago con Mercado Pago',
+    html: `
+      <div style="text-align: center;">
+        <div id="qr-container" style="background: white; padding: 16px; border-radius: 16px; display: inline-block; box-shadow: 0 4px 24px rgba(0,0,0,0.12); margin-bottom: 16px;">
+          <canvas id="qr-canvas"></canvas>
+        </div>
+        <p style="color: #334155; font-size: 1rem; font-weight: 500; margin: 8px 0;">Escane el cdigo QR con su celular</p>
+        <p style="color: #10b981; font-size: 1.5rem; font-weight: 800; margin: 4px 0;">$${mpData.monto}</p>
+        <p id="poll-status" style="color: #64748b; font-size: 0.85rem; margin-top: 12px;">
+          <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+          Esperando pago...
+        </p>
+      </div>
+    `,
+    showConfirmButton: false,
+    showCancelButton: true,
+    cancelButtonText: 'Cancelar',
+    cancelButtonColor: '#94a3b8',
+    backdrop: 'rgba(0,0,0,0.92)',
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    didOpen: async () => {
+      const canvas = document.getElementById('qr-canvas')
+      if (canvas) {
+        try {
+          await QRCode.toCanvas(canvas, init_point, {
+            width: 220,
+            margin: 2,
+            color: { dark: '#1e293b', light: '#ffffff' }
+          })
+        } catch (e) {
+          console.error('Error generando QR:', e)
+        }
+      }
+
+      pollId = setInterval(async () => {
+        try {
+          const check = await axios.get(`/api/turnos/${turnoId}/`)
+          if (check.data.medio_pago_restante === 'MERCADO_PAGO' || check.data.mp_payment_id_saldo) {
+            aprobado = true
+            clearInterval(pollId)
+            const statusEl = document.getElementById('poll-status')
+            if (statusEl) {
+              statusEl.innerHTML = '<span style="color: #10b981; font-size: 1.1rem; font-weight: 600;">Pago aprobado</span>'
+            }
+            setTimeout(() => {
+              Swal.close()
+              limpiarContexto()
+              router.push('/turnos')
+            }, 1200)
+          }
+        } catch (e) {}
+      }, 3000)
+
+      setTimeout(() => {
+        if (!aprobado) {
+          clearInterval(pollId)
+          const statusEl = document.getElementById('poll-status')
+          if (statusEl) {
+            statusEl.innerHTML = '<span style="color: #ef4444;">Tiempo de espera agotado</span>'
+          }
+        }
+      }, 600000)
+    },
+    willClose: () => {
+      if (pollId) clearInterval(pollId)
+    }
+  })
+}
+
 const crearTurno = async () => {
-  if (form.value.medio_pago === 'MERCADO_PAGO' && !form.value.codigo_transaccion) {
+  const esQR = form.value.medio_pago === 'MERCADO_PAGO' && subMetodoPago.value === 'QR'
+  const esAlias = form.value.medio_pago === 'MERCADO_PAGO' && subMetodoPago.value === 'ALIAS'
+
+  if (esAlias && !form.value.codigo_transaccion) {
     errorValidacion.value = true
-    Swal.fire({ icon: 'error', title: 'Error', text: 'Falta el código de transacción de Mercado Pago', confirmButtonText: 'Entendido' })
+    Swal.fire({ icon: 'error', title: 'Error', text: 'Falta el cdigo de transaccin de Mercado Pago', confirmButtonText: 'Entendido' })
     return
   }
   
@@ -861,6 +968,7 @@ const crearTurno = async () => {
 
   const totalCalculado = parseFloat(calcularTotal())
   const esPagoSena = form.value.tipo_pago.includes('SENA')
+  const montoSena = esPagoSena ? parseFloat(calcularSena()) : totalCalculado
 
   const payload = {
     peluquero_id: form.value.peluquero,
@@ -869,15 +977,16 @@ const crearTurno = async () => {
     fecha: form.value.fecha,
     hora: form.value.hora,
     canal: 'PRESENCIAL',
-    silla: form.value.silla, 
+    silla: form.value.silla,
     tipo_pago: esPagoSena ? 'SENA_50' : 'TOTAL',
     medio_pago: form.value.medio_pago,
     monto_total: totalCalculado,
-    monto_seña: esPagoSena ? parseFloat(calcularSena()) : totalCalculado,
+    monto_seña: montoSena,
     duracion_total: duracion,
-    entidad_pago: form.value.medio_pago === 'MERCADO_PAGO' ? 'MERCADOPAGO' : null,
-    mp_payment_id: form.value.medio_pago === 'MERCADO_PAGO' ? form.value.codigo_transaccion : null,
-    codigo_transaccion: null // Eliminamos uso de transferencia
+    entidad_pago: esAlias ? 'MERCADOPAGO' : null,
+    mp_payment_id: esAlias ? form.value.codigo_transaccion : null,
+    codigo_transaccion: null,
+    generar_qr: esQR || null
   }
 
   try {
@@ -890,17 +999,31 @@ const crearTurno = async () => {
     const data = await res.json()
     
     if (res.ok && (data.status === 'ok' || res.status === 201)) {
-      await Swal.fire({
-        icon: 'success',
-        title: '¡Turno Reservado!',
-        text: 'El turno se ha creado exitosamente',
-        confirmButtonText: 'Aceptar',
-        timer: 2000,
-        timerProgressBar: true
-      })
-      
-      limpiarContexto()
-      router.push('/turnos')
+      if (esQR && data.mp_data && data.mp_data.generar_qr) {
+        await mostrarQRPresencial(data.turno_id, data.mp_data)
+      } else if (esAlias) {
+        await Swal.fire({
+          icon: 'success',
+          title: 'Turno creado',
+          text: 'Pago registrado correctamente',
+          confirmButtonText: 'Aceptar',
+          timer: 2000,
+          timerProgressBar: true
+        })
+        limpiarContexto()
+        router.push('/turnos')
+      } else {
+        await Swal.fire({
+          icon: 'success',
+          title: 'Turno creado',
+          text: 'El turno se ha creado exitosamente',
+          confirmButtonText: 'Aceptar',
+          timer: 2000,
+          timerProgressBar: true
+        })
+        limpiarContexto()
+        router.push('/turnos')
+      }
     } else {
       let errorMsg = "Error al crear turno"
       if (data.error) {
@@ -911,10 +1034,10 @@ const crearTurno = async () => {
         errorMsg = Object.entries(data.errors).map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`).join('; ')
       }
       
-      await Swal.fire({ icon: 'warning', title: 'Atención', text: errorMsg, confirmButtonText: 'Entendido' })
+      await Swal.fire({ icon: 'warning', title: 'Atencin', text: errorMsg, confirmButtonText: 'Entendido' })
     }
   } catch (e) {
-    await Swal.fire({ icon: 'error', title: 'Error de conexión', text: "No se pudo conectar con el servidor.", confirmButtonText: 'Entendido' })
+    await Swal.fire({ icon: 'error', title: 'Error de conexin', text: "No se pudo conectar con el servidor.", confirmButtonText: 'Entendido' })
   } finally {
     procesando.value = false
   }

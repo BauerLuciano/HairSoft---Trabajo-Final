@@ -1230,6 +1230,7 @@ class Auditoria(models.Model):
         ('CIERRE_CAJA', 'Cierre de Caja'),
         ('INGRESO_MANUAL', 'Ingreso a Caja'),
         ('EGRESO_MANUAL', 'Egreso de Caja'),
+        ('COBRO_RESTANTE', 'Cobro de Saldo Restante de Turno'),
     )
 
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
@@ -1470,6 +1471,7 @@ class MovimientoCaja(models.Model):
         ('FONDO_CAJA', 'Fondo de Caja (Sencillo)'),
         ('APORTE_SOCIO', 'Aporte del Dueño'),
         ('COBRO_DEUDA', 'Cobro de Deuda'),
+        ('COBRO_RESTANTE', 'Cobro de Saldo Restante de Turno'),
         ('AJUSTE_SOBRANTE', 'Ajuste por Sobrante de Caja'),
         ('OTROS', 'Otros / Ajustes'),
     ]
