@@ -2435,13 +2435,16 @@ def check_pago_temporal(request, uid):
         from .models import PagoTemporal
         pago = PagoTemporal.objects.filter(uid=uid).first()
         if not pago:
+            print(f"[CHECK_TEMP] No encontrado: {uid}")
             return JsonResponse({'status': 'error', 'error': 'No encontrado'}, status=404)
+        print(f"[CHECK_TEMP] uid={uid} pagado={pago.pagado} mp_payment_id={pago.mp_payment_id}")
         return JsonResponse({
             'pagado': pago.pagado,
             'mp_payment_id': pago.mp_payment_id,
             'monto': float(pago.monto)
         })
     except Exception as e:
+        print(f"[CHECK_TEMP] Exception: {e}")
         return JsonResponse({'status': 'error', 'error': str(e)}, status=500)
 
 @csrf_exempt
