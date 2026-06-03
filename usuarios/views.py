@@ -1,4 +1,4 @@
-import json, re, requests, unicodedata, logging, secrets, traceback
+import json, re, requests, unicodedata, logging, secrets, traceback, uuid
 
 from datetime import datetime, timedelta, time
 from decimal import Decimal
@@ -2411,6 +2411,7 @@ def generar_qr_temporal(request):
         mp_service = MercadoPagoService()
         res_mp = mp_service.crear_preferencia_temporal(monto, uid_str)
 
+        print(f"[QR_TEMP] MP response: {res_mp}")
         if res_mp.get('success'):
             return JsonResponse({
                 'status': 'ok',
@@ -2422,6 +2423,9 @@ def generar_qr_temporal(request):
         else:
             return JsonResponse({'status': 'error', 'error': res_mp.get('error')}, status=500)
     except Exception as e:
+        print(f"[QR_TEMP] Exception: {e}")
+        import traceback
+        traceback.print_exc()
         return JsonResponse({'status': 'error', 'error': str(e)}, status=500)
 
 @api_view(['GET'])
