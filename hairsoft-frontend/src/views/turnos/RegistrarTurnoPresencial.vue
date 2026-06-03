@@ -897,6 +897,17 @@ const onCambioMedioPago = () => {
 }
 
 const onCambioSubMetodo = async () => {
+  if (pagoConfirmado.value) {
+    await Swal.fire({
+      icon: 'warning', title: 'Pago ya confirmado',
+      text: 'El cliente ya pagó con QR. No puede cambiar a Alias.'
+    })
+    subMetodoPago.value = 'QR'
+    return
+  }
+  pagoUuid.value = null
+  pagoConfirmado.value = false
+  if (pollId) { clearInterval(pollId); pollId = null }
   if (subMetodoPago.value === 'ALIAS') {
     aliasCargando.value = true
     try {
@@ -911,6 +922,10 @@ const onCambioSubMetodo = async () => {
 }
 
 const generarQR = async () => {
+  if (pagoConfirmado.value) {
+    Swal.fire({ icon: 'info', title: 'Pago ya confirmado', text: 'El pago ya fue realizado.' })
+    return
+  }
   qrGenerando.value = true
   try {
     const monto = form.value.tipo_pago.includes('SENA')
@@ -986,7 +1001,7 @@ const mostrarQRPresencial = (mpData) => {
             setTimeout(() => Swal.close(), 1200)
           }
         } catch (e) {}
-      }, 3000)
+      }, 1500)
 
       setTimeout(() => {
         if (!aprobado) {
