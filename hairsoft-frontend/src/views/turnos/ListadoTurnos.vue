@@ -754,11 +754,12 @@ const confirmarPagoTotal = async (turno) => {
                 }
                 setTimeout(() => {
                   Swal.close();
+                  Swal.fire('Pago registrado', `Cobro de $${formatPrecio(falta)} por QR Mercado Pago aprobado.`, 'success');
                   cargarTurnos();
                 }, 1200);
               }
             } catch (e) {}
-          }, 3000);
+          }, 1500);
 
           setTimeout(() => {
             if (!aprobado) {
@@ -768,7 +769,7 @@ const confirmarPagoTotal = async (turno) => {
                 statusEl.innerHTML = '<span style="color: #ef4444;">Tiempo de espera agotado</span>';
               }
             }
-          }, 600000);
+          }, 900000);
         },
         willClose: () => {
           if (pollId) clearInterval(pollId);

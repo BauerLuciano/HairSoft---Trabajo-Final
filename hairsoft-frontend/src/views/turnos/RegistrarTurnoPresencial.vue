@@ -900,7 +900,7 @@ const onCambioSubMetodo = async () => {
   if (pagoConfirmado.value) {
     await Swal.fire({
       icon: 'warning', title: 'Pago ya confirmado',
-      text: 'El cliente ya pagó con QR. No puede cambiar a Alias.'
+      text: 'El cliente ya pagó con QR. No podés cambiar a Alias.'
     })
     subMetodoPago.value = 'QR'
     return
