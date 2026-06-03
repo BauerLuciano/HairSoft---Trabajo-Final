@@ -333,8 +333,8 @@
                   </div>
                   <div class="input-group" style="margin-top: 8px;">
                     <label class="label-modern">Comprobante (opcional)</label>
-                    <input type="text" v-model="nroComprobante" class="input-modern" placeholder="ID de operacin (12 dgitos)" maxlength="12" @input="nroComprobante = nroComprobante.replace(/\D/g, '')" />
-                    <small class="helper-text"><Info :size="12" /> Ingrese el ID de operacin si el cliente transfiri.</small>
+                    <input type="text" v-model="nroComprobante" class="input-modern" placeholder="ID de operación (12 dígitos)" maxlength="12" @input="nroComprobante = nroComprobante.replace(/\D/g, '')" />
+                    <small class="helper-text"><Info :size="12" /> Ingrese el ID de operación si el cliente transfirió.</small>
                   </div>
                 </div>
 
@@ -945,7 +945,7 @@ const mostrarQRPresencial = (mpData) => {
         <div id="qr-container" style="background: white; padding: 16px; border-radius: 16px; display: inline-block; box-shadow: 0 4px 24px rgba(0,0,0,0.12); margin-bottom: 16px;">
           <canvas id="qr-canvas"></canvas>
         </div>
-        <p style="color: #334155; font-size: 1rem; font-weight: 500; margin: 8px 0;">Escane el cdigo QR con su celular</p>
+        <p style="color: #334155; font-size: 1rem; font-weight: 500; margin: 8px 0;">Escanee el código QR con su celular</p>
         <p style="color: #10b981; font-size: 1.5rem; font-weight: 800; margin: 4px 0;">$${mpData.monto}</p>
         <p id="poll-status" style="color: #64748b; font-size: 0.85rem; margin-top: 12px;">
           <span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -1007,8 +1007,8 @@ const crearTurno = async () => {
   const esAlias = form.value.medio_pago === 'MERCADO_PAGO' && subMetodoPago.value === 'ALIAS'
   const esQR = form.value.medio_pago === 'MERCADO_PAGO' && subMetodoPago.value === 'QR'
 
-  if (esQR && !pagoConfirmado.value && pagoUuid.value) {
-    Swal.fire({ icon: 'warning', title: 'Atencin', text: 'Espere a que el pago se confirme o cancele el QR.' })
+  if (esQR && !pagoConfirmado.value) {
+    Swal.fire({ icon: 'warning', title: 'Atención', text: 'Debe generar el QR y esperar a que el pago se confirme.' })
     return
   }
 
@@ -1070,10 +1070,10 @@ const crearTurno = async () => {
       else if (data.errors) {
         errorMsg = Object.entries(data.errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
       }
-      await Swal.fire({ icon: 'warning', title: 'Atencin', text: errorMsg, confirmButtonText: 'Entendido' })
+      await Swal.fire({ icon: 'warning', title: 'Atención', text: errorMsg, confirmButtonText: 'Entendido' })
     }
   } catch (e) {
-    await Swal.fire({ icon: 'error', title: 'Error de conexin', text: 'No se pudo conectar con el servidor.', confirmButtonText: 'Entendido' })
+    await Swal.fire({ icon: 'error', title: 'Error de conexión', text: 'No se pudo conectar con el servidor.', confirmButtonText: 'Entendido' })
   } finally {
     procesando.value = false
   }

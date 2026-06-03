@@ -1214,12 +1214,13 @@ def crear_turno(request):
         if pago_uuid:
             from .models import PagoTemporal
             pago_temp = PagoTemporal.objects.filter(uid=pago_uuid, pagado=True, usado=False).first()
-            if pago_temp:
-                mp_payment_id = pago_temp.mp_payment_id
-                pago_temp.usado = True
-                pago_temp.save()
-            else:
+            if not pago_temp:
                 return Response({'status': 'error', 'error': 'Pago no encontrado o ya utilizado'}, status=400)
+            if pago_temp.monto < monto_seña:
+                return Response({'status': 'error', 'error': f'El monto del pago (${pago_temp.monto}) no cubre la seña (${monto_seña})'}, status=400)
+            mp_payment_id = pago_temp.mp_payment_id
+            pago_temp.usado = True
+            pago_temp.save()
         
         # ---------------------------------------------------------
         # 8. CREAR TURNO CON SILLA ASIGNADA
