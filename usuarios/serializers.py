@@ -89,6 +89,7 @@ class TurnoSerializer(serializers.ModelSerializer):
 
     precio_total = serializers.SerializerMethodField()
     info_descuento = serializers.SerializerMethodField()
+    saldo_pendiente = serializers.SerializerMethodField()
 
     class Meta:
         model = Turno
@@ -101,7 +102,8 @@ class TurnoSerializer(serializers.ModelSerializer):
             'peluquero', 'peluquero_nombre', 'servicios',
             'codigo_transaccion', 'entidad_pago', 'info_descuento',
             'silla', 'silla_nombre', 'silla_id',
-            'medio_pago_restante', 'entidad_pago_restante', 'codigo_transaccion_restante'  
+            'medio_pago_restante', 'entidad_pago_restante', 'codigo_transaccion_restante',
+            'saldo_pendiente', 'mp_payment_id_saldo'
         ]
         extra_kwargs = {
             'silla': {'read_only': True}  # El campo original del modelo lo dejamos solo lectura
@@ -124,6 +126,13 @@ class TurnoSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return None
+
+    def get_saldo_pendiente(self, obj):
+        if obj.tipo_pago == 'SENA_50' and not obj.medio_pago_restante:
+            total = float(obj.monto_total or 0)
+            senia = float(obj.monto_seña or 0)
+            return round(max(0, total - senia), 2)
+        return 0.0
 # ----------------------------------------------------------------------
 # CATEGORIAS DE PRODUCTOS
 # ----------------------------------------------------------------------
@@ -760,6 +769,7 @@ class PedidoWebSerializer(serializers.ModelSerializer):
             'tipo_entrega', 'direccion_envio', 'costo_envio', 
             'total', 'detalles',
             'datos_entrega_interna',
+            'tiempo_estimado_minutos',
             'mp_payment_id',
             'motivo_cancelacion',
             'obs_cancelacion',

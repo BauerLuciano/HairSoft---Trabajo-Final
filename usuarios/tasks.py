@@ -18,7 +18,8 @@ from .models import (
     PromocionReactivacion, 
     Usuario,
     Producto, 
-    SolicitudPresupuesto
+    SolicitudPresupuesto,
+    PedidoWeb,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,84 @@ def enviar_whatsapp_oferta(self, numero, mensaje):
             except Exception as retry_error:
                 logger.error(f"❌ Falló reintento: {retry_error}")
         return {'success': False, 'error': str(e), 'to': numero}
+
+def enviar_whatsapp_sync(numero, mensaje):
+    """Sincrónico - envía WhatsApp por Twilio sin depender de Celery."""
+    try:
+        from twilio.rest import Client
+        if not numero.startswith('+'):
+            numero = f"+54{numero.lstrip('0')}"
+        if len(numero) < 12:
+            logger.error(f"❌ Número inválido: {numero}")
+            return False
+        account_sid = settings.TWILIO_ACCOUNT_SID
+        auth_token = settings.TWILIO_AUTH_TOKEN
+        from_whatsapp_number = settings.TWILIO_WHATSAPP_NUMBER
+        to_whatsapp_number = f'whatsapp:{numero}'
+        if not account_sid or not auth_token:
+            logger.error("❌ Credenciales Twilio no configuradas")
+            return False
+        client = Client(account_sid, auth_token)
+        message = client.messages.create(body=mensaje, from_=from_whatsapp_number, to=to_whatsapp_number)
+        logger.info(f"✅ WhatsApp ENVIADO - SID: {message.sid}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Error Twilio: {str(e)}")
+        return False
+
+
+@shared_task(bind=True, max_retries=3)
+def enviar_whatsapp_pedido_en_camino(self, pedido_id, repartidor, tiempo_estimado_minutos):
+    """Celery task - arma el mensaje y envía WhatsApp al cliente del pedido."""
+    try:
+        pedido = PedidoWeb.objects.select_related('cliente').get(id=pedido_id)
+        cliente = pedido.cliente
+        if not cliente.telefono:
+            logger.warning(f"⏭ Pedido #{pedido_id}: cliente sin teléfono, omitiendo WhatsApp")
+            return False
+
+        calle = (pedido.calle_entrega or '').strip()
+        altura = (pedido.altura_entrega or '').strip()
+        ciudad = (pedido.ciudad_entrega or '').strip()
+
+        if calle or altura:
+            direccion = f"{calle} {altura}".strip()
+            if ciudad:
+                direccion += f", {ciudad}"
+        else:
+            direccion = (pedido.direccion_envio or '').split(' | GPS:')[0].split(' | Obs:')[0].strip()
+            if not direccion or direccion.startswith('GPS:'):
+                direccion = 'Sin dirección'
+
+        from .models import ConfiguracionSistema
+        config = ConfiguracionSistema.get_solo()
+        razon_social = config.razon_social or "Los Últimos Serán Los Primeros"
+
+        nombre_cliente = cliente.nombre.split()[0] if cliente.nombre else "cliente"
+        minuto_texto = "minuto" if tiempo_estimado_minutos == 1 else "minutos"
+        mensaje = (
+            f"¡Hola {nombre_cliente}! 🙌\n\n"
+            f"Te escribimos para informarte que ya despachamos tu pedido 🚀\n\n"
+            f"🛵 *Moto mandado:* {repartidor}\n"
+            f"⏱ *Tiempo estimado:* {tiempo_estimado_minutos} {minuto_texto}\n"
+            f"📍 *Dirección:* {direccion}\n\n"
+            f"🙏 *¡Gracias por comprar con nosotros!*\n\n"
+            f"{razon_social}"
+        )
+
+        return enviar_whatsapp_sync(cliente.telefono, mensaje)
+
+    except PedidoWeb.DoesNotExist:
+        logger.error(f"❌ PedidoWeb #{pedido_id} no encontrado")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Error enviando WhatsApp EN_CAMINO #{pedido_id}: {str(e)}")
+        if any(err in str(e).lower() for err in ['timeout', 'connection', 'network']):
+            try:
+                self.retry(exc=e, countdown=60)
+            except Exception as retry_error:
+                logger.error(f"❌ Falló reintento: {retry_error}")
+        return False
 
 @shared_task
 def enviar_email_oferta(email, mensaje, fecha, hora):

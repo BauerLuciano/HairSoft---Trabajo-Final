@@ -284,6 +284,24 @@ const cambiarEstado = async (pedido, nuevoEstado, skipModal = false, motivoAuto 
           background: '#1e293b', color: '#fff' 
         });
       }
+    } else if (nuevoEstado === 'EN_CAMINO' && response.data.whatsapp_enviado) {
+      Swal.fire({
+        title: '🚚 Pedido en camino',
+        html: 'El pedido fue despachado y se notificó al cliente <strong>vía WhatsApp</strong>.',
+        icon: 'success',
+        timer: 3000,
+        showConfirmButton: false,
+        background: '#1e293b', color: '#fff'
+      });
+    } else if (nuevoEstado === 'EN_CAMINO' && !response.data.whatsapp_enviado) {
+      Swal.fire({
+        title: '🚚 Pedido en camino',
+        text: 'El pedido fue despachado pero no se pudo notificar al cliente (sin WhatsApp).',
+        icon: 'warning',
+        timer: 3000,
+        showConfirmButton: false,
+        background: '#1e293b', color: '#fff'
+      });
     } else {
       Swal.fire({ title: '¡Éxito!', icon: 'success', timer: 1000, showConfirmButton: false });
     }
@@ -380,6 +398,7 @@ const verDetalle = (p) => {
                       return dir ? `<p style="margin: 4px 0;"><strong style="color:#f8fafc;">Dirección:</strong> ${dir}</p>` : '<p style="margin: 4px 0;"><strong style="color:#f8fafc;">Dirección:</strong> Retiro en Local</p>'
                     })()}
                     <p style="margin: 4px 0;"><strong style="color:#f8fafc;">Chofer:</strong> ${p.datos_entrega_interna || 'Aún no asignado'}</p>
+                    ${p.tiempo_estimado_minutos > 0 ? `<p style="margin: 4px 0;"><strong style="color:#f8fafc;">Duración estimada:</strong> ~${p.tiempo_estimado_minutos} min</p>` : ''}
                 </div>
 
                 <div style="background: rgba(15, 23, 42, 0.6); padding: 18px; border-radius: 14px; margin-bottom: 15px; border: 1px solid #334155;">

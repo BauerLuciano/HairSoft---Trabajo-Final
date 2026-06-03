@@ -23,6 +23,7 @@
     "lodash": "^4.17.21",
     "lucide-vue-next": "^0.552.0",
     "pinia": "^3.0.4",
+    "qrcode": "^1.5.4",
     "qrcode.vue": "^3.6.0",
     "sweetalert2": "^11.26.3",
     "vue": "^3.5.22",

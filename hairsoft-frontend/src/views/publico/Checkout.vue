@@ -50,6 +50,9 @@
                 <div>
                   <strong>Peluquería</strong>
                   <span>{{ localDireccion }}</span>
+                  <span v-if="referenciaLocal" style="font-size: 0.85em; color: #0ea5e9; font-weight: 600;">
+                    {{ referenciaLocal }}
+                  </span>
                 </div>
               </div>
 
@@ -61,6 +64,41 @@
                   </svg>
                   <span>{{ buscandoGPS ? 'Obteniendo ubicación...' : 'Usar mi ubicación GPS' }}</span>
                 </button>
+              </div>
+
+              <div class="search-divider"><span>o</span></div>
+
+              <div class="address-search-container">
+                <div class="address-search-input-wrapper">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-addr-icon">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input
+                    v-model="busquedaDir"
+                    type="text"
+                    class="filter-input address-search-input"
+                    placeholder="Buscá tu dirección (ej. Avenida Libertador 500)"
+                    @input="onBuscarDireccion"
+                    @keydown.enter="confirmarDireccion"
+                    @blur="onBlurBusqueda"
+                  />
+                  <div v-if="buscandoDir" class="search-spinner"></div>
+                </div>
+                <div v-if="sugerencias.length > 0" class="suggestions-dropdown">
+                  <div
+                    v-for="sug in sugerencias"
+                    :key="sug.lat + ',' + sug.lon"
+                    class="suggestion-item"
+                    @click="seleccionarDireccion(sug)"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                      <circle cx="12" cy="10" r="3"></circle>
+                    </svg>
+                    <span>{{ sug.display_name }}</span>
+                  </div>
+                </div>
               </div>
 
               <div class="map-hint">
@@ -85,10 +123,14 @@
                   style="height: 300px; width: 100%; border-radius: 12px;"
                 >
                   <l-tile-layer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    v-for="tile in tilesBase" :key="tile.name"
+                    :name="tile.name"
+                    :visible="tile.visible"
+                    :url="tile.url"
+                    :attribution="tile.att"
                     layer-type="base"
-                    name="OpenStreetMap"
                   ></l-tile-layer>
+                  <l-control-layers></l-control-layers>
 
                   <l-marker
                     :lat-lng="[localLat, localLng]"
@@ -109,10 +151,10 @@
 
                   <l-polyline
                     v-if="deliveryLatLng"
-                    :lat-lngs="[[localLat, localLng], deliveryLatLng]"
+                    :lat-lngs="rutaCoords || [[localLat, localLng], deliveryLatLng]"
                     color="#0ea5e9"
-                    :weight="3"
-                    :dash-array="'8, 6'"
+                    :weight="rutaCoords ? 4 : 3"
+                    :dash-array="rutaCoords ? null : '8, 6'"
                   ></l-polyline>
                 </l-map>
               </div>
@@ -127,8 +169,7 @@
                   </div>
                   <p class="address-detected-text">{{ direccionDetectada }}</p>
                   <div v-if="detalleDireccion" class="address-detected-details">
-                    <span v-if="detalleDireccion.calle"><strong>Calle:</strong> {{ detalleDireccion.calle }}</span>
-                    <span v-if="detalleDireccion.altura"><strong>Altura:</strong> {{ detalleDireccion.altura }}</span>
+                    <span><strong>Calle:</strong> {{ detalleDireccion.calle }}</span>
                     <span v-if="detalleDireccion.ciudad"><strong>Ciudad:</strong> {{ detalleDireccion.ciudad }}</span>
                     <span v-if="detalleDireccion.provincia"><strong>Provincia:</strong> {{ detalleDireccion.provincia }}</span>
                   </div>
@@ -263,7 +304,7 @@ import { useCartStore } from '@/stores/cart'
 import api from '@/services/api'
 import { envioService } from '@/services/envioService'
 import Swal from 'sweetalert2'
-import { LMap, LTileLayer, LMarker, LTooltip, LPolyline } from '@vue-leaflet/vue-leaflet'
+import { LMap, LTileLayer, LMarker, LTooltip, LPolyline, LControlLayers } from '@vue-leaflet/vue-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 
@@ -305,14 +346,21 @@ const localLat = ref(null)
 const localLng = ref(null)
 const localCargando = ref(true)
 const localDireccion = ref('')
+const referenciaLocal = ref('')
 
 const deliveryLatLng = ref(null)
 const costoEnvioCalculado = ref(0)
 const distanciaKm = ref(0)
 const dentroCobertura = ref(true)
+const rutaCoords = ref(null)
+const tiempoEstimadoMinutos = ref(0)
 const calculandoCosto = ref(false)
 const buscandoGPS = ref(false)
 const errorGPS = ref('')
+const busquedaDir = ref('')
+const sugerencias = ref([])
+const buscandoDir = ref(false)
+let timeoutBusqueda = null
 const errorCalculo = ref('')
 const direccionDetectada = ref('')
 const detalleDireccion = ref(null)
@@ -322,6 +370,12 @@ const mapRef = ref(null)
 let dragTimeout = null
 
 const NOMINATIM_UA = 'HairSoft/1.0'
+
+const tilesBase = [
+  { name: 'Calle', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', visible: true, att: '&copy; <a href="https://osm.org">OpenStreetMap</a>' },
+  { name: 'Satelital', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', visible: false, att: '&copy; <a href="https://esri.com">Esri</a>' },
+  { name: 'Relieve', url: 'https://tile.opentopomap.org/{z}/{x}/{y}.png', visible: false, att: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a>' },
+]
 
 function formatearDireccion(data) {
   if (!data || !data.address) return null
@@ -354,6 +408,7 @@ onMounted(async () => {
     if (res.data && res.data.latitud_local && res.data.longitud_local) {
       localLat.value = parseFloat(res.data.latitud_local)
       localLng.value = parseFloat(res.data.longitud_local)
+      referenciaLocal.value = res.data.direccion_referencia || ''
 
       reverseGeocode(localLat.value, localLng.value).then(data => {
         if (data && data.address) {
@@ -397,6 +452,61 @@ const obtenerGPS = () => {
     },
     { enableHighAccuracy: true, timeout: 10000 }
   )
+}
+
+const onBuscarDireccion = () => {
+  if (timeoutBusqueda) clearTimeout(timeoutBusqueda)
+  const q = busquedaDir.value.trim()
+  if (q.length < 4) { sugerencias.value = []; return }
+  buscandoDir.value = true
+  timeoutBusqueda = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)},+San+Vicente,+Misiones,+Argentina&limit=10&addressdetails=1&viewbox=-54.6341,-26.8458,-54.3341,-27.1458&bounded=1`,
+          { headers: { 'User-Agent': NOMINATIM_UA, 'Accept-Language': 'es' } }
+        )
+        const data = await res.json()
+        sugerencias.value = (data || []).filter(s => s.lat && s.lon)
+      } catch {
+      sugerencias.value = []
+      } finally {
+        buscandoDir.value = false
+      }
+  }, 400)
+}
+
+const confirmarDireccion = () => {
+  if (sugerencias.value.length > 0) {
+    seleccionarDireccion(sugerencias.value[0])
+  }
+}
+
+const onBlurBusqueda = () => {
+  setTimeout(() => {
+    if (sugerencias.value.length > 0 && !deliveryLatLng.value) {
+      seleccionarDireccion(sugerencias.value[0])
+    }
+  }, 200)
+}
+
+const seleccionarDireccion = (sug) => {
+  busquedaDir.value = sug.display_name
+  sugerencias.value = []
+  if (timeoutBusqueda) clearTimeout(timeoutBusqueda)
+  const lat = parseFloat(sug.lat)
+  const lng = parseFloat(sug.lon)
+  deliveryLatLng.value = [lat, lng]
+  errorGPS.value = ''
+  errorCalculo.value = ''
+  const addr = sug.address || {}
+  direccionDetectada.value = sug.display_name || `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`
+  detalleDireccion.value = {
+    calle: addr.road || addr.pedestrian || '',
+    altura: addr.house_number || '',
+    ciudad: addr.city || addr.town || addr.village || '',
+    provincia: addr.state || '',
+  }
+  calcularCostoEnvio(lat, lng)
 }
 
 const colocarMarcador = (event) => {
@@ -448,6 +558,8 @@ const calcularCostoEnvio = async (lat, lng) => {
     costoEnvioCalculado.value = parseFloat(res.data.costo_envio)
     distanciaKm.value = parseFloat(res.data.distancia_km)
     dentroCobertura.value = res.data.dentro_cobertura !== false
+    rutaCoords.value = res.data.ruta_coords || null
+    tiempoEstimadoMinutos.value = parseInt(res.data.tiempo_estimado_minutos) || 0
   } catch (e) {
     errorCalculo.value = 'Error al calcular el costo de envío. Verificá la configuración del local.'
     console.error(e)
@@ -460,6 +572,8 @@ watch(tipoEntrega, () => {
   if (tipoEntrega.value === 'RETIRO') {
     costoEnvioCalculado.value = 0
     distanciaKm.value = 0
+    rutaCoords.value = null
+    tiempoEstimadoMinutos.value = 0
     deliveryLatLng.value = null
     observaciones.value = ''
     direccionDetectada.value = ''
@@ -629,6 +743,21 @@ const procesarPedido = async () => {
 .btn-gps:hover:not(:disabled) { background: #0ea5e9; color: white; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(14,165,233,0.3); }
 .btn-gps:disabled { opacity: 0.6; cursor: wait; }
 
+.search-divider { display: flex; align-items: center; gap: 12px; margin: 8px 0 12px; color: #94a3b8; font-size: 0.8rem; font-weight: 600; }
+.search-divider::before, .search-divider::after { content: ''; flex: 1; height: 1px; background: #e2e8f0; }
+
+.address-search-container { position: relative; margin-bottom: 12px; }
+.address-search-input-wrapper { position: relative; display: flex; align-items: center; }
+.search-addr-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; z-index: 1; }
+.address-search-input { padding-left: 42px !important; padding-right: 40px !important; background: #fff; color: #0f172a; }
+.address-search-input::placeholder { color: #94a3b8; }
+.search-spinner { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; border: 3px solid #e2e8f0; border-left-color: #0ea5e9; border-radius: 50%; animation: spin 0.6s linear infinite; }
+.suggestions-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #1e1e2e; border: 1px solid #334155; border-radius: 0 0 12px 12px; max-height: 220px; overflow-y: auto; z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+.suggestion-item { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; color: #e2e8f0; font-size: 0.85rem; border-bottom: 1px solid #334155; transition: background 0.15s; }
+.suggestion-item:last-child { border-bottom: none; border-radius: 0 0 12px 12px; }
+.suggestion-item:hover { background: #334155; }
+.suggestion-item svg { flex-shrink: 0; color: #0ea5e9; }
+
 .map-hint {
   display: flex; align-items: center; gap: 8px;
   margin-bottom: 12px; padding: 10px 14px;
@@ -655,6 +784,12 @@ const procesarPedido = async () => {
   font-size: 0.85rem; color: #475569;
 }
 .address-detected-details strong { color: #334155; }
+.altura-input {
+  width: 90px; padding: 4px 8px; border: 2px solid #cbd5e1; border-radius: 6px;
+  font-size: 0.85rem; background: #fff; color: #0f172a; outline: none; transition: border-color 0.2s;
+  margin-left: 4px;
+}
+.altura-input:focus { border-color: #0ea5e9; }
 
 .costo-loading {
   display: flex; align-items: center; gap: 10px; margin-top: 12px;

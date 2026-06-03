@@ -32,11 +32,21 @@
           </div>
           
           <div class="filter-group">
-            <label>Usuario Responsable</label>
+            <label>Responsable (Staff)</label>
             <select v-model="filtros.usuario" class="filter-input">
-              <option value="">Todos los usuarios</option>
-              <option v-for="usr in usuariosUnicos" :key="usr" :value="usr">
-                {{ usr }}
+              <option value="">Todos</option>
+              <option v-for="usr in staffUsuarios" :key="usr.id" :value="usr.nombre_completo">
+                {{ usr.nombre_completo }}
+              </option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>Cliente</label>
+            <select v-model="filtros.cliente" class="filter-input">
+              <option value="">Todos</option>
+              <option v-for="usr in clientesUsuarios" :key="usr.id" :value="usr.nombre_completo">
+                {{ usr.nombre_completo }}
               </option>
             </select>
           </div>
@@ -241,10 +251,12 @@ import axios from 'axios'
 const API_URL = 'http://localhost:8000/api/auditoria/';
 
 const logs = ref([])
+const todosUsuarios = ref([])
 const filtros = ref({ 
   busqueda: '', 
   modulo: '', 
   usuario: '', 
+  cliente: '',
   tipo_accion: '', 
   fechaDesde: '', 
   fechaHasta: '' 
@@ -261,7 +273,6 @@ const modulosDisponibles = [
   { id: 'AUTENTICACION', label: 'Accesos', icon: 'fas fa-user-shield' },
   { id: 'VENTAS', label: 'Ventas', icon: 'fas fa-cash-register' },
   { id: 'PEDIDOS_WEB', label: 'Pedidos Web', icon: 'fas fa-shopping-cart' },
-  { id: 'ENVIOS', label: 'Envíos', icon: 'fas fa-truck' },
   { id: 'TURNOS', label: 'Turnos', icon: 'fas fa-calendar-check' },
   { id: 'SERVICIOS', label: 'Servicios', icon: 'fas fa-cut' }, 
   { id: 'CAJA', label: 'Caja', icon: 'fas fa-box-open' },
@@ -318,9 +329,19 @@ const getIconoModulo = (modId) => {
   return mod ? mod.icon : 'fas fa-server';
 }
 
-const usuariosUnicos = computed(() => {
-  const users = logs.value.map(l => l.usuario_nombre || 'Sistema').filter(u => u);
-  return [...new Set(users)].sort();
+const staffUsuarios = computed(() => {
+  const rolesStaff = ['administrador', 'recepcionista', 'peluquero'];
+  return todosUsuarios.value
+    .filter(u => u.rol_nombre && rolesStaff.includes(u.rol_nombre.toLowerCase()))
+    .map(u => ({ id: u.id, nombre_completo: `${u.nombre} ${u.apellido}`.trim() || u.correo }))
+    .sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo));
+});
+
+const clientesUsuarios = computed(() => {
+  return todosUsuarios.value
+    .filter(u => u.rol_nombre && u.rol_nombre.toLowerCase() === 'cliente')
+    .map(u => ({ id: u.id, nombre_completo: `${u.nombre} ${u.apellido}`.trim() || u.correo }))
+    .sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo));
 });
 
 const getTipoAccionGeneral = (accion) => {
@@ -469,6 +490,7 @@ const logsFiltrados = computed(() => {
 
     const usr = log.usuario_nombre || 'Sistema';
     const matchUsuario = !filtros.value.usuario || usr === filtros.value.usuario;
+    const matchCliente = !filtros.value.cliente || usr === filtros.value.cliente;
 
     const tipoAccion = getTipoAccionGeneral(log.accion);
     const matchTipoAccion = !filtros.value.tipo_accion || tipoAccion === filtros.value.tipo_accion;
@@ -486,7 +508,7 @@ const logsFiltrados = computed(() => {
         }
     }
 
-    return matchBusqueda && matchModulo && matchUsuario && matchTipoAccion && matchFechas;
+    return matchBusqueda && matchModulo && matchUsuario && matchCliente && matchTipoAccion && matchFechas;
   })
 })
 
@@ -500,7 +522,7 @@ const paginaAnterior = () => { if (pagina.value > 1) pagina.value-- }
 const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.value++ }
 
 const limpiarFiltros = () => { 
-  filtros.value = { busqueda: '', modulo: '', usuario: '', tipo_accion: '', fechaDesde: '', fechaHasta: '' }; 
+  filtros.value = { busqueda: '', modulo: '', usuario: '', cliente: '', tipo_accion: '', fechaDesde: '', fechaHasta: '' }; 
   pagina.value = 1 
 }
 
@@ -508,7 +530,18 @@ const abrirDetalles = (log) => { logSeleccionado.value = log; mostrarModal.value
 const cerrarModal = () => { mostrarModal.value = false; logSeleccionado.value = null }
 
 watch(filtros, () => { pagina.value = 1 }, { deep: true })
-onMounted(() => { cargarAuditoria() })
+const cargarUsuarios = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    const headers = { ...(token && { 'Authorization': `Token ${token}` }) };
+    const res = await axios.get('http://localhost:8000/api/usuarios/', { headers });
+    todosUsuarios.value = Array.isArray(res.data) ? res.data : [];
+  } catch (err) {
+    console.error('Error cargando usuarios:', err);
+  }
+};
+
+onMounted(() => { cargarAuditoria(); cargarUsuarios() })
 </script>
 
 <style scoped>
@@ -585,6 +618,8 @@ onMounted(() => { cargarAuditoria() })
 .filter-group label { font-weight: 700; margin-bottom: 8px; display: block; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; }
 .filter-input { padding: 10px 14px; border-radius: 10px; border: 2px solid var(--border-color); background-color: var(--bg-primary); color: var(--text-primary); width: 100%; box-sizing: border-box; outline: none; transition: border-color 0.3s; font-size: 0.9rem; }
 .filter-input:focus { border-color: #8b5cf6; }
+.filter-input option, .filter-input optgroup { background-color: #1e1e2e; color: #e0e0e0; }
+.filter-input optgroup { font-weight: 800; color: #8b5cf6; }
 .search-wrapper { position: relative; }
 .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); }
 .search-input { padding-left: 40px; }

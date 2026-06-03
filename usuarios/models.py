@@ -385,6 +385,7 @@ class Turno(models.Model):
     medio_pago_restante = models.CharField(max_length=20, choices=MEDIO_PAGO_CHOICES, blank=True, null=True)
     entidad_pago_restante = models.CharField(max_length=50, blank=True, null=True, verbose_name="Billetera/Banco Restante")
     codigo_transaccion_restante = models.CharField(max_length=100, blank=True, null=True, verbose_name="Cód. Comprobante Restante")
+    mp_payment_id_saldo = models.CharField(max_length=50, blank=True, null=True)
     
     # MOTIVOS DE CANCELACIÓN
     motivo_cancelacion = models.CharField(max_length=100, blank=True, null=True)
@@ -1093,8 +1094,8 @@ class PedidoWeb(models.Model):
     obs_cancelacion = models.TextField(blank=True, null=True)
 
     datos_entrega_interna = models.CharField(max_length=255, null=True, blank=True, help_text="Nombre del cadete")
+    tiempo_estimado_minutos = models.IntegerField(default=0, help_text="Tiempo estimado de entrega en minutos")
 
-    # Origen del frontend para redirigir correctamente después del pago
     frontend_origen = models.CharField(max_length=500, blank=True, default='', help_text="URL del frontend donde se inició la compra")
 
     def __str__(self):
@@ -1294,6 +1295,8 @@ class ConfiguracionLocal(models.Model):
     tarifa_base_envio = models.DecimalField(max_digits=10, decimal_places=2, default=500.00, help_text="Tarifa base del envío en $")
     precio_por_km = models.DecimalField(max_digits=10, decimal_places=2, default=300.00, help_text="Precio por kilómetro recorrido en $")
     radio_cobertura_km = models.DecimalField(max_digits=10, decimal_places=2, default=10.00, help_text="Radio máximo de cobertura de envío en km")
+    direccion_referencia = models.CharField(max_length=255, blank=True, default='', help_text="Referencia del local (ej. Galería X, Local Y)")
+    mp_alias = models.CharField(max_length=50, blank=True, default='', help_text="Alias de Mercado Pago (ej. hairsoft.mp)")
 
     class Meta:
         verbose_name = "Configuración de Envíos"

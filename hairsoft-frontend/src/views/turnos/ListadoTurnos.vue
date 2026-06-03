@@ -151,8 +151,8 @@
               <td>
                 <div class="pago-info">
                   <span class="payment-status-badge" :class="getPaymentBadgeClass(turno)">
-                    <template v-if="(parseFloat(turno.monto_total) || 0) > (parseFloat(turno.monto_seña) || 0)">
-                      ⚠️ FALTA COBRAR: ${{ formatPrecio((parseFloat(turno.monto_total) || 0) - (parseFloat(turno.monto_seña) || 0)) }}
+                    <template v-if="turno.saldo_pendiente > 0">
+                      ⚠️ FALTA COBRAR: ${{ formatPrecio(turno.saldo_pendiente) }}
                     </template>
                     <template v-else>
                       ✅ PAGADO TOTAL
@@ -163,6 +163,9 @@
                     Seña: ${{ formatPrecio(turno.monto_seña || 0) }} ({{ getMedioPagoTexto(turno.medio_pago, turno.entidad_pago) }})
                   </div>
 
+                  <div v-if="turno.saldo_pendiente === 0 && (turno.mp_payment_id_saldo || turno.codigo_transaccion_restante)" style="font-size: 0.8rem; color: #38bdf8; margin-top: 4px; font-weight: 500;">
+                    {{ turno.mp_payment_id_saldo ? 'MP ID: ' + turno.mp_payment_id_saldo : 'Comp: ' + turno.codigo_transaccion_restante }}
+                  </div>
                   <div style="font-size: 0.85rem; color: #94a3b8; opacity: 0.8;">
                     Total Turno: ${{ formatPrecio(turno.monto_total || 0) }}
                   </div>
@@ -189,7 +192,7 @@
                     <ArrowRightLeft :size="14"/>
                   </button>
                   
-                  <button v-if="esAdminORecep && esEstadoActivo(turno.estado) && (parseFloat(turno.monto_total) || 0) > (parseFloat(turno.monto_seña) || 0)" 
+                  <button v-if="esAdminORecep && esEstadoActivo(turno.estado) && turno.saldo_pendiente > 0" 
                           @click="confirmarPagoTotal(turno)" 
                           class="action-button pagar" 
                           title="Cobrar Restante">
@@ -249,6 +252,7 @@ import {
   ArrowLeft, ArrowRight, Edit
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
+import QRCode from 'qrcode'
 
 const router = useRouter()
 const turnos = ref([])
@@ -618,139 +622,210 @@ const confirmarPagoTotal = async (turno) => {
   const total = parseFloat(turno.monto_total) || 0;
   const pagado = parseFloat(turno.monto_seña) || 0;
   const falta = total - pagado;
-  
-  const selectEntidadHtml = `
-    <div id="entidadContainer" style="display: none; margin-top: 15px; text-align: left;">
-      <label style="display: block; font-weight: 600; font-size: 0.9rem; color: #1e293b; margin-bottom: 5px;">Billetera / Banco de Origen *</label>
-      <select id="entidad_pago" class="swal2-input" style="width: 100%; margin: 0; height: 42px; font-size: 0.9rem;">
-        <option value="" disabled selected>Seleccione entidad...</option>
-        <option value="UALA">Ualá</option>
-        <option value="BRUBANK">Brubank</option>
-        <option value="LEMON">Lemon Cash</option>
-        <option value="NARANJAX">Naranja X</option>
-        <option value="MODO">MODO</option>
-        <option value="SANTANDER">Santander</option>
-        <option value="GALICIA">Galicia</option>
-        <option value="BBVA">BBVA</option>
-        <option value="MACRO">Macro</option>
-        <option value="OTRO">Otro</option>
-      </select>
-    </div>
-  `;
 
-  const { isConfirmed, value: formValues } = await Swal.fire({
+  const { isConfirmed, value: metodo } = await Swal.fire({
     title: 'Cobrar Restante',
     html: `
       <div style="background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px;">
         <p style="margin: 0; color: #64748b; font-size: 0.9rem;">Monto a cobrar</p>
         <p style="margin: 5px 0 0 0; color: #10b981; font-size: 1.8rem; font-weight: 800;">$${formatPrecio(falta)}</p>
       </div>
-
       <div style="text-align: left;">
         <label style="display: block; font-weight: 600; font-size: 0.9rem; color: #1e293b; margin-bottom: 5px;">Medio de Pago</label>
         <select id="medio_pago" class="swal2-input" style="width: 100%; margin: 0; height: 42px; font-size: 0.9rem;">
-          <option value="EFECTIVO" selected>💵 Efectivo</option>
-          <option value="MERCADO_PAGO">🔵 Mercado Pago</option>
+          <option value="EFECTIVO" selected>Efectivo</option>
+          <option value="MERCADO_PAGO">Mercado Pago</option>
         </select>
-
-        ${selectEntidadHtml}
-
-        <div id="transaccionContainer" style="display: none; margin-top: 15px;">
-          <label style="display: block; font-weight: 600; font-size: 0.9rem; color: #1e293b; margin-bottom: 5px;">N° de Comprobante *</label>
-          <input id="nro_transaccion" type="text" class="swal2-input" style="width: 100%; margin: 0; height: 42px; font-size: 0.9rem;" placeholder="">
-        </div>
       </div>
     `,
     showCancelButton: true,
     confirmButtonColor: '#10b981',
-    confirmButtonText: 'Registrar Pago',
+    confirmButtonText: 'Continuar',
     cancelButtonText: 'Cancelar',
-    didOpen: () => {
-      const medioSelect = document.getElementById('medio_pago');
-      const tranContainer = document.getElementById('transaccionContainer');
-      const entContainer = document.getElementById('entidadContainer');
-      const inputTransaccion = document.getElementById('nro_transaccion');
-
-      medioSelect.addEventListener('change', (e) => {
-        const val = e.target.value;
-        inputTransaccion.value = ''; 
-        
-        if (val === 'EFECTIVO') {
-          tranContainer.style.display = 'none';
-          entContainer.style.display = 'none';
-        } else {
-          tranContainer.style.display = 'block';
-          if (val === 'TRANSFERENCIA') {
-            entContainer.style.display = 'block';
-            inputTransaccion.placeholder = "Ej: A1B2C3D4 (Máx 18)";
-            inputTransaccion.maxLength = 18;
-          } else if (val === 'MERCADO_PAGO') {
-            entContainer.style.display = 'none';
-            inputTransaccion.placeholder = "Ej: 1234567890 (Máx 14)";
-            inputTransaccion.maxLength = 14;
-          }
-        }
-      });
-
-      inputTransaccion.addEventListener('input', (e) => {
-        if (medioSelect.value === 'MERCADO_PAGO') {
-          e.target.value = e.target.value.replace(/\D/g, '');
-        } else if (medioSelect.value === 'TRANSFERENCIA') {
-          e.target.value = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-        }
-      });
-    },
     preConfirm: () => {
-      const medio_pago = document.getElementById('medio_pago').value;
-      const entidad_pago = document.getElementById('entidad_pago').value;
-      const nro_transaccion = document.getElementById('nro_transaccion').value.trim();
-
-      if (medio_pago === 'MERCADO_PAGO') {
-        if (!nro_transaccion) {
-          Swal.showValidationMessage('El número de comprobante de Mercado Pago es obligatorio.');
-          return false;
-        }
-        if (!/^\d{1,14}$/.test(nro_transaccion)) {
-          Swal.showValidationMessage('Mercado Pago admite solo números (hasta 14 dígitos).');
-          return false;
-        }
-      }
-
-      if (medio_pago === 'TRANSFERENCIA') {
-        if (!entidad_pago) {
-          Swal.showValidationMessage('Debe seleccionar la billetera o banco de origen.');
-          return false;
-        }
-        if (!nro_transaccion) {
-          Swal.showValidationMessage('El número de transferencia es obligatorio.');
-          return false;
-        }
-        if (!/^[a-zA-Z0-9]{1,18}$/.test(nro_transaccion)) {
-          Swal.showValidationMessage('El comprobante debe ser alfanumérico (hasta 18 caracteres).');
-          return false;
-        }
-      }
-
-      return {
-        tipo_pago: 'TOTAL',
-        medio_pago: medio_pago,
-        entidad_pago: medio_pago === 'TRANSFERENCIA' ? entidad_pago : (medio_pago === 'MERCADO_PAGO' ? 'MERCADO_PAGO' : null),
-        nro_transaccion: medio_pago !== 'EFECTIVO' ? nro_transaccion : null
-      };
+      return document.getElementById('medio_pago').value;
     }
   });
 
-  if (isConfirmed && formValues) {
+  if (!isConfirmed || !metodo) return;
+
+  if (metodo === 'EFECTIVO') {
     try {
-      Swal.fire({ title: 'Registrando pago...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-      
-      await axios.post(`/api/turnos/${turno.id}/actualizar-pago/`, formValues);
-      
+      await axios.post(`/api/turnos/${turno.id}/pagar-saldo/`, { metodo: 'EFECTIVO' });
       await cargarTurnos();
-      Swal.fire('¡Pago registrado!', 'El saldo restante se cobró exitosamente.', 'success');
-    } catch (error) { 
-      console.error(error);
-      Swal.fire('Error', 'No se pudo registrar el pago.', 'error');
+      Swal.fire('Pago registrado', `Cobro de $${formatPrecio(falta)} en efectivo registrado.`, 'success');
+    } catch (error) {
+      Swal.fire('Error', error.response?.data?.error || 'No se pudo registrar el pago.', 'error');
+    }
+    return;
+  }
+
+  // MERCADO_PAGO: elegir entre QR o Alias
+  const { isConfirmed: subConfirmed, value: subMetodo } = await Swal.fire({
+    title: 'Cobrar con Mercado Pago',
+    html: `
+      <div style="background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px;">
+        <p style="margin: 0; color: #64748b; font-size: 0.9rem;">Monto a cobrar</p>
+        <p style="margin: 5px 0 0 0; color: #10b981; font-size: 1.8rem; font-weight: 800;">$${formatPrecio(falta)}</p>
+      </div>
+      <div style="text-align: left;">
+        <label style="display: block; font-weight: 600; font-size: 0.9rem; color: #1e293b; margin-bottom: 8px;">Elegí cómo cobrar:</label>
+        <label style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f0f9ff; border: 2px solid #bae6fd; border-radius: 10px; margin-bottom: 8px; cursor: pointer;">
+          <input type="radio" name="sub_mp" value="QR" checked style="width: 18px; height: 18px; accent-color: #0ea5e9;">
+          <div>
+            <span style="font-weight: 600; color: #0f172a; font-size: 0.95rem;">Código QR</span>
+            <span style="display: block; font-size: 0.75rem; color: #64748b;">Cliente escanea con la app de MP o cámara — pago automático</span>
+          </div>
+        </label>
+        <label style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #fefce8; border: 2px solid #fde68a; border-radius: 10px; cursor: pointer;">
+          <input type="radio" name="sub_mp" value="ALIAS" style="width: 18px; height: 18px; accent-color: #eab308;">
+          <div>
+            <span style="font-weight: 600; color: #0f172a; font-size: 0.95rem;">Transferencia por Alias</span>
+            <span style="display: block; font-size: 0.75rem; color: #64748b;">Cliente transfiere por alias y admin confirma manualmente</span>
+          </div>
+        </label>
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonColor: '#0ea5e9',
+    confirmButtonText: 'Continuar',
+    cancelButtonText: 'Cancelar',
+    preConfirm: () => {
+      const sel = document.querySelector('input[name="sub_mp"]:checked');
+      return sel ? sel.value : null;
+    }
+  });
+
+  if (!subConfirmed || !subMetodo) return;
+
+  if (subMetodo === 'QR') {
+    try {
+      const resp = await axios.post(`/api/turnos/${turno.id}/pagar-saldo/`, { metodo: 'MERCADO_PAGO' });
+      const { init_point } = resp.data;
+
+      let pollId = null;
+      let aprobado = false;
+
+      Swal.fire({
+        title: 'Cobrar con Mercado Pago',
+        html: `
+          <div style="text-align: center;">
+            <div id="qr-container" style="background: white; padding: 16px; border-radius: 16px; display: inline-block; box-shadow: 0 4px 24px rgba(0,0,0,0.12); margin-bottom: 16px;">
+              <canvas id="qr-canvas"></canvas>
+            </div>
+            <p style="color: #334155; font-size: 1rem; font-weight: 500; margin: 8px 0;">Escaneá el código QR con tu celular</p>
+            <p style="color: #10b981; font-size: 1.5rem; font-weight: 800; margin: 4px 0;">$${formatPrecio(falta)}</p>
+            <p id="poll-status" style="color: #64748b; font-size: 0.85rem; margin-top: 12px;">
+              <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+              Esperando pago...
+            </p>
+          </div>
+        `,
+        showConfirmButton: false,
+        showCancelButton: true,
+        cancelButtonText: 'Cancelar',
+        cancelButtonColor: '#94a3b8',
+        backdrop: 'rgba(0,0,0,0.92)',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: async () => {
+          const canvas = document.getElementById('qr-canvas');
+          if (canvas) {
+            try {
+              await QRCode.toCanvas(canvas, init_point, {
+                width: 220,
+                margin: 2,
+                color: { dark: '#1e293b', light: '#ffffff' }
+              });
+            } catch (e) {
+              console.error('Error generando QR:', e);
+            }
+          }
+
+          pollId = setInterval(async () => {
+            try {
+              const check = await axios.get(`/api/turnos/${turno.id}/`);
+              if (check.data.medio_pago_restante === 'MERCADO_PAGO' || check.data.mp_payment_id_saldo) {
+                aprobado = true;
+                clearInterval(pollId);
+                const statusEl = document.getElementById('poll-status');
+                if (statusEl) {
+                  statusEl.innerHTML = '<span style="color: #10b981; font-size: 1.1rem; font-weight: 600;">Pago aprobado</span>';
+                }
+                setTimeout(() => {
+                  Swal.close();
+                  cargarTurnos();
+                }, 1200);
+              }
+            } catch (e) {}
+          }, 3000);
+
+          setTimeout(() => {
+            if (!aprobado) {
+              clearInterval(pollId);
+              const statusEl = document.getElementById('poll-status');
+              if (statusEl) {
+                statusEl.innerHTML = '<span style="color: #ef4444;">Tiempo de espera agotado</span>';
+              }
+            }
+          }, 600000);
+        },
+        willClose: () => {
+          if (pollId) clearInterval(pollId);
+        }
+      });
+    } catch (error) {
+      Swal.fire('Error', error.response?.data?.error || 'No se pudo generar el pago.', 'error');
+    }
+  } else {
+    // Alias: mostrar alias y botón para marcar como pagado
+    try {
+      const aliasResp = await axios.get('/api/configuracion-local/');
+      const alias = aliasResp.data?.mp_alias || 'No configurado';
+
+      const { value: nroComprobante, isConfirmed: aliasConfirmed } = await Swal.fire({
+        title: 'Transferencia por Alias',
+        html: `
+          <div style="text-align: center;">
+            <div style="background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 16px;">
+              <p style="margin: 0; color: #64748b; font-size: 0.9rem;">Monto a cobrar</p>
+              <p style="margin: 5px 0 0 0; color: #10b981; font-size: 1.8rem; font-weight: 800;">$${formatPrecio(falta)}</p>
+            </div>
+            <p style="color: #334155; font-size: 0.95rem; margin: 0 0 4px;">Pedile al cliente que transfiera al alias:</p>
+            <div style="background: #0f172a; color: #a5f3fc; font-size: 1.3rem; font-weight: 800; padding: 12px 20px; border-radius: 10px; letter-spacing: 1px; font-family: monospace; display: inline-block; margin: 8px 0 16px;">
+              ${alias}
+            </div>
+            <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 12px;">Cuando el cliente haya transferido, ingresá el id de operación (opcional) y confirmá.</p>
+            <input id="nro_comprobante" class="swal2-input" placeholder="ID de operación (12 dígitos, opcional)" inputmode="numeric" maxlength="12" style="width: 100%; margin: 0; box-sizing: border-box; text-align: center; font-size: 0.95rem; letter-spacing: 2px;" />
+          </div>
+        `,
+        showCancelButton: true,
+        confirmButtonColor: '#10b981',
+        confirmButtonText: 'Ya me transfirió',
+        cancelButtonText: 'Cancelar',
+        cancelButtonColor: '#94a3b8',
+        allowOutsideClick: false,
+        didOpen: () => {
+          const inp = document.getElementById('nro_comprobante');
+          if (inp) inp.addEventListener('input', () => { inp.value = inp.value.replace(/\D/g, ''); });
+        },
+        preConfirm: () => {
+          const val = document.getElementById('nro_comprobante').value.trim();
+          if (val && !/^\d{12}$/.test(val)) {
+            Swal.showValidationMessage('Deben ser exactamente 12 dígitos numéricos');
+            return false;
+          }
+          return val;
+        }
+      });
+
+      if (aliasConfirmed) {
+        await axios.post(`/api/turnos/${turno.id}/pagar-saldo/`, { metodo: 'ALIAS', nro_comprobante: nroComprobante || '' });
+        await cargarTurnos();
+        Swal.fire('Pago registrado', `Cobro de $${formatPrecio(falta)} por alias MP registrado.`, 'success');
+      }
+    } catch (error) {
+      Swal.fire('Error', error.response?.data?.error || 'No se pudo registrar el pago.', 'error');
     }
   }
 }
@@ -1129,7 +1204,7 @@ const verDetalleTurno = async (turno) => {
                       <span style="font-size: 1.2rem;">🏦</span> ${getMedioPagoTexto(turnoDetalle.medio_pago_restante, turnoDetalle.entidad_pago_restante)}
                     </span>
                     <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; background: #1e293b; padding: 4px 12px; border-radius: 40px; color: #a5f3fc; letter-spacing: 0.5px; margin-left: auto;">
-                      ${turnoDetalle.codigo_transaccion_restante || 'Sin Comprobante'}
+                      ${turnoDetalle.mp_payment_id_saldo || turnoDetalle.codigo_transaccion_restante || 'Sin Comprobante'}
                     </span>
                   </div>
                 </div>

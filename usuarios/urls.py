@@ -171,6 +171,7 @@ urlpatterns = [
     path('api/turnos/<int:turno_id>/completar-reembolso-manual/', func_views.completar_reembolso_manual, name='completar_reembolso_manual'),
     path('api/turnos/<int:turno_id>/cambiar-estado/<str:nuevo_estado>/', func_views.cambiar_estado_turno, name='cambiar_estado_turno'),
     path('api/turnos/<int:turno_id>/completar-pago/', func_views.completar_pago_turno, name='completar_pago_turno'),
+    path('api/turnos/<int:turno_id>/pagar-saldo/', func_views.pagar_saldo_turno, name='pagar_saldo_turno'),
     path('api/turnos/registrar-interes/', func_views.registrar_interes_turno, name='registrar_interes_turno'),
     path('api/turnos/<int:turno_id>/interesados/', contar_interesados, name='contar_interesados'),
     path('api/turnos/ocupados/', turnos_ocupados, name='turnos_ocupados'),

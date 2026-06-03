@@ -2375,6 +2375,93 @@ def completar_pago_turno(request, turno_id):
         }, status=500)
     
 @csrf_exempt
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def pagar_saldo_turno(request, turno_id):
+    """
+    Paga el saldo pendiente de un turno (SENA_50).
+    EFECTIVO -> registra inmediato.
+    MERCADO_PAGO -> genera preferencia MP, retorna init_point.
+    """
+    try:
+        turno = Turno.objects.get(id=turno_id)
+    except Turno.DoesNotExist:
+        return Response({'error': 'Turno no encontrado'}, status=404)
+
+    if turno.tipo_pago != 'SENA_50' or turno.medio_pago_restante:
+        return Response({'error': 'No hay saldo pendiente para este turno'}, status=400)
+
+    sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+    if not sesion_abierta:
+        return Response({'error': 'Debe abrir una caja antes de cobrar.'}, status=400)
+
+    total = float(turno.monto_total or 0)
+    pagado = float(turno.monto_seña or 0)
+    saldo = round(max(0, total - pagado), 2)
+
+    if saldo <= 0:
+        return Response({'error': 'El turno ya está saldado.'}, status=400)
+
+    metodo = request.data.get('metodo', '')
+
+    if metodo == 'EFECTIVO':
+        turno.medio_pago_restante = 'EFECTIVO'
+        turno.tipo_pago = 'TOTAL'
+        turno.monto_seña = turno.monto_total
+        turno.save()
+
+        MovimientoCaja.objects.create(
+            sesion_caja=sesion_abierta,
+            tipo='INGRESO',
+            metodo_pago='EFECTIVO',
+            concepto='TURNO_PRESENCIAL',
+            monto=saldo,
+            descripcion=f"Cobro saldo Turno #{turno.id} - Efectivo",
+            turno_relacionado=turno
+        )
+
+        return Response({'status': 'ok', 'metodo': 'EFECTIVO', 'saldo': saldo})
+
+    elif metodo == 'MERCADO_PAGO':
+        mp_service = MercadoPagoService()
+        resultado = mp_service.crear_preferencia_saldo(turno, saldo)
+
+        if not resultado['success']:
+            return Response({'error': resultado.get('error', 'Error al crear pago en MP')}, status=500)
+
+        return Response({
+            'status': 'ok',
+            'metodo': 'MERCADO_PAGO',
+            'saldo': saldo,
+            'init_point': resultado['init_point'],
+            'preference_id': resultado['preference_id']
+        })
+
+    elif metodo == 'ALIAS':
+        nro_comprobante = str(request.data.get('nro_comprobante', '') or '').strip()
+        turno.medio_pago_restante = 'MERCADO_PAGO'
+        turno.tipo_pago = 'TOTAL'
+        turno.monto_seña = turno.monto_total
+        if nro_comprobante:
+            turno.codigo_transaccion_restante = nro_comprobante
+        turno.save()
+
+        MovimientoCaja.objects.create(
+            sesion_caja=sesion_abierta,
+            tipo='INGRESO',
+            metodo_pago='MERCADO_PAGO',
+            concepto='TURNO_PRESENCIAL',
+            monto=saldo,
+            descripcion=f"Cobro saldo Turno #{turno.id} - Alias MP" + (f" (Comp: {nro_comprobante})" if nro_comprobante else ""),
+            turno_relacionado=turno
+        )
+
+        return Response({'status': 'ok', 'metodo': 'ALIAS', 'saldo': saldo})
+
+    else:
+        return Response({'error': f'Método de pago no válido: {metodo}'}, status=400)
+
+@csrf_exempt
 def turnos_ocupados(request):
     fecha = request.GET.get("fecha")
     peluquero_id = request.GET.get("peluquero_id") or request.GET.get("peluquero")
@@ -2777,6 +2864,19 @@ def pago_exitoso(request):
                 pedido.save()
             
             return redirect(f"{frontend_url}/client/mis-pedidos?pago_exitoso=true&pedido_id={pedido_id}")
+
+        elif "TURNO_SALDO" in external_reference:
+            turno_id = external_reference.split('_')[2]
+            turno = Turno.objects.get(id=turno_id)
+            
+            if not turno.mp_payment_id_saldo:
+                turno.medio_pago_restante = 'MERCADO_PAGO'
+                turno.mp_payment_id_saldo = payment_id
+                turno.tipo_pago = 'TOTAL'
+                turno.monto_seña = turno.monto_total
+                turno.save()
+            
+            return redirect(f"{frontend_url}/turnos/listado?pago_exitoso=true&turno_id={turno_id}")
 
         elif "TURNO_" in external_reference:
             turno_id = external_reference.split('_')[1]
@@ -6125,19 +6225,36 @@ def mercadopago_webhook(request):
             if not hasattr(_thread_locals, 'request_data') or _thread_locals.request_data is None:
                 _thread_locals.request_data = {}
 
-            # Actualizar Turno
-            if 'TURNO' in referencia.upper():
-                concepto_caja = 'TURNO_WEB'
-                descripcion_mov = f"Pago Turno Web #{id_obj} (MP: {payment_id})"
+            # Saldo de Turno (pago del restante)
+            if 'TURNO_SALDO' in referencia.upper():
+                turno_id = referencia.split('_')[2]
+                concepto_caja = 'TURNO_PRESENCIAL'
+                descripcion_mov = f"Pago saldo Turno #{turno_id} (MP: {payment_id})"
                 from usuarios.models import Turno
-                turno_rel = Turno.objects.filter(id=id_obj).first()
+                turno_rel = Turno.objects.filter(id=turno_id).first()
+                if turno_rel:
+                    _thread_locals.request_data['user'] = getattr(turno_rel, 'cliente', None)
+                    turno_rel.medio_pago_restante = 'MERCADO_PAGO'
+                    turno_rel.mp_payment_id_saldo = payment_id
+                    turno_rel.tipo_pago = 'TOTAL'
+                    turno_rel.monto_seña = turno_rel.monto_total
+                    turno_rel.save()
+                    print(f"✅ Saldo Turno {turno_id} actualizado en BD.")
+
+            # Seña de Turno
+            elif 'TURNO_' in referencia.upper():
+                turno_id = referencia.split('_')[1]
+                concepto_caja = 'TURNO_WEB'
+                descripcion_mov = f"Pago Turno Web #{turno_id} (MP: {payment_id})"
+                from usuarios.models import Turno
+                turno_rel = Turno.objects.filter(id=turno_id).first()
                 if turno_rel:
                     _thread_locals.request_data['user'] = getattr(turno_rel, 'cliente', None)
                     turno_rel.mp_payment_id = payment_id
                     if turno_rel.estado == 'PENDIENTE': 
                         turno_rel.estado = 'RESERVADO'
                     turno_rel.save()
-                    print(f"✅ Turno {id_obj} actualizado en BD.")
+                    print(f"✅ Turno {turno_id} actualizado en BD.")
 
             # Actualizar Pedido Web
             elif 'PEDIDO' in referencia.upper():

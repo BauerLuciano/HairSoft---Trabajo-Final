@@ -175,10 +175,14 @@
                       style="height: 100%; width: 100%;"
                     >
                       <l-tile-layer
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        v-for="tile in tilesBase" :key="tile.name"
+                        :name="tile.name"
+                        :visible="tile.visible"
+                        :url="tile.url"
+                        :attribution="tile.att"
                         layer-type="base"
-                        name="OpenStreetMap"
                       ></l-tile-layer>
+                      <l-control-layers></l-control-layers>
                       <l-marker
                         :lat-lng="[configEnvios.latitud_local, configEnvios.longitud_local]"
                         draggable
@@ -186,15 +190,22 @@
                       ></l-marker>
                     </l-map>
                   </div>
-                  <div style="display: flex; gap: 20px; margin-top: 10px;">
-                    <small class="hint-text">Lat: {{ configEnvios.latitud_local?.toFixed(4) }}</small>
-                    <small class="hint-text">Lng: {{ configEnvios.longitud_local?.toFixed(4) }}</small>
+                  <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 10px;">
+                    <small class="hint-text">Lat: {{ configEnvios.latitud_local?.toFixed(4) }} &mdash; Lng: {{ configEnvios.longitud_local?.toFixed(4) }}</small>
+                    <small v-if="direccionLocal" class="hint-text" style="color: #10b981; font-weight: 600;">
+                      <i class="fas fa-map-pin"></i> {{ direccionLocal }}
+                    </small>
+                  </div>
+                  <div class="filter-group" style="margin-top: 10px;">
+                    <label>Referencia / Detalle del Local</label>
+                    <input v-model="configEnvios.direccion_referencia" type="text" class="filter-input" placeholder="Ej: Galería Colón, Local 5, 1er Piso" />
+                  </div>
+                  <div class="filter-group" style="margin-top: 10px;">
+                    <label>Alias de Mercado Pago</label>
+                    <input v-model="configEnvios.mp_alias" type="text" class="filter-input" placeholder="Ej: hairsoft.mp" />
                   </div>
                 </div>
 
-                <small class="hint-text" style="margin-top: 10px; display: block;">
-                  * El costo se calcula como: Tarifa base + (distancia en km × precio por km)
-                </small>
               </div>
             </div>
 
@@ -226,7 +237,7 @@ import { Building2, Clock, Save, Loader2, Info, Store } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 import GestionSillas from '@/components/GestionSillas.vue'; 
 import GestionCajas from '@/components/GestionCajas.vue';
-import { LMap, LTileLayer, LMarker } from '@vue-leaflet/vue-leaflet'
+import { LMap, LTileLayer, LMarker, LControlLayers } from '@vue-leaflet/vue-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 
@@ -257,22 +268,53 @@ const configEnvios = ref({
   longitud_local: -54.4362,
   tarifa_base_envio: 500,
   precio_por_km: 300,
-  radio_cobertura_km: 10
+  radio_cobertura_km: 10,
+  direccion_referencia: '',
+  mp_alias: ''
 })
+
+const direccionLocal = ref('')
 
 const cargando = ref(true)
 const guardando = ref(false)
 const previewLogo = ref(null)
 const logoFile = ref(null)
 
+const tilesBase = [
+  { name: 'Calle', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', visible: true, att: '&copy; <a href="https://osm.org">OpenStreetMap</a>' },
+  { name: 'Satelital', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', visible: false, att: '&copy; <a href="https://esri.com">Esri</a>' },
+  { name: 'Relieve', url: 'https://tile.opentopomap.org/{z}/{x}/{y}.png', visible: false, att: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a>' },
+]
+
+const reverseGeocode = async (lat, lng) => {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`,
+      { headers: { 'Accept-Language': 'es' } }
+    )
+    const data = await res.json()
+    if (data && data.display_name) {
+      direccionLocal.value = data.display_name
+    } else {
+      direccionLocal.value = ''
+    }
+  } catch {
+    direccionLocal.value = ''
+  }
+}
+
+const actualizarCoordenadas = (lat, lng) => {
+  configEnvios.value.latitud_local = lat
+  configEnvios.value.longitud_local = lng
+  reverseGeocode(lat, lng)
+}
+
 const moverMarcador = (event) => {
-  configEnvios.value.latitud_local = event.latlng.lat
-  configEnvios.value.longitud_local = event.latlng.lng
+  actualizarCoordenadas(event.latlng.lat, event.latlng.lng)
 }
 
 const marcadorArrastrado = (event) => {
-  configEnvios.value.latitud_local = event.target.getLatLng().lat
-  configEnvios.value.longitud_local = event.target.getLatLng().lng
+  actualizarCoordenadas(event.target.getLatLng().lat, event.target.getLatLng().lng)
 }
 
 const obtenerConfig = async () => {
@@ -296,6 +338,7 @@ const obtenerConfig = async () => {
     if (resEnvios.data && Object.keys(resEnvios.data).length > 0) {
       configEnvios.value = resEnvios.data
     }
+    reverseGeocode(configEnvios.value.latitud_local, configEnvios.value.longitud_local)
   } catch (e) {
     console.error(e)
     Swal.fire({
@@ -374,7 +417,9 @@ const guardarCambios = async () => {
         longitud_local: configEnvios.value.longitud_local,
         tarifa_base_envio: configEnvios.value.tarifa_base_envio,
         precio_por_km: configEnvios.value.precio_por_km,
-        radio_cobertura_km: configEnvios.value.radio_cobertura_km
+        radio_cobertura_km: configEnvios.value.radio_cobertura_km,
+        direccion_referencia: configEnvios.value.direccion_referencia,
+        mp_alias: configEnvios.value.mp_alias
       })
     ])
     

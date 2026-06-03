@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, filters, generics, permissions, status, serializers
 from django.conf import settings
 from rest_framework.authtoken.models import Token
@@ -479,13 +480,40 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
             })
 
         # --- Lógica para el resto de los estados ---
+        whatsapp_enviado = False
         if nuevo_estado == 'EN_CAMINO':
             pedido.datos_entrega_interna = repartidor
-        
+
+            # WhatsApp al cliente + tiempo estimado por OSRM
+            if pedido.tipo_entrega == 'MOTO' and pedido.latitud_entrega and pedido.longitud_entrega:
+                try:
+                    from .envio_service import distancia_por_ruta
+                    from .models import ConfiguracionLocal
+                    config_local = ConfiguracionLocal.get_solo()
+                    _km, _ruta_coords, duracion_segundos = distancia_por_ruta(
+                        float(config_local.latitud_local),
+                        float(config_local.longitud_local),
+                        float(pedido.latitud_entrega),
+                        float(pedido.longitud_entrega),
+                    )
+                    tiempo_estimado = round(duracion_segundos / 60) if duracion_segundos > 0 else 0
+                    if tiempo_estimado > 0:
+                        pedido.datos_entrega_interna = repartidor
+                        pedido.tiempo_estimado_minutos = tiempo_estimado
+                        from .tasks import enviar_whatsapp_pedido_en_camino
+                        enviar_whatsapp_pedido_en_camino.delay(pedido.id, repartidor, tiempo_estimado)
+                        whatsapp_enviado = True
+                except Exception as e:
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"❌ Error al calcular OSRM/encolar WhatsApp EN_CAMINO #{pedido.id}: {e}")
+
         pedido.estado = nuevo_estado
         pedido.save()
 
-        return Response({"message": f"Estado actualizado a {nuevo_estado}"})
+        return Response({
+            "message": f"Estado actualizado a {nuevo_estado}",
+            "whatsapp_enviado": whatsapp_enviado,
+        })
     
 class SillaViewSet(viewsets.ModelViewSet):
     queryset = Silla.objects.all().order_by('orden')
@@ -888,11 +916,13 @@ class CalcularEnvioView(APIView):
         if lat is None or lng is None:
             return Response({'error': 'latitud y longitud son requeridos'}, status=400)
         from .envio_service import calcular_costo_envio
-        costo, distancia, dentro_cobertura = calcular_costo_envio(float(lat), float(lng))
+        costo, distancia, dentro_cobertura, ruta_coords, tiempo_estimado_minutos = calcular_costo_envio(float(lat), float(lng))
         return Response({
             'costo_envio': costo,
             'distancia_km': distancia,
-            'dentro_cobertura': dentro_cobertura
+            'dentro_cobertura': dentro_cobertura,
+            'ruta_coords': ruta_coords,
+            'tiempo_estimado_minutos': tiempo_estimado_minutos,
         })
 
 class EnvioViewSet(viewsets.ModelViewSet):
