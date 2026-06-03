@@ -304,19 +304,31 @@
               <div v-if="form.medio_pago === 'MERCADO_PAGO'" class="datos-transferencia-container slide-in">
                 <div class="input-group" style="margin-bottom: 12px;">
                   <label class="label-modern">Modalidad de cobro</label>
-                  <div class="pago-options" style="display: flex; gap: 8px;">
-                    <label class="radio-box" style="flex: 1; margin: 0;" :class="{ 'radio-active': subMetodoPago === 'QR' }">
+                  <div class="mp-opciones">
+                    <label class="mp-card" :class="{ 'mp-card-active': subMetodoPago === 'QR' }">
                       <input type="radio" v-model="subMetodoPago" value="QR" class="hidden-radio">
-                      <div class="radio-content">
-                        <span style="font-weight: 600;">QR</span>
-                        <small style="color: #64748b; font-size: 0.7rem;">Cliente escanea</small>
+                      <div class="mp-card-icon mp-card-icon-qr">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="4" height="4"/></svg>
+                      </div>
+                      <div class="mp-card-text">
+                        <span class="mp-card-title">Código QR</span>
+                        <span class="mp-card-sub">Cliente escanea con su celular</span>
+                      </div>
+                      <div class="mp-card-check">
+                        <svg v-if="subMetodoPago === 'QR'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
                       </div>
                     </label>
-                    <label class="radio-box" style="flex: 1; margin: 0;" :class="{ 'radio-active': subMetodoPago === 'ALIAS' }">
+                    <label class="mp-card" :class="{ 'mp-card-active': subMetodoPago === 'ALIAS' }">
                       <input type="radio" v-model="subMetodoPago" value="ALIAS" class="hidden-radio">
-                      <div class="radio-content">
-                        <span style="font-weight: 600;">Alias</span>
-                        <small style="color: #64748b; font-size: 0.7rem;">Transferencia manual</small>
+                      <div class="mp-card-icon mp-card-icon-alias">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="8" y1="18" x2="16" y2="18"/></svg>
+                      </div>
+                      <div class="mp-card-text">
+                        <span class="mp-card-title">Transferencia por Alias</span>
+                        <span class="mp-card-sub">Admin confirma manualmente</span>
+                      </div>
+                      <div class="mp-card-check">
+                        <svg v-if="subMetodoPago === 'ALIAS'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
                       </div>
                     </label>
                   </div>
@@ -916,7 +928,7 @@ const mostrarQRPresencial = async (turnoId, mpData) => {
       pollId = setInterval(async () => {
         try {
           const check = await axios.get(`/api/turnos/${turnoId}/`)
-          if (check.data.medio_pago_restante === 'MERCADO_PAGO' || check.data.mp_payment_id_saldo) {
+          if (check.data.mp_payment_id) {
             aprobado = true
             clearInterval(pollId)
             const statusEl = document.getElementById('poll-status')
@@ -1946,6 +1958,99 @@ onBeforeUnmount(() => {
   margin-top: 15px; 
   padding-top: 15px;
   border-bottom: none; 
+}
+
+/* MP Opciones (QR / Alias) */
+.mp-opciones {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mp-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: #1e293b;
+  border: 2px solid #334155;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+}
+
+.mp-card:hover {
+  border-color: #475569;
+  background: #1a2636;
+  transform: translateY(-1px);
+}
+
+.mp-card-active {
+  border-color: #0ea5e9;
+  background: rgba(14, 165, 233, 0.08);
+  box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.15);
+}
+
+.mp-card-active:has(input[value="ALIAS"]:checked) {
+  border-color: #eab308;
+  background: rgba(234, 179, 8, 0.08);
+  box-shadow: 0 0 0 1px rgba(234, 179, 8, 0.15);
+}
+
+.mp-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mp-card-icon-qr {
+  background: rgba(14, 165, 233, 0.15);
+  color: #38bdf8;
+}
+
+.mp-card-active .mp-card-icon-qr {
+  background: rgba(14, 165, 233, 0.25);
+}
+
+.mp-card-icon-alias {
+  background: rgba(234, 179, 8, 0.15);
+  color: #facc15;
+}
+
+.mp-card-active .mp-card-icon-alias {
+  background: rgba(234, 179, 8, 0.25);
+}
+
+.mp-card-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mp-card-title {
+  font-weight: 600;
+  color: #f1f5f9;
+  font-size: 0.95rem;
+}
+
+.mp-card-sub {
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.mp-card-check {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .pago-section {
