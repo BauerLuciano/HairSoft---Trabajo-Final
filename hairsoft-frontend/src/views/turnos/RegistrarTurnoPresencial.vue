@@ -1990,7 +1990,7 @@ onBeforeUnmount(() => {
 }
 
 .fecha-horarios-grid .calendar-wrapper {
-  flex: 0 0 380px;
+  flex: 0 0 420px;
 }
 
 .horarios-column {
