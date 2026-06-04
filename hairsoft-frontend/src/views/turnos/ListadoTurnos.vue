@@ -160,7 +160,12 @@
                   </span>
 
                   <div style="font-size: 0.85rem; color: #94a3b8; margin-top: 6px; font-weight: 500;">
-                    Seña: ${{ formatPrecio(turno.monto_seña || 0) }} ({{ getMedioPagoTexto(turno.medio_pago, turno.entidad_pago) }})
+                    <template v-if="turno.tipo_pago === 'SENA_50'">
+                      Seña: ${{ formatPrecio(turno.monto_seña || 0) }} ({{ getMedioPagoTexto(turno.medio_pago, turno.entidad_pago) }})
+                    </template>
+                    <template v-else>
+                      Pago total: ${{ formatPrecio(turno.monto_total || 0) }} ({{ getMedioPagoTexto(turno.medio_pago, turno.entidad_pago) }})
+                    </template>
                   </div>
 
                   <div v-if="turno.saldo_pendiente === 0 && (turno.mp_payment_id_saldo || turno.codigo_transaccion_restante)" style="font-size: 0.8rem; color: #38bdf8; margin-top: 4px; font-weight: 500;">
