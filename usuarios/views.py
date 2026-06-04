@@ -2478,10 +2478,15 @@ def pagar_saldo_turno(request, turno_id):
     metodo = request.data.get('metodo', '')
 
     if metodo == 'EFECTIVO':
-        turno.medio_pago_restante = 'EFECTIVO'
-        turno.tipo_pago = 'TOTAL'
-        turno.monto_seña = turno.monto_total
-        turno.save()
+        from usuarios.middleware import _thread_locals
+        _thread_locals._suspender_auditoria = True
+        try:
+            turno.medio_pago_restante = 'EFECTIVO'
+            turno.tipo_pago = 'TOTAL'
+            turno.monto_seña = turno.monto_total
+            turno.save()
+        finally:
+            _thread_locals._suspender_auditoria = False
 
         MovimientoCaja.objects.create(
             sesion_caja=sesion_abierta,
@@ -2522,12 +2527,17 @@ def pagar_saldo_turno(request, turno_id):
 
     elif metodo == 'ALIAS':
         nro_comprobante = str(request.data.get('nro_comprobante', '') or '').strip()
-        turno.medio_pago_restante = 'MERCADO_PAGO'
-        turno.tipo_pago = 'TOTAL'
-        turno.monto_seña = turno.monto_total
-        if nro_comprobante:
-            turno.codigo_transaccion_restante = nro_comprobante
-        turno.save()
+        from usuarios.middleware import _thread_locals
+        _thread_locals._suspender_auditoria = True
+        try:
+            turno.medio_pago_restante = 'MERCADO_PAGO'
+            turno.tipo_pago = 'TOTAL'
+            turno.monto_seña = turno.monto_total
+            if nro_comprobante:
+                turno.codigo_transaccion_restante = nro_comprobante
+            turno.save()
+        finally:
+            _thread_locals._suspender_auditoria = False
 
         MovimientoCaja.objects.create(
             sesion_caja=sesion_abierta,
@@ -6341,12 +6351,15 @@ def mercadopago_webhook(request):
                 from usuarios.models import Turno
                 turno_rel = Turno.objects.filter(id=turno_id).first()
                 if turno_rel:
-                    _thread_locals.request_data['user'] = getattr(turno_rel, 'cliente', None)
-                    turno_rel.medio_pago_restante = 'MERCADO_PAGO'
-                    turno_rel.mp_payment_id_saldo = payment_id
-                    turno_rel.tipo_pago = 'TOTAL'
-                    turno_rel.monto_seña = turno_rel.monto_total
-                    turno_rel.save()
+                    _thread_locals._suspender_auditoria = True
+                    try:
+                        turno_rel.medio_pago_restante = 'MERCADO_PAGO'
+                        turno_rel.mp_payment_id_saldo = payment_id
+                        turno_rel.tipo_pago = 'TOTAL'
+                        turno_rel.monto_seña = turno_rel.monto_total
+                        turno_rel.save()
+                    finally:
+                        _thread_locals._suspender_auditoria = False
                     print(f"✅ Saldo Turno {turno_id} actualizado en BD.")
 
             # Seña de Turno
