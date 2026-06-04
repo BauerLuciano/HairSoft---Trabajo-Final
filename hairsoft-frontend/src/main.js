@@ -14,6 +14,18 @@ import 'bootstrap/dist/js/bootstrap.bundle.min.js';
 
 axios.defaults.withCredentials = true;
 
+function detectarNavegadorReal() {
+  if (typeof navigator === 'undefined') return null
+  if (navigator.brave !== undefined) return 'Brave'
+  return null
+}
+
+axios.interceptors.request.use((config) => {
+  const navegador = detectarNavegadorReal()
+  if (navegador) config.headers['X-Navegador-Real'] = navegador
+  return config
+})
+
 // Crear la app
 const app = createApp(App);
 const pinia = createPinia();

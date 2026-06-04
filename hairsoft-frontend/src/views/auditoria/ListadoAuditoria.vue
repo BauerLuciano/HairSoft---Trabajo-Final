@@ -358,6 +358,7 @@ const getIconoNavegador = (navegadorInfo) => {
   const navLower = navegadorInfo.toLowerCase();
   if (navLower.includes('edge')) return 'fab fa-edge';
   if (navLower.includes('opera') || navLower.includes('opr')) return 'fab fa-opera';
+  if (navLower.includes('brave')) return 'fab fa-brave';
   if (navLower.includes('chrome')) return 'fab fa-chrome';
   if (navLower.includes('firefox')) return 'fab fa-firefox-browser';
   if (navLower.includes('safari')) return 'fab fa-safari';
@@ -369,6 +370,7 @@ const getColorNavegador = (navegadorInfo) => {
   const navLower = navegadorInfo.toLowerCase();
   if (navLower.includes('edge')) return 'text-edge';
   if (navLower.includes('opera') || navLower.includes('opr')) return 'text-opera';
+  if (navLower.includes('brave')) return 'text-brave';
   if (navLower.includes('chrome')) return 'text-chrome';
   if (navLower.includes('firefox')) return 'text-firefox';
   if (navLower.includes('safari')) return 'text-safari';
@@ -550,7 +552,9 @@ const cargarUsuarios = async () => {
   }
 };
 
-onMounted(() => { cargarAuditoria(); cargarUsuarios() })
+onMounted(() => { 
+  cargarAuditoria(); cargarUsuarios() 
+})
 </script>
 
 <style scoped>
@@ -708,6 +712,7 @@ onMounted(() => { cargarAuditoria(); cargarUsuarios() })
 /* COLORES NAVEGADOR */
 .text-edge { color: #3b82f6; }
 .text-chrome { color: #10b981; }
+.text-brave { color: #fb542b; }
 .text-firefox { color: #f97316; }
 .text-opera { color: #ef4444; }
 .text-safari { color: #0ea5e9; }

@@ -6380,10 +6380,14 @@ def mercadopago_webhook(request):
                 turno_rel = Turno.objects.filter(id=turno_id).first()
                 if turno_rel:
                     _thread_locals.request_data['user'] = getattr(turno_rel, 'cliente', None)
-                    turno_rel.mp_payment_id = payment_id
-                    if turno_rel.estado == 'PENDIENTE': 
-                        turno_rel.estado = 'RESERVADO'
-                    turno_rel.save()
+                    _thread_locals._suspender_auditoria = True
+                    try:
+                        turno_rel.mp_payment_id = payment_id
+                        if turno_rel.estado == 'PENDIENTE': 
+                            turno_rel.estado = 'RESERVADO'
+                        turno_rel.save()
+                    finally:
+                        _thread_locals._suspender_auditoria = False
                     print(f"✅ Turno {turno_id} actualizado en BD.")
 
             # Actualizar Pedido Web
@@ -6394,9 +6398,13 @@ def mercadopago_webhook(request):
                 pedido_rel = PedidoWeb.objects.filter(id=id_obj).first()
                 if pedido_rel:
                     _thread_locals.request_data['user'] = pedido_rel.cliente
-                    pedido_rel.estado = 'PAGADO'
-                    pedido_rel.mp_payment_id = payment_id
-                    pedido_rel.save()
+                    _thread_locals._suspender_auditoria = True
+                    try:
+                        pedido_rel.estado = 'PAGADO'
+                        pedido_rel.mp_payment_id = payment_id
+                        pedido_rel.save()
+                    finally:
+                        _thread_locals._suspender_auditoria = False
                     print(f"✅ Pedido {id_obj} actualizado en BD.")
                     
                     # 🔥 DISPARADOR DE NOTIFICACIÓN AGREGADO AQUÍ 🔥

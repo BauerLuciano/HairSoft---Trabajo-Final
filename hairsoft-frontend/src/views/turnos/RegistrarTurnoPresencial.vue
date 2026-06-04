@@ -455,10 +455,14 @@ const API_URL = `${API_BASE_URL}/api`;
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token')
-  return {
+  const headers = {
     "Content-Type": "application/json",
     "Authorization": token ? `Token ${token}` : ''
   }
+  if (typeof navigator !== 'undefined' && navigator.brave !== undefined) {
+    headers['X-Navegador-Real'] = 'Brave'
+  }
+  return headers
 }
 
 const form = ref({

@@ -24,6 +24,11 @@ api.interceptors.request.use(config => {
   if (token) {
     config.headers.Authorization = `Token ${token}`;
   }
+
+  if (typeof navigator !== 'undefined' && navigator.brave !== undefined) {
+    config.headers['X-Navegador-Real'] = 'Brave';
+  }
+
   return config;
 });
 

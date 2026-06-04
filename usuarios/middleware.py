@@ -54,11 +54,12 @@ class AuditoriaMiddleware:
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
         user_agent = request.META.get('HTTP_USER_AGENT', 'Desconocido')[:250]
+        navegador_real = request.META.get('HTTP_X_NAVEGADOR_REAL', '')
 
         _thread_locals.request_data = {
             'user': user,
             'ip': ip,
-            'navegador': user_agent
+            'navegador': navegador_real if navegador_real else user_agent
         }
         
         try:

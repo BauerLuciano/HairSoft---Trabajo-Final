@@ -176,6 +176,7 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
     'user-rol',
     'user-id',
+    'x-navegador-real',
 ]
 
 CORS_ALLOW_METHODS = [
