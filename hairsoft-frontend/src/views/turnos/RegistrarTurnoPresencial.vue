@@ -156,83 +156,90 @@
           <div v-if="form.peluquero && form.peluquero !== form.cliente" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon"><CalendarDays :size="20" /></div>
-              <h3>Fecha</h3>
+              <h3>Fecha y Horarios</h3>
             </div>
             
-            <div class="calendar-wrapper">
-              <div class="calendar-header">
-                <button @click="cambiarMes(-1)" class="btn-nav-cal"><ChevronLeft :size="20" /></button>
-                <span class="mes-titulo">{{ nombreMesActual }} {{ currentYear }}</span>
-                <button @click="cambiarMes(1)" class="btn-nav-cal"><ChevronRight :size="20" /></button>
-              </div>
-
-              <div class="calendar-days-header">
-                <span v-for="d in ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']" :key="d">{{ d }}</span>
-              </div>
-
-              <div class="calendar-grid">
-                <div v-for="i in startingDayOfWeek" :key="'empty-'+i" class="day-empty"></div>
-                <button 
-                  v-for="day in daysInMonth" 
-                  :key="day"
-                  class="day-btn"
-                  :class="{
-                    'day-today': esHoy(day),
-                    'day-selected': esDiaSeleccionado(day),
-                    'day-disabled': !esDiaSeleccionable(day)
-                  }"
-                  :disabled="!esDiaSeleccionable(day)"
-                  @click="seleccionarDiaCalendario(day)"
-                >
-                  {{ day }}
-                  <span v-if="esHoy(day)" class="badge-today">HOY</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="form.fecha" class="card-modern slide-in">
-            <div class="card-header">
-              <div class="card-icon"><Clock :size="20" /></div>
-              <h3>Horarios Disponibles</h3>
-            </div>
-            
-            <div v-if="cargandoHorarios" class="loading-spinner">
-              <Loader2 class="spinner-icon" :size="32" />
-              <p>Calculando disponibilidad...</p>
-            </div>
-            
-            <div v-else-if="horariosGenerados.length === 0" class="no-resultados">
-              <Clock class="no-resultados-icon" :size="48" />
-              <p>Local Cerrado en esta fecha</p>
-            </div>
-            
-            <div v-else class="grid-horarios">
-              <div
-                v-for="hora in horariosGenerados"
-                :key="hora"
-                class="hora-card"
-                :class="{
-                  'hora-selected': form.hora === hora,
-                  'hora-disponible': esHorarioDisponibleCompleto(hora),
-                  'hora-ocupada': !esHorarioDisponibleCompleto(hora),
-                  'ocupada-silla': obtenerDetalleOcupacion(hora) === 'SILLA',
-                  'ocupada-peluquero': obtenerDetalleOcupacion(hora) === 'PELUQUERO'
-                }"
-                @click="esHorarioDisponibleCompleto(hora) ? seleccionarHora(hora) : null"
-              >
-                <div class="hora-icono">
-                  <Clock v-if="esHorarioDisponibleCompleto(hora)" :size="16" />
-                  <Armchair v-else-if="obtenerDetalleOcupacion(hora) === 'SILLA'" :size="18" />
-                  <User v-else-if="obtenerDetalleOcupacion(hora) === 'PELUQUERO'" :size="18" />
-                  <X v-else :size="18" />
+            <div class="fecha-horarios-grid">
+              <div class="calendar-wrapper">
+                <div class="calendar-header">
+                  <button @click="cambiarMes(-1)" class="btn-nav-cal"><ChevronLeft :size="20" /></button>
+                  <span class="mes-titulo">{{ nombreMesActual }} {{ currentYear }}</span>
+                  <button @click="cambiarMes(1)" class="btn-nav-cal"><ChevronRight :size="20" /></button>
                 </div>
-                <span class="hora-texto">{{ hora }}</span>
+
+                <div class="calendar-days-header">
+                  <span v-for="d in ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']" :key="d">{{ d }}</span>
+                </div>
+
+                <div class="calendar-grid">
+                  <div v-for="i in startingDayOfWeek" :key="'empty-'+i" class="day-empty"></div>
+                  <button 
+                    v-for="day in daysInMonth" 
+                    :key="day"
+                    class="day-btn"
+                    :class="{
+                      'day-today': esHoy(day),
+                      'day-selected': esDiaSeleccionado(day),
+                      'day-disabled': !esDiaSeleccionable(day)
+                    }"
+                    :disabled="!esDiaSeleccionable(day)"
+                    @click="seleccionarDiaCalendario(day)"
+                  >
+                    {{ day }}
+                    <span v-if="esHoy(day)" class="badge-today">HOY</span>
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="form.fecha" class="horarios-column">
+                <div class="horarios-column-header">
+                  <Clock :size="16" />
+                  <span>Horarios Disponibles</span>
+                </div>
                 
-                <span v-if="obtenerDetalleOcupacion(hora) === 'PELUQUERO'" class="etiqueta-ocupado peluquero">PELUQUERO</span>
-                <span v-else-if="obtenerDetalleOcupacion(hora) === 'SILLA'" class="etiqueta-ocupado silla">SILLA EN USO</span>
-                <span v-else-if="obtenerDetalleOcupacion(hora) === 'LOCAL_LLENO'" class="etiqueta-ocupado lleno">SIN SILLAS</span>
-                <span v-else-if="obtenerDetalleOcupacion(hora) === 'PASADO'" class="etiqueta-ocupado pasado">EXPIRÓ</span>
+                <div v-if="cargandoHorarios" class="loading-spinner" style="padding: 30px 10px;">
+                  <Loader2 class="spinner-icon" :size="24" />
+                  <p>Calculando disponibilidad...</p>
+                </div>
+                
+                <div v-else-if="horariosGenerados.length === 0" class="no-resultados" style="padding: 30px 10px;">
+                  <Clock class="no-resultados-icon" :size="36" />
+                  <p>Local Cerrado en esta fecha</p>
+                </div>
+                
+                <div v-else class="grid-horarios">
+                  <div
+                    v-for="hora in horariosGenerados"
+                    :key="hora"
+                    class="hora-card"
+                    :class="{
+                      'hora-selected': form.hora === hora,
+                      'hora-disponible': esHorarioDisponibleCompleto(hora),
+                      'hora-ocupada': !esHorarioDisponibleCompleto(hora),
+                      'ocupada-silla': obtenerDetalleOcupacion(hora) === 'SILLA',
+                      'ocupada-peluquero': obtenerDetalleOcupacion(hora) === 'PELUQUERO'
+                    }"
+                    @click="esHorarioDisponibleCompleto(hora) ? seleccionarHora(hora) : null"
+                  >
+                    <div class="hora-icono">
+                      <Clock v-if="esHorarioDisponibleCompleto(hora)" :size="16" />
+                      <Armchair v-else-if="obtenerDetalleOcupacion(hora) === 'SILLA'" :size="18" />
+                      <User v-else-if="obtenerDetalleOcupacion(hora) === 'PELUQUERO'" :size="18" />
+                      <X v-else :size="18" />
+                    </div>
+                    <span class="hora-texto">{{ hora }}</span>
+                    
+                    <span v-if="obtenerDetalleOcupacion(hora) === 'PELUQUERO'" class="etiqueta-ocupado peluquero">PELUQUERO</span>
+                    <span v-else-if="obtenerDetalleOcupacion(hora) === 'SILLA'" class="etiqueta-ocupado silla">SILLA EN USO</span>
+                    <span v-else-if="obtenerDetalleOcupacion(hora) === 'LOCAL_LLENO'" class="etiqueta-ocupado lleno">SIN SILLAS</span>
+                    <span v-else-if="obtenerDetalleOcupacion(hora) === 'PASADO'" class="etiqueta-ocupado pasado">EXPIRÓ</span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="!form.fecha" class="horarios-column horarios-column-empty">
+                <Clock :size="36" />
+                <p>Seleccioná una fecha para ver los horarios disponibles</p>
               </div>
             </div>
           </div>
@@ -1974,6 +1981,53 @@ onBeforeUnmount(() => {
   color: #ffffff; 
   cursor: not-allowed; 
   opacity: 0.6;
+}
+
+.fecha-horarios-grid {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.fecha-horarios-grid .calendar-wrapper {
+  flex: 0 0 380px;
+}
+
+.horarios-column {
+  flex: 1;
+  min-width: 0;
+}
+
+.horarios-column-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 1em;
+  color: #1f2937;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #f1f3f4;
+}
+
+.horarios-column-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  gap: 12px;
+  min-height: 220px;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .fecha-horarios-grid {
+    flex-direction: column;
+  }
+  .fecha-horarios-grid .calendar-wrapper {
+    flex: none;
+  }
 }
 
 .resumen-grid { 
