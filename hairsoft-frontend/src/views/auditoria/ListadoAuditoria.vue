@@ -483,14 +483,18 @@ const logsFiltrados = computed(() => {
       (log.modelo_afectado && log.modelo_afectado.toLowerCase().includes(term)) ||
       (log.accion && log.accion.toLowerCase().includes(term)) ||
       (log.ip_address && log.ip_address.toLowerCase().includes(term)) ||
-      (log.detalles && typeof log.detalles === 'string' && log.detalles.toLowerCase().includes(term));
+      (log.detalles && typeof log.detalles === 'string' && log.detalles.toLowerCase().includes(term)) ||
+      (log.detalles && typeof log.detalles === 'object' && JSON.stringify(log.detalles).toLowerCase().includes(term));
 
     const mod = determinarModulo(log);
     const matchModulo = !filtros.value.modulo || mod === filtros.value.modulo;
 
     const usr = log.usuario_nombre || 'Sistema';
     const matchUsuario = !filtros.value.usuario || usr === filtros.value.usuario;
-    const matchCliente = !filtros.value.cliente || usr === filtros.value.cliente;
+    const nombreClienteEnDetalles = (log.detalles && typeof log.detalles === 'object' && log.detalles.cliente?.valor) || '';
+    const matchCliente = !filtros.value.cliente || 
+      nombreClienteEnDetalles.includes(filtros.value.cliente) ||
+      usr === filtros.value.cliente;
 
     const tipoAccion = getTipoAccionGeneral(log.accion);
     const matchTipoAccion = !filtros.value.tipo_accion || tipoAccion === filtros.value.tipo_accion;
