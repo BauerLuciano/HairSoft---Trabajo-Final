@@ -2504,7 +2504,10 @@ def pagar_saldo_turno(request, turno_id):
             modelo_afectado='Turno',
             objeto_id=str(turno.id),
             accion='COBRO_RESTANTE',
-            detalles={'metodo': 'EFECTIVO', 'monto': saldo},
+            detalles={
+                'metodo': 'EFECTIVO', 'monto': saldo,
+                '__meta__': {'navegador': _thread_locals.request_data.get('navegador', 'Desconocido')}
+            },
             ip_address=ip
         )
 
@@ -2555,7 +2558,10 @@ def pagar_saldo_turno(request, turno_id):
             modelo_afectado='Turno',
             objeto_id=str(turno.id),
             accion='COBRO_RESTANTE',
-            detalles={'metodo': 'ALIAS', 'monto': saldo, 'comprobante': nro_comprobante or ''},
+            detalles={
+                'metodo': 'ALIAS', 'monto': saldo, 'comprobante': nro_comprobante or '',
+                '__meta__': {'navegador': _thread_locals.request_data.get('navegador', 'Desconocido')}
+            },
             ip_address=ip
         )
 
@@ -6360,6 +6366,18 @@ def mercadopago_webhook(request):
                         turno_rel.save()
                     finally:
                         _thread_locals._suspender_auditoria = False
+                    from usuarios.models import Auditoria as Aud
+                    Aud.objects.create(
+                        usuario=getattr(turno_rel, 'cliente', None),
+                        modelo_afectado='Turno',
+                        objeto_id=str(turno_id),
+                        accion='COBRO_RESTANTE',
+                        detalles={
+                            'metodo': 'MERCADO_PAGO', 'monto': monto,
+                            '__meta__': {'navegador': _thread_locals.request_data.get('navegador', 'Desconocido')}
+                        },
+                        ip_address='127.0.0.1'
+                    )
                     print(f"✅ Saldo Turno {turno_id} actualizado en BD.")
 
             # Seña de Turno
