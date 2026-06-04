@@ -1316,15 +1316,6 @@ def crear_turno(request):
                 descripcion=f"Cobro Turno (Presencial) #{turno.id} - Cliente: {cliente.nombre}",
                 turno_relacionado=turno
             )
-            ip = request.META.get('REMOTE_ADDR')
-            Auditoria.objects.create(
-                usuario=request.user,
-                modelo_afectado='Turno',
-                objeto_id=str(turno.id),
-                accion='COBRO_RESTANTE',
-                detalles={'metodo': metodo_pago_caja, 'monto': monto_seña, 'canal': 'PRESENCIAL'},
-                ip_address=ip
-            )
             print(f"✅ Ingreso a caja registrado por ${monto_seña}")
 
         # ---------------------------------------------------------
