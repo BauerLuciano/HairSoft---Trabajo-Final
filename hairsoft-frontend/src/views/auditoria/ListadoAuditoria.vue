@@ -491,10 +491,15 @@ const logsFiltrados = computed(() => {
 
     const usr = log.usuario_nombre || 'Sistema';
     const matchUsuario = !filtros.value.usuario || usr === filtros.value.usuario;
-    const nombreClienteEnDetalles = (log.detalles && typeof log.detalles === 'object' && log.detalles.cliente?.valor) || '';
+    const nombreClienteEnDetalles = (() => {
+      if (!log.detalles || typeof log.detalles !== 'object') return '';
+      if (log.detalles.cliente?.valor) return log.detalles.cliente.valor;
+      if (log.detalles.nombre?.valor && log.detalles.apellido?.valor)
+        return `${log.detalles.nombre.valor} ${log.detalles.apellido.valor}`;
+      return '';
+    })();
     const matchCliente = !filtros.value.cliente || 
-      nombreClienteEnDetalles.includes(filtros.value.cliente) ||
-      usr === filtros.value.cliente;
+      nombreClienteEnDetalles.includes(filtros.value.cliente);
 
     const tipoAccion = getTipoAccionGeneral(log.accion);
     const matchTipoAccion = !filtros.value.tipo_accion || tipoAccion === filtros.value.tipo_accion;
