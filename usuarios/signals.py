@@ -13,7 +13,7 @@ from .models import (
     Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago,
     InteresTurnoLiberado, PromocionReactivacion, SesionCaja, MovimientoCaja,
     Liquidacion, PedidoWeb, DetallePedidoWeb, ConfiguracionLocal,
-    ConfiguracionSistema, Envio
+    ConfiguracionSistema, Envio, HorarioAtencion
 )
 from .middleware import get_current_request_data
 from .tasks import procesar_reactivacion_clientes_inactivos
@@ -49,7 +49,8 @@ MODELOS_A_AUDITAR = [
     Usuario, Producto, Turno, Venta, Pedido, Rol,
     Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago,
     SesionCaja, MovimientoCaja, Liquidacion,
-    PedidoWeb, ConfiguracionLocal, ConfiguracionSistema, Envio
+    PedidoWeb, ConfiguracionLocal, ConfiguracionSistema, Envio,
+    HorarioAtencion
 ]
 
 def serializar(valor):
@@ -163,6 +164,12 @@ def auditar_cambios(sender, instance, created, **kwargs):
                             'nuevo': serializar(v_nuevo)
                         }
             
+            # Solo añadir dia_semana como referencia si ya hay otros cambios reales
+            if nombre_modelo == 'HorarioAtencion' and hay_cambios and 'dia_semana' not in reporte:
+                dia_ref = datos_nuevos.get('dia_semana') or (datos_viejos.get('dia_semana') if not created else '')
+                if dia_ref:
+                    reporte['dia_semana'] = {'tipo': 'VALOR', 'valor': dia_ref}
+
             if hay_cambios:
                 # Agregamos la información técnica para el frontend
                 reporte['__meta__'] = {

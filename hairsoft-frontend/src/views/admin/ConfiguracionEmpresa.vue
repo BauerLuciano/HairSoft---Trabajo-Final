@@ -108,7 +108,6 @@
               </div>
 
               <div class="filter-group mt-3">
-                <label>Texto Informativo de Política de Señas</label>
                 <textarea 
                   v-model="config.politica_senia" 
                   class="filter-input" 
@@ -260,7 +259,7 @@ const config = ref({
   porcentaje_descuento_promo: 15,
   politica_senia: '',
   logo: null,
-  costo_envio_moto: 1500 
+  costo_envio_moto: 1500,
 })
 
 const configEnvios = ref({
@@ -401,7 +400,7 @@ const guardarCambios = async () => {
   formData.append('dias_inactividad_clientes', config.value.dias_inactividad_clientes);
   formData.append('porcentaje_descuento_promo', config.value.porcentaje_descuento_promo);
   formData.append('politica_senia', config.value.politica_senia);
-  formData.append('costo_envio_moto', config.value.costo_envio_moto); 
+  formData.append('costo_envio_moto', config.value.costo_envio_moto);
   
   if (logoFile.value) {
     formData.append('logo', logoFile.value);

@@ -328,10 +328,10 @@
                     <span class="alias-label">Alias:</span>
                     <span class="alias-text">{{ aliasValor }}</span>
                   </div>
-                  <div v-else class="helper-text" style="margin-bottom: 8px; color: #ef4444;">
-                    No hay alias configurado
+                  <div v-else-if="!pagoConfirmado" class="helper-text" style="margin-bottom: 8px; color: #ef4444; display: flex; align-items: center; gap: 6px;">
+                    <AlertTriangle :size="14" /> No hay alias configurado — ve a <strong>Ajustes del Local</strong> para registrarlo.
                   </div>
-                  <div class="input-group" style="margin-top: 8px;">
+                  <div v-if="aliasValor || pagoConfirmado" class="input-group" style="margin-top: 8px;">
                     <label class="label-modern">Comprobante (opcional)</label>
                     <input type="text" v-model="nroComprobante" class="input-modern" placeholder="ID de operación (12 dígitos)" maxlength="12" @input="nroComprobante = nroComprobante.replace(/\D/g, '')" />
                     <small class="helper-text"><Info :size="12" /> Ingrese el ID de operación si el cliente transfirió.</small>
@@ -509,6 +509,8 @@ let pollId = null
 
 const intervaloMinutos = 10
 const STORAGE_KEY = 'turno_presencial_context'
+const horariosAtencion = ref([])
+const configSist = ref({ dias_maximos_reserva: 7 })
 
 const verificarCajaAbierta = async () => {
   try {
@@ -592,24 +594,31 @@ const nombreMesActual = computed(() => {
 const daysInMonth = computed(() => new Date(currentYear.value, currentMonth.value + 1, 0).getDate())
 const startingDayOfWeek = computed(() => new Date(currentYear.value, currentMonth.value, 1).getDay())
 
+const mapearDiaJS = (jsDay) => jsDay === 0 ? 6 : jsDay - 1
+
 const horariosGenerados = computed(() => {
   const horariosBase = []
-  const bloques = [
-    { inicio: 8, fin: 12 }, 
-    { inicio: 15, fin: 20 }
-  ]
+  if (!form.value.fecha || !horariosAtencion.value.length) return horariosBase
+  const jsDay = new Date(form.value.fecha + 'T12:00:00').getDay()
+  const dia = horariosAtencion.value.find(h => h.dia_semana === mapearDiaJS(jsDay))
+  if (!dia || !dia.trabaja) return horariosBase
 
-  bloques.forEach(b => {
-    for (let h = b.inicio; h < b.fin; h++) {
-      for (let m = 0; m < 60; m += intervaloMinutos) {
-        const horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-        horariosBase.push(horaStr)
-      }
+  const generarRango = (apertura, cierre) => {
+    if (!apertura || !cierre) return
+    const [hA, mA] = apertura.split(':').map(Number)
+    const [hC, mC] = cierre.split(':').map(Number)
+    const inicioMin = hA * 60 + mA
+    const finMin = hC * 60 + mC
+    for (let m = inicioMin; m < finMin; m += intervaloMinutos) {
+      const hh = String(Math.floor(m / 60)).padStart(2, '0')
+      const mm = String(m % 60).padStart(2, '0')
+      horariosBase.push(`${hh}:${mm}`)
     }
-    if(b.fin === 20) horariosBase.push('20:00');
-    else if(b.fin === 12) horariosBase.push('12:00');
-  })
+    horariosBase.push(cierre.split(':').slice(0,2).join(':'))
+  }
 
+  generarRango(dia.hora_apertura_manana, dia.hora_cierre_manana)
+  generarRango(dia.hora_apertura_tarde, dia.hora_cierre_tarde)
   return horariosBase
 })
 
@@ -736,17 +745,24 @@ const cargarDatosIniciales = async () => {
   try {
     cargandoDatos.value = true
     const headers = getAuthHeaders()
-    const [catRes, servRes, pelRes, sillasRes] = await Promise.all([
+    const [catRes, servRes, pelRes, sillasRes, horariosRes, configRes] = await Promise.all([
       fetch(`${API_URL}/categorias/servicios/`, { headers }),
       fetch(`${API_URL}/servicios/`, { headers }),
       fetch(`${API_URL}/peluqueros/`, { headers }),
-      fetch(`${API_URL}/sillas/`, { headers }) 
+      fetch(`${API_URL}/sillas/`, { headers }),
+      fetch(`${API_URL}/horarios/`, { headers }),
+      fetch(`${API_URL}/configuracion/`, { headers })
     ])
     
     if (!catRes.ok) throw new Error(`Error categorías: ${catRes.status}`)
     if (!servRes.ok) throw new Error(`Error servicios: ${servRes.status}`)
     if (!pelRes.ok) throw new Error(`Error peluqueros: ${pelRes.status}`)
     if (sillasRes.ok) sillas.value = await sillasRes.json()
+    if (horariosRes.ok) horariosAtencion.value = await horariosRes.json()
+    if (configRes.ok) {
+      const configData = await configRes.json()
+      if (configData.dias_maximos_reserva) configSist.value.dias_maximos_reserva = configData.dias_maximos_reserva
+    }
     
     categorias.value = await catRes.json()
     servicios.value = await servRes.json()
@@ -862,7 +878,10 @@ const esDiaSeleccionable = (day) => {
   today.setHours(0,0,0,0)
   const diffTime = date - today
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  return (diffDays >= 0 && diffDays <= 7) && date.getDay() !== 0
+  if (!(diffDays >= 0 && diffDays <= configSist.value.dias_maximos_reserva)) return false
+  const jsDay = date.getDay()
+  const dia = horariosAtencion.value.find(h => h.dia_semana === mapearDiaJS(jsDay))
+  return dia ? dia.trabaja : date.getDay() !== 0
 }
 
 const esDiaSeleccionado = (day) => {
@@ -1028,6 +1047,11 @@ const crearTurno = async () => {
 
   if (esQR && !pagoConfirmado.value) {
     Swal.fire({ icon: 'warning', title: 'Atención', text: 'Debe generar el QR y esperar a que el pago se confirme.' })
+    return
+  }
+
+  if (esAlias && !aliasValor.value && !pagoConfirmado.value) {
+    Swal.fire({ icon: 'warning', title: 'Alias no configurado', text: 'No hay un alias de Mercado Pago registrado. Ve a Ajustes del Local para configurarlo.' })
     return
   }
 

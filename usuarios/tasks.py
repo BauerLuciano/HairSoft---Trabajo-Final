@@ -154,10 +154,11 @@ def enviar_email_oferta(email, mensaje, fecha, hora):
     try:
         from django.core.mail import send_mail
         subject = f"¡Turno disponible! {fecha} {hora} - HairSoft"
+        time.sleep(10)
         send_mail(subject, mensaje, settings.DEFAULT_FROM_EMAIL, [email], fail_silently=False)
         return True
     except Exception as e:
-        logger.error(f"❌ Error enviando email: {str(e)}")
+        logger.error(f"Error al enviar email de turno disponible a {email}: {e}")
         return False
 
 @shared_task
@@ -174,6 +175,7 @@ Estimado {cotizacion.proveedor.nombre},
 Requerimos presupuesto para: {cotizacion.solicitud.producto.nombre} (Cant: {cotizacion.solicitud.cantidad_requerida}).
 Ingrese su oferta aquí: {link}
         """
+        time.sleep(10)
         send_mail(f"Solicitud de Cotización #{cotizacion.solicitud.id}", mensaje, settings.DEFAULT_FROM_EMAIL, [cotizacion.proveedor.email], fail_silently=False)
         return True
     except Exception as e:
@@ -694,6 +696,7 @@ def enviar_email_cancelacion_proveedor(pedido_id, motivo_texto, observaciones):
         productos_texto = "\n".join([f"- {d.cantidad}x {d.producto.nombre}" for d in pedido.detalles.all()])
         mensaje_plano = f"El pedido #{pedido.id} ha sido cancelado.\nMotivo: {motivo_texto}\nObservaciones: {observaciones}\n\nProductos:\n{productos_texto}"
         
+        time.sleep(10)
         send_mail(
             subject=asunto,
             message=mensaje_plano,
@@ -760,6 +763,7 @@ def enviar_email_pedido_confirmado(pedido_id):
         
         mensaje_plano = f"Tu presupuesto para el pedido #{pedido.id} fue aprobado. Por favor, ingresá aquí para avisarnos cuando lo despaches: {link}"
         
+        time.sleep(10)
         send_mail(
             subject=asunto,
             message=mensaje_plano,
@@ -771,3 +775,119 @@ def enviar_email_pedido_confirmado(pedido_id):
         return f"Email de aprobación enviado a {proveedor.email}"
     except Exception as e:
         return f"Error enviando email de aprobación: {str(e)}"
+
+
+@shared_task
+def enviar_email_cotizacion_rechazada(cotizacion_id):
+    """Envía un email al proveedor notificando que su cotización no fue seleccionada."""
+    try:
+        from .models import Cotizacion
+        cotizacion = Cotizacion.objects.select_related('solicitud__producto', 'proveedor').get(id=cotizacion_id)
+    except Cotizacion.DoesNotExist:
+        return f"Cotización {cotizacion_id} no encontrada"
+
+    proveedor = cotizacion.proveedor
+    solicitud = cotizacion.solicitud
+    producto = solicitud.producto
+
+    if not proveedor.email:
+        return f"El proveedor {proveedor.nombre} no tiene email cargado"
+
+    from datetime import date
+    fecha_hoy = date.today().strftime('%d/%m/%Y')
+
+    asunto = f"Actualización de Cotización #{solicitud.id} | HairSoft"
+
+    mensaje_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            .btn-hover:hover {{ background-color: #218838 !important; }}
+        </style>
+    </head>
+    <body style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 40px 0;">
+        <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
+            <div style="background: linear-gradient(135deg, #007bff 0%, #6610f2 100%); padding: 40px 30px; text-align: center;">
+                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 0.5px;">ACTUALIZACIÓN DE COTIZACIÓN</h1>
+                <p style="color: rgba(255,255,255,0.8); margin: 10px 0 0; font-size: 14px; font-weight: 500;">
+                    Los Últimos Serán Los Primeros • {fecha_hoy}
+                </p>
+            </div>
+            <div style="padding: 40px 30px;">
+                <p style="font-size: 16px; color: #4a4a4a; line-height: 1.6; margin-bottom: 30px;">
+                    Hola <strong>{proveedor.nombre}</strong>,<br>
+                    Gracias por tu respuesta. Te informamos que tu cotización no ha sido seleccionada para esta compra.
+                    Apreciamos el tiempo que dedicaste a responder y te invitamos a seguir participando en futuras solicitudes.
+                </p>
+                <div style="background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 12px; padding: 25px; margin-bottom: 30px;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td colspan="2">
+                                <p style="margin: 0 0 15px; color: #888; font-size: 12px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">RESUMEN DE TU COTIZACIÓN</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #888; font-size: 13px;">Producto</td>
+                            <td style="padding: 8px 0; color: #2d3436; font-size: 15px; font-weight: 600; text-align: right;">{producto.nombre}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #888; font-size: 13px;">Cantidad solicitada</td>
+                            <td style="padding: 8px 0; color: #2d3436; font-size: 15px; font-weight: 600; text-align: right;">{solicitud.cantidad_requerida} u.</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #888; font-size: 13px;">Cantidad ofertada</td>
+                            <td style="padding: 8px 0; color: #2d3436; font-size: 15px; font-weight: 600; text-align: right;">{cotizacion.cantidad_ofertada or '—'} u.</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #888; font-size: 13px;">Precio ofrecido</td>
+                            <td style="padding: 8px 0; color: #2d3436; font-size: 15px; font-weight: 600; text-align: right;">${cotizacion.precio_ofrecido or '—'}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #888; font-size: 13px;">Tiempo de entrega</td>
+                            <td style="padding: 8px 0; color: #2d3436; font-size: 15px; font-weight: 600; text-align: right;">{cotizacion.dias_entrega or '—'} días hábiles</td>
+                        </tr>
+                    </table>
+                </div>
+                <p style="font-size: 15px; color: #4a4a4a; line-height: 1.6; text-align: center;">
+                    Seguimos en contacto para futuras oportunidades.<br>
+                    ¡Saludos!
+                </p>
+            </div>
+            <div style="background-color: #f8f9fa; padding: 25px; text-align: center; border-top: 1px solid #e9ecef;">
+                <p style="margin: 0; color: #adb5bd; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Los Últimos Serán Los Primeros</p>
+                <p style="margin: 5px 0 0; color: #adb5bd; font-size: 11px;">HairSoft • Sistema de Gestión</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    mensaje_texto = f"""Hola {proveedor.nombre},
+
+Gracias por tu respuesta. Lamentamos informarte que tu cotización para {producto.nombre} no ha sido seleccionada.
+
+Resumen:
+- Producto: {producto.nombre}
+- Cantidad solicitada: {solicitud.cantidad_requerida} u.
+- Cantidad ofertada: {cotizacion.cantidad_ofertada or '—'}
+- Precio ofrecido: ${cotizacion.precio_ofrecido or '—'}
+- Tiempo de entrega: {cotizacion.dias_entrega or '—'} días hábiles
+
+Seguimos en contacto para futuras oportunidades.
+Saludos,
+HairSoft"""
+
+    try:
+        time.sleep(10)
+        send_mail(
+            subject=asunto,
+            message=mensaje_texto,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[proveedor.email],
+            html_message=mensaje_html,
+            fail_silently=False,
+        )
+        return f"Email de rechazo enviado a {proveedor.email}"
+    except Exception as e:
+        return f"Error enviando email de rechazo: {str(e)}"

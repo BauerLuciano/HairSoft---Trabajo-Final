@@ -164,7 +164,8 @@ const menuData = {
       { name: 'Roles', path: '/roles', icon: 'ri-shield-user-line', roles: ['ADMINISTRADOR'] },
       { name: 'Liquidación Sueldos', path: '/admin/liquidacion', icon: 'ri-money-dollar-circle-line', roles: ['ADMINISTRADOR'] }, 
       { name: 'Auditoría', path: '/auditoria', icon: 'ri-file-history-line', roles: ['ADMINISTRADOR'] },
-      { name: 'Ajustes Local', path: '/configuracion', icon: 'ri-settings-4-line', roles: ['ADMINISTRADOR'] },
+      { name: 'Ajustes del Local', path: '/configuracion', icon: 'ri-settings-4-line', roles: ['ADMINISTRADOR'] },
+      { name: 'Horarios', path: '/admin/horarios', icon: 'ri-time-line', roles: ['ADMINISTRADOR'] },
     ]
   }
 };

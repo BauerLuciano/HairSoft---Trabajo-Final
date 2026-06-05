@@ -314,7 +314,7 @@ const determinarModulo = (log) => {
   if (modelo.includes('usuario') || modelo.includes('cliente') || modelo.includes('peluquero')) return 'USUARIOS';
 
   // 10. Configuración
-  if (modelo.includes('configuracion')) return 'CONFIGURACION';
+  if (modelo.includes('configuracion') || modelo.includes('horarioatencion')) return 'CONFIGURACION';
 
   return 'OTROS';
 }

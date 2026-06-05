@@ -198,6 +198,7 @@
             </div>
           </div>
 
+          <div :class="{ 'form-bloqueado': formBloqueado }">
           <!-- PELUQUERO -->
           <div v-if="form.servicios_ids.length > 0" class="card-modern slide-in">
             <div class="card-header">
@@ -354,6 +355,21 @@
                   </button>
                 </div>
               </div>
+
+              <!-- HORARIOS EXPIRADOS -->
+              <div
+                v-for="hora in horariosPasados"
+                :key="'pasado-'+hora"
+                class="hora-card-mejorada hora-expirada-mejorada"
+              >
+                <div class="hora-content-mejorada">
+                  <div class="hora-info-mejorada">
+                    <Clock :size="16" class="hora-icon-mejorada" />
+                    <span class="hora-texto-mejorada">{{ hora }}</span>
+                    <span class="hora-duracion-badge-expirado">Expirado</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -477,23 +493,58 @@
               </div>
             </div>
             
+            <!-- Selector de método de pago (solo turnos nuevos) -->
+            <div v-if="!modoModificacion" class="metodo-pago-selector">
+              <p class="selector-label">Elegí cómo pagar:</p>
+              <div class="selector-opciones">
+                <label class="selector-option" :class="{ active: metodoPagoWeb === 'LINK', disabled: !!pagoUuid }">
+                  <input type="radio" v-model="metodoPagoWeb" value="LINK" class="hidden-radio" :disabled="!!pagoUuid">
+                  <span class="option-icon"><Smartphone :size="20" /></span>
+                  <span class="option-texto">
+                    <strong>Link de pago</strong>
+                    <small>Te redirige a Mercado Pago</small>
+                  </span>
+                </label>
+                <label class="selector-option" :class="{ active: metodoPagoWeb === 'QR', disabled: !!pagoUuid }">
+                  <input type="radio" v-model="metodoPagoWeb" value="QR" class="hidden-radio" :disabled="!!pagoUuid">
+                  <span class="option-icon"><QrCode :size="20" /></span>
+                  <span class="option-texto">
+                    <strong>Código QR</strong>
+                    <small>Escaneá con tu celular</small>
+                  </span>
+                </label>
+              </div>
+            </div>
+
             <button
               type="button"
-              @click="crearPagoMercadoPago" 
+              @click="metodoPagoWeb === 'LINK' ? crearPagoMercadoPago() : pagarConQR()" 
               class="btn-confirmar-premium"
-              :disabled="cargandoMercadoPago"
+              :disabled="cargandoMercadoPago || cargandoQR"
             >
               <span class="btn-content">
-                <CreditCard :size="20" />
-                {{ cargandoMercadoPago ? '🔄 Creando pago...' : `Pagar $${montoAPagarAhora()} con Mercado Pago` }}
+                <CreditCard v-if="metodoPagoWeb === 'LINK'" :size="20" />
+                <QrCode v-else :size="20" />
+                <template v-if="metodoPagoWeb === 'LINK'">
+                  {{ cargandoMercadoPago ? '🔄 Creando pago...' : `Pagar $${montoAPagarAhora()} con Mercado Pago` }}
+                </template>
+                <template v-else>
+                  {{ cargandoQR ? '🔄 Generando QR...' : `Pagar $${montoAPagarAhora()} con QR` }}
+                </template>
               </span>
             </button>
             
             <p class="info-pago-final">
               <CheckCircle2 :size="14" />
-              Serás redirigido a Mercado Pago para completar el pago.
+              <template v-if="metodoPagoWeb === 'LINK'">
+                Serás redirigido a Mercado Pago para completar el pago.
+              </template>
+              <template v-else>
+                Escaneá el código QR con la app de Mercado Pago.
+              </template>
             </p>
           </div>
+        </div>
         </div>
 
         <!-- MODAL DE INTERÉS -->
@@ -533,13 +584,15 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
+import axios from '../../utils/axiosConfig'
 import Swal from 'sweetalert2'
+
 import { 
   Calendar, ArrowLeft, User, UserCheck, FolderOpen, Tag, 
   Scissors, Check, DollarSign, Clock, CalendarDays, 
   ChevronLeft, ChevronRight, Loader2, 
   CheckCircle2, Bell, Banknote, Inbox, CheckCircle, CreditCard, Wallet,
-  Gift, Search, X, AlertCircle, Info
+  Gift, Search, X, AlertCircle, Info, Smartphone, QrCode
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -574,7 +627,8 @@ const mostrarDescuento = computed(() => {
 // CONFIGURACIÓN DEL SISTEMA
 const configSist = ref({
   margen_horas_cancelacion: 3,
-  politica_senia: 'Cargando política de reserva...'
+  politica_senia: 'Cargando política de reserva...',
+  dias_maximos_reserva: 7,
 })
 
 // FORMULARIO
@@ -607,327 +661,20 @@ const slotsOcupadosReales = ref([])
 const categoriasSeleccionadas = ref([])
 const busquedaServicio = ref("")
 const cargandoMercadoPago = ref(false)
+const metodoPagoWeb = ref('LINK')
+const pagoUuid = ref(null)
+const pagoConfirmado = ref(false)
+const cargandoQR = ref(false)
 const cargandoHorarios = ref(false)
 const cargandoDatos = ref(true)
 const mostrarModalInteres = ref(false)
 const horarioSeleccionadoInteres = ref(null)
 const registrandoInteres = ref(false)
 const currentDate = ref(new Date())
-const DIAS_RANGO = 7
+const horariosAtencion = ref([])
 const horariosInteres = ref([])
 const mensaje = ref("")
 const mensajeTipo = ref("")
-
-// VALIDAR CUPÓN CON BACKEND
-const validarCuponBackend = async (codigo) => {
-  if (!codigo) return
-  
-  try {
-    console.log(`🎟️ Validando cupón: ${codigo}`)
-    const response = await api.get(`/api/promociones/validar/${codigo}/`)
-    
-    if (response.data.valido) {
-      descuentoAplicado.value = response.data.descuento
-      mensajePromo.value = response.data.mensaje
-      fechaVencimientoCupon.value = response.data.valido_hasta || ""
-      
-      Swal.fire({
-        title: '¡Cupón Aplicado!',
-        text: response.data.mensaje,
-        icon: 'success',
-        timer: 3000,
-        showConfirmButton: false
-      })
-      
-      form.value.cup_codigo = codigo
-      return true
-    } else {
-      mensajeErrorCupon.value = response.data.mensaje
-      descuentoAplicado.value = 0
-      cuponCodigo.value = null
-      form.value.cup_codigo = null
-      
-      Swal.fire({
-        title: 'Cupón Inválido',
-        text: response.data.mensaje,
-        icon: 'error',
-        confirmButtonText: 'Entendido'
-      })
-      return false
-    }
-  } catch (error) {
-    console.error('Error validando cupón:', error)
-    mensajeErrorCupon.value = 'Error al validar el cupón. Intenta nuevamente.'
-    descuentoAplicado.value = 0
-    cuponCodigo.value = null
-    form.value.cup_codigo = null
-    
-    Swal.fire({
-      title: 'Error',
-      text: 'No se pudo validar el cupón. Intenta nuevamente.',
-      icon: 'error',
-      confirmButtonText: 'Entendido'
-    })
-    return false
-  }
-}
-
-// 🔥 CARGAR DATOS DEL TURNO VIEJO (A PRUEBA DE FALLOS)
-const cargarDatosTurnoViejo = async (id) => {
-  try {
-    bloqueandoWatchers.value = true; // ⛔ Evitamos que los watchers borren datos
-
-    const response = await api.get(`/api/turnos/${id}/`);
-    const t = response.data;
-    
-    // 1. Cargar Categorías y Servicios
-    if (t.servicios && t.servicios.length > 0) {
-      const idsServicios = [];
-      const idsCategorias = new Set();
-      
-      t.servicios.forEach(s => {
-        idsServicios.push(String(s.id || s));
-        if (s.categoria) {
-            let catId = (typeof s.categoria === 'object') ? String(s.categoria.id) : String(s.categoria);
-            idsCategorias.add(catId);
-        }
-      });
-      
-      categoriasSeleccionadas.value = Array.from(idsCategorias);
-      await nextTick(); // Esperamos que se dibuje el bloque
-      
-      form.value.servicios_ids = idsServicios;
-      await nextTick();
-    }
-
-    // 2. Cargar Peluquero
-    if (t.peluquero) {
-        form.value.peluquero = t.peluquero.id || t.peluquero;
-        await nextTick();
-    }
-
-    // 3. Cargar Fecha y Sincronizar Calendario
-    if (t.fecha) {
-      form.value.fecha = t.fecha;
-      const [anio, mes, dia] = t.fecha.split('-');
-      currentDate.value = new Date(parseInt(anio), parseInt(mes) - 1, parseInt(dia));
-      await nextTick();
-      
-      // Consultamos ocupación real
-      if (form.value.peluquero) {
-        await cargarTurnosOcupados(t.fecha);
-        await nextTick();
-      }
-    }
-    
-    // 4. Cargar Hora (Al final, cuando ya cargó todo lo demás)
-    if (t.hora) {
-      form.value.hora = t.hora.substring(0, 5); 
-      await nextTick();
-    }
-
-    // 5. Método de Pago original
-    if (t.tipo_pago) form.value.tipo_pago = t.tipo_pago;
-    if (t.medio_pago) form.value.medio_pago = t.medio_pago;
-
-    Swal.fire({
-      title: 'Modo Edición',
-      text: 'Modificá tu turno. Los datos actuales ya están cargados.',
-      icon: 'info',
-      toast: true,
-      position: 'top-end',
-      showConfirmButton: false,
-      timer: 3000
-    });
-
-  } catch (error) {
-    console.error("No se pudo cargar el turno viejo para edición", error);
-  } finally {
-    bloqueandoWatchers.value = false; // 🟢 Soltamos el freno
-  }
-}
-
-onMounted(async () => {
-  const cargoBien = await cargarDatosIniciales()
-  
-  if (cargoBien) {
-    if (route.query.cup) {
-      cuponCodigo.value = route.query.cup
-      await validarCuponBackend(route.query.cup)
-    }
-
-    // 🔥 DETECTAR SI ES MODIFICACIÓN
-    if (route.query.modificar_gratis_id) {
-      modoModificacion.value = true;
-      tipoModificacion.value = 'gratis';
-      turnoViejoId.value = route.query.modificar_gratis_id;
-      await cargarDatosTurnoViejo(turnoViejoId.value);
-    } else if (route.query.modificar_tarde_id) {
-      modoModificacion.value = true;
-      tipoModificacion.value = 'tarde';
-      turnoViejoId.value = route.query.modificar_tarde_id;
-      await cargarDatosTurnoViejo(turnoViejoId.value);
-    }
-  }
-})
-
-// WATCHERS (Corregidos con el Freno)
-watch(() => form.value.servicios_ids, () => {
-  if (bloqueandoWatchers.value) return; // ⛔ Evitar limpieza durante carga
-  if (form.value.fecha && form.value.peluquero && form.value.hora) {
-    if (!esHorarioDisponibleCompleto(form.value.hora)) {
-      form.value.hora = ""
-    }
-  }
-}, { deep: true })
-
-watch([() => form.value.fecha, () => form.value.peluquero], ([nuevaFecha, nuevoPeluquero]) => {
-  if (bloqueandoWatchers.value) return; // ⛔ Evitar llamadas inútiles durante carga
-  if (nuevaFecha && nuevoPeluquero) cargarTurnosOcupados(nuevaFecha)
-})
-
-// FUNCIONES AUXILIARES
-const getListaServicios = () => {
-  try {
-    if (Array.isArray(servicios.value)) return servicios.value
-    if (servicios.value?.results) return servicios.value.results
-    return []
-  } catch (error) { 
-    return [] 
-  }
-}
-
-const serviciosFiltrados = computed(() => {
-  try {
-    let lista = getListaServicios()
-    if (categoriasSeleccionadas.value.length > 0) {
-      lista = lista.filter(s => {
-        if (!s || !s.categoria) return false
-        let catId = (typeof s.categoria === 'object' && s.categoria !== null) 
-                    ? String(s.categoria.id || s.categoria) 
-                    : String(s.categoria)
-        return categoriasSeleccionadas.value.includes(catId)
-      })
-    }
-    if (busquedaServicio.value.trim()) {
-      const term = busquedaServicio.value.toLowerCase().trim()
-      lista = lista.filter(s => s && s.nombre && s.nombre.toLowerCase().includes(term))
-    }
-    return lista
-  } catch (error) { 
-    return [] 
-  }
-})
-
-const toggleCategoria = (id) => {
-  const cid = String(id)
-  const index = categoriasSeleccionadas.value.indexOf(cid)
-  if (index > -1) categoriasSeleccionadas.value.splice(index, 1)
-  else categoriasSeleccionadas.value.push(cid)
-}
-
-const toggleServicio = (servicio) => {
-  if (!servicio || !servicio.id) return
-  const id = String(servicio.id)
-  const index = form.value.servicios_ids.indexOf(id)
-  if (index > -1) form.value.servicios_ids.splice(index, 1)
-  else form.value.servicios_ids.push(id)
-  if (form.value.hora) form.value.hora = ""
-}
-
-const estaServicioSeleccionado = (servicio) => servicio?.id && form.value.servicios_ids.includes(String(servicio.id))
-
-const eliminarServicio = (servicioId) => {
-  form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== String(servicioId))
-  if (form.value.hora) form.value.hora = ""
-}
-
-const formularioValido = computed(() => 
-  form.value.peluquero && 
-  form.value.servicios_ids.length > 0 && 
-  form.value.fecha && 
-  form.value.hora
-)
-
-const calcularTotalOriginal = () => {
-  try {
-    const lista = getListaServicios()
-    return form.value.servicios_ids.reduce((acc, id) => {
-      const s = lista.find(x => String(x.id) === String(id))
-      return acc + (parseFloat(s?.precio) || 0)
-    }, 0)
-  } catch (error) { 
-    return 0 
-  }
-}
-
-const calcularTotal = () => calcularTotalOriginal().toFixed(2)
-
-const calcularTotalConDescuento = () => {
-  const total = calcularTotalOriginal()
-  const descuento = total * (descuentoAplicado.value / 100)
-  return (total - descuento).toFixed(2)
-}
-
-const calcularDuracionTotalServicios = () => {
-  const lista = getListaServicios()
-  return form.value.servicios_ids.reduce((total, id) => {
-    const s = lista.find(x => String(x.id) === String(id))
-    return total + parseInt(s?.duracion || s?.duracion_minutos || 20)
-  }, 0)
-}
-
-const calcularSena = () => {
-  const totalConDescuento = parseFloat(calcularTotalConDescuento())
-  return (totalConDescuento * 0.5).toFixed(2)
-}
-
-const montoAPagarAhora = () => {
-  if (modoModificacion.value && tipoModificacion.value === 'gratis') return "0.00";
-  return (form.value.tipo_pago === 'SENA_50' ? calcularSena() : calcularTotalConDescuento())
-}
-
-const getServicioNombre = (id) => getListaServicios().find(s => String(s.id) === String(id))?.nombre || 'Servicio'
-
-const getPeluqueroNombre = () => {
-  const lista = Array.isArray(peluqueros.value) ? peluqueros.value : (peluqueros.value?.results || [])
-  const p = lista.find(x => String(x.id) === String(form.value.peluquero))
-  return p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : ''
-}
-
-const getServiciosNombres = () => form.value.servicios_ids.map(id => getServicioNombre(id)).join(', ')
-
-const getNombreCompletoPeluquero = (p) => p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : ''
-
-const getInicialesPeluquero = (p) => (p?.nombre || 'P').charAt(0).toUpperCase()
-
-const formatoFechaLegible = (f) => f ? new Date(f + 'T12:00:00').toLocaleDateString('es-ES', { 
-  weekday: 'long', 
-  year: 'numeric', 
-  month: 'long', 
-  day: 'numeric' 
-}) : ''
-
-const getCategoriaNombre = (cat) => (typeof cat === 'object' && cat !== null) ? (cat.nombre || 'General') : 'General'
-
-const nombreMesActual = computed(() => currentDate.value.toLocaleString('es-ES', { month: 'long' }).toUpperCase())
-
-const currentYear = computed(() => currentDate.value.getFullYear())
-
-const startingDayOfWeek = computed(() => new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), 1).getDay())
-
-const daysInMonth = computed(() => new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 0).getDate())
-
-const esHoy = (day) => {
-  const hoy = new Date()
-  return day === hoy.getDate() && 
-         currentDate.value.getMonth() === hoy.getMonth() && 
-         currentYear.value === hoy.getFullYear()
-}
-
-const esDiaSeleccionado = (day) => form.value.fecha && 
-  day === new Date(form.value.fecha + 'T12:00:00').getDate() && 
-  currentDate.value.getMonth() === new Date(form.value.fecha + 'T12:00:00').getMonth()
 
 const esDiaSeleccionable = (day) => {
   const target = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), day)
@@ -935,16 +682,19 @@ const esDiaSeleccionable = (day) => {
   const hoy = new Date()
   hoy.setHours(0,0,0,0)
   
-  if (target < hoy || target.getDay() === 0) return false
+  if (target < hoy) return false
   
   let tempDate = new Date(hoy)
   let count = 0
-  while (tempDate <= target) { 
-    if (tempDate.getDay() !== 0) count++
+  while (tempDate <= target) {
+    count++
     tempDate.setDate(tempDate.getDate() + 1)
   }
+  if (count > configSist.value.dias_maximos_reserva) return false
   
-  return count <= DIAS_RANGO
+  const jsDay = target.getDay()
+  const dia = horariosAtencion.value.find(h => h.dia_semana === mapearDiaJS(jsDay))
+  return dia ? dia.trabaja : target.getDay() !== 0
 }
 
 const seleccionarDiaCalendario = (day) => {
@@ -959,25 +709,30 @@ const cambiarMes = (delta) => {
   currentDate.value = n
 }
 
-const esHorarioDisponibleUI = (h) => {
-  if (!form.value.fecha || !form.value.peluquero) return true
-  
-  const [hS, mS] = h.substring(0,5).split(':').map(Number)
-  const horaString = `${hS.toString().padStart(2, '0')}:${mS.toString().padStart(2, '0')}`
-  
-  if (slotsOcupadosReales.value.some(slot => 
-      slot.startsWith(horaString.substring(0, 5)))) return false
-  
+const obtenerEstadoHorario = (h) => {
+  if (!form.value.fecha || !form.value.peluquero) return null
+
+  const [hS, mS] = h.substring(0, 5).split(':').map(Number)
+  const inicioMinutos = hS * 60 + mS
+
   const hoy = new Date()
   const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
-  
+
   if (form.value.fecha === hoyF) {
-    const minutosActuales = hoy.getHours() * 60 + hoy.getMinutes();
-    const minutosTurno = hS * 60 + mS;
-    return minutosTurno > minutosActuales;
+    const minutosActuales = hoy.getHours() * 60 + hoy.getMinutes()
+    if (inicioMinutos <= minutosActuales) return 'PASADO'
   }
-  
-  return true
+
+  const horaString = `${hS.toString().padStart(2, '0')}:${mS.toString().padStart(2, '0')}`
+  if (slotsOcupadosReales.value.some(slot => slot.startsWith(horaString.substring(0, 5)))) return 'OCUPADO'
+
+  return null
+}
+
+const esHorarioDisponibleUI = (h) => {
+  if (!form.value.fecha || !form.value.peluquero) return true
+  const estado = obtenerEstadoHorario(h)
+  return estado !== 'OCUPADO' && estado !== 'PASADO'
 }
 
 const esHorarioDisponibleCompleto = (horaSeleccionada) => {
@@ -1014,21 +769,31 @@ const esHorarioDisponibleCompleto = (horaSeleccionada) => {
   return true
 }
 
+const mapearDiaJS = (jsDay) => jsDay === 0 ? 6 : jsDay - 1
+
 const generarHorariosBase = () => {
   const horarios = []
-  const bloques = [
-    { inicio: 8, fin: 12 }, 
-    { inicio: 15, fin: 20 }
-  ]
-  bloques.forEach(b => {
-    for (let h = b.inicio; h < b.fin; h++) {
-      for (let m = 0; m < 60; m += 10) { 
-        horarios.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
-      }
+  if (!form.value.fecha || !horariosAtencion.value.length) return horarios
+  const jsDay = new Date(form.value.fecha + 'T12:00:00').getDay()
+  const dia = horariosAtencion.value.find(h => h.dia_semana === mapearDiaJS(jsDay))
+  if (!dia || !dia.trabaja) return horarios
+
+  const generarRango = (apertura, cierre) => {
+    if (!apertura || !cierre) return
+    const [hA, mA] = apertura.split(':').map(Number)
+    const [hC, mC] = cierre.split(':').map(Number)
+    const inicioMin = hA * 60 + mA
+    const finMin = hC * 60 + mC
+    for (let m = inicioMin; m < finMin; m += 10) {
+      const hh = String(Math.floor(m / 60)).padStart(2, '0')
+      const mm = String(m % 60).padStart(2, '0')
+      horarios.push(`${hh}:${mm}`)
     }
-    if(b.fin === 20) horarios.push('20:00'); 
-    else if(b.fin === 12) horarios.push('12:00');
-  })
+    horarios.push(cierre.split(':').slice(0,2).join(':'))
+  }
+
+  generarRango(dia.hora_apertura_manana, dia.hora_cierre_manana)
+  generarRango(dia.hora_apertura_tarde, dia.hora_cierre_tarde)
   return horarios
 }
 
@@ -1037,7 +802,11 @@ const horariosDisponibles = computed(() =>
 )
 
 const horariosOcupadosParaMostrar = computed(() => 
-  generarHorariosBase().filter(h => !esHorarioDisponibleCompleto(h))
+  generarHorariosBase().filter(h => obtenerEstadoHorario(h) === 'OCUPADO')
+)
+
+const horariosPasados = computed(() => 
+  generarHorariosBase().filter(h => obtenerEstadoHorario(h) === 'PASADO')
 )
 
 const seleccionarPeluquero = (id) => { 
@@ -1061,12 +830,13 @@ const cargarDatosIniciales = async () => {
       return false 
     }
     
-    const [resU, p, s, c, resConfig] = await Promise.all([
+    const [resU, p, s, c, resConfig, resHorarios] = await Promise.all([
       api.get(`/api/usuarios/${userId}/`),
       api.get('/api/peluqueros/'),
       api.get('/api/servicios/'),
       api.get('/api/categorias/servicios/'),
-      api.get('/api/configuracion/')
+      api.get('/api/configuracion/'),
+      axios.get('/api/horarios/')
     ])
     
     usuario.value = { ...resU.data, isAuthenticated: true }
@@ -1074,6 +844,7 @@ const cargarDatosIniciales = async () => {
     peluqueros.value = p.data?.results || p.data
     servicios.value = s.data?.results || s.data
     categorias.value = c.data?.results || c.data
+    horariosAtencion.value = resHorarios.data
     
     if (resConfig.data) {
       configSist.value = resConfig.data
@@ -1236,6 +1007,113 @@ const crearPagoMercadoPago = async () => {
   }
 }
 
+const pagarConQR = async () => {
+  cargandoQR.value = true
+  try {
+    const monto = montoAPagarAhora()
+    if (!monto || monto <= 0) {
+      return Swal.fire('Importe inválido', 'El monto a pagar debe ser mayor a 0.', 'error')
+    }
+    const resp = await api.post('/api/generar-qr-temporal/', { monto })
+    console.log('[QR_RESP]', resp.data)
+    const { uid, init_point } = resp.data
+
+    if (!init_point) throw new Error('El servidor no devolvió un link de pago (init_point)')
+
+    pagoUuid.value = uid
+    await mostrarQRWeb(init_point, uid, monto)
+  } catch (error) {
+    console.error('[QR_ERROR]', error)
+    console.log('[QR_RESP]', error.response?.data)
+    const msg = error.response?.data?.error || error.message || JSON.stringify(error) || 'Error al generar el QR'
+    Swal.fire('Error', msg, 'error')
+  } finally {
+    cargandoQR.value = false
+  }
+}
+
+const mostrarQRWeb = async (qrUrl, uid, monto) => {
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrUrl)}`
+
+  const result = await Swal.fire({
+    title: 'Escaneá el código QR',
+    html: `
+      <div style="text-align:center;">
+        <img src="${qrSrc}" alt="QR Mercado Pago" style="width:260px;height:260px;border-radius:12px;margin-bottom:16px;border:1px solid #eee;" />
+        <p style="margin:0 0 4px;font-size:15px;color:#555;">Escaneá con la app de Mercado Pago</p>
+        <p style="margin:0;font-size:13px;color:#888;">Monto: <strong>$${Number(monto).toFixed(2)}</strong></p>
+        <div id="qr-estado" style="margin-top:14px;padding:10px 16px;border-radius:8px;background:#f5f5f5;font-size:14px;color:#888;">
+          ⏳ Esperando pago...
+        </div>
+      </div>
+    `,
+    showCancelButton: true,
+    showConfirmButton: false,
+    cancelButtonText: 'Cancelar',
+    cancelButtonColor: '#999',
+    allowOutsideClick: false,
+    didOpen: () => {
+      const interval = setInterval(async () => {
+        try {
+          const check = await api.get(`/api/check-pago-temporal/${uid}/`)
+          if (check.data.pagado) {
+            clearInterval(interval)
+            pagoConfirmado.value = true
+            const estadoEl = document.getElementById('qr-estado')
+            if (estadoEl) {
+              estadoEl.style.background = '#e8f5e9'
+              estadoEl.style.color = '#2e7d32'
+              estadoEl.innerHTML = '✅ <strong>Pago recibido</strong><br><small style="color:#666;">Confirmando turno...</small>'
+            }
+            setTimeout(() => {
+              Swal.close()
+              confirmarTurnoConPagoQR(uid)
+            }, 1200)
+          }
+        } catch { /* ignore polling errors */ }
+      }, 1500)
+    }
+  })
+
+  if (result.dismiss === Swal.DismissReason.cancel) {
+    pagoUuid.value = null
+    pagoConfirmado.value = false
+  }
+}
+
+const confirmarTurnoConPagoQR = async (uid) => {
+  cargandoMercadoPago.value = true
+  try {
+    const payload = {
+      peluquero_id: parseInt(form.value.peluquero),
+      cliente_id: parseInt(usuario.value.id),
+      servicios_ids: form.value.servicios_ids.map(id => parseInt(id)),
+      fecha: form.value.fecha,
+      hora: form.value.hora,
+      canal: 'WEB',
+      tipo_pago: form.value.tipo_pago,
+      medio_pago: 'MERCADO_PAGO',
+      monto_total: parseFloat(calcularTotalConDescuento()),
+      cup_codigo: form.value.cup_codigo,
+      duracion_total: calcularDuracionTotalServicios(),
+      pago_uuid: uid
+    }
+    let res
+    if (modoModificacion.value) {
+      res = await api.put(`/api/turnos/${turnoEditado.value.id}/modificar/`, payload)
+    } else {
+      res = await api.post('/api/turnos/crear/', payload)
+    }
+    const turnoCreado = res.data
+    await router.push(`/cliente/historial?pago_exitoso=true&turno_id=${turnoCreado.id || turnoCreado.turno_id}`)
+  } catch (error) {
+    let errorMsg = error.response?.data?.error || error.message || 'Error al confirmar el turno'
+    Swal.fire('No se pudo confirmar', errorMsg, 'error')
+  } finally {
+    cargandoMercadoPago.value = false
+  }
+}
+
 const registrarInteresHorario = (h) => {
   horarioSeleccionadoInteres.value = h
   mostrarModalInteres.value = true
@@ -1287,6 +1165,290 @@ const filtrarServicios = () => {
 }
 
 const volverAlListado = () => router.push('/cliente/historial')
+
+// VALIDAR CUPÓN CON BACKEND
+const validarCuponBackend = async (codigo) => {
+  if (!codigo) return
+  
+  try {
+    console.log(`🎟️ Validando cupón: ${codigo}`)
+    const response = await api.get(`/api/promociones/validar/${codigo}/`)
+    
+    if (response.data.valido) {
+      descuentoAplicado.value = response.data.descuento
+      mensajePromo.value = response.data.mensaje
+      fechaVencimientoCupon.value = response.data.valido_hasta || ""
+      
+      Swal.fire({
+        title: '¡Cupón Aplicado!',
+        text: response.data.mensaje,
+        icon: 'success',
+        timer: 3000,
+        showConfirmButton: false
+      })
+      
+      form.value.cup_codigo = codigo
+      return true
+    } else {
+      mensajeErrorCupon.value = response.data.mensaje
+      descuentoAplicado.value = 0
+      cuponCodigo.value = null
+      form.value.cup_codigo = null
+      
+      Swal.fire({
+        title: 'Cupón Inválido',
+        text: response.data.mensaje,
+        icon: 'error',
+        confirmButtonText: 'Entendido'
+      })
+      return false
+    }
+  } catch (error) {
+    console.error('Error validando cupón:', error)
+    mensajeErrorCupon.value = 'Error al validar el cupón. Intenta nuevamente.'
+    descuentoAplicado.value = 0
+    cuponCodigo.value = null
+    form.value.cup_codigo = null
+    
+    Swal.fire({
+      title: 'Error',
+      text: 'No se pudo validar el cupón. Intenta nuevamente.',
+      icon: 'error',
+      confirmButtonText: 'Entendido'
+    })
+    return false
+  }
+}
+
+// 🔥 CARGAR DATOS DEL TURNO VIEJO (A PRUEBA DE FALLOS)
+const cargarDatosTurnoViejo = async (id) => {
+  try {
+    bloqueandoWatchers.value = true;
+
+    const response = await api.get(`/api/turnos/${id}/`);
+    const t = response.data;
+    
+    if (t.servicios && t.servicios.length > 0) {
+      const idsServicios = [];
+      const idsCategorias = new Set();
+      
+      t.servicios.forEach(s => {
+        idsServicios.push(String(s.id || s));
+        if (s.categoria) {
+            let catId = (typeof s.categoria === 'object') ? String(s.categoria.id) : String(s.categoria);
+            idsCategorias.add(catId);
+        }
+      });
+      
+      categoriasSeleccionadas.value = Array.from(idsCategorias);
+      await nextTick();
+      
+      form.value.servicios_ids = idsServicios;
+      await nextTick();
+    }
+
+    if (t.peluquero) {
+        form.value.peluquero = t.peluquero.id || t.peluquero;
+        await nextTick();
+    }
+
+    if (t.fecha) {
+      form.value.fecha = t.fecha;
+      const [anio, mes, dia] = t.fecha.split('-');
+      currentDate.value = new Date(parseInt(anio), parseInt(mes) - 1, parseInt(dia));
+      await nextTick();
+      
+      if (form.value.peluquero) {
+        await cargarTurnosOcupados(t.fecha);
+        await nextTick();
+      }
+    }
+    
+    if (t.hora) {
+      form.value.hora = t.hora.substring(0, 5); 
+      await nextTick();
+    }
+
+    if (t.tipo_pago) form.value.tipo_pago = t.tipo_pago;
+    if (t.medio_pago) form.value.medio_pago = t.medio_pago;
+
+    Swal.fire({
+      title: 'Modo Edición',
+      text: 'Modificá tu turno. Los datos actuales ya están cargados.',
+      icon: 'info',
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 3000
+    });
+
+  } catch (error) {
+    console.error("No se pudo cargar el turno viejo para edición", error);
+  } finally {
+    bloqueandoWatchers.value = false;
+  }
+}
+
+onMounted(async () => {
+  const cargoBien = await cargarDatosIniciales()
+  
+  if (cargoBien) {
+    if (route.query.cup) {
+      cuponCodigo.value = route.query.cup
+      await validarCuponBackend(route.query.cup)
+    }
+
+    if (route.query.modificar_gratis_id) {
+      modoModificacion.value = true;
+      tipoModificacion.value = 'gratis';
+      turnoViejoId.value = route.query.modificar_gratis_id;
+      await cargarDatosTurnoViejo(turnoViejoId.value);
+    } else if (route.query.modificar_tarde_id) {
+      modoModificacion.value = true;
+      tipoModificacion.value = 'tarde';
+      turnoViejoId.value = route.query.modificar_tarde_id;
+      await cargarDatosTurnoViejo(turnoViejoId.value);
+    }
+  }
+})
+
+watch(() => form.value.servicios_ids, () => {
+  if (bloqueandoWatchers.value) return;
+  if (form.value.fecha && form.value.peluquero && form.value.hora) {
+    if (!esHorarioDisponibleCompleto(form.value.hora)) {
+      form.value.hora = ""
+    }
+  }
+}, { deep: true })
+
+watch([() => form.value.fecha, () => form.value.peluquero], ([nuevaFecha, nuevoPeluquero]) => {
+  if (bloqueandoWatchers.value) return;
+  if (nuevaFecha && nuevoPeluquero) cargarTurnosOcupados(nuevaFecha)
+})
+
+const getListaServicios = () => {
+  try {
+    if (Array.isArray(servicios.value)) return servicios.value
+    if (servicios.value?.results) return servicios.value.results
+    return []
+  } catch (error) { 
+    return [] 
+  }
+}
+
+const serviciosFiltrados = computed(() => {
+  try {
+    let lista = getListaServicios()
+    if (categoriasSeleccionadas.value.length > 0) {
+      lista = lista.filter(s => {
+        if (!s || !s.categoria) return false
+        let catId = (typeof s.categoria === 'object' && s.categoria !== null) 
+                    ? String(s.categoria.id || s.categoria) 
+                    : String(s.categoria)
+        return categoriasSeleccionadas.value.includes(catId)
+      })
+    }
+    if (busquedaServicio.value.trim()) {
+      const term = busquedaServicio.value.toLowerCase().trim()
+      lista = lista.filter(s => s && s.nombre && s.nombre.toLowerCase().includes(term))
+    }
+    return lista
+  } catch (error) { 
+    return [] 
+  }
+})
+
+const toggleCategoria = (id) => {
+  const cid = String(id)
+  const index = categoriasSeleccionadas.value.indexOf(cid)
+  if (index > -1) categoriasSeleccionadas.value.splice(index, 1)
+  else categoriasSeleccionadas.value.push(cid)
+}
+
+const toggleServicio = (servicio) => {
+  if (!servicio || !servicio.id) return
+  const id = String(servicio.id)
+  const index = form.value.servicios_ids.indexOf(id)
+  if (index > -1) form.value.servicios_ids.splice(index, 1)
+  else form.value.servicios_ids.push(id)
+  if (form.value.hora) form.value.hora = ""
+}
+
+const estaServicioSeleccionado = (servicio) => servicio?.id && form.value.servicios_ids.includes(String(servicio.id))
+
+const eliminarServicio = (servicioId) => {
+  form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== String(servicioId))
+  if (form.value.hora) form.value.hora = ""
+}
+
+const formularioValido = computed(() => 
+  form.value.peluquero && 
+  form.value.servicios_ids.length > 0 && 
+  form.value.fecha && 
+  form.value.hora
+)
+
+const calcularTotalOriginal = () => {
+  try {
+    const lista = getListaServicios()
+    return form.value.servicios_ids.reduce((acc, id) => {
+      const s = lista.find(x => String(x.id) === String(id))
+      return acc + (parseFloat(s?.precio) || 0)
+    }, 0)
+  } catch (error) { 
+    return 0 
+  }
+}
+
+const calcularTotal = () => calcularTotalOriginal().toFixed(2)
+const calcularTotalConDescuento = () => {
+  const total = calcularTotalOriginal()
+  const descuento = total * (descuentoAplicado.value / 100)
+  return (total - descuento).toFixed(2)
+}
+const calcularDuracionTotalServicios = () => {
+  const lista = getListaServicios()
+  return form.value.servicios_ids.reduce((total, id) => {
+    const s = lista.find(x => String(x.id) === String(id))
+    return total + parseInt(s?.duracion || s?.duracion_minutos || 20)
+  }, 0)
+}
+const calcularSena = () => {
+  const totalConDescuento = parseFloat(calcularTotalConDescuento())
+  return (totalConDescuento * 0.5).toFixed(2)
+}
+const montoAPagarAhora = () => {
+  if (modoModificacion.value && tipoModificacion.value === 'gratis') return "0.00";
+  return (form.value.tipo_pago === 'SENA_50' ? calcularSena() : calcularTotalConDescuento())
+}
+
+const getServicioNombre = (id) => getListaServicios().find(s => String(s.id) === String(id))?.nombre || 'Servicio'
+const getPeluqueroNombre = () => {
+  const lista = Array.isArray(peluqueros.value) ? peluqueros.value : (peluqueros.value?.results || [])
+  const p = lista.find(x => String(x.id) === String(form.value.peluquero))
+  return p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : ''
+}
+const getServiciosNombres = () => form.value.servicios_ids.map(id => getServicioNombre(id)).join(', ')
+const getNombreCompletoPeluquero = (p) => p ? `${p.nombre || ''} ${p.apellido || ''}`.trim() : ''
+const getInicialesPeluquero = (p) => (p?.nombre || 'P').charAt(0).toUpperCase()
+const formatoFechaLegible = (f) => f ? new Date(f + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : ''
+const getCategoriaNombre = (cat) => (typeof cat === 'object' && cat !== null) ? (cat.nombre || 'General') : 'General'
+
+const nombreMesActual = computed(() => currentDate.value.toLocaleString('es-ES', { month: 'long' }).toUpperCase())
+const currentYear = computed(() => currentDate.value.getFullYear())
+const startingDayOfWeek = computed(() => new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), 1).getDay())
+const daysInMonth = computed(() => new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 0).getDate())
+
+const esHoy = (day) => {
+  const hoy = new Date()
+  return day === hoy.getDate() && 
+         currentDate.value.getMonth() === hoy.getMonth() && 
+         currentYear.value === hoy.getFullYear()
+}
+
+const esDiaSeleccionado = (day) => form.value.fecha && 
+  day === new Date(form.value.fecha + 'T12:00:00').getDate() && 
+  currentDate.value.getMonth() === new Date(form.value.fecha + 'T12:00:00').getMonth()
 
 const validarCuponManual = async () => {
   if (!cuponCodigo.value) {
@@ -2124,6 +2286,23 @@ defineExpose({
   white-space: nowrap;
 }
 
+.hora-expirada-mejorada {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  cursor: not-allowed;
+  opacity: 0.7;
+  color: #9ca3af;
+}
+
+.hora-duracion-badge-expirado {
+  background: #6b7280;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
 .hora-estado-mejorada {
   display: flex;
   align-items: center;
@@ -2549,6 +2728,72 @@ defineExpose({
     width: 100%;
     justify-content: center;
   }
+}
+
+.form-bloqueado {
+  opacity: 0.6;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Selector de método de pago */
+.metodo-pago-selector {
+  margin-bottom: 20px;
+}
+.selector-label {
+  font-size: 0.9em;
+  color: #666;
+  margin-bottom: 8px;
+}
+.selector-opciones {
+  display: flex;
+  gap: 10px;
+}
+.selector-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 2px solid #e0e0e0;
+  background: #fafafa;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+.selector-option:hover {
+  border-color: #009ee3;
+  background: #f0f9ff;
+}
+.selector-option.active {
+  border-color: #009ee3;
+  background: #e5f4ff;
+}
+.selector-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.hidden-radio {
+  display: none;
+}
+.option-icon {
+  color: #009ee3;
+  flex-shrink: 0;
+}
+.option-texto {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.option-texto strong {
+  font-size: 0.95em;
+  color: #333;
+}
+.option-texto small {
+  font-size: 0.8em;
+  color: #888;
 }
 
 .btn-confirmar-premium {

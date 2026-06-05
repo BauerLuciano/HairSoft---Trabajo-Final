@@ -103,6 +103,17 @@ else:
         }
     }
 
+# ================================
+# CACHÉ
+# ================================
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'hairsoft-cache',
+        'TIMEOUT': 300,
+    }
+}
+
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',},

@@ -1162,6 +1162,7 @@ class Cotizacion(models.Model):
     fecha_email_enviado = models.DateTimeField(auto_now_add=True)
     fecha_respuesta = models.DateTimeField(null=True, blank=True)
     respondio = models.BooleanField(default=False)
+    rechazada = models.BooleanField(default=False, db_default=False)
     es_la_mejor = models.BooleanField(default=False)
 
     def __str__(self):
@@ -1358,6 +1359,7 @@ class ConfiguracionSistema(models.Model):
     
     politica_senia = models.TextField(default="Política de señas: Reembolso total si cancelas con tiempo.")
     costo_envio_moto = models.DecimalField(max_digits=10, decimal_places=2, default=1500.00)
+    dias_maximos_reserva = models.PositiveIntegerField(default=7, help_text="Máximo de días hacia adelante que un cliente puede reservar un turno")
     
     class Meta:
         verbose_name = "Configuración del Sistema"
@@ -1535,3 +1537,30 @@ class PagoTemporal(models.Model):
 
     class Meta:
         db_table = "pagos_temporales"
+
+
+class HorarioAtencion(models.Model):
+    class DiaSemana(models.IntegerChoices):
+        LUNES = 0, 'Lunes'
+        MARTES = 1, 'Martes'
+        MIERCOLES = 2, 'Miércoles'
+        JUEVES = 3, 'Jueves'
+        VIERNES = 4, 'Viernes'
+        SABADO = 5, 'Sábado'
+        DOMINGO = 6, 'Domingo'
+
+    dia_semana = models.IntegerField(choices=DiaSemana.choices, unique=True)
+    trabaja = models.BooleanField(default=True)
+    hora_apertura_manana = models.TimeField(null=True, blank=True)
+    hora_cierre_manana = models.TimeField(null=True, blank=True)
+    hora_apertura_tarde = models.TimeField(null=True, blank=True)
+    hora_cierre_tarde = models.TimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "horarios_atencion"
+        ordering = ['dia_semana']
+        verbose_name = "Horario de Atención"
+        verbose_name_plural = "Horarios de Atención"
+
+    def __str__(self):
+        return self.get_dia_semana_display()

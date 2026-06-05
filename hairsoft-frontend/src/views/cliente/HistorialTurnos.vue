@@ -103,9 +103,12 @@
             <div class="turno-precio">
               <div class="precio-total">
                 <span class="precio-simbolo">$</span>
-                <span class="precio-valor">{{ turno.monto_total || '0' }}</span>
+                <span class="precio-valor">{{ formatPrecio(turno.monto_total || 0) }}</span>
               </div>
               <span class="precio-texto">Total del servicio</span>
+              <span v-if="turno.tipo_pago" :class="['pago-badge', turno.tipo_pago === 'TOTAL' ? 'pago-total' : 'pago-sena']">
+                {{ turno.tipo_pago === 'TOTAL' ? 'Pagado' : 'Seña' }}
+              </span>
             </div>
             
             <div v-if="turno.descuento_aplicado && turno.descuento_aplicado > 0" class="descuento-fidelizacion">
@@ -637,47 +640,69 @@ const mostrarAlertaFelicidades = async (turnoId) => {
     // Lógica para diferenciar qué texto mostrar según si pagó total o seña
     const esSena = t.tipo_pago !== 'TOTAL';
     const textoPago = esSena ? 'Seña abonada (50%)' : 'Total abonado';
-    const montoPagado = esSena ? t.monto_seña : t.monto_total;
-    const montoPendiente = esSena ? (t.monto_total - t.monto_seña) : 0;
+    const montoPagado = esSena ? (t.monto_seña || 0) : (t.monto_total || 0);
+    const montoPendiente = esSena ? ((t.monto_total || 0) - (t.monto_seña || 0)) : 0;
+    const total = t.monto_total || 0;
+    const serviciosList = t.servicios || [];
 
     const result = await Swal.fire({
       title: '<span style="color: #047857; font-weight: 800; font-size: 1.5rem;">¡Reserva Confirmada! 🎉</span>',
       html: `
-        <div style="text-align: left; background: #f8fafc; padding: 1.5rem; border-radius: 16px; font-family: 'Inter', -apple-system, sans-serif;">
+        <div style="text-align: left; font-family: system-ui, -apple-system, sans-serif;">
           
-          <p style="font-size: 1.05rem; color: #475569; margin-bottom: 1.5rem; text-align: center; line-height: 1.5;">
-            Tu turno ha sido agendado exitosamente.
-          </p>
-          
-          <div style="background: white; padding: 1.2rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 1rem; border: 1px solid #e2e8f0;">
-            <div style="display: flex; align-items: center; margin-bottom: 12px;">
-              <span style="background: #eff6ff; color: #3b82f6; padding: 6px; border-radius: 8px; margin-right: 10px;">📅</span>
-              <div style="display: flex; flex-direction: column;">
-                <span style="font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Fecha y Hora</span>
-                <span style="color: #0f172a; font-weight: 700; font-size: 1.05rem;">${formatFecha(t.fecha)} - ${t.hora} hs</span>
-              </div>
-            </div>
-            
-            <div style="display: flex; align-items: center;">
-              <span style="background: #fdf4ff; color: #d946ef; padding: 6px; border-radius: 8px; margin-right: 10px;">💇‍♂️</span>
-              <div style="display: flex; flex-direction: column;">
-                <span style="font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Profesional</span>
-                <span style="color: #0f172a; font-weight: 700; font-size: 1.05rem;">${t.peluquero_nombre}</span>
-              </div>
-            </div>
+          <div style="background: #f0fdf4; padding: 1rem; border-radius: 12px; margin-bottom: 1.2rem; text-align: center;">
+            <p style="margin:0; font-size: 0.95rem; color: #166534;">
+              Tu turno ha sido agendado exitosamente.
+            </p>
           </div>
 
-          <div style="background: linear-gradient(145deg, #10b981, #059669); padding: 1.2rem; border-radius: 12px; color: white; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: ${esSena ? '8px' : '0'};">
+          <div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; margin-bottom: 1rem;">
+            <div style="padding: 1rem 1.2rem; border-bottom: 1px solid #f1f5f9;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="background: #eff6ff; color: #3b82f6; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 1rem;">📅</span>
+                <div>
+                  <div style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Fecha y Hora</div>
+                  <div style="color: #0f172a; font-weight: 700; font-size: 1rem;">${formatFecha(t.fecha)} - ${t.hora} hs</div>
+                </div>
+              </div>
+            </div>
+            <div style="padding: 1rem 1.2rem; border-bottom: 1px solid #f1f5f9;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="background: #fdf4ff; color: #d946ef; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 1rem;">💇‍♂️</span>
+                <div>
+                  <div style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Profesional</div>
+                  <div style="color: #0f172a; font-weight: 700; font-size: 1rem;">${t.peluquero_nombre}</div>
+                </div>
+              </div>
+            </div>
+            ${serviciosList.length > 0 ? `
+            <div style="padding: 1rem 1.2rem;">
+              <div style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Servicios</div>
+              ${serviciosList.map(s => `
+                <div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.9rem;">
+                  <span style="color: #334155;">${s.nombre}</span>
+                  <span style="color: #0f172a; font-weight: 600;">$${formatPrecio(s.precio)}</span>
+                </div>
+              `).join('')}
+              <div style="border-top: 1px solid #e2e8f0; margin-top: 6px; padding-top: 8px; display: flex; justify-content: space-between;">
+                <span style="font-weight: 700; color: #0f172a;">Total del turno</span>
+                <span style="font-weight: 800; color: #047857; font-size: 1.05rem;">$${formatPrecio(total)}</span>
+              </div>
+            </div>
+            ` : ''}
+          </div>
+
+          <div style="background: linear-gradient(135deg, #059669, #047857); border-radius: 12px; padding: 1.2rem; color: white;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: ${esSena ? '10px' : '0'};">
               <div style="display: flex; align-items: center; gap: 8px;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                <span style="font-weight: 600; font-size: 0.95rem;">${textoPago}</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                <span style="font-weight: 600; font-size: 0.9rem;">${textoPago}</span>
               </div>
               <span style="font-weight: 800; font-size: 1.2rem;">$${formatPrecio(montoPagado)}</span>
             </div>
             
             ${esSena ? `
-            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.4); padding-top: 8px; margin-top: 4px;">
+            <div style="border-top: 1px dashed rgba(255,255,255,0.35); padding-top: 10px; display: flex; justify-content: space-between; align-items: center;">
               <span style="font-weight: 500; font-size: 0.85rem; opacity: 0.9;">Saldo a pagar en el local</span>
               <span style="font-weight: 700; font-size: 1rem;">$${formatPrecio(montoPendiente)}</span>
             </div>
@@ -686,7 +711,7 @@ const mostrarAlertaFelicidades = async (turnoId) => {
 
         </div>
       `,
-      icon: 'none', // Lo quitamos para no pisar el estilo moderno del HTML
+      icon: 'none',
       showCancelButton: true,
       confirmButtonColor: '#10b981',
       cancelButtonColor: '#64748b',
@@ -730,7 +755,7 @@ onMounted(async () => {
 const turnosFiltrados = computed(() => {
   const hoy = new Date().toISOString().split('T')[0]
   let filtrados = tabActiva.value === 'proximos' 
-    ? turnos.value.filter(t => t.fecha >= hoy && t.estado === 'RESERVADO').sort((a, b) => new Date(a.fecha + 'T' + a.hora) - new Date(b.fecha + 'T' + b.hora))
+    ? turnos.value.filter(t => t.fecha >= hoy && t.estado === 'RESERVADO').sort((a, b) => new Date(b.fecha + 'T' + b.hora) - new Date(a.fecha + 'T' + a.hora))
     : turnos.value.filter(t => t.fecha < hoy || ['CANCELADO', 'COMPLETADO'].includes(t.estado)).sort((a, b) => new Date(b.fecha + 'T' + b.hora) - new Date(a.fecha + 'T' + a.hora))
   
   if (tabActiva.value === 'historial') {
@@ -1040,11 +1065,12 @@ watch(tabActiva, () => { pagina.value = 1 })
   transition: all 0.3s ease;
   position: relative;
   display: flex;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
 }
 
 .turno-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.1);
   border-color: #0ea5e9;
 }
 
@@ -1072,7 +1098,7 @@ watch(tabActiva, () => { pagina.value = 1 })
 
 /* CONTENIDO DEL TURNO */
 .turno-content {
-  padding: 24px;
+  padding: 20px 24px;
   flex: 1;
 }
 
@@ -1081,8 +1107,8 @@ watch(tabActiva, () => { pagina.value = 1 })
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -1148,17 +1174,17 @@ watch(tabActiva, () => { pagina.value = 1 })
 }
 
 .turno-titulo {
-  margin: 0 0 15px 0;
-  font-size: 1.3rem;
+  margin: 0 0 14px 0;
+  font-size: 1.25rem;
   color: var(--text-primary);
   font-weight: 800;
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 .turno-detalles {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .detalle-item {
@@ -1226,6 +1252,27 @@ watch(tabActiva, () => { pagina.value = 1 })
   color: var(--text-tertiary);
   font-size: 0.85rem;
   font-weight: 500;
+}
+
+.pago-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.pago-badge.pago-total {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+.pago-badge.pago-sena {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
 .turno-acciones {

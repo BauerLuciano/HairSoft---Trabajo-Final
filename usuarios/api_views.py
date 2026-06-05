@@ -1,6 +1,7 @@
 import logging
 from rest_framework import viewsets, filters, generics, permissions, status, serializers
 from django.conf import settings
+from django.core.cache import cache
 from rest_framework.authtoken.models import Token
 from django_filters.rest_framework import DjangoFilterBackend
 from google.oauth2 import id_token
@@ -15,10 +16,11 @@ from django.http import HttpResponse
 from django.db.models.functions import TruncDate, Coalesce
 from django.utils.dateparse import parse_date
 from django.utils import timezone
-from .models import Auditoria, Servicio, Turno, Usuario, Producto, Liquidacion, PedidoWeb, ConfiguracionSistema, ConfiguracionLocal, Envio, Silla, SesionCaja, Venta, DetalleVenta, Pedido
+from .models import Auditoria, Servicio, Turno, Usuario, Producto, Liquidacion, PedidoWeb, ConfiguracionSistema, ConfiguracionLocal, Envio, Silla, SesionCaja, Venta, DetalleVenta, Pedido, HorarioAtencion
 from .serializers import (AuditoriaSerializer, ServicioSerializer, TurnoSerializer, UsuarioSerializer,
                           ProductoCatalogoSerializer, LiquidacionSerializer, PedidoWebSerializer,
-                          SillaSerializer, ConfiguracionLocalSerializer, EnvioSerializer, CrearEnvioSerializer)
+                          SillaSerializer, ConfiguracionLocalSerializer, EnvioSerializer, CrearEnvioSerializer,
+                          HorarioAtencionSerializer)
 import io
 import datetime
 from reportlab.lib import colors
@@ -519,6 +521,29 @@ class SillaViewSet(viewsets.ModelViewSet):
     queryset = Silla.objects.all().order_by('orden')
     serializer_class = SillaSerializer
     permission_classes = [IsAuthenticated]
+
+class EsAdminODescartar(permissions.BasePermission):
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return request.user.is_authenticated
+        return request.user.is_authenticated and getattr(request.user, 'rol', None) and request.user.rol.nombre.upper() == 'ADMINISTRADOR'
+
+class HorarioAtencionViewSet(viewsets.ModelViewSet):
+    queryset = HorarioAtencion.objects.all()
+    serializer_class = HorarioAtencionSerializer
+    permission_classes = [EsAdminODescartar]
+
+    def perform_update(self, serializer):
+        serializer.save()
+        cache.delete('horarios_atencion')
+
+    def perform_create(self, serializer):
+        serializer.save()
+        cache.delete('horarios_atencion')
+
+    def perform_destroy(self, instance):
+        instance.delete()
+        cache.delete('horarios_atencion')
 
 class ConfigWebView(APIView):
     permission_classes = [AllowAny] # Público, para que lo lea el Home y Checkout

@@ -20,6 +20,7 @@ from django.utils.decorators import method_decorator
 from django.utils import timezone
 from django.core.paginator import Paginator
 from django.core.mail import send_mail
+from django.core.cache import cache
 from django.conf import settings
 from django.db import IntegrityError
 
@@ -45,7 +46,7 @@ from .models import (
     DetallePedido, ListaPrecioProveedor, HistorialPrecios, Marca, 
     InteresTurnoLiberado, Cotizacion, SolicitudPresupuesto, 
     PromocionReactivacion, Auditoria, PasswordResetToken, PedidoWeb, 
-    ConfiguracionSistema, Silla, NotaCredito, Caja, SesionCaja, MovimientoCaja, HistorialStock
+    ConfiguracionSistema, Silla, NotaCredito, Caja, SesionCaja, MovimientoCaja, HistorialStock, HorarioAtencion
 )
 from .serializers import (
     LoginSerializer, ProveedorSerializer, ProductoSerializer, VentaSerializer, 
@@ -66,6 +67,15 @@ from .turno_service import TurnoService
 
 # Configuración del logger
 logger = logging.getLogger(__name__)
+
+
+def get_horarios_cache():
+    data = cache.get('horarios_atencion')
+    if data is None:
+        data = list(HorarioAtencion.objects.all().order_by('dia_semana').values())
+        cache.set('horarios_atencion', data, 300)
+    return data
+
 
 # ================================
 # Funciones Auxiliares
@@ -832,7 +842,8 @@ def ajustar_stock_manual(request, producto_id):
 
         stock_anterior = producto.stock_actual
         
-        Producto.objects.filter(id=producto.id).update(stock_actual=int(nuevo_stock))
+        producto.stock_actual = int(nuevo_stock)
+        producto.save(update_fields=['stock_actual'])
 
         # Guardamos en HistorialStock (Ajuste Manual)
         HistorialStock.objects.create(
@@ -860,18 +871,6 @@ def ajustar_stock_manual(request, producto_id):
             },
             ip_address=ip
         )
-        
-        try:
-            from .tasks import procesar_alertas_stock_proveedores 
-            
-            if producto.stock_actual <= producto.stock_minimo:
-                procesar_alertas_stock_proveedores.delay(producto.id) 
-                print(f"🚀 [CELERY] Tarea individual de stock encolada para {producto.nombre}")
-            else:
-                print(f"✅ [CELERY] No hace falta pedir {producto.nombre}, stock OK.")
-                
-        except Exception as celery_err:
-            print(f"⚠️ Error al disparar Celery manualmente: {celery_err}")
 
         return Response({'message': 'Stock actualizado.', 'nuevo_stock': int(nuevo_stock)}, status=200)
 
@@ -1027,9 +1026,40 @@ def crear_turno(request):
         
         if not servicios.exists():
             return Response({'status': 'error', 'message': "Servicios no válidos"}, status=400)
-            
+
         # ---------------------------------------------------------
-        # 2.5. 🔥 VALIDACIÓN: EL CLIENTE YA TIENE TURNO A ESTA HORA?
+        # 2.5. VALIDACIÓN HORARIO DE ATENCIÓN
+        # ---------------------------------------------------------
+        duracion_total = sum(s.duracion for s in servicios) or 30
+        dia_semana = fecha_obj.weekday()
+        horarios = get_horarios_cache()
+        horario_dia = next((h for h in horarios if h['dia_semana'] == dia_semana), None)
+
+        if not horario_dia or not horario_dia['trabaja']:
+            return Response({
+                'status': 'error',
+                'message': 'El local no atiende ese día de la semana.'
+            }, status=400)
+
+        hora_inicio_dt = datetime.combine(fecha_obj, hora_obj)
+        hora_fin_dt = hora_inicio_dt + timedelta(minutes=duracion_total)
+
+        def en_rango_valido(apertura, cierre):
+            if not apertura or not cierre:
+                return False
+            apertura_dt = datetime.combine(fecha_obj, apertura)
+            cierre_dt = datetime.combine(fecha_obj, cierre)
+            return apertura_dt <= hora_inicio_dt and hora_fin_dt <= cierre_dt
+
+        if not (en_rango_valido(horario_dia['hora_apertura_manana'], horario_dia['hora_cierre_manana']) or
+                en_rango_valido(horario_dia['hora_apertura_tarde'], horario_dia['hora_cierre_tarde'])):
+            return Response({
+                'status': 'error',
+                'message': 'El turno excede el horario de atención. Verificá que la hora de inicio y la duración del servicio quepan dentro del horario laboral.'
+            }, status=400)
+
+        # ---------------------------------------------------------
+        # 2.6. VALIDACIÓN: EL CLIENTE YA TIENE TURNO A ESTA HORA?
         # ---------------------------------------------------------
         ya_tiene_turno = Turno.objects.filter(
             fecha=fecha_obj,
@@ -1266,7 +1296,7 @@ def crear_turno(request):
         mp_data = None
         procesar_pago = False
         
-        if canal == 'WEB' and medio_pago == 'MERCADO_PAGO':
+        if canal == 'WEB' and medio_pago == 'MERCADO_PAGO' and not pago_uuid:
             print("💳 Iniciando Checkout MercadoPago...")
             try:
                 from .mercadopago_service import MercadoPagoService
@@ -1328,7 +1358,7 @@ def crear_turno(request):
             from usuarios.models import Notificacion
             Notificacion.objects.create(
                 tipo='TURNO',
-                mensaje=f'{cliente.nombre} reservó turno web para el {fecha_str}.',
+                mensaje=f'{cliente.nombre} {cliente.apellido} reservó turno web para el {fecha_str}.',
                 link='/turnos'
             )
         
@@ -1616,49 +1646,58 @@ def obtener_horarios_disponibles(request):
             fin = (dummy_date + timedelta(minutes=duracion)).time()
             rangos_ocupados.append((inicio, fin))
 
-        # 4. Configurar Jornada
-        hora_inicio = time(9, 0)
-        hora_fin = time(21, 0)
-        
+        # 4. Obtener horarios de atención para esta fecha
+        dia_semana = fecha_solicitada.weekday()
+        horarios = get_horarios_cache()
+        horario_dia = next((h for h in horarios if h['dia_semana'] == dia_semana), None)
+
+        if not horario_dia or not horario_dia['trabaja']:
+            return Response({'horarios': []})
+
         duracion_slot = 30
         if servicio_id:
             try:
                 s = Servicio.objects.get(pk=servicio_id)
                 duracion_slot = s.duracion
             except: pass
-        
+
+        rangos = []
+        if horario_dia['hora_apertura_manana'] and horario_dia['hora_cierre_manana']:
+            rangos.append((horario_dia['hora_apertura_manana'], horario_dia['hora_cierre_manana']))
+        if horario_dia['hora_apertura_tarde'] and horario_dia['hora_cierre_tarde']:
+            rangos.append((horario_dia['hora_apertura_tarde'], horario_dia['hora_cierre_tarde']))
+
         # 5. Generar Slots
         horarios_disponibles = []
-        # Usamos un datetime arbitrario para sumar tiempo, solo nos importa la hora resultante
-        iter_dt = datetime.combine(fecha_solicitada, hora_inicio)
-        limit_dt = datetime.combine(fecha_solicitada, hora_fin)
         delta = timedelta(minutes=duracion_slot)
 
-        while iter_dt + delta <= limit_dt:
-            slot_inicio = iter_dt.time()
-            slot_fin = (iter_dt + delta).time()
-            
-            es_valido = True
+        for apertura, cierre in rangos:
+            iter_dt = datetime.combine(fecha_solicitada, apertura)
+            limit_dt = datetime.combine(fecha_solicitada, cierre)
 
-            # A. Validar pasado (si es hoy)
-            if fecha_solicitada == ahora.date():
-                # Margen de 15 min
-                margen = (ahora + timedelta(minutes=15)).time()
-                if slot_inicio < margen:
-                    es_valido = False
+            while iter_dt + delta <= limit_dt:
+                slot_inicio = iter_dt.time()
+                slot_fin = (iter_dt + delta).time()
 
-            # B. Validar colisión con turnos (Comparación pura de horas)
-            if es_valido:
-                for ocupado_inicio, ocupado_fin in rangos_ocupados:
-                    # Lógica de solapamiento: (InicioA < FinB) y (FinA > InicioB)
-                    if slot_inicio < ocupado_fin and slot_fin > ocupado_inicio:
+                es_valido = True
+
+                # A. Validar pasado (si es hoy)
+                if fecha_solicitada == ahora.date():
+                    margen = (ahora + timedelta(minutes=15)).time()
+                    if slot_inicio < margen:
                         es_valido = False
-                        break
-            
-            if es_valido:
-                horarios_disponibles.append(slot_inicio.strftime("%H:%M"))
-            
-            iter_dt += delta
+
+                # B. Validar colisión con turnos
+                if es_valido:
+                    for ocupado_inicio, ocupado_fin in rangos_ocupados:
+                        if slot_inicio < ocupado_fin and slot_fin > ocupado_inicio:
+                            es_valido = False
+                            break
+
+                if es_valido:
+                    horarios_disponibles.append(slot_inicio.strftime("%H:%M"))
+
+                iter_dt += delta
 
         return Response({'horarios': horarios_disponibles})
 
@@ -4313,6 +4352,7 @@ def evaluaciones_compras_unificadas(request):
                     "cantidad_ofertada": c.cantidad_ofertada,
                     "precio_ofrecido": c.precio_ofrecido,
                     "dias_entrega": c.dias_entrega,
+                    "rechazada": c.rechazada,
                     "es_la_mejor": c.es_la_mejor
                 } for c in sol.cotizaciones.all()
             ]
@@ -4358,6 +4398,7 @@ def evaluaciones_compras_unificadas(request):
                         "cantidad_ofertada": det.cantidad,
                         "precio_ofrecido": precio_total,
                         "dias_entrega": dias_calculados,
+                        "rechazada": False,
                         # Es la mejor/ganadora si ya se confirmó o entregó
                         "es_la_mejor": ped.estado in ['CONFIRMADO', 'ENTREGADO']
                     }
@@ -5790,6 +5831,30 @@ def gestionar_cotizacion_externa(request, token):
             print(f"❌ ERROR EN DATOS RECIBIDOS: {e}")
             return Response({"error": "Los datos enviados no tienen el formato correcto"}, status=400)
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def rechazar_cotizacion(request, cotizacion_id):
+    """Marca una cotización como rechazada por el admin."""
+    from usuarios.models import Cotizacion
+    try:
+        cot = Cotizacion.objects.get(id=cotizacion_id)
+    except Cotizacion.DoesNotExist:
+        return Response({'error': 'Cotización no encontrada'}, status=404)
+    
+    if cot.rechazada:
+        return Response({'error': 'La cotización ya fue rechazada'}, status=400)
+    if cot.es_la_mejor:
+        return Response({'error': 'No se puede rechazar una cotización ya adjudicada'}, status=400)
+    
+    cot.rechazada = True
+    cot.save(update_fields=['rechazada'])
+    
+    # Enviar email al proveedor
+    from usuarios.tasks import enviar_email_cotizacion_rechazada
+    enviar_email_cotizacion_rechazada.delay(cot.id)
+    
+    return Response({'status': 'ok', 'mensaje': f'Cotización de {cot.proveedor.nombre} rechazada'})
+
 class SolicitudPresupuestoViewSet(viewsets.ReadOnlyModelViewSet):
     """
     API para que el Gerente vea y gestione las licitaciones de stock.
@@ -7083,7 +7148,8 @@ def retorno_mercadopago(request):
         url_frontend = f"{frontend_url}/client/mis-pedidos?pago_exitoso=true&pedido_id={pedido_id}&payment_id={payment_id}"
     else:
         frontend_url = settings.FRONTEND_URL
-        url_frontend = f"{frontend_url}/cliente/historial?pago_exitoso=true&{external_reference}"
+        turno_id = external_reference.replace('TURNO_', '') if external_reference.startswith('TURNO_') else ''
+        url_frontend = f"{frontend_url}/cliente/historial?pago_exitoso=true&turno_id={turno_id}"
         
     return redirect(url_frontend)
 

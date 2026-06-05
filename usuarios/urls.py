@@ -15,6 +15,7 @@ from .api_views import (
     RegistrarPagoLiquidacionView,
     HistorialLiquidacionesView,
     SillaViewSet,
+    HorarioAtencionViewSet,
     ConfigWebView,
     verificar_estado_caja,
     EstadisticasDashboardAPIView,
@@ -59,7 +60,8 @@ from .views import (
 router = DefaultRouter()
 router.register(r'auditoria', AuditoriaViewSet, basename='auditoria')
 router.register(r'web/pedidos', PedidoWebViewSet, basename='pedidos-web')
-router.register(r'sillas', SillaViewSet, basename='silla') 
+router.register(r'sillas', SillaViewSet, basename='silla')
+router.register(r'horarios', HorarioAtencionViewSet, basename='horarios') 
 router.register(r'cajas', CajaViewSet, basename='caja')
 router.register(r'sesiones-caja', SesionCajaViewSet, basename='sesion-caja')
 router.register(r'movimientos-caja', MovimientoCajaViewSet, basename='movimiento-caja')
@@ -284,6 +286,7 @@ urlpatterns = [
     path('api/solicitudes-presupuesto/', SolicitudPresupuestoViewSet.as_view({'get': 'list'}), name='solicitudes-list'),
     path('api/solicitudes-presupuesto/<int:pk>/', SolicitudPresupuestoViewSet.as_view({'get': 'retrieve'}), name='solicitudes-detail'),
     path('api/solicitudes-presupuesto/<int:pk>/generar-orden/', SolicitudPresupuestoViewSet.as_view({'post': 'generar_orden_compra'}), name='solicitudes-generar-orden'),
+    path('api/cotizaciones/<int:cotizacion_id>/rechazar/', func_views.rechazar_cotizacion, name='rechazar-cotizacion'),
 
     path('api/turnos/reembolsos-pendientes/', 
          func_views.obtener_turnos_con_reembolso_pendiente, 

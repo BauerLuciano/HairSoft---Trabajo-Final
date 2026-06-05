@@ -943,7 +943,7 @@ class CotizacionDetalleSerializer(serializers.ModelSerializer):
             'id', 'proveedor', 'proveedor_nombre', 
             'precio_ofrecido', 'dias_entrega', 
             'cantidad_ofertada', 
-            'comentarios', 'respondio', 'score', 'es_la_mejor'
+            'comentarios', 'respondio', 'rechazada', 'score', 'es_la_mejor'
         ]
 
     def get_score(self, obj):
@@ -968,7 +968,7 @@ class SolicitudPresupuestoSerializer(serializers.ModelSerializer):
 
     def get_mejor_opcion_id(self, obj):
         """Devuelve el ID de la cotización con mejor puntaje (score)"""
-        candidatas = [c for c in obj.cotizaciones.all() if c.respondio and c.precio_ofrecido]
+        candidatas = [c for c in obj.cotizaciones.all() if c.respondio and c.precio_ofrecido and not c.rechazada]
         if not candidatas:
             return None
         # Ordenamos por score (menor es mejor)
@@ -1285,4 +1285,50 @@ class CrearEnvioSerializer(serializers.ModelSerializer):
         )
         data['distancia_km'] = distancia
         data['costo_envio'] = costo
+        return data
+
+class HorarioAtencionSerializer(serializers.ModelSerializer):
+    dia_nombre = serializers.CharField(source='get_dia_semana_display', read_only=True)
+
+    class Meta:
+        model = HorarioAtencion
+        fields = '__all__'
+
+    def validate(self, data):
+        def val(field):
+            if field in data:
+                return data[field]
+            if self.instance:
+                return getattr(self.instance, field)
+            return None
+
+        trabaja = val('trabaja')
+        if not trabaja:
+            return data
+
+        m_a = val('hora_apertura_manana')
+        m_c = val('hora_cierre_manana')
+        t_a = val('hora_apertura_tarde')
+        t_c = val('hora_cierre_tarde')
+
+        if not (m_a and m_c) and not (t_a and t_c):
+            raise serializers.ValidationError(
+                'Debe configurar al menos un turno (mañana o tarde/noche) para los días habilitados.'
+            )
+
+        if m_a and m_c:
+            if m_a >= m_c:
+                raise serializers.ValidationError({
+                    'hora_cierre_manana': 'La hora de cierre debe ser posterior a la de apertura.'
+                })
+        if t_a and t_c:
+            if t_a >= t_c:
+                raise serializers.ValidationError({
+                    'hora_cierre_tarde': 'La hora de cierre debe ser posterior a la de apertura.'
+                })
+        if m_c and t_a and m_c > t_a:
+            raise serializers.ValidationError(
+                'El turno mañana y el turno tarde/noche no deben superponerse.'
+            )
+
         return data

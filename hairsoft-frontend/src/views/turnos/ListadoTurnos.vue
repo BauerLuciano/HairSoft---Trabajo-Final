@@ -1224,73 +1224,22 @@ const verDetalleTurno = async (turno) => {
 
 // 🔥 FLUJO COMPLETAR MEJORADO – COBRO DE SALDO PENDIENTE
 const completarTurno = async (turno) => {
-  const total = parseFloat(turno.monto_total) || 0;
-  const sena = parseFloat(turno.monto_seña) || 0;
-  const diff = total - sena;
+  const { isConfirmed } = await Swal.fire({
+    title: '¿Completar turno?',
+    text: 'Marcar como completado.',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#10b981',
+    confirmButtonText: 'Sí, completar'
+  });
 
-  if (diff > 0) {
-    // --- CASE: HAY SALDO PENDIENTE → MODAL DE COBRO ---
-    const { isConfirmed, value: formValues } = await Swal.fire({
-      title: 'Saldo Pendiente',
-      html: `
-        <div style="text-align: left;">
-          <div style="background: #f8fafc; padding: 15px; border-radius: 12px; margin-bottom: 20px;">
-            <p><strong>Total del Turno:</strong> $${formatPrecio(total)}</p>
-            <p><strong>Ya Pagado (Seña):</strong> $${formatPrecio(sena)}</p>
-            <p style="font-size: 1.2rem; font-weight: 700; color: #f59e0b;"><strong>Saldo a Cobrar:</strong> $${formatPrecio(diff)}</p>
-          </div>
-          <label for="metodo_pago_saldo" style="display: block; font-weight: 600; margin-bottom: 8px; color: #1e293b;">
-            Método de Pago para el Saldo
-          </label>
-          <select id="metodo_pago_saldo" class="swal2-input" style="width: 100%;">
-            <option value="EFECTIVO">💵 Efectivo</option>
-            <option value="MERCADO_PAGO">🔵 Mercado Pago</option>
-            <option value="TRANSFERENCIA">🏦 Transferencia</option>
-          </select>
-        </div>
-      `,
-      showCancelButton: true,
-      confirmButtonColor: '#10b981',
-      confirmButtonText: 'Cobrar y Completar',
-      cancelButtonText: 'Cancelar',
-      preConfirm: () => {
-        const metodo = document.getElementById('metodo_pago_saldo').value;
-        if (!metodo) {
-          Swal.showValidationMessage('Seleccione un método de pago');
-          return false;
-        }
-        return { metodo_pago_saldo: metodo };
-      }
-    });
-
-    if (isConfirmed && formValues) {
-      try {
-        await axios.post(`/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`, formValues);
-        await cargarTurnos();
-        Swal.fire('¡Turno completado!', 'El saldo pendiente fue cobrado.', 'success');
-      } catch (error) {
-        Swal.fire('Error', 'No se pudo completar el turno.', 'error');
-      }
-    }
-  } else {
-    // --- CASE: SIN SALDO PENDIENTE → CONFIRMACIÓN SIMPLE ---
-    const { isConfirmed } = await Swal.fire({
-      title: '¿Completar turno?',
-      text: 'Marcar como completado.',
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: '#10b981',
-      confirmButtonText: 'Sí, completar'
-    });
-
-    if (isConfirmed) {
-      try {
-        await axios.post(`/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`);
-        await cargarTurnos();
-        Swal.fire('¡Turno completado!', '', 'success');
-      } catch (error) {
-        Swal.fire('Error', 'No se pudo completar el turno.', 'error');
-      }
+  if (isConfirmed) {
+    try {
+      await axios.post(`/api/turnos/${turno.id}/cambiar-estado/COMPLETADO/`);
+      await cargarTurnos();
+      Swal.fire('¡Turno completado!', '', 'success');
+    } catch (error) {
+      Swal.fire('Error', 'No se pudo completar el turno.', 'error');
     }
   }
 };
@@ -1364,6 +1313,7 @@ const paginaSiguiente = () => { if (pagina.value < totalPaginas.value) pagina.va
 // PERMISOS
 const mostrarBotonCompletar = (turno) => {
   if (['COMPLETADO', 'CANCELADO'].includes(turno.estado)) return false
+  if (turno.saldo_pendiente > 0) return false
   return ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'PELUQUERO', 'PEL'].includes(userRol.value)
 }
 

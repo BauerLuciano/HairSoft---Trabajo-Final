@@ -244,14 +244,8 @@
               {{ getRecomendacionTexto(licitacionSeleccionada) }}
             </p>
             <div class="recomendacion-factores">
-              <span class="factor" v-if="licitacionSeleccionada.producto_stock <= 10">
-                ⚡ Stock crítico
-              </span>
               <span class="factor" v-if="licitacionSeleccionada.cotizaciones.length >= 3">
                 📈 Múltiples ofertas
-              </span>
-              <span class="factor" v-if="diasDesdeCreacion(licitacionSeleccionada) > 5">
-                ⏰ Urgente por antigüedad
               </span>
             </div>
           </div>
@@ -282,7 +276,6 @@
                     <th>Precio Unitario</th>
                     <th>Precio Total</th>
                     <th>Tiempo Entrega</th>
-                    <th v-if="licitacionSeleccionada.tipo_solicitud !== 'MANUAL'">Calificación</th>
                     <th v-if="licitacionSeleccionada.estado !== 'CERRADA'">Acción</th>
                     <th v-else>Resultado</th>
                   </tr>
@@ -290,8 +283,7 @@
                 <tbody>
                   <tr v-for="cotizacion in licitacionSeleccionada.cotizaciones" :key="cotizacion.id" 
                       :class="{ 
-                        'ganadora-row': cotizacion.es_la_mejor,
-                        'recomendada-oferta': esOfertaRecomendada(cotizacion, licitacionSeleccionada)
+                        'ganadora-row': cotizacion.es_la_mejor
                       }">
                     
                     <td><span class="font-bold">{{ cotizacion.proveedor_nombre }}</span></td>
@@ -305,26 +297,27 @@
                     <td v-if="cotizacion.respondio">{{ cotizacion.dias_entrega }} días</td>
                     <td v-else class="text-muted">-</td>
 
-                    <template v-if="licitacionSeleccionada.tipo_solicitud !== 'MANUAL'">
-                      <td>
-                        <div class="calificacion-estrella" v-if="cotizacion.respondio">
-                          <span v-for="n in 5" :key="n" :class="['estrella', n <= calcularCalificacion(cotizacion, licitacionSeleccionada) ? 'activa' : '']">★</span>
-                          <span class="puntaje">{{ calcularPuntaje(cotizacion, licitacionSeleccionada).toFixed(1) }}/10</span>
-                        </div>
-                        <span v-else class="text-muted">-</span>
-                      </td>
-                    </template>
-
                     <td>
-                      <button v-if="cotizacion.respondio && licitacionSeleccionada.estado !== 'CERRADA'"
-                        @click="generarOrden(licitacionSeleccionada, cotizacion.id)"
-                        class="action-button primary-action"
-                        :disabled="generando === licitacionSeleccionada.id"
-                      >
-                        <CheckCircle :size="14" />
-                        <span>{{ licitacionSeleccionada.tipo_solicitud === 'MANUAL' ? 'Aprobar' : 'Adjudicar' }}</span>
-                      </button>
-                      <div v-if="cotizacion.es_la_mejor" class="winner-badge"><Award :size="14" /><span>CONFIRMADO</span></div>
+                      <div class="acciones-cotizacion">
+                        <button v-if="cotizacion.respondio && !cotizacion.rechazada && licitacionSeleccionada.estado !== 'CERRADA'"
+                          @click="generarOrden(licitacionSeleccionada, cotizacion.id)"
+                          class="action-button primary-action"
+                          :disabled="generando === licitacionSeleccionada.id"
+                        >
+                          <CheckCircle :size="14" />
+                          <span>{{ licitacionSeleccionada.tipo_solicitud === 'MANUAL' ? 'Aprobar' : 'Adjudicar' }}</span>
+                        </button>
+                        <button v-if="cotizacion.respondio && !cotizacion.rechazada && licitacionSeleccionada.estado !== 'CERRADA'"
+                          @click="rechazarCotizacion(cotizacion)"
+                          class="action-button reject-btn"
+                          :disabled="rechazando"
+                        >
+                          <XCircle :size="14" />
+                          <span>Rechazar</span>
+                        </button>
+                        <div v-if="cotizacion.rechazada" class="rejected-badge"><XCircle :size="14" /><span>RECHAZADA</span></div>
+                        <div v-if="cotizacion.es_la_mejor" class="winner-badge"><Award :size="14" /><span>CONFIRMADO</span></div>
+                      </div>
                     </td>
                   </tr>
                 </tbody>
@@ -342,7 +335,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
 import { 
-  RefreshCw, Search, Box, FileText, CheckCircle, Award, 
+  RefreshCw, Search, Box, FileText, CheckCircle, XCircle, Award, 
   Trash2, X, Eye, Clock, ChevronLeft, ChevronRight
 } from 'lucide-vue-next'
 
@@ -351,6 +344,7 @@ const API_BASE = 'http://127.0.0.1:8000';
 const solicitudes = ref([])
 const cargando = ref(true)
 const generando = ref(null)
+const rechazando = ref(false)
 const filtros = ref({ 
   busqueda: '', 
   estado: '',
@@ -428,20 +422,10 @@ const calcularUnitario = (cot, sol) => {
   return cant > 0 ? cot.precio_ofrecido / cant : 0
 }
 
-const calcularPuntaje = (cot, sol) => {
-  const precios = sol.cotizaciones.filter(c => c.respondio).map(c => c.precio_ofrecido)
-  const min = Math.min(...precios)
-  const max = Math.max(...precios)
-  if (min === max) return 5
-  return (1 - ((cot.precio_ofrecido - min) / (max - min))) * 10
-}
-
-const calcularCalificacion = (cot, sol) => Math.round(calcularPuntaje(cot, sol) / 2)
-const esOfertaRecomendada = (cot, sol) => cot.respondio && sol.tipo_solicitud !== 'MANUAL' && calcularPuntaje(cot, sol) >= 7.5
-
 const diasDesdeCreacion = (sol) => Math.floor((new Date() - new Date(sol.fecha_creacion)) / (1000 * 60 * 60 * 24))
 const licitacionesPendientes = computed(() => solicitudesFiltradas.value.filter(s => s.estado === 'PENDIENTE' || s.estado === 'COTIZADO').length)
 const licitacionesCerradas = computed(() => solicitudesFiltradas.value.filter(s => s.estado === 'CERRADA').length)
+const licitacionesConRecomendacion = computed(() => solicitudesFiltradas.value.filter(s => tieneRecomendacion(s)).length)
 const ofertasRespondidas = (sol) => sol.cotizaciones.filter(c => c.respondio).length
 
 const generarOrden = async (sol, cotId) => {
@@ -462,6 +446,33 @@ const generarOrden = async (sol, cotId) => {
   } catch (e) {
     Swal.fire('Error', e.response?.data?.error || 'Error de servidor', 'error')
   } finally { generando.value = null }
+}
+
+const rechazarCotizacion = async (cotizacion) => {
+  if (!cotizacion.respondio) return
+  const result = await Swal.fire({
+    title: '¿Rechazar cotización?',
+    text: `La oferta de ${cotizacion.proveedor_nombre} será descartada.`,
+    icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Sí, rechazar'
+  })
+  if (!result.isConfirmed) return
+  generando.value = true
+  try {
+    const token = localStorage.getItem('token')
+    await axios.post(`${API_BASE}/api/cotizaciones/${cotizacion.id}/rechazar/`, {}, {
+      headers: { Authorization: `Token ${token}` }
+    })
+    Swal.fire({
+      icon: 'success', title: 'Rechazada', text: `Se rechazó la cotización de ${cotizacion.proveedor_nombre}.`,
+      timer: 2000, showConfirmButton: false, toast: true, position: 'top-end'
+    })
+    cargarDatos().then(() => {
+      const actualizada = solicitudes.value.find(s => s.id === licitacionSeleccionada.value.id)
+      if (actualizada) licitacionSeleccionada.value = actualizada
+    })
+  } catch (e) {
+    Swal.fire('Error', e.response?.data?.error || 'Error de servidor', 'error')
+  } finally { generando.value = null; rechazando.value = false }
 }
 
 const verDetalles = (sol) => { licitacionSeleccionada.value = sol; mostrarDetalles.value = true }
@@ -815,6 +826,11 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 .primary-action:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 .winner-badge { display: flex; align-items: center; gap: 5px; color: #10b981; font-weight: 700; font-size: 0.85rem; }
+.acciones-cotizacion { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.reject-btn { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; border: 1px solid transparent; cursor: pointer; font-weight: 600; font-size: 0.85rem; transition: all 0.2s; background: transparent; color: #ef4444; border-color: #ef4444; width: auto; height: auto; }
+.reject-btn:hover { background: rgba(239, 68, 68, 0.1); transform: translateY(-1px); }
+.reject-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.rejected-badge { display: flex; align-items: center; gap: 5px; color: #ef4444; font-weight: 700; font-size: 0.85rem; }
 
 /* ESTADOS DE CARGA */
 .loading-state { text-align: center; padding: 80px; color: var(--text-secondary); }
@@ -874,13 +890,7 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 
 .ganadora-row { background: rgba(16, 185, 129, 0.05); }
 .ganadora-row td:first-child { border-left: 3px solid #10b981; }
-.recomendada-oferta { background: rgba(139, 92, 246, 0.05); }
 
-.mejor-precio-badge { display: inline-block; margin-left: 8px; padding: 2px 6px; background: rgba(34, 197, 94, 0.1); color: #16a34a; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
-.entrega-rapida-badge { display: inline-block; margin-left: 8px; padding: 2px 6px; background: rgba(59, 130, 246, 0.1); color: #3b82f6; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
-.precio-cell { font-weight: 800; color: var(--text-primary); font-size: 1rem; }
-.text-muted { color: var(--text-tertiary); }
-.font-bold { font-weight: 700; }
 
 .calificacion-estrella { display: flex; align-items: center; gap: 4px; }
 .estrella { color: #d1d5db; font-size: 1rem; transition: all 0.2s; }

@@ -594,6 +594,24 @@ def generar_comprobante_turno(turno):
     elements.append(t_items)
     
     total_val = float(turno.monto_total) if turno.monto_total else sum(s.precio for s in turno.servicios.all())
+    es_sena = turno.tipo_pago == 'SENA_50'
+    seña_val = float(turno.monto_seña) if turno.monto_seña else 0
+    saldo_val = total_val - seña_val if es_sena else 0
+    
+    if es_sena and seña_val > 0:
+        t_resumen = Table([
+            [Paragraph("SUBTOTAL", estilos['TD_Right']), Paragraph(f"${total_val:,.2f}", estilos['TD_Right'])],
+            [Paragraph("SEÑA ABONADA (50%)", ParagraphStyle('TR', parent=estilos['TD_Right'], textColor=colors.HexColor('#059669'))), Paragraph(f"${seña_val:,.2f}", ParagraphStyle('TRV', parent=estilos['DatoDerV'], textColor=colors.HexColor('#059669')))],
+            [Paragraph("SALDO PENDIENTE", ParagraphStyle('TR', parent=estilos['TD_Right'], textColor=colors.HexColor('#dc2626'))), Paragraph(f"${saldo_val:,.2f}", ParagraphStyle('TRV', parent=estilos['DatoDerV'], textColor=colors.HexColor('#dc2626')))],
+        ], colWidths=[14*cm, 5*cm])
+        t_resumen.setStyle(TableStyle([
+            ('LINEBELOW', (0,0), (-1,0), 0.5, colors.HexColor('#e2e8f0')),
+            ('LINEBELOW', (0,1), (-1,1), 0.5, colors.HexColor('#e2e8f0')),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ]))
+        elements.append(t_resumen)
+
     t_total = Table([
         [Paragraph("TOTAL DEL TURNO", estilos['TD_Right']), Paragraph(f"${total_val:,.2f}", estilos['DatoDerV'])]
     ], colWidths=[14*cm, 5*cm])

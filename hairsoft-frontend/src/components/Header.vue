@@ -584,7 +584,9 @@ onUnmounted(() => {
 .notif-item {
   padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start;
   cursor: pointer; transition: 0.2s; position: relative;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.06);
 }
+.notif-item:last-child { border-bottom: none; }
 
 .notif-item:hover { background: rgba(31, 41, 55, 0.5); }
 .notif-item.unread { background: rgba(59, 130, 246, 0.05); }
