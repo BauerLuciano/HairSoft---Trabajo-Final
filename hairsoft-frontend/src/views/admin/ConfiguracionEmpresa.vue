@@ -138,6 +138,17 @@
                   <span class="badge-estado estado-alert badge-large">%</span>
                 </div>
               </div>
+
+              <div class="filter-group mt-3">
+                <label class="label-alert">Validez del Cupón (días)</label>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                  <input v-model.number="config.dias_validez_promo_reactivacion" type="number" class="filter-input input-short" min="1" />
+                  <span class="badge-estado estado-alert">Días de validez</span>
+                </div>
+                <small class="hint-text">
+                  * Tiempo límite para que el cliente use el cupón antes de que venza.
+                </small>
+              </div>
             </div>
 
             <hr class="divider">
@@ -257,6 +268,7 @@ const config = ref({
   porcentaje_descuento_reoferta: 15,
   dias_inactividad_clientes: 60,
   porcentaje_descuento_promo: 15,
+  dias_validez_promo_reactivacion: 7,
   politica_senia: '',
   logo: null,
   costo_envio_moto: 1500,
@@ -331,6 +343,7 @@ const obtenerConfig = async () => {
     if(data.costo_envio_moto === undefined) data.costo_envio_moto = 1500;
     if(data.porcentaje_descuento_promo === undefined) data.porcentaje_descuento_promo = 15;
     if(data.porcentaje_descuento_reoferta === undefined) data.porcentaje_descuento_reoferta = 15;
+    if(data.dias_validez_promo_reactivacion === undefined) data.dias_validez_promo_reactivacion = 7;
 
     config.value = data
 
@@ -371,6 +384,7 @@ const validarFormulario = () => {
   if (config.value.costo_envio_moto < 0) return "El costo de envío no puede ser negativo.";
   if (config.value.porcentaje_descuento_promo < 0 || config.value.porcentaje_descuento_promo > 100) return "El descuento de promo debe ser entre 0 y 100.";
   if (config.value.porcentaje_descuento_reoferta < 0 || config.value.porcentaje_descuento_reoferta > 100) return "El descuento de reoferta debe ser entre 0 y 100.";
+  if (config.value.dias_validez_promo_reactivacion < 1) return "La validez del cupón debe ser al menos 1 día.";
 
   return null; 
 }
@@ -399,6 +413,7 @@ const guardarCambios = async () => {
   formData.append('porcentaje_descuento_reoferta', config.value.porcentaje_descuento_reoferta);
   formData.append('dias_inactividad_clientes', config.value.dias_inactividad_clientes);
   formData.append('porcentaje_descuento_promo', config.value.porcentaje_descuento_promo);
+  formData.append('dias_validez_promo_reactivacion', config.value.dias_validez_promo_reactivacion);
   formData.append('politica_senia', config.value.politica_senia);
   formData.append('costo_envio_moto', config.value.costo_envio_moto);
   

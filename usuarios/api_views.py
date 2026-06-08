@@ -4,8 +4,7 @@ from django.conf import settings
 from django.core.cache import cache
 from rest_framework.authtoken.models import Token
 from django_filters.rest_framework import DjangoFilterBackend
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
+# Lazy imports: google.oauth2 se importa dentro de google_login()
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -841,7 +840,9 @@ def google_login(request):
         return Response({'error': 'Token no proporcionado'}, status=400)
 
     try:
-        # 1. Validamos contra Google
+        # 1. Validamos contra Google (import lazy para no romper tests)
+        from google.oauth2 import id_token
+        from google.auth.transport import requests as google_requests
         idinfo = id_token.verify_oauth2_token(
             token, google_requests.Request(), settings.GOOGLE_CLIENT_ID
         )

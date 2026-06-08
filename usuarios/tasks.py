@@ -302,10 +302,12 @@ def procesar_reactivacion_clientes_inactivos():
     try:
         config = ConfiguracionSistema.get_solo()
         DIAS_INACTIVIDAD = config.dias_inactividad_clientes
-        descuento_promo = config.porcentaje_descuento_promo 
+        descuento_promo = config.porcentaje_descuento_promo
+        DIAS_VALIDEZ = config.dias_validez_promo_reactivacion
     except Exception:
-        DIAS_INACTIVIDAD = 60 
+        DIAS_INACTIVIDAD = 60
         descuento_promo = 15
+        DIAS_VALIDEZ = 7
         
     try:
         DIAS_COOLDOWN = 90
@@ -353,7 +355,7 @@ def procesar_reactivacion_clientes_inactivos():
                     f"Hola {cliente.nombre}, hace *{dias} días* que no venís.\n"
                     f"🎁 *{descuento_promo}% OFF* reservando acá:\n{link}\n"
                     f"🎫 Cupón: *{codigo}*"
-                    f"\n⏰ Vence en 7 días\n"
+                    f"\n⏰ Vence en {DIAS_VALIDEZ} días\n"
                     f"Los Ultimos Serán Los Primeros"
                 )
                 
@@ -364,7 +366,7 @@ def procesar_reactivacion_clientes_inactivos():
                     cliente=cliente,
                     codigo=codigo,
                     descuento_porcentaje=descuento_promo,
-                    fecha_vencimiento=hoy_fecha + timedelta(days=7), # También corregido a hoy_fecha
+                    fecha_vencimiento=hoy_fecha + timedelta(days=DIAS_VALIDEZ),
                     mensaje_sid="ENVIO_VIA_CELERY_UNIFICADO",
                     canal_envio='WHATSAPP'
                 )
@@ -386,9 +388,11 @@ def simular_reactivacion_clientes_inactivos():
         config = ConfiguracionSistema.get_solo()
         DIAS_INACTIVIDAD = config.dias_inactividad_clientes
         descuento_promo = config.porcentaje_descuento_promo
+        DIAS_VALIDEZ = config.dias_validez_promo_reactivacion
     except Exception:
         DIAS_INACTIVIDAD = 60
         descuento_promo = 15
+        DIAS_VALIDEZ = 7
 
     try:
         DIAS_COOLDOWN = 90
@@ -432,7 +436,7 @@ def simular_reactivacion_clientes_inactivos():
                 f"👉 *CLICK PARA RESERVAR:*\n"
                 f"https://tupeluqueria.com/turnos/crear-web?cup={codigo}\n\n"
                 f"📱 *Código:* {codigo}\n\n"
-                f"⏰ *Válido por 7 días*\n"
+                f"⏰ *Válido por {DIAS_VALIDEZ} días*\n"
             )
             print(mensaje)
         

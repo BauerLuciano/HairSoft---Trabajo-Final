@@ -54,6 +54,9 @@ MODELOS_A_AUDITAR = [
 ]
 
 def serializar(valor):
+    from django.db.models.fields.files import FieldFile
+    if isinstance(valor, FieldFile):
+        return valor.name if valor else None
     if isinstance(valor, (Decimal, float)): 
         return float(valor)
     if isinstance(valor, (date, datetime)): 

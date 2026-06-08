@@ -1356,6 +1356,7 @@ class ConfiguracionSistema(models.Model):
     
     # Este ya lo teníamos para Reactivaciones
     porcentaje_descuento_promo = models.PositiveIntegerField(default=15, help_text="Porcentaje de descuento para enviar a clientes inactivos")
+    dias_validez_promo_reactivacion = models.PositiveIntegerField(default=7, help_text="Días de validez del cupón de reactivación para clientes inactivos")
     
     politica_senia = models.TextField(default="Política de señas: Reembolso total si cancelas con tiempo.")
     costo_envio_moto = models.DecimalField(max_digits=10, decimal_places=2, default=1500.00)

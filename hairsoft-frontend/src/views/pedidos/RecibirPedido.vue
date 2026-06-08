@@ -131,14 +131,66 @@ const cargarPedido = async () => {
 }
 
 const confirmarRecepcion = async () => {
+  const total = formatPrecio(pedido.value.total)
+  const proveedor = pedido.value.proveedor_nombre
+  const cantProd = pedido.value.detalles.length
+  const itemsHtml = pedido.value.detalles.map(d => `
+    <tr>
+      <td style="padding: 8px 6px; border-bottom: 1px solid #e5e7eb; font-size: 0.85rem; color: #374151;">${d.producto_nombre}</td>
+      <td style="padding: 8px 6px; border-bottom: 1px solid #e5e7eb; text-align: center; font-size: 0.85rem; color: #6b7280;">${d.cantidad} u.</td>
+    </tr>
+  `).join('')
+
   const result = await Swal.fire({
-    title: '¿Confirmar Recepción Completa?',
-    text: "Se sumará el stock al inventario, se actualizarán precios y se registrará el pago en la caja actual.",
-    icon: 'question',
+    title: `📦 Recibir Pedido #${pedido.value.id}`,
+    html: `
+      <div style="font-family: system-ui, sans-serif; text-align: left; max-width: 500px; margin: 0 auto;">
+
+        <!-- Proveedor -->
+        <div style="display: flex; align-items: center; gap: 10px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;">
+          <span style="font-size: 1.4rem;">🏢</span>
+          <div>
+            <div style="font-size: 0.7rem; text-transform: uppercase; color: #166534; font-weight: 600;">Proveedor</div>
+            <div style="font-weight: 700; color: #15803d; font-size: 1rem;">${proveedor}</div>
+          </div>
+        </div>
+
+        <!-- Productos -->
+        <div style="background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb; overflow: hidden; margin-bottom: 14px;">
+          <div style="background: #f1f5f9; padding: 10px 12px; font-size: 0.7rem; text-transform: uppercase; color: #475569; font-weight: 700;">
+            Productos (${cantProd} ítems)
+          </div>
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background: #fafafa;">
+                <th style="padding: 8px 6px; text-align: left; font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Producto</th>
+                <th style="padding: 8px 6px; text-align: center; font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Cant</th>
+              </tr>
+            </thead>
+            <tbody>${itemsHtml}</tbody>
+          </table>
+        </div>
+
+        <!-- Egreso -->
+        <div style="display: flex; align-items: center; gap: 10px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 12px 14px;">
+          <span style="font-size: 1.4rem;">💳</span>
+          <div>
+            <div style="font-size: 0.7rem; text-transform: uppercase; color: #991b1b; font-weight: 700;">Egreso de Caja</div>
+            <div style="color: #b91c1c; font-size: 0.95rem;">
+              Se debitarán <strong style="font-size: 1.2rem;">$${total}</strong> a favor de ${proveedor}
+            </div>
+          </div>
+        </div>
+
+      </div>
+    `,
+    icon: 'warning',
     showCancelButton: true,
     confirmButtonColor: '#059669',
-    confirmButtonText: 'Sí, recibir y pagar',
-    cancelButtonText: 'Cancelar'
+    confirmButtonText: `✅ Sí, pagar $${total} y recibir`,
+    cancelButtonText: 'Cancelar',
+    reverseButtons: true,
+    focusCancel: true,
   })
 
   if (!result.isConfirmed) return
