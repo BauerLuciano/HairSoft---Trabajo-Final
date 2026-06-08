@@ -1,6 +1,7 @@
 const { defineConfig } = require("cypress");
 
 module.exports = defineConfig({
+  chromeWebSecurity: false,
   e2e: {
     baseUrl: 'http://localhost:5173',
     // 🚨 ACÁ ESTÁ EL TRUCO: Le decimos que busque SOLO en tu carpeta e2e

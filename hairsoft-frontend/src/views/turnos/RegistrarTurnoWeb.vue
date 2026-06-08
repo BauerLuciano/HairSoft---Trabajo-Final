@@ -102,6 +102,7 @@
                 class="chip-modern"
                 :class="{ 'chip-active': categoriasSeleccionadas.includes(String(categoria.id)) }"
                 @click="toggleCategoria(categoria.id)"
+                :data-cy="'cat-'+categoria.id"
               >
                 <Tag :size="14" />
                 {{ categoria.nombre }}
@@ -157,6 +158,7 @@
                 class="card-servicio"
                 :class="{ 'servicio-active': estaServicioSeleccionado(servicio) }"
                 @click="toggleServicio(servicio)"
+                :data-cy="'serv-'+servicio.id"
               >
                 <div class="servicio-check">
                   <Check v-if="estaServicioSeleccionado(servicio)" :size="16" />
@@ -220,6 +222,7 @@
                 class="card-peluquero"
                 :class="{ 'peluquero-active': form.peluquero === p.id }"
                 @click="seleccionarPeluquero(p.id)"
+                :data-cy="'pel-'+p.id"
               >
                 <div class="peluquero-avatar">
                   {{ getInicialesPeluquero(p) }}
@@ -283,6 +286,7 @@
                   }"
                   :disabled="!esDiaSeleccionable(day)"
                   @click="seleccionarDiaCalendario(day)"
+                  :data-cy="'dia-'+day"
                 >
                   {{ day }}
                   <span v-if="esHoy(day)" class="badge-today">HOY</span>
@@ -319,6 +323,7 @@
                   'hora-disponible-mejorada': true
                 }"
                 @click="seleccionarHora(hora)"
+                :data-cy="'hora-'+hora.replace(':','-')"
               >
                 <div class="hora-content-mejorada">
                   <div class="hora-info-mejorada">
@@ -419,7 +424,7 @@
                 Tipo de Pago
               </label>
               <div class="pago-options">
-                <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'SENA_50' }">
+                <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'SENA_50' }" data-cy="pago-sena">
                   <input type="radio" v-model="form.tipo_pago" value="SENA_50" class="hidden-radio">
                   <div class="radio-content">
                     <span>Seña 50%</span>
@@ -427,7 +432,7 @@
                     <small>Resto: ${{ (calcularTotalConDescuento() * 0.5).toFixed(2) }} en el local</small>
                   </div>
                 </label>
-                <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'TOTAL' }">
+                <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'TOTAL' }" data-cy="pago-total">
                   <input type="radio" v-model="form.tipo_pago" value="TOTAL" class="hidden-radio">
                   <div class="radio-content">
                     <span>Pago Total (100%)</span>
@@ -521,6 +526,7 @@
               @click="metodoPagoWeb === 'LINK' ? crearPagoMercadoPago() : pagarConQR()" 
               class="btn-confirmar-premium"
               :disabled="cargandoMercadoPago || cargandoQR"
+              data-cy="btn-confirmar"
             >
               <span class="btn-content">
                 <CreditCard v-if="metodoPagoWeb === 'LINK'" :size="20" />

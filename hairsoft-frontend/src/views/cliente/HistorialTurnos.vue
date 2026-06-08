@@ -101,13 +101,21 @@
 
           <div class="turno-footer">
             <div class="turno-precio">
-              <div class="precio-total">
+              <div class="precio-total" v-if="turno.tipo_pago === 'TOTAL' || !turno.tipo_pago">
                 <span class="precio-simbolo">$</span>
                 <span class="precio-valor">{{ formatPrecio(turno.monto_total || 0) }}</span>
               </div>
-              <span class="precio-texto">Total del servicio</span>
+              <div class="precio-total" v-else>
+                <span class="precio-simbolo">$</span>
+                <span class="precio-valor">{{ formatPrecio(turno.monto_seña || 0) }}</span>
+              </div>
+              <span class="precio-texto" v-if="turno.tipo_pago === 'TOTAL' || !turno.tipo_pago">Total abonado</span>
+              <span class="precio-texto" v-else>Seña abonada</span>
               <span v-if="turno.tipo_pago" :class="['pago-badge', turno.tipo_pago === 'TOTAL' ? 'pago-total' : 'pago-sena']">
                 {{ turno.tipo_pago === 'TOTAL' ? 'Pagado' : 'Seña' }}
+              </span>
+              <span v-if="turno.tipo_pago === 'SENA_50'" class="saldo-pendiente">
+                Saldo: ${{ formatPrecio((turno.monto_total || 0) - (turno.monto_seña || 0)) }}
               </span>
             </div>
             
@@ -1273,6 +1281,14 @@ watch(tabActiva, () => { pagina.value = 1 })
   background: rgba(245, 158, 11, 0.12);
   color: #d97706;
   border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.saldo-pendiente {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #f59e0b;
 }
 
 .turno-acciones {
