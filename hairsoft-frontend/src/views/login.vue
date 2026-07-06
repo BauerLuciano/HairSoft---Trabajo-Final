@@ -257,6 +257,11 @@ const handleLogin = async () => {
 
       setTimeout(() => {
         const query = route.query;
+        const redirectUrl = query.redirect;
+        if (redirectUrl && redirectUrl.startsWith('/')) {
+          router.push(redirectUrl);
+          return;
+        }
         if (query.force_whatsapp === 'true' || query.from_whatsapp === 'true') {
              const pendingOffer = sessionStorage.getItem('pending_offer');
              if (pendingOffer) {

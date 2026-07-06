@@ -103,7 +103,8 @@ class TurnoSerializer(serializers.ModelSerializer):
             'codigo_transaccion', 'entidad_pago', 'info_descuento',
             'silla', 'silla_nombre', 'silla_id',
             'medio_pago_restante', 'entidad_pago_restante', 'codigo_transaccion_restante',
-            'saldo_pendiente', 'mp_payment_id_saldo'
+            'saldo_pendiente', 'mp_payment_id_saldo',
+            'reembolso_alias', 'reembolso_titular', 'reembolso_id_transaccion'
         ]
         extra_kwargs = {
             'silla': {'read_only': True}  # El campo original del modelo lo dejamos solo lectura

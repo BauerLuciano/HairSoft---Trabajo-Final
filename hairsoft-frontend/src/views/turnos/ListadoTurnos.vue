@@ -949,6 +949,35 @@ const gestionarReembolsoManual = async (turno) => {
                        value="${valorMP > 0 ? formatear(valorMP) : '0'}">
               </div>
             </div>
+
+            ${!esPagoOnline ? `
+            <div id="mp_manual_fields" style="margin-top: 15px; padding: 18px; background: #f0f9ff; border-radius: 16px; border: 2px solid #bae6fd; ${Number(valorMP) > 0 ? '' : 'display: none;'}">
+              <h4 style="margin: 0 0 14px 0; font-size: 0.85rem; font-weight: 800; color: #1d4ed8; text-transform: uppercase; letter-spacing: 0.5px;">📱 Devolución por Mercado Pago (manual)</h4>
+              
+              <div style="margin-bottom: 12px;">
+                <label style="display:block; margin-bottom:6px; font-weight:700; color:#0f172a; font-size:0.85rem;">Alias del cliente</label>
+                <input id="reembolso_alias" type="text" class="swal2-input" 
+                       style="width:100%; margin:0; height:44px; border-radius:10px; font-size:0.95rem; padding:0 12px; border:2px solid #e2e8f0;"
+                       placeholder="ej: peluqueria.alias">
+              </div>
+              
+              <div style="margin-bottom: 12px;">
+                <label style="display:block; margin-bottom:6px; font-weight:700; color:#0f172a; font-size:0.85rem;">Nombre del titular</label>
+                <input id="reembolso_titular" type="text" class="swal2-input"
+                       style="width:100%; margin:0; height:44px; border-radius:10px; font-size:0.95rem; padding:0 12px; border:2px solid #e2e8f0;"
+                       placeholder="ej: Juan Pérez">
+              </div>
+              
+              <div style="margin-bottom: 4px;">
+                <label style="display:block; margin-bottom:6px; font-weight:700; color:#0f172a; font-size:0.85rem;">
+                  Comprobante - Id de Transaccion <span style="color:#94a3b8; font-weight:400;">(opcional)</span>
+                </label>
+                <input id="reembolso_id_transaccion" type="text" inputmode="numeric" class="swal2-input"
+                       style="width:100%; margin:0; height:44px; border-radius:10px; font-size:0.95rem; padding:0 12px; border:2px solid #e2e8f0;"
+                       placeholder="ej: 166504981991" maxlength="12">
+              </div>
+            </div>
+            ` : ''}
           </div>
         </div>
 
@@ -981,15 +1010,33 @@ const gestionarReembolsoManual = async (turno) => {
 
       const validate = () => {
         const total = parse(inEfe.value) + parse(inMP.value);
-        const diff = Math.abs(total - montoTotal);
-        if (diff <= 0.01) {
+        const diff = total - montoTotal;
+        const mpManualBlock = document.getElementById('mp_manual_fields');
+        const mpManualVisible = mpManualBlock && mpManualBlock.style.display !== 'none';
+        const alias = document.getElementById('reembolso_alias')?.value.trim() || '';
+        const titular = document.getElementById('reembolso_titular')?.value.trim() || '';
+        const faltaMttoTitular = mpManualVisible && (!alias || !titular);
+        if (Math.abs(diff) <= 0.01 && !faltaMttoTitular) {
           status.style.background = '#dcfce7'; status.style.color = '#15803d'; status.style.border = '1px solid #bbf7d0';
           status.innerHTML = '¡Listo! Los montos coinciden perfectamente';
           confirmBtn.disabled = false;
           confirmBtn.style.background = 'linear-gradient(135deg, #0ea5e9, #2563eb)';
+          confirmBtn.style.boxShadow = '0 10px 15px -3px rgba(14, 165, 233, 0.3)';
+        } else if (faltaMttoTitular) {
+          status.style.background = '#fef2f2'; status.style.color = '#dc2626'; status.style.border = '1px solid #fecaca';
+          status.innerHTML = '⚠️ Debes completar Alias y Titular del cliente';
+          confirmBtn.disabled = true;
+          confirmBtn.style.background = '#cbd5e1';
+          confirmBtn.style.boxShadow = 'none';
+        } else if (diff > 0) {
+          status.style.background = '#fef2f2'; status.style.color = '#dc2626'; status.style.border = '1px solid #fecaca';
+          status.innerHTML = `⚠️ Superaste el monto a devolver en $${formatear(diff)}`;
+          confirmBtn.disabled = true;
+          confirmBtn.style.background = '#cbd5e1';
+          confirmBtn.style.boxShadow = 'none';
         } else {
           status.style.background = '#fef2f2'; status.style.color = '#dc2626'; status.style.border = '1px solid #fecaca';
-          status.innerHTML = `⚠️ Falta asignar $${formatear(Math.max(0, montoTotal - total))}`;
+          status.innerHTML = `⚠️ Falta asignar $${formatear(Math.abs(diff))}`;
           confirmBtn.disabled = true;
           confirmBtn.style.background = '#cbd5e1';
           confirmBtn.style.boxShadow = 'none';
@@ -997,19 +1044,44 @@ const gestionarReembolsoManual = async (turno) => {
       };
 
       inEfe.addEventListener('input', () => { mask(inEfe); validate(); });
-      inMP.addEventListener('input', () => { mask(inMP); validate(); });
+      inMP.addEventListener('input', () => { 
+        mask(inMP); validate();
+        const manualFields = document.getElementById('mp_manual_fields');
+        if (manualFields) {
+          manualFields.style.display = parse(inMP.value) > 0 ? 'block' : 'none';
+        }
+      });
       inEfe.addEventListener('focus', () => inEfe.select());
       inMP.addEventListener('focus', () => inMP.select());
+
+      const inIdTrans = document.getElementById('reembolso_id_transaccion');
+      if (inIdTrans) {
+        inIdTrans.addEventListener('input', () => {
+          inIdTrans.value = inIdTrans.value.replace(/\D/g, '').slice(0, 12);
+        });
+      }
+
+      const inAlias = document.getElementById('reembolso_alias');
+      const inTitular = document.getElementById('reembolso_titular');
+      if (inAlias) inAlias.addEventListener('input', validate);
+      if (inTitular) inTitular.addEventListener('input', validate);
+
       validate();
     },
     preConfirm: () => {
       const vEfe = parseFloat(document.getElementById('val_efe').value.replace(/\./g, '').replace(',', '.')) || 0;
       const vMP = parseFloat(document.getElementById('val_mp').value.replace(/\./g, '').replace(',', '.')) || 0;
-      return {
+      const data = {
         monto_efectivo: vEfe,
         monto_mp: vMP,
         reembolso_api_mp: vMP > 0 && esPagoOnline
       };
+      if (vMP > 0 && !esPagoOnline) {
+        data.reembolso_alias = document.getElementById('reembolso_alias')?.value || '';
+        data.reembolso_titular = document.getElementById('reembolso_titular')?.value || '';
+        data.reembolso_id_transaccion = document.getElementById('reembolso_id_transaccion')?.value || '';
+      }
+      return data;
     }
   }).then(async (result) => {
     if (result.isConfirmed) {
@@ -1116,6 +1188,19 @@ const verDetalleTurno = async (turno) => {
               ${turnoDetalle.obs_cancelacion ? `
                 <div style="background: white; border-radius: 10px; padding: 12px; color: #991b1b; font-size: 0.95rem; font-style: italic; border: 1px dashed #fca5a5;">
                   " ${turnoDetalle.obs_cancelacion} "
+                </div>
+              ` : ''}
+              ${turnoDetalle.reembolso_estado === 'COMPLETADO' && turnoDetalle.reembolso_alias ? `
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin-top: 8px;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                    <span style="font-size: 1.2rem;">💰</span>
+                    <span style="font-weight: 800; color: #166534; font-size: 0.95rem;">Reembolso completado — Transferencia MP manual</span>
+                  </div>
+                  <div style="font-size: 0.9rem; color: #15803d; display: grid; gap: 4px; padding-left: 28px;">
+                    <div><b>Alias:</b> ${turnoDetalle.reembolso_alias}</div>
+                    <div><b>Titular:</b> ${turnoDetalle.reembolso_titular}</div>
+                    ${turnoDetalle.reembolso_id_transaccion ? `<div><b>Id Transacción:</b> ${turnoDetalle.reembolso_id_transaccion}</div>` : ''}
+                  </div>
                 </div>
               ` : ''}
             </div>

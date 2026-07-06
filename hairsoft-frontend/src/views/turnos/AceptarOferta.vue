@@ -33,7 +33,7 @@
           <p class="msg-text">{{ successMsg }}</p>
           <div class="ticket-cut"></div>
           <p class="sub-msg">Te esperamos el <strong>{{ formatFecha(info.fecha) }}</strong> a las <strong>{{ formatHora(info.hora) }}hs</strong>.</p>
-          <button @click="volver" class="btn-primary full">Ver en Mis Turnos</button>
+          <button @click="volver" class="btn-primary full">{{ autenticado ? 'Ver en Mis Turnos' : 'Iniciar Sesión' }}</button>
         </div>
 
         <div v-else>
@@ -149,6 +149,8 @@ const procesando = ref(false);
 const turnoId = route.params.turno_id;
 const token = route.params.token;
 
+const autenticado = ref(false);
+
 const formatPrecio = (v) => {
   if (v === undefined || v === null) return '0.00';
   const num = parseFloat(v);
@@ -188,19 +190,11 @@ const formatHora = (h) => {
 };
 
 onMounted(async () => {
-  const userToken = localStorage.getItem('token'); 
-  if (!userToken) {
-    router.push({ name: 'login', query: { redirect: route.fullPath } });
-    return;
-  }
   try {
     const { data } = await axios.get(`/api/turnos/${turnoId}/oferta-info/${token}/`);
     info.value = data;
+    autenticado.value = data.autenticado || false;
   } catch (error) {
-    if (error.response && error.response.status === 401) {
-      router.push({ path: '/login', query: { redirect: route.fullPath } });
-      return; 
-    }
     errorMsg.value = error.response?.data?.error || "La oferta ya no está disponible o expiró.";
   } finally {
     loading.value = false;
@@ -220,27 +214,53 @@ const confirmarOferta = async () => {
         </div>` : '';
       
       successMsg.value = data.message || "¡Listo! Tu turno ha sido canjeado.";
+
+      const estaLogueado = autenticado.value;
       
-      await Swal.fire({
-        // Forzamos el título en azul oscuro
-        title: '<span style="color: #1e3a8a; font-weight: 800; font-size: 1.8rem;">¡Felicitaciones! 🎉</span>',
-        // Forzamos el texto en gris oscuro
-        html: `
-          <div style="font-family: 'Inter', sans-serif; text-align: center;">
-            <p style="color: #334155; font-size: 1.1rem; font-weight: 500; margin-bottom: 5px;">
-              Tu turno fue canjeado con éxito y ya está confirmado.
-            </p>
-            ${saldoMsg}
-          </div>
-        `,
-        icon: 'success',
-        background: '#ffffff', // Forzamos el fondo blanco
-        confirmButtonColor: '#1e3a8a',
-        confirmButtonText: 'Genial',
-        customClass: { popup: 'swal-custom-radius' }
-      });
-      
-      router.push('/cliente/historial'); 
+      if (estaLogueado) {
+        await Swal.fire({
+          title: '<span style="color: #1e3a8a; font-weight: 800; font-size: 1.8rem;">¡Felicitaciones! 🎉</span>',
+          html: `
+            <div style="font-family: 'Inter', sans-serif; text-align: center;">
+              <p style="color: #334155; font-size: 1.1rem; font-weight: 500; margin-bottom: 5px;">
+                Tu turno fue canjeado con éxito y ya está confirmado.
+              </p>
+              ${saldoMsg}
+            </div>
+          `,
+          icon: 'success',
+          background: '#ffffff',
+          confirmButtonColor: '#1e3a8a',
+          confirmButtonText: 'Genial',
+          customClass: { popup: 'swal-custom-radius' }
+        });
+        router.push('/cliente/historial');
+      } else {
+        await Swal.fire({
+          title: '<span style="color: #1e3a8a; font-weight: 800; font-size: 1.8rem;">¡Turno Canjeado! 🎉</span>',
+          html: `
+            <div style="font-family: 'Inter', sans-serif; text-align: center;">
+              <p style="color: #334155; font-size: 1.1rem; font-weight: 500; margin-bottom: 10px;">
+                Tu turno fue canjeado con éxito y ya está confirmado.
+              </p>
+              ${saldoMsg}
+              <div style="margin-top: 20px; padding: 16px; background: #f8fafc; border-radius: 12px;">
+                <p style="color: #475569; font-size: 0.95rem; margin: 0 0 12px;">
+                  Iniciá sesión para ver tu historial de turnos.
+                </p>
+                <a href="/login" style="display: inline-block; background: #1e3a8a; color: #fff; padding: 10px 32px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 1rem;">
+                  Iniciar Sesión
+                </a>
+              </div>
+            </div>
+          `,
+          icon: 'success',
+          background: '#ffffff',
+          showConfirmButton: false,
+          showCloseButton: true,
+          customClass: { popup: 'swal-custom-radius' }
+        });
+      }
     } else {
       throw new Error(data.error || 'Error desconocido');
     }
@@ -257,7 +277,13 @@ const confirmarOferta = async () => {
   }
 };
 
-const volver = () => router.push('/cliente/historial');
+const volver = () => {
+  if (autenticado.value) {
+    router.push('/cliente/historial');
+  } else {
+    router.push({ name: 'login', query: { redirect: route.fullPath } });
+  }
+};
 </script>
 
 <style scoped>

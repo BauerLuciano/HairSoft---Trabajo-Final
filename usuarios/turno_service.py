@@ -224,6 +224,7 @@ class TurnoService:
                 turno.motivo_cancelacion = motivo or "Cancelado por el sistema"
                 turno.obs_cancelacion = observacion
                 turno.reembolsado = False  # nunca se marca automáticamente
+                turno._disable_audit = True
                 turno.save()
                 
                 # 5. LLAMAR A LA FUNCIÓN DE REEMBOLSO PARA QUE DETERMINE EL ESTADO
@@ -243,10 +244,12 @@ class TurnoService:
                         mensaje_reembolso = "No corresponde reembolso (cancelación tardía o sin pago)."
                     
                     turno.reembolsado = False
+                    turno._disable_audit = True
                     turno.save()
                 else:
                     # Cancelación por reoferta o por modificación gratis transferida
                     turno.reembolso_estado = 'NO_APLICA'
+                    turno._disable_audit = True
                     turno.save()
                     mensaje_reembolso = "Cancelación administrativa/reoferta - no aplica reembolso."
                 

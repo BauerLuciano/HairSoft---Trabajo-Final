@@ -429,7 +429,7 @@ const formatValue = (val) => {
   if (val === true) return 'Sí'
   if (val === false) return 'No'
   if (Array.isArray(val)) return val.join(' | ')
-  if (typeof val === 'string' && val.includes('T') && val.includes('-') && val.length > 15) {
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(val)) {
     const d = new Date(val);
     if (!isNaN(d.getTime())) {
       return d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ' hs';

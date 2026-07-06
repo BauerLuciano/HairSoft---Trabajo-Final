@@ -378,6 +378,11 @@ class Turno(models.Model):
     mp_payment_id = models.CharField(max_length=50, blank=True, null=True)
     mp_refund_id = models.CharField(max_length=100, blank=True, null=True)
     
+    # Devolución manual por transferencia (cuando no hay mp_payment_id)
+    reembolso_alias = models.CharField(max_length=100, blank=True, null=True, verbose_name="Alias del cliente")
+    reembolso_titular = models.CharField(max_length=100, blank=True, null=True, verbose_name="Nombre del titular")
+    reembolso_id_transaccion = models.CharField(max_length=12, blank=True, null=True, validators=[RegexValidator(r'^\d{1,12}$')], verbose_name="Comprobante - Id de Transaccion")
+    
     # Trazabilidad Manual (Transferencias presenciales / otros)
     nro_transaccion = models.CharField(max_length=100, blank=True, null=True)
     entidad_pago = models.CharField(max_length=50, blank=True, null=True, verbose_name="Billetera/Banco Origen")
@@ -562,6 +567,20 @@ class Turno(models.Model):
     class Meta:
         db_table = "turnos"
         ordering = ['fecha', 'hora']
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(monto_seña__lte=models.F('monto_total')),
+                name='ck_turno_seña_no_mayor_que_total'
+            ),
+            models.CheckConstraint(
+                check=models.Q(monto_total__gte=0),
+                name='ck_turno_monto_total_no_negativo'
+            ),
+            models.CheckConstraint(
+                check=models.Q(monto_seña__gte=0),
+                name='ck_turno_monto_seña_no_negativo'
+            ),
+        ]
 
 
 class InteresTurnoLiberado(models.Model):

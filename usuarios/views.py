@@ -35,7 +35,7 @@ except ImportError:
 from rest_framework import viewsets, status, generics, filters, serializers
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.authtoken.models import Token
-from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.decorators import api_view, permission_classes, authentication_classes, action
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly, IsAdminUser
 from rest_framework.response import Response 
 
@@ -5194,6 +5194,7 @@ def forzar_reoferta(request, turno_id):
         return Response({'error': str(e)}, status=500)
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def procesar_respuesta_oferta(request, interes_id):
     """Webhook para procesar respuestas de clientes a ofertas de reoferta"""
@@ -5503,20 +5504,33 @@ def cancelar_turno_unificado(request, turno_id):
         return Response({'error': f'Error interno: {str(e)}'}, status=500)
     
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def obtener_info_oferta(request, turno_id, token):
     """
     ✅ Llama al Service restaurado para mostrar MULTI-SERVICIO y Saldos.
+    Incluye campo 'autenticado' para que el frontend no dependa de localStorage.
     """
     try:
         from .turno_service import ReofertaAutomaticaService
         
-        # Llamamos al Service con el token corregido
         data, error = ReofertaAutomaticaService.obtener_datos_oferta_previa(turno_id, token)
         
         if error:
             return Response({'error': error}, status=400)
-            
+
+        from rest_framework.authentication import TokenAuthentication, SessionAuthentication
+        autenticado = False
+        for auth_class in [TokenAuthentication, SessionAuthentication]:
+            try:
+                result = auth_class().authenticate(request)
+                if result is not None:
+                    autenticado = True
+                    break
+            except Exception:
+                continue
+
+        data['autenticado'] = autenticado
         return Response(data)
     except Exception as e:
         return Response({'error': str(e)}, status=500)
@@ -5613,6 +5627,21 @@ def completar_reembolso_manual(request, turno_id):
             else:
                 monto_total_devolucion = float(turno.monto_seña if turno.monto_seña else turno.monto_total)
 
+            # Validar que no se devuelva más de lo que realmente ingresó a caja
+            from django.db.models import Sum
+            total_ingresos = MovimientoCaja.objects.filter(
+                turno_relacionado=turno, tipo='INGRESO'
+            ).aggregate(total=Sum('monto'))['total'] or 0
+            total_egresos = MovimientoCaja.objects.filter(
+                turno_relacionado=turno, tipo='EGRESO'
+            ).aggregate(total=Sum('monto'))['total'] or 0
+            disponible = float(total_ingresos - total_egresos)
+
+            if monto_total_devolucion > disponible + 0.01:
+                return Response({
+                    'error': f'El monto a devolver (${monto_total_devolucion:.2f}) supera lo disponible para este turno (${disponible:.2f}).'
+                }, status=400)
+
             # 🔥 VERIFICAMOS SI ES UNA ORDEN DE DEVOLUCIÓN AUTOMÁTICA POR API
             es_reembolso_api = request.data.get('reembolso_api_mp', False)
 
@@ -5623,7 +5652,7 @@ def completar_reembolso_manual(request, turno_id):
                 
                 # Conectamos con Mercado Pago
                 mp_service = MercadoPagoService()
-                resultado_mp = mp_service.devolver_pago(payment_id)
+                resultado_mp = mp_service.reembolsar_pago(payment_id)
                 
                 if not resultado_mp.get('success'):
                     # Si MP falla (ej: sin saldo, o ya devuelto), abortamos la transacción de la base de datos
@@ -5643,9 +5672,17 @@ def completar_reembolso_manual(request, turno_id):
                 if abs(suma_devuelta - monto_total_devolucion) > 0.01:
                      return Response({'error': 'La suma no coincide con el total a reembolsar'}, status=400)
 
-            # Actualizar Turno
+                # 🆕 Devolución MP manual (cliente pagó efectivo, no hay mp_payment_id)
+                if monto_mp > 0 and not turno.mp_payment_id:
+                    turno.reembolso_alias = request.data.get('reembolso_alias', '')
+                    turno.reembolso_titular = request.data.get('reembolso_titular', '')
+                    turno.reembolso_id_transaccion = request.data.get('reembolso_id_transaccion', '')
+
+            # Actualizar Turno (deshabilitamos auto-auditoría porque ya auditamos manualmente abajo)
             turno.reembolso_estado = 'COMPLETADO'
             turno.reembolsado = True
+            turno._disable_audit = True
+            turno.full_clean()
             turno.save()
 
             # Movimiento de Caja - Efectivo
@@ -5658,15 +5695,27 @@ def completar_reembolso_manual(request, turno_id):
 
             # Movimiento de Caja - MP
             if monto_mp > 0:
-                descripcion_mp = f"Reembolso Cancelación (MP {'API Auto' if es_reembolso_api else 'Manual'}) - Turno #{turno.id}"
+                if not es_reembolso_api and not turno.mp_payment_id and turno.reembolso_id_transaccion:
+                    id_info = f" (ID: {turno.reembolso_id_transaccion})"
+                else:
+                    id_info = ""
+                descripcion_mp = f"Reembolso Cancelación (MP {'API Auto' if es_reembolso_api else 'Manual'}) - Turno #{turno.id}{id_info}"
                 MovimientoCaja.objects.create(
                     sesion_caja=sesion_abierta, tipo='EGRESO', metodo_pago='MERCADO_PAGO', concepto='OTROS', 
                     monto=monto_mp, turno_relacionado=turno, descripcion=descripcion_mp
                 )
             
+            if es_reembolso_api:
+                tipo_reembolso = 'DEVOLUCION_MP_API'
+            elif monto_mp > 0 and monto_efectivo == 0:
+                tipo_reembolso = 'DEVOLUCION_MP_MANUAL' if not turno.mp_payment_id else 'DEVOLUCION_MP_API'
+            elif monto_efectivo > 0 and monto_mp == 0:
+                tipo_reembolso = 'DEVOLUCION_EFECTIVO'
+            else:
+                tipo_reembolso = 'DEVOLUCION_MIXTA'
             Auditoria.objects.create(
                 usuario=request.user, modelo_afectado='Turno', objeto_id=turno.id, accion='EDITAR',
-                detalles={'reembolso': 'API_MP' if es_reembolso_api else 'MANUAL_MIXTO'},
+                detalles={'reembolso': tipo_reembolso},
                 ip_address=request.META.get('REMOTE_ADDR')
             )
             
@@ -6418,7 +6467,7 @@ def mercadopago_webhook(request):
                         turno_rel.medio_pago_restante = 'MERCADO_PAGO'
                         turno_rel.mp_payment_id_saldo = payment_id
                         turno_rel.tipo_pago = 'TOTAL'
-                        turno_rel.monto_seña = turno_rel.monto_total
+                        turno_rel.monto_seña = (turno_rel.monto_seña or 0) + Decimal(str(monto))
                         turno_rel.save()
                     finally:
                         _thread_locals._suspender_auditoria = False
@@ -6670,6 +6719,7 @@ def oferta_info_api(request, turno_id, token):
         return JsonResponse({'error': str(e)}, status=500)
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])  # Permite acceso sin autenticación (usuario recibe link)
 def aceptar_oferta_turno(request, turno_id, token):
     """✅ ENDPOINT CORREGIDO - Cliente acepta oferta por WhatsApp"""

@@ -129,23 +129,19 @@ def auditar_cambios(sender, instance, created, **kwargs):
                         accion = 'CIERRE_CAJA'
                         
             elif nombre_modelo == 'MovimientoCaja' and created:
-                # Revisamos si el movimiento tiene origen automático (Venta o Turno)
-                # Usamos getattr con _id para no disparar consultas extra a la DB
+                tipo_mov = getattr(instance, 'tipo', '').upper()
                 es_venta = getattr(instance, 'venta_relacionada_id', None)
                 es_turno = getattr(instance, 'turno_relacionado_id', None)
                 concepto = getattr(instance, 'concepto', '').upper()
 
-                if es_venta or concepto == 'VENTA':
+                if tipo_mov == 'EGRESO':
+                    accion = 'EGRESO_MANUAL'
+                elif es_venta or concepto == 'VENTA':
                     accion = 'INGRESO_VENTA'
                 elif es_turno or concepto == 'TURNO':
                     accion = 'INGRESO_TURNO'
                 else:
-                    # Si no tiene relación, entonces sí es un movimiento manual de caja
-                    tipo_mov = getattr(instance, 'tipo', '').upper()
-                    if tipo_mov == 'INGRESO':
-                        accion = 'INGRESO_MANUAL'
-                    elif tipo_mov == 'EGRESO':
-                        accion = 'EGRESO_MANUAL'
+                    accion = 'INGRESO_MANUAL'
             # =========================================================
 
             reporte = {}
