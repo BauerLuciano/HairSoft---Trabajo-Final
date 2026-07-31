@@ -2431,6 +2431,7 @@ def completar_pago_turno(request, turno_id):
 def generar_qr_temporal(request):
     try:
         monto = request.data.get('monto', 0.1)
+        title = request.data.get('title', 'Pago en HairSoft')
         uid_obj = uuid.uuid4()
         uid_str = str(uid_obj)
 
@@ -2439,7 +2440,7 @@ def generar_qr_temporal(request):
 
         from .mercadopago_service import MercadoPagoService
         mp_service = MercadoPagoService()
-        res_mp = mp_service.crear_preferencia_temporal(monto, uid_str)
+        res_mp = mp_service.crear_preferencia_temporal(monto, uid_str, title=title)
 
         print(f"[QR_TEMP] MP response: {res_mp}")
         if res_mp.get('success'):
@@ -2468,6 +2469,24 @@ def check_pago_temporal(request, uid):
             print(f"[CHECK_TEMP] No encontrado: {uid}")
             return JsonResponse({'status': 'error', 'error': 'No encontrado'}, status=404)
         print(f"[CHECK_TEMP] uid={uid} pagado={pago.pagado} mp_payment_id={pago.mp_payment_id}")
+        if not pago.pagado:
+            try:
+                from .mercadopago_service import MercadoPagoService
+                mp_service = MercadoPagoService()
+                search = mp_service.sdk.payment().search(
+                    filters={"external_reference": f"TEMP_{uid}"}
+                )
+                if search['status'] == 200:
+                    results = search['response'].get('results', [])
+                    for pay in results:
+                        if pay.get('status') == 'approved':
+                            pago.mp_payment_id = str(pay['id'])
+                            pago.pagado = True
+                            pago.save()
+                            print(f"✅ [CHECK_TEMP] Pago temporal {uid} confirmado vía MP API (payment_id={pay['id']})")
+                            break
+            except Exception as e2:
+                print(f"[CHECK_TEMP] Error consultando MP API: {e2}")
         return JsonResponse({
             'pagado': pago.pagado,
             'mp_payment_id': pago.mp_payment_id,

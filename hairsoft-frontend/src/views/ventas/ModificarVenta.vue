@@ -257,19 +257,117 @@
                 </select>
               </div>
 
-              <div class="form-group">
-                <label>
-                  {{ esMercadoPago ? 'ID Transacción Mercado Pago *' : 'Código de Comprobante *' }}
-                </label>
+              <!-- MERCADO PAGO SUB-OPTIONS -->
+              <div v-if="esMercadoPago" class="mp-options-wrapper">
+                <label class="mp-sub-label">Elegí cómo cobrar con Mercado Pago:</label>
+
+                <div class="mp-options">
+                  <div class="mp-option-card" :class="{ 'mp-option-selected': mpSubOption === 'alias' }" @click="seleccionarSubOpcionMP('alias')">
+                    <div class="mp-option-content">
+                      <div class="mp-option-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="8.5" cy="7" r="4"></circle>
+                          <polyline points="17 11 19 13 23 9"></polyline>
+                        </svg>
+                      </div>
+                      <div class="mp-option-info">
+                        <h4>Transferencia por alias</h4>
+                        <p>Mostrale el alias al cliente para que te transfiera</p>
+                        <div v-if="mp_alias" class="mp-alias-display">
+                          <span class="mp-alias-label">Alias:</span>
+                          <span class="mp-alias-value">{{ mp_alias }}</span>
+                          <button @click.stop="copiarAlias" class="btn-copy-alias" title="Copiar alias">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                          </button>
+                        </div>
+
+                        <div v-if="mpSubOption === 'alias'" class="mp-id-opcional">
+                          <label>ID de transacción <span class="opcional-tag">opcional</span></label>
+                          <input
+                            type="text"
+                            v-model="datosVenta.codigo_transaccion"
+                            class="input-search"
+                            placeholder="Ej: 145025893768"
+                            maxlength="14"
+                            @input="datosVenta.codigo_transaccion = datosVenta.codigo_transaccion.replace(/\D/g, '')"
+                          />
+                          <small>Solo números, 14 dígitos — si el cliente te pasa el comprobante</small>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="mp-option-radio">
+                      <div class="radio-circle" :class="{ 'radio-active': mpSubOption === 'alias' }"></div>
+                    </div>
+                  </div>
+
+                  <div class="mp-option-card" :class="{ 'mp-option-selected': mpSubOption === 'qr' }" @click="seleccionarSubOpcionMP('qr')">
+                    <div class="mp-option-content">
+                      <div class="mp-option-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <rect x="3" y="3" width="7" height="7"></rect>
+                          <rect x="14" y="3" width="7" height="7"></rect>
+                          <rect x="14" y="14" width="7" height="7"></rect>
+                          <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
+                      </div>
+                      <div class="mp-option-info">
+                        <h4>Código QR</h4>
+                        <p>Generá un QR para que el cliente escanee con su celular</p>
+                        <div v-if="mpSubOption === 'qr'" class="mp-qr-section">
+                          <button @click.stop="generarQR" class="btn-generar-qr" :disabled="generandoQR">
+                            <template v-if="!generandoQR">
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                <line x1="12" y1="8" x2="12" y2="16"></line>
+                                <line x1="8" y1="12" x2="16" y2="12"></line>
+                              </svg>
+                              Generar QR
+                            </template>
+                            <template v-else>
+                              <div class="spinner-sm"></div>
+                              Generando...
+                            </template>
+                          </button>
+                          <div v-if="mpQrData" class="qr-display">
+                            <qrcode-vue :value="mpQrData.init_point" :size="200" level="H" />
+                            <div v-if="mpPagoEstado === 'confirmed'" class="qr-pago-confirmado">
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                              </svg>
+                              <span>¡Pago confirmado!</span>
+                            </div>
+                            <div v-else-if="mpPagoEstado === 'pending'" class="qr-pago-pendiente">
+                              <div class="spinner-sm spinner-green"></div>
+                              <span>Esperando pago...</span>
+                              <button @click.stop="confirmarPagoManual" class="btn-confirmar-manual">Confirmar manualmente</button>
+                            </div>
+                            <p v-else class="qr-hint">Escaneá con Mercado Pago</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="mp-option-radio">
+                      <div class="radio-circle" :class="{ 'radio-active': mpSubOption === 'qr' }"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group" v-if="esTransferencia">
+                <label>Código de Comprobante *</label>
                 <input 
                   type="text" 
                   v-model="datosVenta.codigo_transaccion" 
                   class="input-search"
-                  :placeholder="esMercadoPago ? 'Ej: #145025893768' : 'Ej: A123B456789'"
-                  :maxlength="maxCodigoLength"
+                  placeholder="Ej: A123B456789"
+                  maxlength="25"
                 />
-                <small class="helper-text" style="color: #6b7280; font-size: 0.8rem; margin-top: 4px; display: block;">
-                  {{ esMercadoPago ? 'Ingrese el ID de operación (Máx 14).' : 'Copie el código del comprobante bancario.' }}
+                <small style="color: #6b7280; font-size: 0.8rem; margin-top: 4px; display: block;">
+                  Copie el código del comprobante bancario.
                 </small>
               </div>
             </div>
@@ -321,6 +419,7 @@
 <script>
 import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2'
+import QrcodeVue from 'qrcode.vue'
 
 // URLs relativas usando la base de axiosConfig
 const API_URL_PRODUCTOS = '/usuarios/api/productos/'
@@ -330,6 +429,7 @@ const API_URL_VENTAS = '/usuarios/api/ventas/'
 
 export default {
   name: 'ModificarVenta',
+  components: { QrcodeVue },
   props: {
     ventaId: {
       type: [String, Number],
@@ -349,6 +449,12 @@ export default {
       mensaje: '',
       error: false,
       ventaOriginal: null,
+      mp_alias: '',
+      mpSubOption: null,
+      mpQrData: null,
+      generandoQR: false,
+      mpPagoInterval: null,
+      mpPagoEstado: null,
       datosVenta: {
         medio_pago: null,
         entidad_pago: '',
@@ -406,10 +512,14 @@ export default {
       if (this.carrito.length === 0) return false;
       if (!this.datosVenta.medio_pago) return false;
 
-      // Validación de código de transacción si aplica
-      if (this.esMedioPagoConRecargo && !this.datosVenta.codigo_transaccion) {
+      if (this.esTransferencia && !this.datosVenta.codigo_transaccion) {
          return false;
       }
+
+      if (this.esMercadoPago && this.mpSubOption === 'qr' && this.mpPagoEstado !== 'confirmed') {
+        return false;
+      }
+
       return true;
     },
     
@@ -426,6 +536,10 @@ export default {
         if (this.ventaOriginal && this.ventaOriginal.medio_pago === newVal) {
              this.datosVenta.entidad_pago = this.ventaOriginal.entidad_pago || '';
              this.datosVenta.codigo_transaccion = this.ventaOriginal.codigo_transaccion || '';
+             this.mpSubOption = null;
+             this.mpQrData = null;
+             this.mpPagoEstado = null;
+             this.detenerPollingPago();
              return;
         }
 
@@ -433,9 +547,17 @@ export default {
         if (!this.esMedioPagoConRecargo) {
             this.datosVenta.entidad_pago = '';
             this.datosVenta.codigo_transaccion = '';
+            this.mpSubOption = null;
+            this.mpQrData = null;
+            this.mpPagoEstado = null;
+            this.detenerPollingPago();
         } else if (this.esMercadoPago) {
-            // Si es MP, limpiar entidad (ya no se pide)
-            this.datosVenta.entidad_pago = ''; 
+            this.datosVenta.entidad_pago = '';
+            this.datosVenta.codigo_transaccion = '';
+            this.mpSubOption = null;
+            this.mpQrData = null;
+            this.mpPagoEstado = null;
+            this.detenerPollingPago();
         }
     }
   },
@@ -508,6 +630,12 @@ export default {
         // 🔥 PRE-CARGAR DATOS DE TRAZABILIDAD 🔥
         this.datosVenta.entidad_pago = ventaData.entidad_pago || '';
         this.datosVenta.codigo_transaccion = ventaData.codigo_transaccion || '';
+
+        // Restaurar sub-opción MP si corresponde
+        if (this.esMercadoPago) {
+            const entidad = (ventaData.entidad_pago || '').toUpperCase();
+            this.mpSubOption = entidad === 'MERCADOPAGO_QR' ? 'qr' : 'alias';
+        }
         
         // Limpiar carrito antes de cargar
         this.carrito = [];
@@ -690,9 +818,14 @@ export default {
         return;
       }
 
-      // Validación extra
-      if (this.esMedioPagoConRecargo && !this.datosVenta.codigo_transaccion) {
+      // Validación extra para transferencia
+      if (this.esTransferencia && !this.datosVenta.codigo_transaccion) {
           Swal.fire('Atención', 'Falta el código de transacción', 'warning');
+          return;
+      }
+
+      if (this.esMercadoPago && !this.mpSubOption) {
+          Swal.fire('Atención', 'Debe elegir entre alias o QR para cobrar con Mercado Pago', 'warning');
           return;
       }
 
@@ -765,7 +898,7 @@ export default {
       // Lógica entidad
       let entidadFinal = null;
       if (this.esMercadoPago) {
-          entidadFinal = 'MERCADOPAGO';
+          entidadFinal = this.mpSubOption === 'qr' ? 'MERCADOPAGO_QR' : 'MERCADOPAGO_ALIAS';
       } else if (this.esTransferencia) {
           entidadFinal = this.datosVenta.entidad_pago;
       }
@@ -779,9 +912,8 @@ export default {
         motivo_modificacion: motivo,
         usuario_modificacion: 'usuario_actual',
         
-        // 🔥 CAMPOS NUEVOS
         entidad_pago: entidadFinal,
-        codigo_transaccion: this.esMedioPagoConRecargo ? this.datosVenta.codigo_transaccion : null
+        codigo_transaccion: this.datosVenta.codigo_transaccion || null
       };
 
       try {
@@ -832,6 +964,87 @@ export default {
       }, 4000);
     },
 
+    seleccionarSubOpcionMP(opcion) {
+      this.mpSubOption = opcion;
+      this.datosVenta.codigo_transaccion = '';
+      this.mpQrData = null;
+      this.mpPagoEstado = null;
+      this.detenerPollingPago();
+    },
+
+    async generarQR() {
+      if (!this.total || this.total <= 0) return;
+      this.generandoQR = true;
+      this.mpPagoEstado = null;
+      this.detenerPollingPago();
+      try {
+        const res = await axios.post('/api/generar-qr-temporal/', {
+          monto: this.total,
+          title: 'Venta de productos - HairSoft'
+        });
+        if (res.data.status === 'ok') {
+          this.mpQrData = res.data;
+          this.mpPagoEstado = 'pending';
+          this.iniciarPollingPago(res.data.uid);
+        } else {
+          this.mostrarMensaje('Error al generar el QR', true);
+        }
+      } catch (err) {
+        console.error("Error al generar QR:", err);
+        this.mostrarMensaje('Error al generar el QR', true);
+      } finally {
+        this.generandoQR = false;
+      }
+    },
+
+    iniciarPollingPago(uid) {
+      this.detenerPollingPago();
+      this.mpPagoInterval = setInterval(async () => {
+        try {
+          const res = await axios.get(`/api/check-pago-temporal/${uid}/`);
+          if (res.data.pagado) {
+            this.mpPagoEstado = 'confirmed';
+            this.detenerPollingPago();
+            this.mostrarMensaje('Pago confirmado');
+          }
+        } catch (err) {
+          console.error("Error al verificar pago:", err);
+        }
+      }, 3000);
+    },
+
+    detenerPollingPago() {
+      if (this.mpPagoInterval) {
+        clearInterval(this.mpPagoInterval);
+        this.mpPagoInterval = null;
+      }
+    },
+
+    confirmarPagoManual() {
+      this.mpPagoEstado = 'confirmed';
+      this.detenerPollingPago();
+      this.mostrarMensaje('Pago confirmado manualmente');
+    },
+
+    copiarAlias() {
+      if (this.mp_alias) {
+        navigator.clipboard.writeText(this.mp_alias).then(() => {
+          this.mostrarMensaje('Alias copiado al portapapeles');
+        }).catch(() => {
+          this.mostrarMensaje('Alias copiado al portapapeles');
+        });
+      }
+    },
+
+    async cargarConfiguracionLocal() {
+      try {
+        const res = await axios.get('/api/configuracion-local/');
+        this.mp_alias = res.data.mp_alias || '';
+      } catch (err) {
+        console.error("Error al cargar config local:", err);
+      }
+    },
+
     formatFecha(fecha) {
       if (!fecha) return '–';
       try {
@@ -856,8 +1069,13 @@ export default {
     }
   },
   
+  beforeUnmount() {
+    this.detenerPollingPago();
+  },
+
   async mounted() {
     console.log('🚀 Componente ModificarVenta montado');
+    this.cargarConfiguracionLocal();
     await this.cargarDatosVenta();
   }
 }
@@ -1622,8 +1840,61 @@ export default {
   animation: spin 0.8s linear infinite;
 }
 
+.spinner-green {
+  border-color: rgba(251, 191, 36, 0.3);
+  border-top-color: #f59e0b;
+}
+
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.qr-pago-pendiente {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px;
+  background: #fefce8;
+  border: 2px solid #fcd34d;
+  border-radius: 10px;
+  color: #92400e;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.qr-pago-confirmado {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 14px;
+  background: #d1fae5;
+  border: 2px solid #34d399;
+  border-radius: 10px;
+  color: #065f46;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.btn-confirmar-manual {
+  background: white;
+  border: 1px solid #d1d5db;
+  color: #6b7280;
+  padding: 6px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-confirmar-manual:hover {
+  border-color: #9ca3af;
+  color: #374151;
+  background: #f9fafb;
 }
 
 /* NOTIFICACIONES */
@@ -1689,6 +1960,262 @@ export default {
 .toast-leave-to {
   opacity: 0;
   transform: translateY(30px);
+}
+
+/* MERCADO PAGO SUB-OPTIONS */
+.mp-options-wrapper {
+  margin: 12px 0;
+}
+
+.mp-sub-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4a5568;
+  margin-bottom: 12px;
+  display: block;
+}
+
+.mp-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mp-option-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f7fafc;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.mp-option-card:hover {
+  border-color: #06b6d4;
+  background: #ecfeff;
+  box-shadow: 0 2px 12px rgba(6, 182, 212, 0.1);
+}
+
+.mp-option-selected {
+  border-color: #06b6d4;
+  background: #ecfeff;
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15);
+}
+
+.mp-option-content {
+  display: flex;
+  gap: 14px;
+  flex: 1;
+  align-items: flex-start;
+}
+
+.mp-option-icon {
+  width: 44px;
+  height: 44px;
+  background: white;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #06b6d4;
+  flex-shrink: 0;
+  border: 1px solid #e2e8f0;
+}
+
+.mp-option-selected .mp-option-icon {
+  background: #06b6d4;
+  color: white;
+  border-color: #06b6d4;
+}
+
+.mp-option-info {
+  flex: 1;
+}
+
+.mp-option-info h4 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1a202c;
+  margin: 0 0 4px 0;
+}
+
+.mp-option-info p {
+  font-size: 13px;
+  color: #718096;
+  margin: 0 0 12px 0;
+}
+
+.mp-option-radio {
+  padding-top: 6px;
+  flex-shrink: 0;
+}
+
+.radio-circle {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #cbd5e0;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.radio-circle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #06b6d4;
+  transform: translate(-50%, -50%) scale(0);
+  transition: all 0.3s ease;
+}
+
+.radio-active {
+  border-color: #06b6d4;
+}
+
+.radio-active::after {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.mp-alias-display {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: white;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 2px dashed #06b6d4;
+  margin-bottom: 12px;
+}
+
+.mp-alias-label {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.mp-alias-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0891b2;
+  letter-spacing: 0.5px;
+  font-family: 'Courier New', monospace;
+}
+
+.btn-copy-alias {
+  background: #ecfeff;
+  border: 1px solid #a5f3fc;
+  color: #0891b2;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.btn-copy-alias:hover {
+  background: #06b6d4;
+  color: white;
+  border-color: #06b6d4;
+}
+
+.mp-id-opcional {
+  margin-top: 4px;
+}
+
+.mp-id-opcional label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4a5568;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.opcional-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #f59e0b;
+  background: #fffbeb;
+  padding: 2px 8px;
+  border-radius: 6px;
+  margin-left: 6px;
+  border: 1px solid #fcd34d;
+}
+
+.mp-id-opcional input {
+  margin-bottom: 4px;
+}
+
+.mp-id-opcional small {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.mp-qr-section {
+  margin-top: 4px;
+}
+
+.btn-generar-qr {
+  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+}
+
+.btn-generar-qr:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(6, 182, 212, 0.4);
+}
+
+.btn-generar-qr:disabled {
+  background: #cbd5e0;
+  cursor: not-allowed;
+}
+
+.qr-display {
+  margin-top: 16px;
+  text-align: center;
+  padding: 16px;
+  background: white;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+}
+
+.qr-hint {
+  font-size: 13px;
+  color: #64748b;
+  margin-top: 10px;
+  font-weight: 600;
+}
+
+.spinner-sm {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
 }
 
 /* RESPONSIVE */

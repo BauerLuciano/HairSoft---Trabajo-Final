@@ -66,7 +66,7 @@ class MercadoPagoService:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def crear_preferencia_temporal(self, monto, uid_str):
+    def crear_preferencia_temporal(self, monto, uid_str, title="Pago en HairSoft"):
         base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
         back_urls_dict = {
             "success": f"{base_url}/api/mercadopago/retorno/",
@@ -79,7 +79,7 @@ class MercadoPagoService:
         preference_data = {
             "items": [
                 {
-                    "title": "Pago Turno Presencial",
+                    "title": title,
                     "quantity": 1,
                     "currency_id": "ARS",
                     "unit_price": monto_pago,
