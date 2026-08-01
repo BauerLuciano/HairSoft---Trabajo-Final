@@ -1,6 +1,6 @@
 <template>
   <div class="list-container">
-    <div class="list-card" :class="{ 'overlay-activo': mostrarRegistrar || mostrarModalAnular }">
+    <div class="list-card" :class="{ 'overlay-activo': mostrarModalAnular }">
       <div class="list-header">
         <div class="header-content">
           <h1>Gestión de ventas</h1>
@@ -18,9 +18,9 @@
             {{ loadingPdf ? 'Generando...' : 'Exportar Listado' }}
           </button>
 
-          <button @click="mostrarRegistrar = true" class="register-button">
+          <button @click="router.push('/pos')" class="register-button">
             <Plus :size="18" />
-            Registrar Venta
+            Punto de Venta
           </button>
         </div>
       </div>
@@ -204,16 +204,6 @@
       </div>
     </div>
 
-    <div v-if="mostrarRegistrar" class="modal-overlay" @click.self="cerrarModal">
-      <div class="modal-content">
-        <RegistrarVenta 
-          @venta-registrada="procesarVentaRegistrada" 
-          @venta-completada="cerrarModal"
-          @cancelar="cerrarModal"
-        />
-      </div>
-    </div>
-
     <div v-if="mostrarModalAnular" class="modal-overlay" @click.self="cerrarModalAnular">
       <div class="modal-content-anular">
         <h2>Anular Venta #{{ ventaAAnular?.id }}</h2>
@@ -265,7 +255,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from '@/utils/axiosConfig' 
 import Swal from 'sweetalert2'
-import RegistrarVenta from './RegistrarVenta.vue'
 import { 
   Plus, Trash2, Eye, FileText, Loader, PackageX,
   ChevronLeft, ChevronRight, RefreshCw, AlertTriangle, CheckCircle,
@@ -280,7 +269,6 @@ const pagina = ref(1)
 const itemsPorPagina = 8
 
 // Estados UI
-const mostrarRegistrar = ref(false)
 const cargando = ref(false)
 const generandoPDF = ref(null)
 const ventaRecienCreada = ref(null)
@@ -337,6 +325,13 @@ onMounted(() => {
   obtenerUsuarioLogueado() 
   cargarVentas()
   cargarConfiguracionEmpresa()
+
+  const ultimaVentaPos = sessionStorage.getItem('ultima_venta_pos')
+  if (ultimaVentaPos) {
+    sessionStorage.removeItem('ultima_venta_pos')
+    ventaRecienCreada.value = Number(ultimaVentaPos)
+    setTimeout(() => ventaRecienCreada.value = null, 5000)
+  }
 })
 
 const ventasFiltradas = computed(() => {
@@ -480,12 +475,6 @@ const generarReporteListado = async () => {
   }
 };
 
-const cerrarModal = () => { mostrarRegistrar.value = false }
-const procesarVentaRegistrada = async (venta) => { 
-  await cargarVentas(); 
-  ventaRecienCreada.value = venta.id 
-  setTimeout(() => ventaRecienCreada.value = null, 5000) 
-}
 const limpiarFiltros = () => { filtros.value = { busqueda: '', fechaDesde: '', fechaHasta: '', metodoPago: '', estado: '' }; pagina.value = 1 }
 
 const formatFechaDia = (f) => f ? new Date(f).toLocaleDateString('es-AR', {day: '2-digit', month: '2-digit', year: 'numeric'}) : '-'

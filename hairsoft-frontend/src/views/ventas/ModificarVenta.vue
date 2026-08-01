@@ -5,7 +5,7 @@
         <div class="header-content">
           <div class="header-title">
             <div class="title-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
               </svg>
@@ -22,7 +22,7 @@
             </div>
           </div>
           <button @click="$emit('cancelar')" class="btn-volver">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="19" y1="12" x2="5" y2="12"></line>
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
@@ -226,19 +226,64 @@
 
             <div class="form-group">
               <label>Método de Pago *</label>
-              <select v-model.number="datosVenta.medio_pago" class="input-select">
-                <option :value="null">Seleccionar método</option>
-                <option 
+              <div class="metodo-pago-opciones">
+                <div 
                   v-for="mp in metodosPago" 
-                  :key="mp.id" 
-                  :value="mp.id"
+                  :key="mp.id"
+                  class="metodo-pago-card"
+                  :class="{ 
+                    'metodo-pago-selected': !esMixto && datosVenta.medio_pago === mp.id,
+                    'metodo-pago-bloqueado': pagoEfectuado
+                  }"
+                  @click="seleccionarMetodo(mp)"
                 >
-                  {{ mp.nombre }}
-                </option>
-              </select>
+                  <div class="mp-icon">
+                    <svg v-if="esEfectivoMetodo(mp)" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M4 6h16v12H4V6Z"/>
+                      <path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/>
+                    </svg>
+                    <svg v-else width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="2" y="6" width="20" height="12" rx="2"/>
+                      <path d="M2 10h20"/>
+                    </svg>
+                  </div>
+                  <div class="mp-nombre">
+                    <span>{{ mp.nombre }}</span>
+                  </div>
+                  <div class="mp-radio">
+                    <div class="radio-circle" :class="{ 'radio-active': !esMixto && datosVenta.medio_pago === mp.id }"></div>
+                  </div>
+                </div>
+
+                <div 
+                  v-if="hayMetodosMixto"
+                  class="metodo-pago-card"
+                  :class="{ 
+                    'metodo-pago-selected': esMixto,
+                    'metodo-pago-bloqueado': pagoEfectuado
+                  }"
+                  @click="seleccionarMixto"
+                >
+                  <div class="mp-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M4 6h16v12H4V6Z"/>
+                      <path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/>
+                      <rect x="2" y="6" width="20" height="12" rx="2"/>
+                      <path d="M2 10h20"/>
+                    </svg>
+                  </div>
+                  <div class="mp-nombre">
+                    <span>Mixto (MP + Efectivo)</span>
+                    <small class="mp-subnombre">Parte con Mercado Pago y el resto en efectivo</small>
+                  </div>
+                  <div class="mp-radio">
+                    <div class="radio-circle" :class="{ 'radio-active': esMixto }"></div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div v-if="esMedioPagoConRecargo" class="datos-extra-pago slide-in">
+            <div v-if="esMedioPagoConRecargo || esMixto" class="datos-extra-pago slide-in">
               
               <div class="form-group" v-if="esTransferencia">
                 <label>Billetera / Banco de Origen</label>
@@ -258,11 +303,45 @@
               </div>
 
               <!-- MERCADO PAGO SUB-OPTIONS -->
-              <div v-if="esMercadoPago" class="mp-options-wrapper">
+              <div v-if="esMercadoPago || esMixto" class="mp-options-wrapper">
                 <label class="mp-sub-label">Elegí cómo cobrar con Mercado Pago:</label>
 
+                <div v-if="esMixto" class="mixto-monto-group">
+                  <div class="form-group">
+                    <label>Monto a cobrar con Mercado Pago</label>
+                    <div class="mixto-monto-row">
+                      <input
+                        type="number"
+                        v-model.number="montoMP"
+                        class="input-search input-monto-mp"
+                        :min="0"
+                        :max="total"
+                        :disabled="pagoMixtoMpPagado"
+                        step="0.01"
+                      />
+                      <button class="btn-mitad" @click="montoMP = redondear2(total / 2)" :disabled="pagoMixtoMpPagado">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        Mitad
+                      </button>
+                    </div>
+                    <small class="mixto-hint">
+                      El resto <strong>${{ restanteEfectivo.toFixed(2) }}</strong> se cobra en efectivo
+                    </small>
+                  </div>
+                  <div class="mixto-aviso" v-if="!montoMPValido">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="8" x2="12" y2="12"></line>
+                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    <span>El monto con Mercado Pago debe ser mayor a $0 y menor al total</span>
+                  </div>
+                </div>
+
                 <div class="mp-options">
-                  <div class="mp-option-card" :class="{ 'mp-option-selected': mpSubOption === 'alias' }" @click="seleccionarSubOpcionMP('alias')">
+                  <div class="mp-option-card" :class="{ 'mp-option-selected': mpSubOption === 'alias', 'mp-option-bloqueado': pagoEfectuado }" @click="seleccionarSubOpcionMP('alias')">
                     <div class="mp-option-content">
                       <div class="mp-option-icon">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -304,7 +383,7 @@
                     </div>
                   </div>
 
-                  <div class="mp-option-card" :class="{ 'mp-option-selected': mpSubOption === 'qr' }" @click="seleccionarSubOpcionMP('qr')">
+                  <div class="mp-option-card" :class="{ 'mp-option-selected': mpSubOption === 'qr', 'mp-option-bloqueado': pagoEfectuado }" @click="seleccionarSubOpcionMP('qr')">
                     <div class="mp-option-content">
                       <div class="mp-option-icon">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -318,14 +397,14 @@
                         <h4>Código QR</h4>
                         <p>Generá un QR para que el cliente escanee con su celular</p>
                         <div v-if="mpSubOption === 'qr'" class="mp-qr-section">
-                          <button @click.stop="generarQR" class="btn-generar-qr" :disabled="generandoQR">
+                          <button @click.stop="generarQR" class="btn-generar-qr" :disabled="generandoQR || mpPagoEstado === 'confirmed'">
                             <template v-if="!generandoQR">
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                                 <line x1="12" y1="8" x2="12" y2="16"></line>
                                 <line x1="8" y1="12" x2="16" y2="12"></line>
                               </svg>
-                              Generar QR
+                              {{ mpPagoEstado === 'confirmed' ? 'Pago Confirmado' : (esMixto ? 'Generar QR (MP)' : 'Generar QR') }}
                             </template>
                             <template v-else>
                               <div class="spinner-sm"></div>
@@ -333,7 +412,9 @@
                             </template>
                           </button>
                           <div v-if="mpQrData" class="qr-display">
-                            <qrcode-vue :value="mpQrData.init_point" :size="200" level="H" />
+                            <div class="qr-display-inner">
+                              <qrcode-vue :value="mpQrData.init_point" :size="170" level="H" />
+                            </div>
                             <div v-if="mpPagoEstado === 'confirmed'" class="qr-pago-confirmado">
                               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                                 <polyline points="20 6 9 17 4 12"></polyline>
@@ -341,11 +422,38 @@
                               <span>¡Pago confirmado!</span>
                             </div>
                             <div v-else-if="mpPagoEstado === 'pending'" class="qr-pago-pendiente">
-                              <div class="spinner-sm spinner-green"></div>
-                              <span>Esperando pago...</span>
-                              <button @click.stop="confirmarPagoManual" class="btn-confirmar-manual">Confirmar manualmente</button>
+                              <div class="pending-ring">
+                                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                  <rect x="3" y="3" width="7" height="7"></rect>
+                                  <rect x="14" y="3" width="7" height="7"></rect>
+                                  <rect x="14" y="14" width="7" height="7"></rect>
+                                  <rect x="3" y="14" width="7" height="7"></rect>
+                                </svg>
+                              </div>
+                              <div class="pending-textos">
+                                <span class="pending-title">Esperando pago...</span>
+                                <span class="pending-sub">El QR se actualiza automáticamente</span>
+                              </div>
                             </div>
-                            <p v-else class="qr-hint">Escaneá con Mercado Pago</p>
+                            <p v-else class="qr-hint">Escaneá el código QR con la cámara de tu billetera virtual</p>
+                            <div class="qr-actions">
+                              <button class="btn-ampliar-qr" @click="qrFullscreen = true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                  <polyline points="15 3 21 3 21 9"></polyline>
+                                  <polyline points="9 21 3 21 3 15"></polyline>
+                                  <line x1="21" y1="3" x2="14" y2="10"></line>
+                                  <line x1="3" y1="21" x2="10" y2="14"></line>
+                                </svg>
+                                Ver en pantalla completa
+                              </button>
+                              <button class="btn-regresar-qr" @click="regresarDelQR" :disabled="mpPagoEstado === 'confirmed'">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                  <line x1="19" y1="12" x2="5" y2="12"></line>
+                                  <polyline points="12 19 5 12 12 5"></polyline>
+                                </svg>
+                                Regresar
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -371,6 +479,51 @@
                 </small>
               </div>
             </div>
+
+            <transition name="slide-fade">
+              <div v-if="esEfectivo || esMixto" class="vuelto-section">
+                <div class="vuelto-titulo" v-if="esMixto">
+                  <span class="vuelto-titulo-label">Falta cobrar en efectivo</span>
+                  <span class="vuelto-titulo-monto">${{ restanteEfectivo.toFixed(2) }}</span>
+                </div>
+                <div class="form-group">
+                  <label>{{ esMixto ? 'Monto recibido en efectivo' : 'Monto recibido' }}</label>
+                  <input
+                    type="number"
+                    v-model.number="montoRecibido"
+                    class="input-search input-monto-recibido"
+                    placeholder="$0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+                <div class="montos-rapidos" v-if="!montoRecibido || montoRecibido < objetivoEfectivo">
+                  <button
+                    v-for="monto in montosRapidosEfectivo"
+                    :key="monto"
+                    class="btn-monto-rapido"
+                    @click="montoRecibido = monto"
+                  >
+                    ${{ monto.toLocaleString() }}
+                  </button>
+                  <button class="btn-monto-rapido btn-monto-exacto" @click="montoRecibido = objetivoEfectivo">
+                    Exacto
+                  </button>
+                </div>
+                <div v-if="montoRecibido && montoRecibido >= objetivoEfectivo" class="vuelto-display">
+                  <span class="vuelto-label">Vuelto</span>
+                  <span class="vuelto-valor">${{ vuelto.toFixed(2) }}</span>
+                </div>
+                <div v-else-if="montoRecibido && montoRecibido < objetivoEfectivo" class="vuelto-faltante">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  <span>Faltan ${{ (objetivoEfectivo - montoRecibido).toFixed(2) }}</span>
+                </div>
+              </div>
+            </transition>
 
             <button 
               @click="validarYActualizarVenta" 
@@ -410,6 +563,51 @@
             </template>
           </div>
           <span>{{ mensaje }}</span>
+        </div>
+      </transition>
+
+      <transition name="fade-overlay">
+        <div v-if="qrFullscreen && mpQrData" class="qr-fullscreen-overlay">
+          <div class="qr-fullscreen-content">
+            <div class="qr-fullscreen-header">
+              <h2>Escaneá el código QR</h2>
+              <p>Con la cámara de tu billetera virtual</p>
+            </div>
+
+            <div class="qr-fullscreen-amount">
+              <span class="fs-amount-label">Total a pagar</span>
+              <span class="fs-amount-valor">${{ total.toFixed(2) }}</span>
+            </div>
+
+            <div class="qr-fullscreen-box">
+              <div class="qr-box-white">
+                <qrcode-vue :value="mpQrData.init_point" :size="300" level="H" />
+              </div>
+            </div>
+
+            <div v-if="mpPagoEstado === 'confirmed'" class="qr-fullscreen-status status-ok">
+              <div class="status-check">
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <span class="status-text">¡Pago confirmado!</span>
+              <span class="status-sub">Ya podés confirmar la venta</span>
+            </div>
+            <div v-else class="qr-fullscreen-status status-wait">
+              <div class="fs-pending-ring"></div>
+              <span class="status-text">Esperando pago...</span>
+              <span class="status-sub">Se actualiza automáticamente al recibir el pago</span>
+            </div>
+
+            <button class="btn-regresar" @click="mpPagoEstado === 'confirmed' ? (qrFullscreen = false) : regresarDelQR">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              {{ mpPagoEstado === 'confirmed' ? 'Continuar' : 'Regresar' }}
+            </button>
+          </div>
         </div>
       </transition>
     </div>
@@ -455,6 +653,10 @@ export default {
       generandoQR: false,
       mpPagoInterval: null,
       mpPagoEstado: null,
+      qrFullscreen: false,
+      pagoMixto: false,
+      montoMP: null,
+      montoRecibido: null,
       datosVenta: {
         medio_pago: null,
         entidad_pago: '',
@@ -504,8 +706,84 @@ export default {
     esMedioPagoConRecargo() {
         return this.esMercadoPago || this.esTransferencia;
     },
+    esEfectivo() {
+        if (this.esMercadoPago || this.esTransferencia) return false;
+        const mp = this.metodoPagoSeleccionado;
+        if (!mp) return false;
+        const tipo = (mp.tipo || '').toUpperCase();
+        const nombre = (mp.nombre || '').toUpperCase();
+        return tipo.includes('EFECTIVO') || nombre.includes('EFECTIVO');
+    },
     maxCodigoLength() {
         return this.esMercadoPago ? 14 : 25;
+    },
+
+    // 🔥 PAGO MIXTO (MP + EFECTIVO)
+    metodoMP() {
+        return this.metodosPago.find(m => {
+            const tipo = (m.tipo || '').toUpperCase();
+            const nombre = (m.nombre || '').toUpperCase();
+            return tipo.includes('MERCADO') || nombre.includes('MERCADO');
+        });
+    },
+    metodoEfectivoObj() {
+        return this.metodosPago.find(m => {
+            const tipo = (m.tipo || '').toUpperCase();
+            const nombre = (m.nombre || '').toUpperCase();
+            return tipo.includes('EFECTIVO') || nombre.includes('EFECTIVO');
+        });
+    },
+    hayMetodosMixto() {
+        return !!(this.metodoMP && this.metodoEfectivoObj);
+    },
+    esMixto() {
+        return this.pagoMixto && this.hayMetodosMixto;
+    },
+    montoMPValido() {
+        if (!this.esMixto) return true;
+        return !!(this.montoMP && this.montoMP > 0 && this.montoMP < this.total);
+    },
+    restanteEfectivo() {
+        if (!this.esMixto || !this.montoMP) return this.total;
+        return Math.max(0, this.total - this.montoMP);
+    },
+    objetivoEfectivo() {
+        return this.esMixto ? this.restanteEfectivo : this.total;
+    },
+    vuelto() {
+        if (!this.montoRecibido) return 0;
+        return Math.max(0, this.montoRecibido - this.objetivoEfectivo);
+    },
+    montosRapidosEfectivo() {
+        const t = this.objetivoEfectivo;
+        const montos = [100, 500, 1000, 2000, 5000, 10000, 20000];
+        return montos.filter(m => m > t);
+    },
+
+    // 🔥 BLOQUEO UNA VEZ QUE EL PAGO YA SE EFECTUÓ
+    pagoEfectuado() {
+        if (this.esMixto) {
+            if (this.mpSubOption === 'qr' && this.mpPagoEstado === 'confirmed') return true;
+            if (this.mpSubOption === 'alias' && this.datosVenta.codigo_transaccion) return true;
+            if (this.montoRecibido && this.restanteEfectivo > 0 && this.montoRecibido >= this.restanteEfectivo) return true;
+            return false;
+        }
+        if (this.esEfectivo) {
+            return !!(this.montoRecibido && this.montoRecibido >= this.total);
+        }
+        if (this.esMercadoPago && this.mpSubOption === 'qr') {
+            return this.mpPagoEstado === 'confirmed';
+        }
+        if (this.esMercadoPago && this.mpSubOption === 'alias') {
+            return !!this.datosVenta.codigo_transaccion;
+        }
+        return false;
+    },
+    pagoMixtoMpPagado() {
+        if (!this.esMixto) return false;
+        if (this.mpSubOption === 'qr') return this.mpPagoEstado === 'confirmed';
+        if (this.mpSubOption === 'alias') return !!this.datosVenta.codigo_transaccion;
+        return false;
     },
     
     formularioValido() {
@@ -516,8 +794,18 @@ export default {
          return false;
       }
 
-      if (this.esMercadoPago && this.mpSubOption === 'qr' && this.mpPagoEstado !== 'confirmed') {
+      if (this.esMercadoPago && !this.esMixto && this.mpSubOption === 'qr' && this.mpPagoEstado !== 'confirmed') {
         return false;
+      }
+
+      if (this.esEfectivo && !this.esMixto && (!this.montoRecibido || this.montoRecibido < this.total)) {
+        return false;
+      }
+
+      if (this.esMixto) {
+        if (!this.montoMPValido) return false;
+        if (this.mpSubOption === 'qr' && this.mpPagoEstado !== 'confirmed') return false;
+        if (!this.montoRecibido || this.montoRecibido < this.restanteEfectivo) return false;
       }
 
       return true;
@@ -550,6 +838,9 @@ export default {
             this.mpSubOption = null;
             this.mpQrData = null;
             this.mpPagoEstado = null;
+            this.montoRecibido = null;
+            this.pagoMixto = false;
+            this.montoMP = null;
             this.detenerPollingPago();
         } else if (this.esMercadoPago) {
             this.datosVenta.entidad_pago = '';
@@ -557,8 +848,36 @@ export default {
             this.mpSubOption = null;
             this.mpQrData = null;
             this.mpPagoEstado = null;
+            this.montoRecibido = null;
+            this.pagoMixto = false;
+            this.montoMP = null;
             this.detenerPollingPago();
         }
+    },
+
+    total(nuevo, viejo) {
+      if (this.mpQrData && nuevo !== viejo) {
+        this.mpQrData = null;
+        this.mpPagoEstado = null;
+        this.detenerPollingPago();
+        this.mostrarMensaje('El total cambió. Volvé a generar el QR');
+      }
+      if (this.esMixto && this.montoMP) {
+        if (this.montoMP > this.total) this.montoMP = this.total;
+      }
+    },
+
+    montoMP(nuevo, viejo) {
+      if (this.esMixto && nuevo !== viejo) {
+        this.mpQrData = null;
+        this.mpPagoEstado = null;
+        this.detenerPollingPago();
+        this.mostrarMensaje('El monto a cobrar con Mercado Pago cambió. Volvé a generar el QR');
+      }
+    },
+
+    mpQrData(nuevo) {
+      if (!nuevo) this.qrFullscreen = false;
     }
   },
   
@@ -632,7 +951,22 @@ export default {
         this.datosVenta.codigo_transaccion = ventaData.codigo_transaccion || '';
 
         // Restaurar sub-opción MP si corresponde
-        if (this.esMercadoPago) {
+        const entidadOriginal = (ventaData.entidad_pago || '').toUpperCase();
+
+        // 🔥 Restaurar pago mixto (entidad_pago = MIXTO)
+        this.pagoMixto = false;
+        this.montoMP = null;
+        this.montoRecibido = null;
+        if (entidadOriginal === 'MIXTO' && this.hayMetodosMixto) {
+            this.pagoMixto = true;
+            const monto = this.extraerMontoMP(ventaData.codigo_transaccion);
+            this.montoMP = monto !== null ? monto : this.redondear2((ventaData.total || 0) / 2);
+            this.montoRecibido = this.redondear2((ventaData.total || 0) - this.montoMP);
+            const forma = String(ventaData.codigo_transaccion || '').split(':')[0].toUpperCase();
+            this.mpSubOption = forma.includes('QR') ? 'qr' : 'alias';
+        }
+
+        if (this.esMercadoPago && !this.pagoMixto) {
             const entidad = (ventaData.entidad_pago || '').toUpperCase();
             this.mpSubOption = entidad === 'MERCADOPAGO_QR' ? 'qr' : 'alias';
         }
@@ -897,12 +1231,14 @@ export default {
       
       // Lógica entidad
       let entidadFinal = null;
-      if (this.esMercadoPago) {
+      if (this.esMixto) {
+          entidadFinal = this.mpSubOption === 'qr' ? 'MERCADOPAGO_QR' : 'MERCADOPAGO_ALIAS';
+      } else if (this.esMercadoPago) {
           entidadFinal = this.mpSubOption === 'qr' ? 'MERCADOPAGO_QR' : 'MERCADOPAGO_ALIAS';
       } else if (this.esTransferencia) {
           entidadFinal = this.datosVenta.entidad_pago;
       }
-      
+
       const payload = { 
         total: parseFloat(this.total),
         tipo: 'PRODUCTO', 
@@ -913,7 +1249,11 @@ export default {
         usuario_modificacion: 'usuario_actual',
         
         entidad_pago: entidadFinal,
-        codigo_transaccion: this.datosVenta.codigo_transaccion || null
+        codigo_transaccion: this.esMixto ? null : (this.datosVenta.codigo_transaccion || null),
+
+        pago_mixto: this.esMixto || undefined,
+        monto_mp: this.esMixto ? parseFloat(this.montoMP) : undefined,
+        monto_efectivo: this.esMixto ? parseFloat(this.montoRecibido >= this.restanteEfectivo ? this.restanteEfectivo : this.montoRecibido) : undefined
       };
 
       try {
@@ -964,7 +1304,115 @@ export default {
       }, 4000);
     },
 
+    esEfectivoMetodo(mp) {
+      const tipo = (mp.tipo || '').toUpperCase();
+      const nombre = (mp.nombre || '').toUpperCase();
+      return tipo.includes('EFECTIVO') || nombre.includes('EFECTIVO');
+    },
+
+    redondear2(n) {
+      return Math.round((Number(n) || 0) * 100) / 100;
+    },
+
+    extraerMontoMP(codigoTransaccion) {
+      if (!codigoTransaccion) return null;
+      const match = String(codigoTransaccion).match(/(?:MERCADOPAGO_[A-Z_]+):([\d.]+)/i);
+      if (match) return parseFloat(match[1]);
+      return null;
+    },
+
+    salirModoMixto() {
+      this.pagoMixto = false;
+      this.montoMP = null;
+      this.montoRecibido = null;
+      this.mpSubOption = null;
+      this.mpQrData = null;
+      this.mpPagoEstado = null;
+      this.qrFullscreen = false;
+      this.detenerPollingPago();
+      this.datosVenta.codigo_transaccion = '';
+    },
+
+    confirmarCancelarMixto(onConfirm) {
+      Swal.fire({
+        icon: 'question',
+        title: '¿Está seguro de que desea cancelar el pago con dos métodos de pago?',
+        text: 'Se limpiarán los importes ingresados y volverá a la selección normal de métodos.',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, cancelar',
+        cancelButtonText: 'No, seguir',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#6c757d',
+        reverseButtons: true,
+        allowOutsideClick: false
+      }).then((result) => {
+        if (result.isConfirmed) onConfirm();
+      });
+    },
+
+    seleccionarMetodo(mp) {
+      if (this.pagoEfectuado) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'El pago ya se efectuó',
+          text: 'No podés cambiar el método de pago porque el cobro ya se realizó.',
+          confirmButtonText: 'Entendido',
+          confirmButtonColor: '#F59E0B'
+        });
+        return;
+      }
+      // 🔥 Si está en modo mixto, pedir confirmación para salir
+      if (this.esMixto) {
+        this.confirmarCancelarMixto(() => {
+          this.salirModoMixto();
+          this.datosVenta.medio_pago = mp.id;
+        });
+        return;
+      }
+      this.pagoMixto = false;
+      this.montoMP = null;
+      this.montoRecibido = null;
+      if (this.datosVenta.medio_pago === mp.id) return;
+      this.datosVenta.medio_pago = mp.id;
+    },
+
+    seleccionarMixto() {
+      if (this.pagoEfectuado) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'El pago ya se efectuó',
+          text: 'No podés cambiar el método de pago porque el cobro ya se realizó.',
+          confirmButtonText: 'Entendido',
+          confirmButtonColor: '#F59E0B'
+        });
+        return;
+      }
+      // 🔥 Si ya está en modo mixto, la tarjeta funciona como "salir"
+      if (this.esMixto) {
+        this.confirmarCancelarMixto(() => {
+          this.salirModoMixto();
+        });
+        return;
+      }
+      if (!this.hayMetodosMixto) return;
+      this.pagoMixto = true;
+      this.montoMP = this.redondear2(this.total / 2);
+      this.montoRecibido = null;
+      this.datosVenta.medio_pago = this.metodoMP.id;
+    },
+
     seleccionarSubOpcionMP(opcion) {
+      if (this.pagoEfectuado) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'El pago ya se efectuó',
+          text: 'No podés cambiar el método de cobro porque el pago ya se realizó.',
+          confirmButtonText: 'Entendido',
+          confirmButtonColor: '#F59E0B'
+        });
+        return;
+      }
+      if (this.mpSubOption === opcion) return;
       this.mpSubOption = opcion;
       this.datosVenta.codigo_transaccion = '';
       this.mpQrData = null;
@@ -974,18 +1422,21 @@ export default {
 
     async generarQR() {
       if (!this.total || this.total <= 0) return;
+      const montoQR = this.esMixto ? (this.montoMP || 0) : this.total;
+      if (montoQR <= 0) return;
       this.generandoQR = true;
       this.mpPagoEstado = null;
       this.detenerPollingPago();
       try {
         const res = await axios.post('/api/generar-qr-temporal/', {
-          monto: this.total,
+          monto: montoQR,
           title: 'Venta de productos - HairSoft'
         });
         if (res.data.status === 'ok') {
           this.mpQrData = res.data;
           this.mpPagoEstado = 'pending';
           this.iniciarPollingPago(res.data.uid);
+          this.qrFullscreen = true;
         } else {
           this.mostrarMensaje('Error al generar el QR', true);
         }
@@ -1020,10 +1471,15 @@ export default {
       }
     },
 
-    confirmarPagoManual() {
-      this.mpPagoEstado = 'confirmed';
+    regresarDelQR() {
+      if (this.mpPagoEstado === 'confirmed' || this.pagoEfectuado) {
+        this.mostrarMensaje('El pago ya se efectuó, no se puede cancelar el QR', true);
+        return;
+      }
+      this.qrFullscreen = false;
+      this.mpQrData = null;
+      this.mpPagoEstado = null;
       this.detenerPollingPago();
-      this.mostrarMensaje('Pago confirmado manualmente');
     },
 
     copiarAlias() {
@@ -1105,8 +1561,8 @@ export default {
 /* HEADER */
 .page-header {
   background: linear-gradient(135deg, #1e293b, #334155);
-  border-radius: 0;
-  padding: 28px 32px;
+  border-radius: 14px;
+  padding: 14px 24px;
   margin-bottom: 30px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   border-bottom: 2px solid #06b6d4;
@@ -1122,14 +1578,14 @@ export default {
 .header-title {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
 }
 
 .title-icon {
-  width: 56px;
-  height: 56px;
+  width: 40px;
+  height: 40px;
   background: linear-gradient(135deg, #06b6d4, #0891b2);
-  border-radius: 16px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1138,18 +1594,18 @@ export default {
 }
 
 .header-title h1 {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
   color: #ffffff;
   margin: 0;
 }
 
 .venta-info-header {
-  font-size: 14px;
+  font-size: 12px;
   color: #94a3b8;
   margin: 4px 0 0 0;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -1157,7 +1613,7 @@ export default {
 .badge-activa {
   background: #d1fae5;
   color: #065f46;
-  padding: 4px 10px;
+  padding: 3px 10px;
   border-radius: 12px;
   font-size: 11px;
   font-weight: 600;
@@ -1166,7 +1622,7 @@ export default {
 .badge-anulada {
   background: #fee2e2;
   color: #991b1b;
-  padding: 4px 10px;
+  padding: 3px 10px;
   border-radius: 12px;
   font-size: 11px;
   font-weight: 600;
@@ -1176,21 +1632,291 @@ export default {
   background: rgba(6, 182, 212, 0.1);
   border: 2px solid rgba(6, 182, 212, 0.3);
   color: #06b6d4;
-  padding: 12px 24px;
+  padding: 9px 18px;
   border-radius: 12px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
   transition: all 0.3s ease;
+  white-space: nowrap;
 }
 
 .btn-volver:hover {
   background: rgba(6, 182, 212, 0.2);
   border-color: #06b6d4;
   transform: translateY(-2px);
+}
+
+/* MÉTODOS DE PAGO (TARJETAS) */
+.metodo-pago-opciones {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.metodo-pago-card {
+  background: #1e293b;
+  border: 2px solid #334155;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.metodo-pago-card:hover {
+  border-color: #06b6d4;
+  transform: translateY(-1px);
+}
+
+.metodo-pago-selected {
+  border-color: #06b6d4;
+  background: rgba(6, 182, 212, 0.08);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15);
+}
+
+.metodo-pago-bloqueado {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: grayscale(0.3);
+}
+
+.mp-icon {
+  width: 40px;
+  height: 40px;
+  background: #0f172a;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #06b6d4;
+  flex-shrink: 0;
+}
+
+.mp-nombre {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mp-nombre span {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f8fafc;
+  line-height: 1.2;
+}
+
+.mp-subnombre {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.3;
+}
+
+.mp-radio {
+  flex-shrink: 0;
+}
+
+.radio-circle {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #64748b;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.radio-active {
+  border-color: #06b6d4;
+  background: #06b6d4;
+  box-shadow: inset 0 0 0 3px #1e293b;
+}
+
+/* PAGO MIXTO */
+.mixto-monto-group {
+  background: rgba(6, 182, 212, 0.06);
+  border: 1px dashed rgba(6, 182, 212, 0.4);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.mixto-monto-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.input-monto-mp {
+  flex: 1;
+}
+
+.btn-mitad {
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  color: #06b6d4;
+  padding: 9px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-mitad:hover:not(:disabled) {
+  background: rgba(6, 182, 212, 0.22);
+}
+
+.btn-mitad:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mixto-hint {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.mixto-hint strong {
+  color: #f59e0b;
+}
+
+.mixto-aviso {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 10px;
+  color: #fbbf24;
+  font-size: 12px;
+}
+
+.mp-option-bloqueado {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: grayscale(0.3);
+}
+
+/* SECCIÓN VUELTO / EFECTIVO */
+.vuelto-section {
+  background: #1e293b;
+  border: 2px solid #334155;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 4px;
+}
+
+.vuelto-titulo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 10px;
+}
+
+.vuelto-titulo-label {
+  font-size: 13px;
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.vuelto-titulo-monto {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.input-monto-recibido {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+}
+
+.montos-rapidos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.btn-monto-rapido {
+  background: #334155;
+  border: 1px solid #475569;
+  color: #e2e8f0;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-monto-rapido:hover {
+  background: #06b6d4;
+  border-color: #06b6d4;
+  color: #0f172a;
+}
+
+.btn-monto-exacto {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.4);
+  color: #06b6d4;
+}
+
+.vuelto-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 10px;
+}
+
+.vuelto-label {
+  font-size: 14px;
+  color: #6ee7b7;
+  font-weight: 600;
+}
+
+.vuelto-valor {
+  font-size: 22px;
+  font-weight: 700;
+  color: #34d399;
+}
+
+.vuelto-faltante {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 10px;
+  color: #fbbf24;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 /* GRID DE CONTENIDO */
@@ -1851,17 +2577,63 @@ export default {
 
 .qr-pago-pendiente {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   margin-top: 14px;
-  padding: 14px;
-  background: #fefce8;
+  padding: 16px;
+  background: linear-gradient(135deg, #fffbeb, #fef3c7);
   border: 2px solid #fcd34d;
-  border-radius: 10px;
+  border-radius: 14px;
+}
+
+.pending-ring {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #b45309;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.pending-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid #fbbf24;
+  border-top-color: transparent;
+  animation: spin 1s linear infinite;
+}
+
+.pending-ring::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 2px solid rgba(251, 191, 36, 0.35);
+  border-bottom-color: transparent;
+  animation: spin 1.6s linear infinite reverse;
+}
+
+.pending-textos {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pending-title {
+  font-size: 15px;
+  font-weight: 700;
   color: #92400e;
-  font-weight: 600;
-  font-size: 14px;
+}
+
+.pending-sub {
+  font-size: 12px;
+  font-weight: 500;
+  color: #a16207;
 }
 
 .qr-pago-confirmado {
@@ -1877,24 +2649,6 @@ export default {
   color: #065f46;
   font-weight: 700;
   font-size: 15px;
-}
-
-.btn-confirmar-manual {
-  background: white;
-  border: 1px solid #d1d5db;
-  color: #6b7280;
-  padding: 6px 16px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-confirmar-manual:hover {
-  border-color: #9ca3af;
-  color: #374151;
-  background: #f9fafb;
 }
 
 /* NOTIFICACIONES */
@@ -2201,11 +2955,241 @@ export default {
   border: 2px solid #e2e8f0;
 }
 
+.qr-display-inner {
+  display: inline-flex;
+  padding: 12px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
 .qr-hint {
   font-size: 13px;
   color: #64748b;
   margin-top: 10px;
   font-weight: 600;
+}
+
+.btn-ampliar-qr {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 16px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-ampliar-qr:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.qr-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.qr-actions .btn-ampliar-qr {
+  margin-top: 0;
+  flex: 1;
+}
+
+.btn-regresar-qr {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  padding: 8px 16px;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 10px;
+  color: #e11d48;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-regresar-qr:hover:not(:disabled) {
+  background: #ffe4e6;
+  color: #be123c;
+}
+
+.btn-regresar-qr:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.qr-fullscreen-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #020617;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+.qr-fullscreen-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 30px 20px;
+  text-align: center;
+}
+
+.qr-fullscreen-header h2 {
+  color: #f8fafc;
+  font-size: 24px;
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+.qr-fullscreen-header p {
+  color: #64748b;
+  margin: 0;
+  font-size: 14px;
+}
+
+.qr-fullscreen-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 30px;
+  border-radius: 16px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid #334155;
+}
+
+.fs-amount-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.fs-amount-valor {
+  font-size: 34px;
+  font-weight: 800;
+  color: #34d399;
+  line-height: 1.1;
+}
+
+.qr-fullscreen-box {
+  padding: 16px;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid #334155;
+  border-radius: 20px;
+}
+
+.qr-box-white {
+  background: white;
+  padding: 16px;
+  border-radius: 14px;
+}
+
+.qr-fullscreen-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-text {
+  font-size: 17px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.status-sub {
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.status-ok .status-check {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #065f46;
+  color: #34d399;
+  border: 2px solid #10b981;
+  animation: pop-in 0.4s ease;
+}
+
+.status-wait .fs-pending-ring {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 4px solid rgba(16, 185, 129, 0.2);
+  border-top-color: #10b981;
+  animation: spin 1s linear infinite;
+  margin-bottom: 4px;
+}
+
+.btn-regresar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 32px;
+  background: #10b981;
+  border: none;
+  border-radius: 12px;
+  color: white;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 6px;
+}
+
+.btn-regresar:hover {
+  background: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+}
+
+.fade-overlay-enter-active,
+.fade-overlay-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.fade-overlay-enter-from,
+.fade-overlay-leave-to {
+  opacity: 0;
+}
+
+@keyframes pop-in {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .spinner-sm {

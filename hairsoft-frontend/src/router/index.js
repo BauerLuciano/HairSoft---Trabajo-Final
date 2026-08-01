@@ -151,6 +151,7 @@ const routes = [
   { path: '/proveedores/evaluacion', name: 'EvaluacionPresupuestos', component: EvaluacionPresupuestos, meta: { requiresAuth: true, role: 'ADMIN' } },
   
   // VENTAS Y CAJA
+  { path: '/pos', name: 'PuntoDeVenta', component: RegistrarVenta, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/ventas', name: 'ListadoVentas', component: ListadoVentas, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/ventas/crear', name: 'RegistrarVenta', component: RegistrarVenta, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/ventas/detalle/:id', name: 'DetalleVenta', component: DetalleVenta, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },

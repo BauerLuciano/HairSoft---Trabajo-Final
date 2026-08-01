@@ -22,6 +22,12 @@ html, body {
   color: #f0f0f0;
 }
 
+/* SweetAlert2 SIEMPRE por encima de paneles, modales, overlays y toasts
+   (SweetAlert2 v11.26+ eliminó el parámetro zIndex; se corrige por CSS global) */
+.swal2-container {
+  z-index: 100000 !important;
+}
+
 /* ----------------------------
    Contenedores generales
 ----------------------------- */

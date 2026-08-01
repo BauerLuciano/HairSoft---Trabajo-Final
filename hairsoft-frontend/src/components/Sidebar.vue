@@ -135,6 +135,7 @@ const menuData = {
     icon: 'ri-store-2-line',
     items: [
       { name: 'Caja Diaria', path: '/caja', icon: 'ri-bank-card-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] },
+      { name: 'Punto de Venta (POS)', path: '/pos', icon: 'ri-store-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] },
       { name: 'Ventas', path: '/ventas', icon: 'ri-bar-chart-2-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] },
       { name: 'Pedidos Web', path: '/pedidos-web-admin', icon: 'ri-global-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA'] }, 
       { name: 'Turnos', path: '/turnos', icon: 'ri-calendar-event-line', roles: ['ADMINISTRADOR', 'RECEPCIONISTA', 'PELUQUERO'] },

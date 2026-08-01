@@ -146,6 +146,7 @@ urlpatterns = [
     # ================================
     path('api/categorias/productos/', func_views.listado_categorias_productos, name='listado_categorias_productos'),    
     path('api/productos/', ProductoListCreateAPIView.as_view(), name='productos_api'),
+    path('api/productos/mas-vendidos/', func_views.productos_mas_vendidos, name='productos_mas_vendidos'),
     path('api/productos/<int:pk>/', ProductoRetrieveUpdateDestroyAPIView.as_view(), name='productos-detail'),
     path('api/metodos-pago/', MetodoPagoListAPIView.as_view(), name='listado_metodos_pago'),
     path('api/catalogo/', ProductoCatalogoView.as_view(), name='catalogo-publico'),

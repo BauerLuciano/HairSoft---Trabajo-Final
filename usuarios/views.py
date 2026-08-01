@@ -827,6 +827,43 @@ class ProductoRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView
     serializer_class = ProductoSerializer
     permission_classes = [AllowAny]  # Temporal para testing
 
+@api_view(['GET'])
+def productos_mas_vendidos(request):
+    """
+    Devuelve los productos más vendidos según el historial REAL de ventas
+    (cantidad sumada de DetalleVenta, excluyendo ventas anuladas).
+    """
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+    try:
+        try:
+            limite = max(1, min(int(request.GET.get('limite', 6)), 12))
+        except (TypeError, ValueError):
+            limite = 6
+
+        filas = (
+            DetalleVenta.objects
+            .filter(venta__anulada=False, producto__isnull=False)
+            .values('producto_id')
+            .annotate(total_vendido=Sum('cantidad'))
+            .order_by('-total_vendido')[:limite]
+        )
+
+        ids = [f['producto_id'] for f in filas]
+        vendidos_map = {f['producto_id']: f['total_vendido'] for f in filas}
+
+        productos = Producto.objects.select_related('categoria').filter(id__in=ids)
+        data = ProductoSerializer(productos, many=True, context={'request': request}).data
+        for item in data:
+            item['total_vendido'] = vendidos_map.get(item['id'], 0)
+
+        data.sort(key=lambda p: p['total_vendido'], reverse=True)
+        return JsonResponse(data, safe=False)
+    except Exception as e:
+        print("❌ Error en productos_mas_vendidos:", e)
+        return JsonResponse({'error': str(e)}, status=500)
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def ajustar_stock_manual(request, producto_id):
@@ -3203,6 +3240,10 @@ def registrar_venta(request):
             entidad_pago = data.get('entidad_pago')
             codigo_transaccion = data.get('codigo_transaccion')
 
+            pago_mixto = bool(data.get('pago_mixto'))
+            monto_mp = data.get('monto_mp')
+            monto_efectivo = data.get('monto_efectivo')
+
             if not items:
                 return Response({"error": "La venta debe tener al menos un detalle."}, status=400)
             if not medio_pago_id:
@@ -3265,7 +3306,7 @@ def registrar_venta(request):
                 )
 
                 precio_unitario = producto.precio 
-                subtotal = precio_unitario * cantidad
+                subtotal = float(precio_unitario) * cantidad
 
                 # 🔥 También apagamos el espía para el DetalleVenta
                 detalle = DetalleVenta(
@@ -3301,26 +3342,64 @@ def registrar_venta(request):
             # 6. Guardar Total Final con UPDATE para no disparar señal
             Venta.objects.filter(id=venta.id).update(total=total_acumulado)
 
-            # 💵 2. REGISTRAR EL MOVIMIENTO DE CAJA
+            # 💵 2. REGISTRAR EL MOVIMIENTO DE CAJA (soporta pago mixto MP + Efectivo)
             tipo_mp = str(medio_pago.tipo).upper()
             nombre_mp = str(medio_pago.nombre).upper()
 
-            if tipo_mp == 'MERCADO_PAGO' or 'MERCADO' in nombre_mp:
-                metodo_pago_caja = 'MERCADO_PAGO'
-            elif tipo_mp == 'TRANSFERENCIA' or 'TRANSF' in nombre_mp:
-                metodo_pago_caja = 'TRANSFERENCIA'
-            else:
-                metodo_pago_caja = 'EFECTIVO'
+            if pago_mixto:
+                try:
+                    monto_mp_f = float(monto_mp or 0)
+                    monto_efectivo_f = float(monto_efectivo or 0)
+                except (TypeError, ValueError):
+                    raise Exception("Monto de pago mixto inválido.")
 
-            MovimientoCaja.objects.create(
-                sesion_caja=sesion_abierta,
-                tipo='INGRESO',
-                metodo_pago=metodo_pago_caja,
-                concepto='VENTA',
-                monto=total_acumulado,
-                descripcion=f"Venta #{venta.id} - Cliente: {venta.cliente.nombre if venta.cliente else 'Consumidor Final'}",
-                venta_relacionada=venta
-            )
+                if monto_mp_f <= 0 or monto_efectivo_f <= 0:
+                    raise Exception("Los montos del pago mixto deben ser mayores a 0.")
+                if abs((monto_mp_f + monto_efectivo_f) - total_acumulado) > 0.01:
+                    raise Exception("Los montos del pago mixto no cubren exactamente el total de la venta.")
+
+                forma_mp = str(entidad_pago or 'MERCADOPAGO_QR').upper()
+
+                MovimientoCaja.objects.create(
+                    sesion_caja=sesion_abierta,
+                    tipo='INGRESO',
+                    metodo_pago='MERCADO_PAGO',
+                    concepto='VENTA',
+                    monto=monto_mp_f,
+                    descripcion=f"Venta #{venta.id} (pago mixto MP) - Cliente: {venta.cliente.nombre if venta.cliente else 'Consumidor Final'}",
+                    venta_relacionada=venta
+                )
+                MovimientoCaja.objects.create(
+                    sesion_caja=sesion_abierta,
+                    tipo='INGRESO',
+                    metodo_pago='EFECTIVO',
+                    concepto='VENTA',
+                    monto=monto_efectivo_f,
+                    descripcion=f"Venta #{venta.id} (pago mixto efectivo) - Cliente: {venta.cliente.nombre if venta.cliente else 'Consumidor Final'}",
+                    venta_relacionada=venta
+                )
+
+                Venta.objects.filter(id=venta.id).update(
+                    entidad_pago='MIXTO',
+                    codigo_transaccion=f"{forma_mp}:{monto_mp_f:.2f}|EFECTIVO:{monto_efectivo_f:.2f}"
+                )
+            else:
+                if tipo_mp == 'MERCADO_PAGO' or 'MERCADO' in nombre_mp:
+                    metodo_pago_caja = 'MERCADO_PAGO'
+                elif tipo_mp == 'TRANSFERENCIA' or 'TRANSF' in nombre_mp:
+                    metodo_pago_caja = 'TRANSFERENCIA'
+                else:
+                    metodo_pago_caja = 'EFECTIVO'
+
+                MovimientoCaja.objects.create(
+                    sesion_caja=sesion_abierta,
+                    tipo='INGRESO',
+                    metodo_pago=metodo_pago_caja,
+                    concepto='VENTA',
+                    monto=total_acumulado,
+                    descripcion=f"Venta #{venta.id} - Cliente: {venta.cliente.nombre if venta.cliente else 'Consumidor Final'}",
+                    venta_relacionada=venta
+                )
 
             # 6. 🔥 CREAR EL REGISTRO ÚNICO MAESTRO DE AUDITORÍA
             x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
@@ -3524,10 +3603,30 @@ def actualizar_venta(request, venta_id):
             venta.medio_pago_id = data.get('medio_pago')
             
             # 🔥 GUARDAR CAMBIOS DE TRAZABILIDAD 🔥
-            if 'entidad_pago' in data:
-                venta.entidad_pago = data.get('entidad_pago')
-            if 'codigo_transaccion' in data:
-                venta.codigo_transaccion = data.get('codigo_transaccion')
+            pago_mixto_edit = bool(data.get('pago_mixto'))
+            monto_mp_edit = data.get('monto_mp')
+            monto_efectivo_edit = data.get('monto_efectivo')
+
+            if pago_mixto_edit:
+                try:
+                    monto_mp_f = float(monto_mp_edit or 0)
+                    monto_efectivo_f = float(monto_efectivo_edit or 0)
+                except (TypeError, ValueError):
+                    return JsonResponse({'error': 'Monto de pago mixto inválido.'}, status=400)
+
+                if monto_mp_f <= 0 or monto_efectivo_f <= 0:
+                    return JsonResponse({'error': 'Los montos del pago mixto deben ser mayores a 0.'}, status=400)
+                if abs((monto_mp_f + monto_efectivo_f) - total_venta) > 0.01:
+                    return JsonResponse({'error': 'Los montos del pago mixto no cubren exactamente el total de la venta.'}, status=400)
+
+                forma_mp = str(data.get('entidad_pago') or 'MERCADOPAGO_QR').upper()
+                venta.entidad_pago = 'MIXTO'
+                venta.codigo_transaccion = f"{forma_mp}:{monto_mp_f:.2f}|EFECTIVO:{monto_efectivo_f:.2f}"
+            else:
+                if 'entidad_pago' in data:
+                    venta.entidad_pago = data.get('entidad_pago')
+                if 'codigo_transaccion' in data:
+                    venta.codigo_transaccion = data.get('codigo_transaccion')
 
             # Si hay un motivo de modificación, se podría guardar en un log o campo de observaciones
             # if 'motivo_modificacion' in data: ...
