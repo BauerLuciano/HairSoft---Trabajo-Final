@@ -52,7 +52,7 @@
           <div class="form-group search-field">
             <label>Más vendidos</label>
             <select v-model="filtroMasVendidos" class="input-select" @change="cargarMasVendidos">
-              <option v-for="n in 10" :key="n" :value="n">{{ n }}</option>
+              <option v-for="n in [0,1,2,3,4,5,6,7,8,9,10]" :key="n" :value="n">{{ n }}</option>
             </select>
           </div>
         </div>
@@ -70,10 +70,6 @@
               }"
               @click="agregarDirecto(p); feedbackAgregar(p)"
             >
-              <svg class="chip-plus" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
               <span class="chip-nombre">{{ p.nombre }}</span>
             </button>
           </div>
@@ -453,7 +449,10 @@
                 <div v-if="esMixto" class="cobro-paso-titulo">
                   <span class="paso-badge">2</span>
                   <span class="paso-titulo-text">Mercado Pago</span>
-                  <span class="paso-monto">Resto: ${{ montoMP ? montoMP.toFixed(2) : '—' }}</span>
+                </div>
+                <div v-if="esMixto" class="resta-pagar-card">
+                  <span class="resta-pagar-label">Saldo pendiente</span>
+                  <span class="resta-pagar-valor">${{ montoMP ? montoMP.toFixed(2) : '—' }}</span>
                 </div>
                 <div class="datos-extra-pago">
                   <div v-if="pagoParcialMP" class="pago-parcial-resumen">
@@ -737,7 +736,7 @@ export default {
             metodosPago: [],
             filtroNombre: '',
             filtroCategoria: '',
-            filtroMasVendidos: 5,
+            filtroMasVendidos: 0,
             cantidades: {},
             carrito: [],
             procesandoVenta: false,
@@ -1513,6 +1512,11 @@ export default {
         },
 
         async cargarMasVendidos() {
+            // Con límite 0 no se muestran accesos rápidos
+            if (!this.filtroMasVendidos || this.filtroMasVendidos <= 0) {
+                this.masVendidos = [];
+                return;
+            }
             try {
                 const res = await axios.get(`${API_BASE_URL}/api/productos/mas-vendidos/?limite=${this.filtroMasVendidos}`);
                 const lista = Array.isArray(res.data) ? res.data : [];
@@ -2228,23 +2232,12 @@ export default {
   box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.25);
 }
 
-.chip-plus {
-  display: inline-flex;
-  flex-shrink: 0;
-  color: var(--accent-color);
-  transition: transform 0.18s ease;
-}
-
 .chip-mas-vendido:hover {
   border-color: var(--accent-color);
   background: linear-gradient(180deg, var(--hover-bg), var(--active-bg));
   color: var(--accent-color);
   transform: translateY(-1px);
   box-shadow: 0 4px 14px rgba(14, 165, 233, 0.22);
-}
-
-.chip-mas-vendido:hover .chip-plus {
-  transform: scale(1.2);
 }
 
 .chip-mas-vendido:active {
@@ -2278,11 +2271,6 @@ export default {
   border-color: rgba(245, 158, 11, 0.45);
   background: var(--bg-primary);
   box-shadow: none;
-}
-
-.chip-agotado:hover .chip-plus,
-.chip-agotado:active .chip-plus {
-  transform: none;
 }
 
 /* ---------- Lista de productos ---------- */
@@ -3300,6 +3288,38 @@ export default {
 
 .paso-titulo-done .paso-titulo-text {
   color: #34d399;
+}
+
+.resta-pagar-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 16px;
+  padding: 18px 16px 16px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(245, 158, 11, 0.05));
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  box-shadow: 0 6px 26px rgba(245, 158, 11, 0.18), inset 0 0 50px rgba(245, 158, 11, 0.05);
+}
+
+.resta-pagar-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: #fcd34d;
+}
+
+.resta-pagar-valor {
+  font-size: 48px;
+  font-weight: 900;
+  color: #fbbf24;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+  text-shadow: 0 0 24px rgba(251, 191, 36, 0.35);
+  animation: saldo-glow 2.6s ease-in-out infinite;
 }
 
 .pago-parcial-resumen {

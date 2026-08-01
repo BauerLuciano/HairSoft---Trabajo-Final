@@ -545,46 +545,45 @@ onMounted(cargarBranding);
    ============================================ */
 
 :global(:root.light-theme) .sidebar {
-  background: linear-gradient(180deg, #e2e8f0 0%, #f1f5f9 100%);
-  border-right: 2px solid #cbd5e1;
-  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.08);
+  background: #e9edf2;
+  border-right: 1px solid #e2e7ee;
+  box-shadow: 2px 0 8px rgba(16, 24, 40, 0.03);
 }
 
 :global(:root.light-theme) .sidebar-header {
-  background: linear-gradient(135deg, #e2e8f0 0%, #f1f5f9 100%);
-  border-bottom: 1px solid #cbd5e1;
+  background: #e6ebf2;
+  border-bottom: 1px solid #e2e7ee;
 }
 
 :global(:root.light-theme) .sidebar-header::after {
-  background: linear-gradient(90deg, transparent, #0284c7, transparent);
+  background: linear-gradient(90deg, transparent, #2563eb, transparent);
 }
 
 :global(:root.light-theme) .section-title {
-  color: #475569;
+  color: #64748b;
 }
 
 :global(:root.light-theme) .section-title::after {
-  background: linear-gradient(90deg, #0284c7, transparent);
+  background: linear-gradient(90deg, #2563eb, transparent);
 }
 
 /* Links normales */
 :global(:root.light-theme) .nav-link:hover {
-  background: #dbeafe;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  background: #e4eaf2;
 }
 
-:global(:root.light-theme) .nav-link:hover .icon { color: #0284c7; }
+:global(:root.light-theme) .nav-link:hover .icon { color: #2563eb; }
 :global(:root.light-theme) .nav-link:hover .link-text { color: #0f172a; }
-:global(:root.light-theme) .nav-link:hover .icon-wrapper { background: rgba(2, 132, 199, 0.15); }
+:global(:root.light-theme) .nav-link:hover .icon-wrapper { background: rgba(37, 99, 235, 0.12); }
 
 :global(:root.light-theme) .nav-link.router-link-active {
-  background: linear-gradient(135deg, #0369a1 0%, #0284c7 100%);
-  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
 }
 
 /* Textos de los items */
 :global(:root.light-theme) .link-text {
-  color: #334155;
+  color: #1e293b;
 }
 
 :global(:root.light-theme) .icon {
@@ -592,23 +591,22 @@ onMounted(cargarBranding);
 }
 
 :global(:root.light-theme) .icon-wrapper {
-  background: rgba(2, 132, 199, 0.08);
+  background: #eaf1fb;
 }
 
 /* Acordeones */
 :global(:root.light-theme) .acordeon-header {
-  background: rgba(203, 213, 225, 0.5);
-  border-color: #cbd5e1;
+  background: rgba(226, 231, 238, 0.7);
+  border-color: #e2e7ee;
 }
 
 :global(:root.light-theme) .acordeon-header:hover {
-  background: #dbeafe;
-  border-color: #93c5fd;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  background: #e9edf2;
+  border-color: #cbd5e1;
 }
 
 :global(:root.light-theme) .acordeon-header:hover .acordeon-title { color: #0f172a; }
-:global(:root.light-theme) .acordeon-header:hover .acordeon-arrow { color: #0284c7; }
+:global(:root.light-theme) .acordeon-header:hover .acordeon-arrow { color: #2563eb; }
 
 :global(:root.light-theme) .acordeon-title {
   color: #334155;
@@ -619,17 +617,17 @@ onMounted(cargarBranding);
 }
 
 :global(:root.light-theme) .acordeon-arrow.rotated {
-  color: #0284c7;
+  color: #2563eb;
 }
 
 :global(:root.light-theme) .acordeon-content {
-  border-left-color: rgba(2, 132, 199, 0.3);
+  border-left-color: rgba(37, 99, 235, 0.25);
 }
 
 /* Footer / logout */
 :global(:root.light-theme) .sidebar-footer {
-  border-top-color: #cbd5e1;
-  background: linear-gradient(180deg, transparent 0%, rgba(226, 232, 240, 0.8) 100%);
+  border-top-color: #e2e7ee;
+  background: linear-gradient(180deg, transparent 0%, rgba(230, 235, 242, 0.8) 100%);
 }
 
 @media (max-width: 1024px) { .sidebar { width: 270px; } }

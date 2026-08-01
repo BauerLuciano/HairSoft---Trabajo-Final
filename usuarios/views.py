@@ -3346,6 +3346,10 @@ def registrar_venta(request):
             tipo_mp = str(medio_pago.tipo).upper()
             nombre_mp = str(medio_pago.nombre).upper()
 
+            # Montos del desglose (solo relevantes en pago mixto) para el log de auditoría
+            monto_mp_f = 0.0
+            monto_efectivo_f = 0.0
+
             if pago_mixto:
                 try:
                     monto_mp_f = float(monto_mp or 0)
@@ -3408,21 +3412,26 @@ def registrar_venta(request):
             # ✅ ESTA LÍNEA ES LA QUE FALTABA
             user_agent = request.META.get('HTTP_USER_AGENT', 'Desconocido')
 
+            detalles_venta = {
+                'total_venta': f"${total_acumulado}",
+                'metodo_pago': medio_pago.nombre,
+                'productos_vendidos': " | ".join(productos_vendidos),
+            }
+            if pago_mixto:
+                detalles_venta['tipo_pago'] = 'Pago Mixto (Mercado Pago + Efectivo)'
+                detalles_venta['monto_mercado_pago'] = f"${monto_mp_f:.2f}"
+                detalles_venta['monto_efectivo'] = f"${monto_efectivo_f:.2f}"
+            detalles_venta['__meta__'] = {
+                'navegador': user_agent,
+                'ip': ip
+            }
+
             Auditoria.objects.create(
                 usuario=usuario_vendedor,
                 modelo_afectado='Venta',
                 objeto_id=str(venta.id),
                 accion='CREAR',
-                detalles={
-                    'total_venta': f"${total_acumulado}",
-                    'metodo_pago': medio_pago.nombre,
-                    'productos_vendidos': " | ".join(productos_vendidos),
-                    # 🔥 AHORA SÍ MANDAMOS EL NAVEGADOR PARA QUE EL SERIALIZER LO VEA
-                    '__meta__': {
-                        'navegador': user_agent,
-                        'ip': ip
-                    }
-                },
+                detalles=detalles_venta,
                 ip_address=ip
             )
 
@@ -3657,6 +3666,31 @@ def actualizar_venta(request, venta_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def _parsear_desglose_mixto(venta):
+    """Devuelve (monto_mp, monto_efectivo) si la venta es mixta parseable, sino None."""
+    if str(venta.entidad_pago or '').upper() != 'MIXTO':
+        return None
+    if not venta.codigo_transaccion:
+        return None
+    monto_mp = None
+    monto_efectivo = None
+    try:
+        for parte in str(venta.codigo_transaccion).split('|'):
+            if ':' not in parte:
+                continue
+            clave, valor = parte.rsplit(':', 1)
+            monto = Decimal(str(valor).strip())
+            if clave.strip().upper() == 'EFECTIVO':
+                monto_efectivo = monto
+            else:
+                monto_mp = monto
+    except Exception:
+        return None
+    if monto_mp is None or monto_efectivo is None or monto_mp <= 0 or monto_efectivo <= 0:
+        return None
+    return monto_mp, monto_efectivo
+
+
 def anular_venta(request, venta_id):
     motivo = request.data.get('motivo')
     if not motivo or len(motivo.strip()) < 5:
@@ -3679,12 +3713,21 @@ def anular_venta(request, venta_id):
             productos_devueltos = []
             
             # 1. Devolver el stock usando UPDATE (no dispara auditoría automática)
+            from .models import HistorialStock
             for detalle in venta.detalles.all():
                 if detalle.producto:
                     producto = Producto.objects.select_for_update().get(id=detalle.producto.id)
                     nuevo_stock = producto.stock_actual + detalle.cantidad
                     # 🔥 Usamos UPDATE: no crea fila automática de auditoría
                     Producto.objects.filter(id=producto.id).update(stock_actual=nuevo_stock)
+                    HistorialStock.objects.create(
+                        producto=producto,
+                        cantidad_anterior=producto.stock_actual,
+                        cantidad_nueva=nuevo_stock,
+                        motivo=f"Devolución por anulación de venta (Ticket #{venta.id})",
+                        usuario=request.user,
+                        tipo_ajuste='DEVOLUCION'
+                    )
                     productos_devueltos.append(f"{detalle.cantidad}x {producto.nombre}")
             
             # 2. Marcar venta como anulada usando UPDATE
@@ -3699,43 +3742,64 @@ def anular_venta(request, venta_id):
                 venta=venta, usuario=request.user, motivo=motivo, monto_devuelto=venta.total
             )
 
-            # 💸 4. REGISTRAR EGRESO DE CAJA (Devolución de plata)
-            # Buscamos en qué se pagó originalmente para descontar de ahí
-            metodo_pago_caja = 'EFECTIVO'
-            if venta.medio_pago and venta.medio_pago.tipo == 'MERCADO_PAGO':
-                metodo_pago_caja = 'MERCADO_PAGO'
-            elif venta.medio_pago and venta.medio_pago.tipo == 'TRANSFERENCIA':
-                metodo_pago_caja = 'TRANSFERENCIA'
+            # 💸 4. REGISTRAR EGRESOS DE CAJA (Devolución de plata)
+            # Revertimos CADA medio de pago original para dejar la caja simétrica
+            egresos = []
+            desglose = _parsear_desglose_mixto(venta)
+            if desglose:
+                monto_mp_f, monto_efectivo_f = desglose
+                egresos = [
+                    ('MERCADO_PAGO', monto_mp_f, f"Anulación de Venta #{venta.id} - Reintegro Mercado Pago"),
+                    ('EFECTIVO', monto_efectivo_f, f"Anulación de Venta #{venta.id} - Reintegro Efectivo"),
+                ]
+            else:
+                # Fallback: método principal de la venta (comportamiento original)
+                metodo_pago_caja = 'EFECTIVO'
+                if venta.medio_pago and venta.medio_pago.tipo == 'MERCADO_PAGO':
+                    metodo_pago_caja = 'MERCADO_PAGO'
+                elif venta.medio_pago and venta.medio_pago.tipo == 'TRANSFERENCIA':
+                    metodo_pago_caja = 'TRANSFERENCIA'
+                egresos = [(metodo_pago_caja, venta.total, f"Anulación de Venta #{venta.id} - Reintegro")]
 
             if venta.total and venta.total > 0:
-                MovimientoCaja.objects.create(
-                    sesion_caja=sesion_abierta,
-                    tipo='EGRESO',
-                    metodo_pago=metodo_pago_caja,
-                    concepto='OTROS', # O podés agregar 'ANULACION_VENTA' a tus CHOICES del modelo
-                    monto=venta.total,
-                    descripcion=f"Anulación de Venta #{venta.id} - Reintegro",
-                    venta_relacionada=venta
-                )
+                for metodo_pago_caja, monto_egreso, descripcion_egreso in egresos:
+                    egreso_caja = MovimientoCaja(
+                        sesion_caja=sesion_abierta,
+                        tipo='EGRESO',
+                        metodo_pago=metodo_pago_caja,
+                        concepto='ANULACION_VENTA',
+                        monto=monto_egreso,
+                        descripcion=descripcion_egreso,
+                        venta_relacionada=venta
+                    )
+                    # El egreso es parte de la anulación: no debe generar un registro EGRESO_MANUAL aparte
+                    egreso_caja._disable_audit = True
+                    egreso_caja.save()
             
             # 5. 🔥 CREAR EL REGISTRO ÚNICO MAESTRO DE AUDITORÍA
             from .models import Auditoria
             x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
             ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
 
+            detalles_anulacion = {
+                'cambios': {
+                    'estado_venta': {'anterior': 'Activa', 'nuevo': 'Anulada'}
+                },
+                'motivo_anulacion': motivo,
+                'monto_reintegrado': f"${venta.total}",
+                'stock_repuesto': " | ".join(productos_devueltos) if productos_devueltos else "Ninguno (Servicios/Turnos)"
+            }
+            if desglose:
+                detalles_anulacion['tipo_pago'] = 'Pago Mixto (Mercado Pago + Efectivo)'
+                detalles_anulacion['monto_mercado_pago'] = f"${desglose[0]}"
+                detalles_anulacion['monto_efectivo'] = f"${desglose[1]}"
+
             Auditoria.objects.create(
                 usuario=request.user,
                 modelo_afectado='Venta',
                 objeto_id=str(venta.id),
                 accion='ANULAR_VENTA',
-                detalles={
-                    'cambios': {
-                        'estado_venta': {'anterior': 'Activa', 'nuevo': 'Anulada'}
-                    },
-                    'motivo_anulacion': motivo,
-                    'monto_reintegrado': f"${venta.total}",
-                    'stock_repuesto': " | ".join(productos_devueltos) if productos_devueltos else "Ninguno (Servicios/Turnos)"
-                },
+                detalles=detalles_anulacion,
                 ip_address=ip
             )
             

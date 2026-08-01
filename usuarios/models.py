@@ -1484,6 +1484,8 @@ class MovimientoCaja(models.Model):
         ('TURNO_WEB', 'Cobro de Turno Web'),
         ('VENTA', 'Venta de Productos'),
         ('PEDIDO_WEB', 'Pedido Web'),
+        # Egresos Automáticos
+        ('ANULACION_VENTA', 'Anulación de Venta'),
         # Egresos Manuales
         ('PAGO_PROVEEDOR', 'Pago a Proveedor'),
         ('LIQUIDACION_SUELDO', 'Liquidación de Sueldos'),

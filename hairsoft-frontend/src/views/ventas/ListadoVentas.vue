@@ -208,6 +208,37 @@
       <div class="modal-content-anular">
         <h2>Anular Venta #{{ ventaAAnular?.id }}</h2>
         <p class="anular-warning">Atención: Esta acción devolverá el stock y generará una Nota de Crédito. <b>No se puede deshacer.</b></p>
+
+        <div class="anular-resumen">
+          <div class="resumen-grid">
+            <div class="resumen-item">
+              <span class="resumen-label">Cliente</span>
+              <span class="resumen-valor">{{ ventaAAnular?.cliente_nombre || 'Venta Rápida' }}</span>
+            </div>
+            <div class="resumen-item">
+              <span class="resumen-label">Fecha</span>
+              <span class="resumen-valor">{{ formatFechaDia(ventaAAnular?.fecha) }} {{ formatFechaHora(ventaAAnular?.fecha) }}</span>
+            </div>
+            <div class="resumen-item">
+              <span class="resumen-label">Total a reintegrar</span>
+              <span class="resumen-valor resumen-total">${{ formatPrecio(ventaAAnular?.total) }}</span>
+            </div>
+            <div class="resumen-item">
+              <span class="resumen-label">Método de pago</span>
+              <span class="resumen-valor">{{ metodoPagoResumen(ventaAAnular) }}</span>
+            </div>
+          </div>
+          <div v-if="desglosePagoMixto(ventaAAnular)" class="resumen-desglose">
+            <div class="desglose-fila">
+              <span>Efectivo</span>
+              <span>${{ formatPrecio(desglosePagoMixto(ventaAAnular).efectivo) }}</span>
+            </div>
+            <div class="desglose-fila">
+              <span>Mercado Pago</span>
+              <span>${{ formatPrecio(desglosePagoMixto(ventaAAnular).mp) }}</span>
+            </div>
+          </div>
+        </div>
         
         <div class="form-group">
           <label style="font-weight: bold; margin-bottom: 8px; display: block;">Motivo de la anulación:</label>
@@ -481,6 +512,34 @@ const formatFechaDia = (f) => f ? new Date(f).toLocaleDateString('es-AR', {day: 
 const formatFechaHora = (f) => f ? new Date(f).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : ''
 const formatPrecio = (p) => p ? parseFloat(p).toLocaleString('es-AR', { minimumFractionDigits: 2 }) : '0.00'
 
+const metodoPagoResumen = (venta) => {
+  if (!venta) return '-'
+  if ((venta.entidad_pago || '').toUpperCase() === 'MIXTO') return 'Mixto (Mercado Pago + Efectivo)'
+  const tipo = (venta.medio_pago_tipo || '').toUpperCase()
+  const nombre = venta.medio_pago_nombre || ''
+  if (tipo === 'EFECTIVO') return nombre || 'Efectivo'
+  if (tipo === 'TARJETA') return nombre || 'Tarjeta'
+  if (tipo === 'TRANSFERENCIA') return nombre || 'Transferencia'
+  if (tipo === 'MERCADO_PAGO') return nombre || 'Mercado Pago'
+  return nombre || tipo || '-'
+}
+
+const desglosePagoMixto = (venta) => {
+  if (!venta || (venta.entidad_pago || '').toUpperCase() !== 'MIXTO' || !venta.codigo_transaccion) return null
+  let mp = 0, efectivo = 0
+  String(venta.codigo_transaccion).split('|').forEach(parte => {
+    const idx = parte.lastIndexOf(':')
+    if (idx === -1) return
+    const clave = parte.slice(0, idx).trim().toUpperCase()
+    const valor = parseFloat(parte.slice(idx + 1))
+    if (isNaN(valor)) return
+    if (clave === 'EFECTIVO') efectivo = valor
+    else mp = valor
+  })
+  if (mp > 0 && efectivo > 0) return { mp, efectivo }
+  return null
+}
+
 const getMedioPagoInfo = (venta) => {
     const tipo = (venta.medio_pago_tipo || '').toUpperCase()
     const nombre = (venta.medio_pago_nombre || '').toUpperCase()
@@ -678,6 +737,15 @@ const verMotivoAnulacion = async (venta) => {
 .modal-content-anular { background: var(--bg-secondary); padding: 30px; border-radius: 16px; border: 1px solid var(--border-color); width: 100%; max-width: 450px; text-align: left; }
 .modal-content-anular h2 { margin-top: 0; color: var(--text-primary); font-size: 1.5rem; margin-bottom: 10px; }
 .anular-warning { color: #ef4444; font-size: 0.9rem; margin-bottom: 20px; background: rgba(239, 68, 68, 0.1); padding: 10px; border-radius: 8px; border-left: 4px solid #ef4444; }
+
+.anular-resumen { background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; margin-bottom: 18px; }
+.resumen-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.resumen-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.resumen-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); }
+.resumen-valor { font-size: 0.92rem; color: var(--text-primary); font-weight: 600; overflow-wrap: break-word; }
+.resumen-total { color: #ef4444; font-size: 1.05rem; }
+.resumen-desglose { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border-color); display: flex; flex-direction: column; gap: 4px; }
+.desglose-fila { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-secondary); }
 .modal-actions-anular { display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px; }
 .btn-cancelar { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; }
 .btn-confirmar-anular { background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 700; cursor: pointer; display: flex; align-items: center; }

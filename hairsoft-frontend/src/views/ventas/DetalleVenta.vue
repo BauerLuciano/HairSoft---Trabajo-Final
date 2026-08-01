@@ -170,6 +170,11 @@
                 <strong>Esta venta fue anulada</strong>
                 <br>
                 <small>No genera ingresos y el stock fue restaurado</small>
+                <div class="anulacion-info">
+                  <span><strong>Monto reintegrado:</strong> ${{ formatPrecio(venta.total) }}</span>
+                  <span v-if="venta.fecha_anulacion"><strong>Anulada el:</strong> {{ formatearFecha(venta.fecha_anulacion) }}</span>
+                  <span v-if="venta.motivo_anulacion"><strong>Motivo:</strong> {{ venta.motivo_anulacion }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -693,6 +698,7 @@ onMounted(() => { obtenerVenta() })
   display: flex; gap: 12px; padding: 16px; background: var(--bg-tertiary); border-radius: 12px; margin-bottom: 12px; border: 1px solid var(--border-color);
 }
 .nota.anulada { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: var(--error-color); }
+.anulacion-info { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 0.9rem; color: var(--text-secondary); }
 
 /* LOADING & ERROR */
 .loading-state, .error-state {

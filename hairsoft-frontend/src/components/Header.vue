@@ -723,11 +723,11 @@ onUnmounted(() => {
 .dropdown-item.logout { color: #ef4444; margin-top: 4px; }
 .dropdown-item.logout:hover { background: rgba(239, 68, 68, 0.1); }
 
-/* ============ MODO CLARO (NUEVO Y ESPECTACULAR) ============ */
+/* ============ MODO CLARO (REFINADO) ============ */
 :root.light-theme .app-header {
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-  border-bottom: 1px solid rgba(203, 213, 225, 0.4);
-  box-shadow: 0 2px 16px rgba(100, 116, 139, 0.08);
+  background: #ffffff;
+  border-bottom: 1px solid #e3e7ed;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 :root.light-theme .app-header::after { background: linear-gradient(90deg, transparent, #cbd5e1, transparent); }
 :root.light-theme .app-title {
