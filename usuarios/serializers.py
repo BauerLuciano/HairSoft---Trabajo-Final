@@ -1107,6 +1107,7 @@ class LiquidacionSerializer(serializers.ModelSerializer):
 class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
     # ✅ Cambiado a ImageField para que permita RECIBIR y GUARDAR archivos
     logo = serializers.ImageField(required=False, allow_null=True)
+    imagen_portada = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = ConfiguracionSistema
@@ -1115,12 +1116,14 @@ class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         """
         Este método se encarga de que, al ENVIAR datos al frontend,
-        la URL del logo sea completa (http://localhost:8000/media/...)
+        la URL del logo/portada sea completa (http://localhost:8000/media/...)
         """
         ret = super().to_representation(instance)
         request = self.context.get('request')
         if instance.logo and request:
             ret['logo'] = request.build_absolute_uri(instance.logo.url)
+        if instance.imagen_portada and request:
+            ret['imagen_portada'] = request.build_absolute_uri(instance.imagen_portada.url)
         return ret
 
 #Silla

@@ -271,6 +271,7 @@ const config = ref({
   dias_validez_promo_reactivacion: 7,
   politica_senia: '',
   logo: null,
+  imagen_portada: null,
   costo_envio_moto: 1500,
 })
 
@@ -290,6 +291,8 @@ const cargando = ref(true)
 const guardando = ref(false)
 const previewLogo = ref(null)
 const logoFile = ref(null)
+const previewPortada = ref(null)
+const portadaFile = ref(null)
 
 const tilesBase = [
   { name: 'Calle', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', visible: true, att: '&copy; <a href="https://osm.org">OpenStreetMap</a>' },
@@ -373,6 +376,14 @@ const handleFileUpload = (event) => {
   }
 }
 
+const handlePortadaUpload = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    portadaFile.value = file
+    previewPortada.value = URL.createObjectURL(file)
+  }
+}
+
 const validarFormulario = () => {
   const cuitRegex = /^\d{2}-\d{8}-\d{1}$/;
   
@@ -419,6 +430,10 @@ const guardarCambios = async () => {
   
   if (logoFile.value) {
     formData.append('logo', logoFile.value);
+  }
+
+  if (portadaFile.value) {
+    formData.append('imagen_portada', portadaFile.value);
   }
 
   try {
@@ -478,6 +493,9 @@ onMounted(obtenerConfig)
 .logo-upload-section { display: flex; align-items: center; gap: 30px; }
 .logo-preview-container { width: 120px; height: 120px; border: 2px dashed var(--border-color); border-radius: 18px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--bg-primary); }
 .logo-img-preview { width: 100%; height: 100%; object-fit: cover; }
+.portada-preview-container { width: 320px; height: 140px; border: 2px dashed var(--border-color); border-radius: 18px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--bg-primary); }
+.portada-img-preview { width: 100%; height: 100%; object-fit: cover; }
+.portada-placeholder { display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0.4; color: var(--text-secondary); font-size: 0.8rem; text-align: center; padding: 0 20px; }
 .placeholder-icon { opacity: 0.3; color: var(--text-secondary); }
 .upload-btn { background: var(--bg-tertiary); color: var(--text-primary); padding: 10px 20px; border-radius: 10px; border: 1px solid var(--border-color); cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 8px; transition: 0.3s; font-size: 0.9rem; }
 .upload-btn:hover { background: var(--hover-bg); transform: translateY(-2px); border-color: #0ea5e9; }
@@ -520,5 +538,6 @@ onMounted(obtenerConfig)
 @media (max-width: 768px) {
   .row-2-cols { grid-template-columns: 1fr; }
   .logo-upload-section { flex-direction: column; text-align: center; }
+  .portada-preview-container { width: 100%; max-width: 320px; }
 }
 </style>

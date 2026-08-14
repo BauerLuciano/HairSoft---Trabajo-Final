@@ -1365,6 +1365,7 @@ class ConfiguracionSistema(models.Model):
     telefono = models.CharField(max_length=50, default="3755-72716")
     email = models.EmailField(default="contacto@hairsoft.com")
     logo = models.ImageField(upload_to='config/', null=True, blank=True)
+    imagen_portada = models.ImageField(upload_to='config/', null=True, blank=True, verbose_name="Imagen de Portada")
     
     margen_horas_cancelacion = models.PositiveIntegerField(default=3) 
     

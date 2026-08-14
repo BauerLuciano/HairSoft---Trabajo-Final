@@ -535,20 +535,35 @@ class HorarioAtencionViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         serializer.save()
         cache.delete('horarios_atencion')
+        cache.delete('horarios_atencion_values')
 
     def perform_create(self, serializer):
         serializer.save()
         cache.delete('horarios_atencion')
+        cache.delete('horarios_atencion_values')
 
     def perform_destroy(self, instance):
         instance.delete()
         cache.delete('horarios_atencion')
+        cache.delete('horarios_atencion_values')
 
 class ConfigWebView(APIView):
     permission_classes = [AllowAny] # Público, para que lo lea el Home y Checkout
 
+    def _url_or_none(self, request, file_field):
+        if not file_field:
+            return None
+        return request.build_absolute_uri(file_field.url)
+
     def get(self, request):
         config = ConfiguracionSistema.objects.first()
+
+        # Horarios cacheados (la cache se invalida al editar en HorarioAtencionViewSet)
+        horarios = cache.get('horarios_atencion')
+        if horarios is None:
+            horarios = HorarioAtencionSerializer(HorarioAtencion.objects.all(), many=True).data
+            cache.set('horarios_atencion', horarios, timeout=3600)
+
         if config:
             return Response({
                 'costo_moto': float(config.costo_envio_moto),
@@ -556,6 +571,9 @@ class ConfigWebView(APIView):
                 'direccion': config.direccion,
                 'telefono': config.telefono,
                 'email': config.email,
+                'logo': self._url_or_none(request, config.logo),
+                'imagen_portada': self._url_or_none(request, config.imagen_portada),
+                'horarios': horarios,
             })
         else:
             return Response({
@@ -563,7 +581,10 @@ class ConfigWebView(APIView):
                 'razon_social': 'Los Últimos Serán Los Primeros',
                 'direccion': 'Avenida Libertador 600, San Vicente - Misiones',
                 'telefono': '3755-72716',
-                'email': 'contacto@hairsoft.com'
+                'email': 'contacto@hairsoft.com',
+                'logo': None,
+                'imagen_portada': None,
+                'horarios': horarios,
             })
 
 @api_view(['GET'])

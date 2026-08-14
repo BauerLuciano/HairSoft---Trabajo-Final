@@ -3,8 +3,9 @@
     <div class="checkout-container">
 
       <div class="page-header">
-        <h1>Finalizar Compra</h1>
-        <p>Completá los datos para recibir tus productos.</p>
+        <span class="header-eyebrow">Último paso de tu compra</span>
+        <h1>Finalizá tu compra</h1>
+        <p>Revisá tu pedido, elegí cómo recibirlo y completá el pago.</p>
       </div>
 
       <div class="checkout-grid">
@@ -12,24 +13,34 @@
         <div class="form-column">
 
           <section class="checkout-section">
-            <h2 class="section-title"><span class="step-number">1</span> Método de Entrega</h2>
+            <h2 class="section-title"><span class="step-number">1</span> Método de entrega</h2>
             <div class="delivery-cards">
               <label class="delivery-card" :class="{ active: tipoEntrega === 'RETIRO' }">
                 <input type="radio" v-model="tipoEntrega" value="RETIRO" hidden>
-                <div class="card-icon">🏪</div>
+                <span class="delivery-radio" :class="{ 'radio-checked': tipoEntrega === 'RETIRO' }">
+                  <span v-if="tipoEntrega === 'RETIRO'" class="radio-dot"></span>
+                </span>
+                <span class="delivery-icon">
+                  <Store :size="22" />
+                </span>
                 <div class="card-content">
-                  <span class="card-title">Retiro en el Local</span>
-                  <span class="card-desc">Pasás a buscarlo por la peluquería.</span>
+                  <span class="card-title">Retiro en el local</span>
+                  <span class="card-desc">Pasás a buscarlo por la peluquería, sin esperas.</span>
                 </div>
                 <div class="card-price free">Gratis</div>
               </label>
 
               <label class="delivery-card" :class="{ active: tipoEntrega === 'MOTO' }">
                 <input type="radio" v-model="tipoEntrega" value="MOTO" hidden>
-                <div class="card-icon">🛵</div>
+                <span class="delivery-radio" :class="{ 'radio-checked': tipoEntrega === 'MOTO' }">
+                  <span v-if="tipoEntrega === 'MOTO'" class="radio-dot"></span>
+                </span>
+                <span class="delivery-icon">
+                  <Bike :size="22" />
+                </span>
                 <div class="card-content">
-                  <span class="card-title">Moto Mandado</span>
-                  <span class="card-desc">Te lo llevamos a casa.</span>
+                  <span class="card-title">Moto mandado</span>
+                  <span class="card-desc">Te lo llevamos hasta tu domicilio.</span>
                 </div>
                 <div class="card-price" :class="{ 'price-calculated': costoEnvioCalculado > 0 }">
                   {{ costoEnvioCalculado > 0 ? `$${costoEnvioCalculado.toLocaleString('es-AR')}` : 'A calcular' }}
@@ -39,197 +50,230 @@
           </section>
 
           <transition name="fade">
-            <section v-if="tipoEntrega === 'MOTO'" class="checkout-section">
-              <h2 class="section-title"><span class="step-number">2</span> Dirección de Entrega</h2>
+            <section v-if="tipoEntrega === 'RETIRO'" class="checkout-section retiro-section">
+              <h2 class="section-title"><span class="step-number">2</span> Retiro en el local</h2>
+              <div class="retiro-card">
+                <span class="retiro-icon"><Store :size="22" /></span>
+                <div class="retiro-info">
+                  <strong>Retirás tu pedido en la peluquería</strong>
+                  <span v-if="localDireccion">{{ localDireccion }}</span>
+                  <span v-else>Te avisamos cuando tu pedido esté listo para retirar.</span>
+                </div>
+                <span class="retiro-badge">Gratis</span>
+              </div>
+            </section>
+          </transition>
 
-              <div class="local-address-card" v-if="localDireccion">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                  <circle cx="12" cy="10" r="3"></circle>
-                </svg>
-                <div>
-                  <strong>Peluquería</strong>
-                  <span>{{ localDireccion }}</span>
-                  <span v-if="referenciaLocal" style="font-size: 0.85em; color: #0ea5e9; font-weight: 600;">
-                    {{ referenciaLocal }}
-                  </span>
+          <transition name="fade">
+            <section v-if="tipoEntrega === 'MOTO'" class="checkout-section">
+              <h2 class="section-title"><span class="step-number">2</span> Dirección de entrega</h2>
+
+              <div v-if="radioCoberturaKm" class="cobertura-info">
+                <span class="cobertura-icon"><Bike :size="18" /></span>
+                <div class="cobertura-text">
+                  <strong>Cobertura de Moto Mandado</strong>
+                  <span>Realizamos entregas dentro de un radio de hasta {{ radioCoberturaDisplay }} km desde nuestro local.</span>
                 </div>
               </div>
 
-              <div class="gps-btn-container">
-                <button class="btn-gps" @click="obtenerGPS" :disabled="buscandoGPS">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <div class="sub-block">
+                <h3 class="sub-title">¿Dónde querés recibirlo?</h3>
+
+                <div class="gps-btn-container">
+                  <button class="btn-gps" @click="obtenerGPS" :disabled="buscandoGPS">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"></path>
+                      <circle cx="12" cy="9" r="2.5"></circle>
+                    </svg>
+                    <span>{{ buscandoGPS ? 'Obteniendo ubicación...' : 'Usar mi ubicación GPS' }}</span>
+                  </button>
+                </div>
+
+                <div class="search-divider"><span>o</span></div>
+
+                <div class="address-search-container">
+                  <div class="address-search-input-wrapper">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-addr-icon">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input
+                      v-model="busquedaDir"
+                      type="text"
+                      class="filter-input address-search-input"
+                      placeholder="Buscá tu dirección (ej. calle y número)"
+                      @input="onBuscarDireccion"
+                      @keydown.enter="confirmarDireccion"
+                      @blur="onBlurBusqueda"
+                    />
+                    <div v-if="buscandoDir" class="search-spinner"></div>
+                  </div>
+                  <div v-if="sugerencias.length > 0" class="suggestions-dropdown">
+                    <div
+                      v-for="sug in sugerencias"
+                      :key="sug.lat + ',' + sug.lon"
+                      class="suggestion-item"
+                      @click="seleccionarDireccion(sug)"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                        <circle cx="12" cy="10" r="3"></circle>
+                      </svg>
+                      <span>{{ sug.display_name }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="errorGPS" class="error-msg">{{ errorGPS }}</div>
+              </div>
+
+              <div class="sub-block">
+                <h3 class="sub-title">Confirmá la ubicación</h3>
+
+                <div class="map-hint">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                  </svg>
+                  <span>Hacé clic en el mapa o arrastrá el marcador para ajustar la dirección.</span>
+                </div>
+
+                <div v-if="localCargando" class="map-loading">Cargando mapa...</div>
+
+                <div v-else class="map-wrapper">
+                  <l-map
+                    ref="mapRef"
+                    :zoom="zoom"
+                    :center="mapCenter"
+                    @click="colocarMarcador"
+                    style="height: 300px; width: 100%; border-radius: 12px;"
+                  >
+                    <l-tile-layer
+                      v-for="tile in tilesBase" :key="tile.name"
+                      :name="tile.name"
+                      :visible="tile.visible"
+                      :url="tile.url"
+                      :attribution="tile.att"
+                      layer-type="base"
+                    ></l-tile-layer>
+                    <l-control-layers></l-control-layers>
+
+                    <l-marker
+                      :lat-lng="[localLat, localLng]"
+                      :icon="localIcon"
+                    >
+                      <l-tooltip>Peluquería</l-tooltip>
+                    </l-marker>
+
+                    <l-marker
+                      v-if="deliveryLatLng"
+                      :lat-lng="deliveryLatLng"
+                      :icon="deliveryIcon"
+                      draggable
+                      @dragend="marcadorArrastrado"
+                    >
+                      <l-tooltip>Dirección de entrega</l-tooltip>
+                    </l-marker>
+
+                    <l-polyline
+                      v-if="deliveryLatLng"
+                      :lat-lngs="rutaCoords || [[localLat, localLng], deliveryLatLng]"
+                      color="#0ea5e9"
+                      :weight="rutaCoords ? 4 : 3"
+                      :dash-array="rutaCoords ? null : '8, 6'"
+                    ></l-polyline>
+                  </l-map>
+                </div>
+
+                <transition name="fade">
+                  <div v-if="deliveryLatLng && direccionDetectada" class="address-detected-card">
+                    <div class="address-detected-header">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                      <span>Dirección detectada</span>
+                    </div>
+                    <p class="address-detected-text">{{ direccionDetectada }}</p>
+                    <div v-if="detalleDireccion" class="address-detected-details">
+                      <span><strong>Calle:</strong> {{ detalleDireccion.calle }}</span>
+                      <span v-if="detalleDireccion.ciudad"><strong>Ciudad:</strong> {{ detalleDireccion.ciudad }}</span>
+                      <span v-if="detalleDireccion.provincia"><strong>Provincia:</strong> {{ detalleDireccion.provincia }}</span>
+                    </div>
+
+                    <div v-if="deliveryLatLng && !calculandoCosto && distanciaKm > 0" class="delivery-status">
+                      <span class="status-item"><strong>Distancia al local:</strong> {{ distanciaDisplay }} km</span>
+                      <span class="status-badge" :class="dentroCobertura ? 'ok' : 'bad'">
+                        <svg v-if="dentroCobertura" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                        {{ dentroCobertura ? 'Cobertura disponible' : 'Fuera de cobertura' }}
+                      </span>
+                    </div>
+                  </div>
+                </transition>
+
+                <div class="coords-display" v-if="deliveryLatLng">
+                  <small>Lat: {{ deliveryLatLng[0].toFixed(4) }}, Lng: {{ deliveryLatLng[1].toFixed(4) }}</small>
+                </div>
+
+                <div v-if="!deliveryLatLng && !calculandoCosto && !localCargando" class="empty-state">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5">
                     <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"></path>
                     <circle cx="12" cy="9" r="2.5"></circle>
                   </svg>
-                  <span>{{ buscandoGPS ? 'Obteniendo ubicación...' : 'Usar mi ubicación GPS' }}</span>
-                </button>
+                  <p>Usá el GPS o hacé clic en el mapa para indicar dónde querés recibir el pedido.</p>
+                </div>
               </div>
 
-              <div class="search-divider"><span>o</span></div>
+              <div class="sub-block">
+                <h3 class="sub-title">Información del envío</h3>
 
-              <div class="address-search-container">
-                <div class="address-search-input-wrapper">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-addr-icon">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                <div v-if="calculandoCosto" class="costo-loading">
+                  <svg class="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
                   </svg>
-                  <input
-                    v-model="busquedaDir"
-                    type="text"
-                    class="filter-input address-search-input"
-                    placeholder="Buscá tu dirección (ej. Avenida Libertador 500)"
-                    @input="onBuscarDireccion"
-                    @keydown.enter="confirmarDireccion"
-                    @blur="onBlurBusqueda"
-                  />
-                  <div v-if="buscandoDir" class="search-spinner"></div>
+                  Calculando costo de envío...
                 </div>
-                <div v-if="sugerencias.length > 0" class="suggestions-dropdown">
-                  <div
-                    v-for="sug in sugerencias"
-                    :key="sug.lat + ',' + sug.lon"
-                    class="suggestion-item"
-                    @click="seleccionarDireccion(sug)"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                      <circle cx="12" cy="10" r="3"></circle>
-                    </svg>
-                    <span>{{ sug.display_name }}</span>
+
+                <div v-if="!dentroCobertura && costoEnvioCalculado > 0 && !calculandoCosto" class="cobertura-warning">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  <span>{{ fueraCoberturaMsg }}</span>
+                </div>
+
+                <div v-if="costoEnvioCalculado > 0 && !calculandoCosto" class="costo-card">
+                  <div class="costo-item">
+                    <span class="costo-label">Distancia</span>
+                    <span class="costo-value">{{ distanciaKm }} km</span>
+                  </div>
+                  <div class="costo-divider"></div>
+                  <div class="costo-item">
+                    <span class="costo-label">Costo de envío</span>
+                    <span class="costo-value costo-price">${{ costoEnvioCalculado.toLocaleString('es-AR') }}</span>
                   </div>
                 </div>
+
+                <div v-if="errorCalculo" class="error-msg">{{ errorCalculo }}</div>
               </div>
 
-              <div class="map-hint">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="16" x2="12" y2="12"></line>
-                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                </svg>
-                <span>También podés hacer clic en el mapa o arrastrar el marcador para ajustar la dirección.</span>
-              </div>
-
-              <div v-if="errorGPS" class="error-msg">{{ errorGPS }}</div>
-
-              <div v-if="localCargando" class="map-loading">Cargando mapa...</div>
-
-              <div v-else class="map-wrapper">
-                <l-map
-                  ref="mapRef"
-                  :zoom="zoom"
-                  :center="mapCenter"
-                  @click="colocarMarcador"
-                  style="height: 300px; width: 100%; border-radius: 12px;"
-                >
-                  <l-tile-layer
-                    v-for="tile in tilesBase" :key="tile.name"
-                    :name="tile.name"
-                    :visible="tile.visible"
-                    :url="tile.url"
-                    :attribution="tile.att"
-                    layer-type="base"
-                  ></l-tile-layer>
-                  <l-control-layers></l-control-layers>
-
-                  <l-marker
-                    :lat-lng="[localLat, localLng]"
-                    :icon="localIcon"
-                  >
-                    <l-tooltip>Peluquería</l-tooltip>
-                  </l-marker>
-
-                  <l-marker
-                    v-if="deliveryLatLng"
-                    :lat-lng="deliveryLatLng"
-                    :icon="deliveryIcon"
-                    draggable
-                    @dragend="marcadorArrastrado"
-                  >
-                    <l-tooltip>Dirección de entrega</l-tooltip>
-                  </l-marker>
-
-                  <l-polyline
-                    v-if="deliveryLatLng"
-                    :lat-lngs="rutaCoords || [[localLat, localLng], deliveryLatLng]"
-                    color="#0ea5e9"
-                    :weight="rutaCoords ? 4 : 3"
-                    :dash-array="rutaCoords ? null : '8, 6'"
-                  ></l-polyline>
-                </l-map>
-              </div>
-
-              <transition name="fade">
-                <div v-if="deliveryLatLng && direccionDetectada" class="address-detected-card">
-                  <div class="address-detected-header">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2">
-                      <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                    <span>Dirección detectada</span>
+              <div class="sub-block">
+                <h3 class="sub-title">Observaciones <span class="optional">(opcional)</span></h3>
+                <transition name="fade">
+                  <div v-if="deliveryLatLng" class="obs-section">
+                    <label for="obs">¿Tenés alguna indicación para el repartidor?</label>
+                    <textarea
+                      id="obs"
+                      v-model="observaciones"
+                      class="modern-textarea"
+                      rows="2"
+                      placeholder="Ej: Casa color blanca, timbre lado izquierdo, portón verde..."
+                    ></textarea>
+                    <small class="obs-hint">Ayudá al motomandado a encontrar la dirección.</small>
                   </div>
-                  <p class="address-detected-text">{{ direccionDetectada }}</p>
-                  <div v-if="detalleDireccion" class="address-detected-details">
-                    <span><strong>Calle:</strong> {{ detalleDireccion.calle }}</span>
-                    <span v-if="detalleDireccion.ciudad"><strong>Ciudad:</strong> {{ detalleDireccion.ciudad }}</span>
-                    <span v-if="detalleDireccion.provincia"><strong>Provincia:</strong> {{ detalleDireccion.provincia }}</span>
-                  </div>
-                </div>
-              </transition>
-
-              <div class="coords-display" v-if="deliveryLatLng">
-                <small>Lat: {{ deliveryLatLng[0].toFixed(4) }}, Lng: {{ deliveryLatLng[1].toFixed(4) }}</small>
-              </div>
-
-              <div v-if="calculandoCosto" class="costo-loading">
-                <svg class="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
-                </svg>
-                Calculando costo de envío...
-              </div>
-
-              <div v-if="!dentroCobertura && costoEnvioCalculado > 0 && !calculandoCosto" class="cobertura-warning">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="8" x2="12" y2="12"></line>
-                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                </svg>
-                <span>Esta dirección está fuera de nuestra zona de cobertura. Por el momento solo realizamos envíos dentro de San Vicente, Misiones.</span>
-              </div>
-
-              <div v-if="costoEnvioCalculado > 0 && !calculandoCosto" class="costo-card">
-                <div class="costo-item">
-                  <span class="costo-label">Distancia</span>
-                  <span class="costo-value">{{ distanciaKm }} km</span>
-                </div>
-                <div class="costo-divider"></div>
-                <div class="costo-item">
-                  <span class="costo-label">Costo de envío</span>
-                  <span class="costo-value costo-price">${{ costoEnvioCalculado.toLocaleString('es-AR') }}</span>
-                </div>
-              </div>
-
-              <transition name="fade">
-                <div v-if="deliveryLatLng" class="obs-section">
-                  <label for="obs">Observaciones para la entrega <span class="optional">(opcional)</span></label>
-                  <textarea
-                    id="obs"
-                    v-model="observaciones"
-                    class="modern-textarea"
-                    rows="2"
-                    placeholder="Ej: Casa color blanca, timbre lado izquierdo, portón verde..."
-                  ></textarea>
-                  <small class="obs-hint">Ayudá al motomandado a encontrar la dirección.</small>
-                </div>
-              </transition>
-
-              <div v-if="errorCalculo" class="error-msg">{{ errorCalculo }}</div>
-
-              <div v-if="!deliveryLatLng && !calculandoCosto && !localCargando" class="empty-state">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5">
-                  <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"></path>
-                  <circle cx="12" cy="9" r="2.5"></circle>
-                </svg>
-                <p>Usá el GPS o hacé clic en el mapa para indicar dónde querés recibir el pedido.</p>
+                </transition>
               </div>
 
             </section>
@@ -239,7 +283,15 @@
 
         <div class="summary-column">
           <div class="summary-card">
-            <h3>Resumen del Pedido</h3>
+            <div class="summary-header">
+              <div class="summary-title">
+                <span class="summary-icon"><ShoppingBag :size="18" /></span>
+                <h3>Tu pedido</h3>
+              </div>
+              <span v-if="usuarioNombre" class="comprando-como">
+                Comprando como <strong>{{ usuarioNombre }}</strong>
+              </span>
+            </div>
 
             <div v-if="cartStore.items.length === 0" class="empty-cart-msg">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin: 0 auto 10px; display: block;">
@@ -269,26 +321,36 @@
               </div>
               <div class="total-row shipping">
                 <span>Envío</span>
-                <span v-if="tipoEntrega === 'MOTO' && calculandoCosto" class="shipping-loading">Calculando...</span>
+                <span v-if="tipoEntrega === 'MOTO' && calculandoCosto" class="shipping-loading">
+                  <svg class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+                  Calculando...
+                </span>
+                <span v-else-if="tipoEntrega === 'MOTO' && !dentroCobertura && costoEnvioCalculado > 0" class="shipping-fuera">
+                  Fuera de cobertura
+                </span>
                 <span v-else-if="tipoEntrega === 'MOTO' && costoEnvioCalculado > 0" class="shipping-cost">${{ costoEnvioCalculado.toLocaleString('es-AR') }}</span>
+                <span v-else-if="tipoEntrega === 'RETIRO'" class="shipping-free">Gratis</span>
                 <span v-else class="shipping-none">—</span>
               </div>
-              <div class="total-row final">
-                <span>Total a Pagar</span>
-                <span>${{ totalFinal.toLocaleString('es-AR') }}</span>
+
+              <div class="total-final-box">
+                <div class="total-final-label">Total a pagar</div>
+                <div class="total-final-amount">${{ totalFinal.toLocaleString('es-AR') }}</div>
               </div>
             </div>
 
             <button class="btn-checkout-action" @click="procesarPedido" :disabled="procesando || cartStore.items.length === 0 || (tipoEntrega === 'MOTO' && !deliveryLatLng) || (tipoEntrega === 'MOTO' && calculandoCosto)">
               <span v-if="!procesando">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+                <Lock :size="17" />
                 Pagar con Mercado Pago
               </span>
-              <span v-else>
-                <svg class="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+              <span v-else class="btn-processing">
+                <svg class="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
                 Procesando...
               </span>
             </button>
+
+            <p class="mp-note">Serás redirigido a Mercado Pago para completar el pago.</p>
 
           </div>
         </div>
@@ -300,11 +362,14 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useCartStore } from '@/stores/cart'
 import api from '@/services/api'
 import { envioService } from '@/services/envioService'
 import Swal from 'sweetalert2'
+import { limpiarSesionLocal } from '@/utils/authPrompt'
 import { LMap, LTileLayer, LMarker, LTooltip, LPolyline, LControlLayers } from '@vue-leaflet/vue-leaflet'
+import { Store, Bike, ShoppingBag, Lock, ShieldCheck } from 'lucide-vue-next'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 
@@ -338,9 +403,12 @@ const deliveryIcon = L.icon({
 })
 
 const cartStore = useCartStore()
+const router = useRouter()
 const tipoEntrega = ref('RETIRO')
 const observaciones = ref('')
 const procesando = ref(false)
+
+const usuarioNombre = [localStorage.getItem('user_nombre'), localStorage.getItem('user_apellido')].filter(Boolean).join(' ').trim() || null
 
 const localLat = ref(null)
 const localLng = ref(null)
@@ -352,6 +420,7 @@ const deliveryLatLng = ref(null)
 const costoEnvioCalculado = ref(0)
 const distanciaKm = ref(0)
 const dentroCobertura = ref(true)
+const radioCoberturaKm = ref(null)
 const rutaCoords = ref(null)
 const tiempoEstimadoMinutos = ref(0)
 const calculandoCosto = ref(false)
@@ -404,11 +473,22 @@ async function reverseGeocode(lat, lng) {
 
 onMounted(async () => {
   try {
+    // Validar que el token sea real (no solo presencia en localStorage)
+    try {
+      await api.get('/api/auth/verificar/')
+    } catch (error) {
+      if (error.response?.status === 401) {
+        limpiarSesionInvalida('/checkout')
+        return
+      }
+    }
+
     const res = await envioService.getConfigLocal()
     if (res.data && res.data.latitud_local && res.data.longitud_local) {
       localLat.value = parseFloat(res.data.latitud_local)
       localLng.value = parseFloat(res.data.longitud_local)
       referenciaLocal.value = res.data.direccion_referencia || ''
+      radioCoberturaKm.value = res.data.radio_cobertura_km ? parseFloat(res.data.radio_cobertura_km) : null
 
       reverseGeocode(localLat.value, localLng.value).then(data => {
         if (data && data.address) {
@@ -424,13 +504,19 @@ onMounted(async () => {
   localCargando.value = false
 })
 
+// Sesión inválida/expirada: limpiar credenciales (SIN tocar el carrito) y volver a Login
+const limpiarSesionInvalida = (redirect) => {
+  limpiarSesionLocal()
+  router.replace({ name: 'Login', query: { redirect } })
+}
+
 const mapCenter = computed(() => {
   if (deliveryLatLng.value && localLat.value) {
     const midLat = (localLat.value + deliveryLatLng.value[0]) / 2
     const midLng = (localLng.value + deliveryLatLng.value[1]) / 2
     return [midLat, midLng]
   }
-  return [localLat.value || -26.8083, localLng.value || -54.4362]
+  return [localLat.value || 0, localLng.value || 0]
 })
 
 const obtenerGPS = () => {
@@ -457,22 +543,33 @@ const obtenerGPS = () => {
 const onBuscarDireccion = () => {
   if (timeoutBusqueda) clearTimeout(timeoutBusqueda)
   const q = busquedaDir.value.trim()
-  if (q.length < 4) { sugerencias.value = []; return }
+  if (q.length < 3) { sugerencias.value = []; return }
   buscandoDir.value = true
   timeoutBusqueda = setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)},+San+Vicente,+Misiones,+Argentina&limit=10&addressdetails=1&viewbox=-54.6341,-26.8458,-54.3341,-27.1458&bounded=1`,
-          { headers: { 'User-Agent': NOMINATIM_UA, 'Accept-Language': 'es' } }
-        )
-        const data = await res.json()
-        sugerencias.value = (data || []).filter(s => s.lat && s.lon)
-      } catch {
-      sugerencias.value = []
-      } finally {
-        buscandoDir.value = false
+    try {
+      const params = new URLSearchParams({
+        format: 'json',
+        q,
+        limit: '8',
+        addressdetails: '1',
+        countrycodes: 'ar',
+      })
+      if (localLat.value && localLng.value) {
+        const span = 1.2
+        params.set('viewbox', `${localLng.value - span},${localLat.value - span},${localLng.value + span},${localLat.value + span}`)
       }
-  }, 400)
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+        { headers: { 'User-Agent': NOMINATIM_UA, 'Accept-Language': 'es' } }
+      )
+      const data = await res.json()
+      sugerencias.value = (data || []).filter(s => s.lat && s.lon)
+    } catch {
+      sugerencias.value = []
+    } finally {
+      buscandoDir.value = false
+    }
+  }, 350)
 }
 
 const confirmarDireccion = () => {
@@ -588,6 +685,21 @@ const costoEnvio = computed(() => {
 
 const totalFinal = computed(() => cartStore.precioTotal + costoEnvio.value)
 
+const radioCoberturaDisplay = computed(() => {
+  if (!radioCoberturaKm.value) return null
+  return radioCoberturaKm.value.toLocaleString('es-AR', { maximumFractionDigits: 1 })
+})
+
+const distanciaDisplay = computed(() =>
+  distanciaKm.value ? distanciaKm.value.toLocaleString('es-AR', { maximumFractionDigits: 1 }) : '0'
+)
+
+const fueraCoberturaMsg = computed(() => {
+  let msg = `Esta dirección se encuentra a ${distanciaDisplay.value} km del local.`
+  if (radioCoberturaKm.value) msg += ` La cobertura máxima para Moto Mandado es de ${radioCoberturaDisplay.value} km.`
+  return msg
+})
+
 const procesarPedido = async () => {
   if (cartStore.items.length === 0) return
 
@@ -604,7 +716,7 @@ const procesarPedido = async () => {
   if (tipoEntrega.value === 'MOTO' && !dentroCobertura.value) {
     Swal.fire({
       title: 'Fuera de cobertura',
-      text: 'Esta dirección está fuera de San Vicente. Por el momento solo realizamos envíos dentro de la ciudad.',
+      text: fueraCoberturaMsg.value,
       icon: 'error',
       confirmButtonColor: '#0ea5e9'
     })
@@ -656,6 +768,10 @@ const procesarPedido = async () => {
 
   } catch (error) {
     console.error('Error checkout:', error)
+    if (error.response?.status === 401) {
+      limpiarSesionInvalida('/checkout')
+      return
+    }
     Swal.fire({
       title: 'Error',
       text: error.response?.data?.message || 'No se pudo procesar la compra.',
@@ -676,55 +792,84 @@ const procesarPedido = async () => {
   color: #0f172a;
 }
 .checkout-container { max-width: 1100px; margin: 0 auto; }
-.page-header { margin-bottom: 40px; text-align: center; }
-.page-header h1 { font-size: 2.5rem; color: #0f172a; margin-bottom: 8px; font-weight: 800; letter-spacing: -0.02em; }
-.page-header p { font-size: 1.1rem; color: #64748b; }
+.page-header { margin-bottom: 36px; text-align: center; }
+.header-eyebrow {
+  display: inline-block; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px;
+  color: #0284c7; background: #e0f2fe; border: 1px solid #bae6fd; padding: 5px 14px; border-radius: 999px; margin-bottom: 14px;
+}
+.page-header h1 { font-size: 2.2rem; color: #0f172a; margin-bottom: 8px; font-weight: 800; letter-spacing: -0.02em; }
+.page-header p { font-size: 1.05rem; color: #64748b; max-width: 560px; margin: 0 auto; }
 .checkout-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 30px; align-items: start; }
-@media (max-width: 968px) { .checkout-grid { grid-template-columns: 1fr; } }
 
 .checkout-section {
-  background: white; padding: 30px; border-radius: 16px;
+  background: white; padding: 28px; border-radius: 16px;
   box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
-  border: 1px solid #f1f5f9; margin-bottom: 24px;
+  border: 1px solid #f1f5f9; margin-bottom: 22px;
 }
 .section-title {
-  font-size: 1.35rem; color: #1e293b; margin-bottom: 24px;
+  font-size: 1.25rem; color: #1e293b; margin-bottom: 20px;
   display: flex; align-items: center; gap: 12px; font-weight: 700;
 }
 .step-number {
-  background: #0ea5e9; color: white; width: 32px; height: 32px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: 700;
+  background: #0ea5e9; color: white; width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 0.95rem; font-weight: 700;
   box-shadow: 0 2px 8px rgba(14,165,233,0.3);
 }
 
-.delivery-cards { display: flex; flex-direction: column; gap: 16px; }
+.delivery-cards { display: flex; flex-direction: column; gap: 14px; }
 .delivery-card {
-  display: flex; align-items: center; gap: 20px; padding: 20px;
-  border: 2px solid #e2e8f0; border-radius: 12px; cursor: pointer;
+  display: flex; align-items: center; gap: 16px; padding: 18px 20px;
+  border: 2px solid #e2e8f0; border-radius: 14px; cursor: pointer;
   transition: all 0.2s ease; background: #f8fafc;
 }
 .delivery-card:hover { border-color: #cbd5e1; background: white; }
-.delivery-card.active { border-color: #0ea5e9; background: #f0f9ff; }
-.card-icon { font-size: 2.5rem; line-height: 1; filter: grayscale(1); opacity: 0.5; transition: all 0.2s ease; }
-.delivery-card.active .card-icon { filter: grayscale(0); opacity: 1; }
-.card-content { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.card-title { font-weight: 700; color: #1e293b; font-size: 1.1rem; }
-.card-desc { font-size: 0.9rem; color: #64748b; }
+.delivery-card.active { border-color: #0ea5e9; background: #f0f9ff; box-shadow: 0 2px 12px rgba(14,165,233,0.12); }
+.delivery-radio {
+  width: 20px; height: 20px; border-radius: 50%; border: 2px solid #cbd5e1; background: white;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s ease;
+}
+.delivery-radio.radio-checked { border-color: #0ea5e9; }
+.radio-dot { width: 10px; height: 10px; border-radius: 50%; background: #0ea5e9; }
+.delivery-icon {
+  width: 46px; height: 46px; border-radius: 12px; background: #e0f2fe; color: #0284c7;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s ease;
+}
+.delivery-card.active .delivery-icon { background: #0ea5e9; color: white; }
+.card-content { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.card-title { font-weight: 700; color: #1e293b; font-size: 1.05rem; }
+.card-desc { font-size: 0.88rem; color: #64748b; }
 .card-price {
-  font-weight: 700; color: #0f172a; font-size: 1.15rem;
-  padding: 6px 12px; background: white; border-radius: 8px; border: 1px solid #e2e8f0;
+  font-weight: 700; color: #0f172a; font-size: 1.05rem;
+  padding: 5px 12px; background: white; border-radius: 8px; border: 1px solid #e2e8f0; white-space: nowrap;
 }
 .card-price.free { color: #059669; background: #ecfdf5; border-color: #a7f3d0; }
 .card-price.price-calculated { color: #0ea5e9; background: #f0f9ff; border-color: #bae6fd; }
 
-.local-address-card {
-  display: flex; align-items: flex-start; gap: 12px;
-  padding: 14px 16px; margin-bottom: 16px;
-  background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px;
+.retiro-section { background: linear-gradient(to bottom, #ffffff, #f0f9ff); }
+.retiro-card {
+  display: flex; align-items: center; gap: 16px; padding: 18px 20px;
+  background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px;
 }
-.local-address-card svg { flex-shrink: 0; margin-top: 2px; }
-.local-address-card div { display: flex; flex-direction: column; font-size: 0.9rem; color: #334155; gap: 2px; }
-.local-address-card strong { color: #0284c7; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.retiro-icon {
+  width: 44px; height: 44px; border-radius: 12px; background: #0ea5e9; color: white;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.retiro-info { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.retiro-info strong { font-size: 1rem; color: #1e293b; }
+.retiro-info span { font-size: 0.9rem; color: #64748b; }
+.retiro-badge {
+  font-weight: 700; color: #059669; background: #ecfdf5; border: 1px solid #a7f3d0;
+  padding: 6px 14px; border-radius: 999px; font-size: 0.95rem; white-space: nowrap;
+}
+
+.sub-block { margin-top: 22px; }
+.sub-block:first-of-type { margin-top: 0; }
+.sub-title {
+  font-size: 0.85rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+}
+.sub-title::before { content: ''; width: 4px; height: 15px; border-radius: 2px; background: #0ea5e9; flex-shrink: 0; }
+.sub-title .optional { font-weight: 400; color: #94a3b8; font-size: 0.78rem; text-transform: none; }
 
 .cobertura-warning {
   display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px;
@@ -732,6 +877,19 @@ const procesarPedido = async () => {
   color: #b91c1c; font-size: 0.9rem; font-weight: 500;
 }
 .cobertura-warning svg { flex-shrink: 0; margin-top: 2px; stroke: #ef4444; }
+
+.cobertura-info {
+  display: flex; align-items: flex-start; gap: 12px;
+  margin-bottom: 20px; padding: 14px 16px;
+  background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px;
+}
+.cobertura-icon {
+  width: 34px; height: 34px; border-radius: 10px; background: #e0f2fe; color: #0284c7;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;
+}
+.cobertura-text { display: flex; flex-direction: column; gap: 2px; }
+.cobertura-text strong { font-size: 0.85rem; color: #0284c7; text-transform: uppercase; letter-spacing: 0.5px; }
+.cobertura-text span { font-size: 0.92rem; color: #334155; line-height: 1.45; }
 
 .gps-btn-container { margin-bottom: 12px; }
 .btn-gps {
@@ -784,6 +942,18 @@ const procesarPedido = async () => {
   font-size: 0.85rem; color: #475569;
 }
 .address-detected-details strong { color: #334155; }
+.delivery-status {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px dashed #bbf7d0;
+}
+.status-item { font-size: 0.9rem; color: #334155; }
+.status-item strong { color: #0f172a; }
+.status-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 999px; font-size: 0.85rem; font-weight: 700;
+}
+.status-badge.ok { color: #059669; background: #ecfdf5; border: 1px solid #a7f3d0; }
+.status-badge.bad { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; }
 .altura-input {
   width: 90px; padding: 4px 8px; border: 2px solid #cbd5e1; border-radius: 6px;
   font-size: 0.85rem; background: #fff; color: #0f172a; outline: none; transition: border-color 0.2s;
@@ -829,34 +999,76 @@ const procesarPedido = async () => {
 
 .summary-column { position: relative; }
 .summary-card {
-  background: white; padding: 30px; border-radius: 16px;
+  background: white; padding: 28px; border-radius: 16px;
   box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; position: sticky; top: 24px;
 }
-.summary-card h3 { font-size: 1.35rem; color: #1e293b; margin-bottom: 24px; font-weight: 700; }
+.summary-header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+.summary-title { display: flex; align-items: center; gap: 10px; }
+.summary-icon {
+  width: 34px; height: 34px; border-radius: 10px; background: #e0f2fe; color: #0284c7;
+  display: flex; align-items: center; justify-content: center;
+}
+.summary-card h3 { font-size: 1.15rem; color: #1e293b; margin: 0; font-weight: 700; }
+.comprando-como {
+  font-size: 0.85rem; color: #64748b; padding: 8px 12px;
+  background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px;
+}
+.comprando-como strong { color: #334155; font-weight: 600; }
 .empty-cart-msg { text-align: center; padding: 20px 0; color: #94a3b8; font-size: 0.9rem; }
-.summary-items-list { display: flex; flex-direction: column; gap: 12px; max-height: 350px; overflow-y: auto; padding-right: 5px; }
+.summary-items-list { display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto; padding-right: 5px; }
 .summary-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; }
 .item-info { display: flex; align-items: center; gap: 10px; }
 .item-qty { background: #e0f2fe; color: #0284c7; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 0.85rem; }
 .item-name { color: #334155; font-weight: 500; font-size: 0.95rem; }
 .item-price { color: #0f172a; font-weight: 700; font-size: 1rem; }
 
-.divider { height: 1px; background: #e2e8f0; margin: 20px 0; }
+.divider { height: 1px; background: #e2e8f0; margin: 18px 0; }
 .summary-totals { display: flex; flex-direction: column; gap: 12px; }
-.total-row { display: flex; justify-content: space-between; align-items: center; font-size: 1rem; color: #475569; }
+.total-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.98rem; color: #475569; }
 .total-row.shipping .shipping-cost { font-weight: 700; color: #0ea5e9; }
 .total-row.shipping .shipping-none { color: #94a3b8; }
-.total-row.shipping .shipping-loading { font-style: italic; color: #94a3b8; }
-.total-row.final { padding-top: 16px; border-top: 2px dashed #e2e8f0; font-size: 1.25rem; font-weight: 800; color: #0f172a; }
+.total-row.shipping .shipping-free { font-weight: 700; color: #059669; }
+.total-row.shipping .shipping-fuera { font-weight: 700; color: #dc2626; font-size: 0.85rem; }
+.total-row.shipping .shipping-loading { font-style: italic; color: #94a3b8; display: inline-flex; align-items: center; gap: 6px; }
+.total-final-box {
+  margin-top: 8px; padding: 16px 18px; border-radius: 12px;
+  background: linear-gradient(135deg, #0c4a6e, #0ea5e9); color: white;
+  display: flex; justify-content: space-between; align-items: center;
+  box-shadow: 0 4px 14px rgba(14,165,233,0.25);
+}
+.total-final-label { font-size: 0.9rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.92; }
+.total-final-amount { font-size: 1.55rem; font-weight: 800; letter-spacing: -0.02em; }
 
 .btn-checkout-action {
-  width: 100%; margin-top: 24px; padding: 16px;
-  background: #0ea5e9; color: white; border: none; border-radius: 10px;
+  width: 100%; margin-top: 22px; padding: 16px 20px; min-height: 54px;
+  background: #0ea5e9; color: white; border: none; border-radius: 12px;
   font-weight: 700; font-size: 1.05rem; cursor: pointer;
-  transition: all 0.2s ease; display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 4px 14px rgba(14,165,233,0.25);
 }
-.btn-checkout-action:hover:not(:disabled) { background: #0284c7; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(14,165,233,0.3); }
-.btn-checkout-action:disabled { background: #cbd5e1; cursor: not-allowed; }
+.btn-checkout-action:hover:not(:disabled) { background: #0284c7; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(14,165,233,0.35); }
+.btn-checkout-action:active:not(:disabled) { transform: translateY(0); }
+.btn-checkout-action:disabled { background: #cbd5e1; box-shadow: none; cursor: not-allowed; }
+.btn-processing { display: inline-flex; align-items: center; gap: 8px; }
+.mp-note { margin-top: 12px; text-align: center; font-size: 0.8rem; color: #94a3b8; }
+.trust-note {
+  margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 0.78rem; color: #64748b;
+}
+
+@media (max-width: 968px) {
+  .checkout-grid { grid-template-columns: 1fr; }
+  .checkout-page { padding: 28px 14px; }
+  .page-header h1 { font-size: 1.7rem; }
+  .delivery-card { padding: 16px; gap: 12px; }
+  .delivery-icon { width: 40px; height: 40px; }
+  .card-price { font-size: 0.95rem; padding: 4px 10px; }
+  .retiro-card { align-items: flex-start; flex-wrap: wrap; }
+  .retiro-badge { align-self: flex-end; }
+  .checkout-section { padding: 22px; }
+  .summary-card { padding: 22px; position: static; }
+  .total-final-amount { font-size: 1.35rem; }
+}
 
 .animate-spin { animation: spin 1s linear infinite; display: inline-block; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

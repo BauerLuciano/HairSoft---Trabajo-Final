@@ -15,7 +15,7 @@
       <div class="main-content-wrapper client-wrapper">
         <ClientNavbar />
         <main class="page-content client-content">
-          <div class="client-limit-container">
+          <div class="client-limit-container" :class="{ 'full-width': route.meta.fullWidth }">
             <router-view />
           </div>
         </main>
@@ -139,6 +139,13 @@ html, body {
   margin: 0 auto;
   padding: 20px;
   min-height: 100%; /* Para asegurar que ocupe el alto */
+}
+
+/* Home público: ocupa todo el ancho (hero full-bleed) */
+.client-limit-container.full-width {
+  max-width: none;
+  padding: 0;
+  min-height: 100%;
 }
 
 /* --- Layout Público (Corregido) --- */

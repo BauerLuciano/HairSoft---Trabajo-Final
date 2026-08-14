@@ -100,7 +100,7 @@ const routes = [
   { path: '/recuperar-password/:token', name: 'NuevaPassword', component: NuevaPassword, meta: { hideNavbar: true } },
 
   // ZONA PÚBLICA
-  { path: '/web/home', name: 'WebHome', component: HomePublico, meta: { layout: 'client' } },
+  { path: '/web/home', name: 'WebHome', component: HomePublico, meta: { layout: 'client', fullWidth: true } },
   { path: '/web/servicios', name: 'ServiciosPublico', component: ServiciosPublico, meta: { layout: 'client' } },
   { path: '/web/productos', name: 'ProductosPublico', component: ProductosPublico, meta: { layout: 'client' } },
   { path: '/checkout', name: 'Checkout', component: Checkout, meta: { layout: 'client', requiresAuth: true } },

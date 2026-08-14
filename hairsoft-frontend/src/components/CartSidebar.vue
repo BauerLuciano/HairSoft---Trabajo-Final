@@ -26,15 +26,6 @@
               Cerrar <X :size="18" />
             </button>
           </div>
-
-          <div class="shipping-incentive">
-            <p v-if="cartStore.precioTotal < 15000">
-              Estás a <strong>${{ (15000 - cartStore.precioTotal).toLocaleString() }}</strong> del envío gratis
-            </p>
-            <div class="progress-bar">
-              <div class="progress-fill" :style="{ width: Math.min((cartStore.precioTotal / 15000) * 100, 100) + '%' }"></div>
-            </div>
-          </div>
         </div>
 
         <div class="cart-scroll-area">
@@ -101,7 +92,7 @@
           </button>
 
           <p class="secure-info">
-            <ShieldCheck :size="12" /> Transacción protegida por Mercado Pago
+            <ShieldCheck :size="12" /> Transacción por Mercado Pago
           </p>
         </div>
 
@@ -113,7 +104,9 @@
 <script setup>
 import { useCartStore } from '@/stores/cart';
 import { useRouter } from 'vue-router';
+import api from '@/services/api';
 import { X, ShoppingCart, Trash2, ArrowRight, ShieldCheck, CheckCircle } from 'lucide-vue-next';
+import { requireAuth, sesionValida } from '@/utils/authPrompt';
 
 const cartStore = useCartStore();
 const router = useRouter();
@@ -124,8 +117,18 @@ const getImageUrl = (img) => {
   return `http://127.0.0.1:8000${img}`;
 };
 
-const irAlCheckout = () => {
+const irAlCheckout = async () => {
   cartStore.toggleCart();
+  const token = localStorage.getItem('token');
+  if (!token) {
+    requireAuth({ action: 'checkout', redirect: '/checkout' });
+    return;
+  }
+  const valida = await sesionValida(api);
+  if (valida === false) {
+    requireAuth({ action: 'checkout', redirect: '/checkout' });
+    return;
+  }
   router.push('/checkout');
 };
 </script>

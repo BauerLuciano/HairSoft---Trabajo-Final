@@ -6,10 +6,11 @@
         <div class="logo-wrapper">
           <router-link :to="homeLink" class="logo-link">
             <div class="logo-container">
-              <span class="logo-icon">✂️</span>
+              <img v-if="configLocal.logo" :src="configLocal.logo" class="logo-img" alt="Logo" />
+              <span v-else class="logo-icon">✂️</span>
             </div>
             <div class="brand-info">
-              <span class="brand-name">HairSoft</span>
+              <span class="brand-name">Hairsoft</span>
             </div>
           </router-link>
         </div>
@@ -41,11 +42,11 @@
             <div class="link-indicator"></div>
           </router-link>
 
-          <router-link 
+          <button 
             v-if="cartStore.cantidadTotal > 0"
-            to="/checkout" 
-            :class="['nav-link', { active: isActiveLink('checkout') }]"
+            class="nav-link"
             title="Ver mi carrito"
+            @click="cartStore.toggleCart"
           >
             <div style="position: relative; display: flex; align-items: center;">
               <ShoppingBag :size="20" />
@@ -53,7 +54,7 @@
             </div>
             <span class="link-text" style="margin-left: 6px;">Carrito</span>
             <div class="link-indicator"></div>
-          </router-link>
+          </button>
           
           <router-link 
             v-if="usuarioLogueado" 
@@ -178,6 +179,22 @@ const usuarioApellido = ref('');
 const dropdownOpen = ref(false);
 const profileRef = ref(null);
 const isDarkTheme = ref(true);
+
+const configLocal = ref({
+  razon_social: 'HairSoft',
+  logo: null
+});
+
+const brandNombre = computed(() => configLocal.value.razon_social || 'HairSoft');
+
+const cargarConfiguracion = async () => {
+  try {
+    const res = await axios.get('/api/web/configuracion/');
+    configLocal.value = { ...configLocal.value, ...res.data };
+  } catch (error) {
+    console.error('No se pudo cargar la configuración del local', error);
+  }
+};
 
 // Calculamos inicial
 const avatarInitial = computed(() => usuarioNombre.value ? usuarioNombre.value.charAt(0).toUpperCase() : 'C');
@@ -327,6 +344,7 @@ const logout = async () => {
 onMounted(() => {
   checkAuth();
   loadSavedTheme();
+  cargarConfiguracion();
   document.addEventListener('click', handleClickOutside);
   window.addEventListener('userChanged', checkAuth);
 });
@@ -538,6 +556,14 @@ onUnmounted(() => {
     0 4px 12px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
   position: relative;
+  overflow: hidden;
+}
+
+.logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .logo-container::before {
@@ -574,6 +600,10 @@ onUnmounted(() => {
   letter-spacing: 1px;
   text-transform: uppercase;
   text-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 :root.light-theme .brand-name {
@@ -785,7 +815,7 @@ onUnmounted(() => {
 }
 
 .sun-icon {
-  fill: #f59e0b;
+  fill: #38bdf8;
   opacity: 1;
 }
 
@@ -814,13 +844,13 @@ onUnmounted(() => {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+  background: linear-gradient(135deg, #38bdf8, #2563eb);
   left: 4px;
   top: 50%;
   transform: translateY(-50%);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 1;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
 }
 
 .theme-switch-modern input:checked + .switch-background::before {

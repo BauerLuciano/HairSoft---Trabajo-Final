@@ -117,7 +117,7 @@
             <div class="alt-actions">
               <p class="register-prompt">
                 ¿No tenés cuenta? 
-                <router-link to="/web/registro">Crear cuenta</router-link>
+                <router-link :to="{ path: '/web/registro', query: route.query.redirect ? { redirect: route.query.redirect } : {} }">Crear cuenta</router-link>
               </p>
               <router-link to="/web/home" class="link-home">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

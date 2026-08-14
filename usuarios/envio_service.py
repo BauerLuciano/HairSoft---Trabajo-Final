@@ -17,18 +17,20 @@ def haversine(lat1, lon1, lat2, lon2):
 
 def distancia_por_ruta(lat_origen, lng_origen, lat_destino, lng_destino):
     """Calcula la distancia en km usando OSRM (rutas reales por calles).
+    OSRM optimiza por "routability"; pide rutas alternativas y elige la de menor
+    distancia real por calles (respeta la red vial, sentidos y restricciones).
     Retorna (distancia_km, ruta_coords, duracion_segundos).
     Si falla, distancia = Haversine, ruta_coords = [], duracion_segundos = 0."""
     try:
         url = (
             f"https://router.project-osrm.org/route/v1/driving/"
             f"{lng_origen},{lat_origen};{lng_destino},{lat_destino}"
-            f"?overview=full&geometries=geojson"
+            f"?overview=full&geometries=geojson&alternatives=true"
         )
         resp = requests.get(url, timeout=5)
         data = resp.json()
         if data.get('code') == 'Ok' and data.get('routes'):
-            ruta = data['routes'][0]
+            ruta = min(data['routes'], key=lambda r: r['distance'])
             distancia_metros = ruta['distance']
             duracion_segundos = ruta['duration']
             coords = ruta['geometry']['coordinates']

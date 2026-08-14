@@ -501,7 +501,10 @@ const crearUsuario = async () => {
       confirmButtonText: 'Ir al Login', confirmButtonColor: '#0ea5e9', background: '#1e293b', color: '#f1f5f9'
     })
 
-    router.push('/login')
+    router.push({
+      path: '/login',
+      query: route.query.redirect ? { redirect: route.query.redirect } : {}
+    })
 
   } catch (err) {
     console.error("❌ Error API:", err)

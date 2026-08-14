@@ -592,6 +592,7 @@ import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import axios from '../../utils/axiosConfig'
 import Swal from 'sweetalert2'
+import { limpiarSesionLocal } from '@/utils/authPrompt'
 
 import { 
   Calendar, ArrowLeft, User, UserCheck, FolderOpen, Tag, 
@@ -825,6 +826,11 @@ const seleccionarHora = (h) => {
   if (esHorarioDisponibleCompleto(h)) form.value.hora = h
 }
 
+const limpiarSesionInvalida = () => {
+  limpiarSesionLocal()
+  router.push({ path: '/login', query: { redirect: route.fullPath } })
+}
+
 const cargarDatosIniciales = async () => {
   cargandoDatos.value = true
   try {
@@ -862,7 +868,7 @@ const cargarDatosIniciales = async () => {
     console.error('Error cargando datos iniciales:', error)
     
     if (error.response && error.response.status === 401) {
-      router.push({ path: '/login', query: { redirect: route.fullPath } })
+      limpiarSesionInvalida()
       return false
     }
 
@@ -1006,6 +1012,10 @@ const crearPagoMercadoPago = async () => {
     
   } catch (error) {
     console.error('Error:', error)
+    if (error.response?.status === 401) {
+      limpiarSesionInvalida()
+      return
+    }
     let errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Error al completar la operación';
     Swal.fire('No se pudo completar', errorMsg, 'error')
   } finally {

@@ -94,6 +94,7 @@ urlpatterns = [
     # ==============================
     path('api/auth/login/', func_views.login_auth, name='api_login'),
     path('api/auth/logout/', func_views.logout_view, name='api_logout'),
+    path('api/auth/verificar/', func_views.verificar_sesion, name='api_verificar_sesion'),
     path('api/me/', func_views.me_api_view, name='me_api_view'),
     path('api/usuario_actual/', func_views.me_api_view, name='usuario_actual'),
     path('usuarios/api/me/', func_views.me_api_view, name='me_api_view_alias'),

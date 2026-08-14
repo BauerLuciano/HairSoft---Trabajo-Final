@@ -70,10 +70,22 @@ logger = logging.getLogger(__name__)
 
 
 def get_horarios_cache():
-    data = cache.get('horarios_atencion')
+    data = cache.get('horarios_atencion_values')
     if data is None:
         data = list(HorarioAtencion.objects.all().order_by('dia_semana').values())
-        cache.set('horarios_atencion', data, 300)
+        cache.set('horarios_atencion_values', data, 300)
+
+    # Normalizar horarios a datetime.time: la caché puede contener strings
+    # ("HH:MM:SS" o "HH:MM") si otro endpoint la pobló con serializer data.
+    def _a_time(valor):
+        if isinstance(valor, str):
+            fmt = "%H:%M:%S" if len(valor) > 5 else "%H:%M"
+            return datetime.strptime(valor, fmt).time()
+        return valor
+
+    for h in data:
+        for campo in ('hora_apertura_manana', 'hora_cierre_manana', 'hora_apertura_tarde', 'hora_cierre_tarde'):
+            h[campo] = _a_time(h[campo])
     return data
 
 
@@ -398,6 +410,18 @@ def login_auth(request):
         })
     else:
         return Response({'error': 'Credenciales inválidas'}, status=401)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def verificar_sesion(request):
+    """Valida que el token sea real y devuelve el rol. Usado por el frontend
+    para confirmar sesiones antes de Checkout / Reserva de turno web."""
+    return Response({
+        'ok': True,
+        'usuario_id': request.user.id,
+        'rol': request.user.rol.nombre if hasattr(request.user, 'rol') and request.user.rol else None,
+    })
 
 
 @api_view(['POST'])
@@ -1020,17 +1044,25 @@ def crear_turno(request):
             except Usuario.DoesNotExist:
                 return Response({'status': 'error', 'message': "Cliente no encontrado"}, status=400)
         
-        # Caso 2: Web autenticado
+        # Caso 2: Canal WEB exige autenticación real (token válido)
+        elif canal == 'WEB' and request.user.is_authenticated:
+            cliente = request.user
+
+        # Caso 3: Canal WEB sin sesión → PROHIBIDO (no se acepta cliente_id ajeno)
+        elif canal == 'WEB':
+            return Response({'status': 'error', 'message': "Debes iniciar sesión para reservar tu turno."}, status=401)
+
+        # Caso 4: Otros canales autenticados
         elif request.user.is_authenticated:
             cliente = request.user
-        
-        # Caso 3: Por ID desde web
+
+        # Caso 5: Por ID (canales internos/legacy)
         elif data.get('cliente_id'):
             try:
                 cliente = Usuario.objects.get(pk=data.get('cliente_id'))
             except Usuario.DoesNotExist:
                 return Response({'status': 'error', 'message': "Cliente no encontrado"}, status=400)
-        
+
         if not cliente:
             return Response({'status': 'error', 'message': "Debes iniciar sesión o indicar el cliente."}, status=401)
         
