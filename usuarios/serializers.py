@@ -129,11 +129,8 @@ class TurnoSerializer(serializers.ModelSerializer):
         return None
 
     def get_saldo_pendiente(self, obj):
-        if obj.tipo_pago == 'SENA_50' and not obj.medio_pago_restante:
-            total = float(obj.monto_total or 0)
-            senia = float(obj.monto_seña or 0)
-            return round(max(0, total - senia), 2)
-        return 0.0
+        # Fuente única de verdad: Turno.calcular_saldo_pendiente()
+        return obj.calcular_saldo_pendiente()
 # ----------------------------------------------------------------------
 # CATEGORIAS DE PRODUCTOS
 # ----------------------------------------------------------------------

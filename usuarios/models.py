@@ -505,6 +505,45 @@ class Turno(models.Model):
     def necesita_pago_mp(self):
         return self.medio_pago == 'MERCADO_PAGO'
 
+    # ============================================================
+    # FUENTE ÚNICA DE VERDAD DEL ESTADO DE PAGO
+    # Toda validación de "pago registrado / irrompible / saldo pendiente"
+    # debe usar estos métodos (backend, serializer y webhooks), para que
+    # NO haya criterios divergentes sobre si un turno ya fue pagado.
+    # ============================================================
+
+    def tiene_pago_principal_irrompible(self):
+        """
+        Pago por Mercado Pago APROBADO y registrado (mp_payment_id set + medio MERCADO_PAGO).
+        Es IRROMPIBLE: no se puede cambiar el medio, no se puede cambiar SEÑA<->TOTAL,
+        no se puede reemplazar el mp_payment_id ni regenerar el QR.
+        """
+        return bool(self.mp_payment_id and str(self.mp_payment_id).strip()) and \
+               str(self.medio_pago or '').upper() == 'MERCADO_PAGO'
+
+    def tiene_pago_registrado(self):
+        """
+        Cualquier cobro principal registrado (seña o total) por cualquier medio
+        (EFECTIVO o MERCADO_PAGO). Es la señal de que "el turno ya fue cobrado".
+        """
+        if self.tiene_pago_principal_irrompible():
+            return True
+        return (self.monto_seña or 0) > 0 and \
+               str(self.medio_pago or '').upper() not in ('', 'PENDIENTE')
+
+    def calcular_saldo_pendiente(self):
+        """
+        Monto que todavía falta cobrar.
+        - Si el restante ya fue cobrado (medio_pago_restante) -> 0
+        - Si el turno está saldado (TOTAL) -> 0
+        - Si no (SENA_50 / PENDIENTE) -> max(0, total - cobrado)
+        """
+        total = float(self.monto_total or 0)
+        pagado = float(self.monto_seña or 0)
+        if self.medio_pago_restante or self.tipo_pago == 'TOTAL':
+            return 0.0
+        return round(max(0, total - pagado), 2)
+
     def puede_reofertar(self):
         if self.estado != 'CANCELADO': return False
         tz_arg = pytz.timezone('America/Argentina/Buenos_Aires')

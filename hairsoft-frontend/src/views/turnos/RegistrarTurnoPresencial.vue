@@ -274,16 +274,19 @@
             </div>
 
             <div class="pago-section">
+              <label class="label-modern" style="margin-bottom: 10px; display: block;">
+                ¿Qué se está pagando?
+              </label>
               <div class="pago-options">
-                <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'SENA_50' }">
-                  <input type="radio" v-model="form.tipo_pago" value="SENA_50" class="hidden-radio">
+                <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'SENA_50', 'radio-disabled': pagoConfirmado }" @click="onClickTipo($event, 'SENA_50')">
+                  <input type="radio" v-model="form.tipo_pago" value="SENA_50" class="hidden-radio" @change="onCambioTipoPago">
                   <div class="radio-content">
                     <span>Seña 50%</span>
                     <strong>${{ calcularSena() }}</strong>
                   </div>
                 </label>
-                <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'TOTAL' }">
-                  <input type="radio" v-model="form.tipo_pago" value="TOTAL" class="hidden-radio">
+                <label class="radio-box" :class="{ 'radio-active': form.tipo_pago === 'TOTAL', 'radio-disabled': pagoConfirmado }" @click="onClickTipo($event, 'TOTAL')">
+                  <input type="radio" v-model="form.tipo_pago" value="TOTAL" class="hidden-radio" @change="onCambioTipoPago">
                   <div class="radio-content">
                     <span>Pago Total</span>
                     <strong>${{ calcularTotal() }}</strong>
@@ -292,13 +295,19 @@
               </div>
             </div>
 
-            <div class="pago-detalles">
+            <div v-if="form.tipo_pago" class="pago-detalles">
               <div class="input-group">
                 <label class="label-modern">Medio de Pago</label>
-                <select v-model="form.medio_pago" class="select-modern" @change="onCambioMedioPago">
+                <select v-model="form.medio_pago" class="select-modern" :class="{ 'select-bloqueado': pagoConfirmado }" @change="onCambioMedioPago">
                   <option value="EFECTIVO">Efectivo</option>
                   <option value="MERCADO_PAGO">Mercado Pago</option>
+                  <option value="MIXTO">Mixto (Efectivo + Mercado Pago)</option>
                 </select>
+              </div>
+
+              <div v-if="pagoConfirmado" class="pago-confirmado-banner">
+                <CheckCircle :size="18" />
+                <span>Pago aprobado. La operación ya quedó registrada y no se puede cambiar el tipo ni el medio.</span>
               </div>
 
               <div v-if="form.medio_pago === 'MERCADO_PAGO'" class="datos-transferencia-container slide-in">
@@ -352,6 +361,100 @@
                     <CheckCircle :size="18" />
                     <span v-if="pagoConfirmado">Pago confirmado</span>
                     <span v-else>Esperando pago...</span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else-if="form.medio_pago === 'MIXTO'" class="datos-transferencia-container slide-in">
+                <!-- Paso 1: registrar el efectivo (misma filosofía del POS) -->
+                <div v-if="!efectivoMixtoRegistrado">
+                  <div class="input-group">
+                    <label class="label-modern">Monto en Efectivo</label>
+                    <input type="number" v-model.number="montoEfectivoMixto" class="input-modern" :disabled="pagoConfirmado" min="0" :max="montoACobrar" step="0.01" placeholder="0.00" />
+                    <small class="helper-text"><Info :size="12" /> Se cobrará por Mercado Pago el restante: <strong>${{ montoMixtoMP.toFixed(2) }}</strong></small>
+                  </div>
+                  <button
+                    @click="registrarEfectivoMixto"
+                    class="btn-registrar-efectivo"
+                    :disabled="!montoEfectivoMixto || montoEfectivoMixto <= 0 || montoEfectivoMixto > montoACobrar || pagoConfirmado"
+                  >
+                    Registrar efectivo
+                  </button>
+                </div>
+
+                <!-- Efectivo ya registrado -->
+                <div v-else class="mixto-efectivo-registrado">
+                  <div class="efectivo-registrado-display">
+                    <CheckCircle :size="18" />
+                    <div>
+                      <strong>Efectivo registrado: ${{ montoEfectivoMixto.toFixed(2) }}</strong>
+                      <small v-if="montoMixtoMP > 0" class="helper-text">Falta cobrar por Mercado Pago: <strong>${{ montoMixtoMP.toFixed(2) }}</strong></small>
+                      <small v-else class="helper-text" style="color: #10b981;">El efectivo cubre el total. No hace falta Mercado Pago.</small>
+                    </div>
+                  </div>
+                  <button v-if="!pagoConfirmado" class="btn-modificar-efectivo" @click="editarEfectivoMixto">Modificar</button>
+                </div>
+
+                <!-- Paso 2: cobrar el restante (Alias o QR) -->
+                <div v-if="efectivoMixtoRegistrado && montoMixtoMP > 0" class="mp-restante-section" style="margin-top: 16px;">
+                  <label class="label-modern" style="margin-bottom: 8px; display: block;">Cobrar el restante con</label>
+                  <div class="mp-seleccion">
+                    <label class="mp-option" :class="{ 'mp-option-active': subMetodoPago === 'QR', 'radio-disabled': pagoConfirmado }">
+                      <input type="radio" v-model="subMetodoPago" value="QR" class="hidden-radio" @change="onCambioSubMetodoMixto">
+                      <div class="mp-option-content">
+                        <span class="mp-option-title">Código QR</span>
+                        <span class="mp-option-desc">Cliente escanea</span>
+                      </div>
+                    </label>
+                    <label class="mp-option" :class="{ 'mp-option-active': subMetodoPago === 'ALIAS', 'radio-disabled': pagoConfirmado }">
+                      <input type="radio" v-model="subMetodoPago" value="ALIAS" class="hidden-radio" @change="onCambioSubMetodoMixto">
+                      <div class="mp-option-content">
+                        <span class="mp-option-title">Alias</span>
+                        <span class="mp-option-desc">Admin confirma</span>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div v-if="subMetodoPago === 'ALIAS'" class="alias-section" style="margin-top: 12px;">
+                    <div v-if="aliasCargando" class="helper-text" style="margin-bottom: 8px;">
+                      <Loader2 :size="12" class="spinner-icon" /> Cargando alias...
+                    </div>
+                    <div v-else-if="aliasValor" class="alias-display">
+                      <span class="alias-label">Alias:</span>
+                      <span class="alias-text">{{ aliasValor }}</span>
+                    </div>
+                    <div v-else-if="!pagoConfirmado" class="helper-text" style="margin-bottom: 8px; color: #ef4444; display: flex; align-items: center; gap: 6px;">
+                      <AlertTriangle :size="14" /> No hay alias configurado — ve a <strong>Ajustes del Local</strong> para registrarlo.
+                    </div>
+                    <button
+                      v-if="aliasValor && !pagoConfirmado"
+                      @click="confirmarTransferenciaMixto"
+                      class="btn-confirmar-transferencia"
+                      style="margin-top: 10px;"
+                    >
+                      Registrar transferencia por alias
+                    </button>
+                    <div v-if="pagoConfirmado && subMetodoPago === 'ALIAS'" class="qr-pagado-indicator" style="margin-top: 10px;">
+                      <CheckCircle :size="18" />
+                      <span>Transferencia por alias registrada</span>
+                    </div>
+                  </div>
+
+                  <div v-if="subMetodoPago === 'QR'" class="qr-section" style="margin-top: 12px;">
+                    <div v-if="!pagoUuid">
+                      <small class="helper-text" style="display: block; margin-bottom: 10px;">
+                        <Info :size="12" /> Genere el QR por el restante para que el cliente pague con su celular.
+                      </small>
+                      <button @click="generarQR" class="btn-generar-qr" :disabled="qrGenerando">
+                        <span v-if="!qrGenerando">Generar QR por el restante</span>
+                        <span v-else>Generando...</span>
+                      </button>
+                    </div>
+                    <div v-else class="qr-pagado-indicator">
+                      <CheckCircle :size="18" />
+                      <span v-if="pagoConfirmado">Pago MP confirmado</span>
+                      <span v-else>Esperando pago...</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -505,7 +608,25 @@ const nroComprobante = ref('')
 const pagoUuid = ref(null)
 const pagoConfirmado = ref(false)
 const qrGenerando = ref(false)
+const tipoPagoConfirmado = ref('')
+const medioPagoConfirmado = ref('')
 let pollId = null 
+
+const montoEfectivoMixto = ref(null)
+const efectivoMixtoRegistrado = ref(false)
+const subMetodoConfirmado = ref('QR')
+const montoACobrar = computed(() => {
+  const total = parseFloat(calcularTotal())
+  if (!total) return 0
+  return form.value.tipo_pago.includes('SENA') ? parseFloat(calcularSena()) : total
+})
+const montoMixtoMP = computed(() => {
+  const totalCobrar = montoACobrar.value
+  if (!totalCobrar) return 0
+  const efectivo = parseFloat(montoEfectivoMixto.value) || 0
+  const restante = totalCobrar - efectivo
+  return restante > 0 ? Math.round(restante * 100) / 100 : 0
+})
 
 const intervaloMinutos = 10
 const STORAGE_KEY = 'turno_presencial_context'
@@ -563,6 +684,21 @@ watch(() => form.value.medio_pago, (newVal) => {
   if (newVal === 'EFECTIVO') {
     form.value.codigo_transaccion = ""
     errorValidacion.value = false
+  }
+})
+
+watch(() => montoEfectivoMixto.value, () => {
+  if (pagoUuid.value && !pagoConfirmado.value) {
+    pagoUuid.value = null
+    if (pollId) { clearInterval(pollId); pollId = null }
+  }
+})
+
+watch(() => pagoConfirmado.value, (val) => {
+  if (val) {
+    tipoPagoConfirmado.value = form.value.tipo_pago
+    medioPagoConfirmado.value = form.value.medio_pago
+    subMetodoConfirmado.value = subMetodoPago.value
   }
 })
 
@@ -912,11 +1048,64 @@ const calcularTotal = () => {
 const calcularSena = () => (calcularTotal() / 2).toFixed(2)
 
 const onCambioMedioPago = () => {
+  if (pagoConfirmado.value) {
+    const intentado = form.value.medio_pago
+    form.value.medio_pago = medioPagoConfirmado.value
+    mostrarBloqueoPago(intentado)
+    return
+  }
   subMetodoPago.value = 'QR'
   nroComprobante.value = ''
   pagoUuid.value = null
   pagoConfirmado.value = false
+  montoEfectivoMixto.value = null
+  efectivoMixtoRegistrado.value = false
   if (pollId) { clearInterval(pollId); pollId = null }
+}
+
+const onCambioTipoPago = () => {
+  if (pagoConfirmado.value) {
+    const intentado = form.value.tipo_pago
+    form.value.tipo_pago = tipoPagoConfirmado.value
+    mostrarBloqueoPago(intentado)
+    return
+  }
+  subMetodoPago.value = 'QR'
+  nroComprobante.value = ''
+  pagoUuid.value = null
+  pagoConfirmado.value = false
+  montoEfectivoMixto.value = null
+  efectivoMixtoRegistrado.value = false
+  if (pollId) { clearInterval(pollId); pollId = null }
+}
+
+const onClickTipo = (e, valor) => {
+  if (pagoConfirmado.value) {
+    e.preventDefault()
+    mostrarBloqueoPago(valor)
+  }
+}
+
+const mostrarBloqueoPago = (intentado) => {
+  const tipoPagado = tipoPagoConfirmado.value
+  const medioPagado = medioPagoConfirmado.value
+  let titulo = 'Pago ya realizado'
+  let texto = ''
+
+  if (intentado === 'TOTAL' && tipoPagado === 'SENA_50') {
+    texto = "Seña ya registrada. Ya realizaste el pago de la seña. No podés cambiar este turno a Pago Total. El saldo restante se cobra desde 'Cobrar restante' en el listado de turnos."
+  } else if (intentado === 'SENA_50' && tipoPagado === 'TOTAL') {
+    titulo = 'Turno completamente pagado'
+    texto = 'El pago total ya fue confirmado y no puede modificarse.'
+  } else if (intentado === 'EFECTIVO' && (medioPagado === 'MERCADO_PAGO' || medioPagado === 'MIXTO')) {
+    texto = 'Este importe ya fue pagado mediante Mercado Pago. No podés cambiar el medio de pago después de confirmar el pago.'
+  } else if (intentado === 'MIXTO') {
+    texto = 'Ya existe un pago confirmado para este importe. No podés modificar el medio de pago ni generar un nuevo QR.'
+  } else {
+    texto = 'La operación ya quedó registrada y no se puede cambiar el tipo ni el medio de pago.'
+  }
+
+  Swal.fire({ icon: 'warning', title: titulo, text: texto })
 }
 
 const onCambioSubMetodo = async () => {
@@ -925,7 +1114,7 @@ const onCambioSubMetodo = async () => {
       icon: 'warning', title: 'Pago ya confirmado',
       text: 'El cliente ya pagó con QR. No podés cambiar a Alias.'
     })
-    subMetodoPago.value = 'QR'
+    subMetodoPago.value = subMetodoConfirmado.value
     return
   }
   pagoUuid.value = null
@@ -944,6 +1133,65 @@ const onCambioSubMetodo = async () => {
   }
 }
 
+const onCambioSubMetodoMixto = async () => {
+  if (pagoConfirmado.value) {
+    await Swal.fire({
+      icon: 'warning', title: 'Pago ya confirmado',
+      text: 'La parte de Mercado Pago del pago mixto ya fue cobrada. No podés cambiar la modalidad.'
+    })
+    subMetodoPago.value = subMetodoConfirmado.value
+    return
+  }
+  pagoUuid.value = null
+  pagoConfirmado.value = false
+  if (pollId) { clearInterval(pollId); pollId = null }
+  if (subMetodoPago.value === 'ALIAS') {
+    aliasCargando.value = true
+    try {
+      const resp = await axios.get('/api/configuracion-local/')
+      aliasValor.value = resp.data?.mp_alias || ''
+    } catch { aliasValor.value = '' }
+    finally { aliasCargando.value = false }
+  } else {
+    aliasValor.value = ''
+  }
+}
+
+const registrarEfectivoMixto = () => {
+  if (pagoConfirmado.value) return
+  const efectivo = parseFloat(montoEfectivoMixto.value) || 0
+  if (efectivo <= 0) {
+    Swal.fire({ icon: 'warning', title: 'Atención', text: 'Indicá un monto en efectivo mayor a cero.' })
+    return
+  }
+  if (efectivo > montoACobrar.value) {
+    Swal.fire({ icon: 'warning', title: 'Atención', text: 'El efectivo no puede superar el importe a cobrar.' })
+    return
+  }
+  efectivoMixtoRegistrado.value = true
+}
+
+const editarEfectivoMixto = () => {
+  if (pagoConfirmado.value) {
+    Swal.fire({ icon: 'warning', title: 'Pago ya confirmado', text: 'La parte de Mercado Pago ya fue cobrada. No podés modificar el efectivo.' })
+    return
+  }
+  efectivoMixtoRegistrado.value = false
+  pagoUuid.value = null
+  pagoConfirmado.value = false
+  aliasValor.value = ''
+  if (pollId) { clearInterval(pollId); pollId = null }
+}
+
+const confirmarTransferenciaMixto = () => {
+  if (pagoConfirmado.value) return
+  if (!aliasValor.value) {
+    Swal.fire({ icon: 'warning', title: 'Alias no configurado', text: 'No hay un alias de Mercado Pago registrado. Ve a Ajustes del Local para configurarlo.' })
+    return
+  }
+  pagoConfirmado.value = true
+}
+
 const generarQR = async () => {
   if (pagoConfirmado.value) {
     Swal.fire({ icon: 'info', title: 'Pago ya confirmado', text: 'El pago ya fue realizado.' })
@@ -951,9 +1199,16 @@ const generarQR = async () => {
   }
   qrGenerando.value = true
   try {
-    const monto = form.value.tipo_pago.includes('SENA')
-      ? parseFloat(calcularSena())
-      : parseFloat(calcularTotal())
+    const monto = form.value.medio_pago === 'MIXTO'
+      ? montoMixtoMP.value
+      : (form.value.tipo_pago.includes('SENA')
+        ? parseFloat(calcularSena())
+        : parseFloat(calcularTotal()))
+
+    if (!monto || monto <= 0) {
+      Swal.fire({ icon: 'warning', title: 'Atención', text: 'El monto a generar por QR debe ser mayor a cero.' })
+      return
+    }
 
     const res = await axios.post('/api/generar-qr-temporal/', { monto })
     const data = res.data
@@ -1042,15 +1297,30 @@ const mostrarQRPresencial = (mpData) => {
 }
 
 const crearTurno = async () => {
-  const esAlias = form.value.medio_pago === 'MERCADO_PAGO' && subMetodoPago.value === 'ALIAS'
+  const esMixto = form.value.medio_pago === 'MIXTO' && montoMixtoMP.value > 0
+  const esMixtoQR = esMixto && subMetodoPago.value === 'QR'
+  const esAliasPuro = form.value.medio_pago === 'MERCADO_PAGO' && subMetodoPago.value === 'ALIAS'
   const esQR = form.value.medio_pago === 'MERCADO_PAGO' && subMetodoPago.value === 'QR'
+  // Si el efectivo cubre todo el cobro, el mixto deja de ser mixto: se paga en efectivo (como en el POS)
+  const medioFinal = form.value.medio_pago === 'MIXTO' && !esMixto ? 'EFECTIVO' : form.value.medio_pago
 
   if (esQR && !pagoConfirmado.value) {
     Swal.fire({ icon: 'warning', title: 'Atención', text: 'Debe generar el QR y esperar a que el pago se confirme.' })
     return
   }
 
-  if (esAlias && !aliasValor.value && !pagoConfirmado.value) {
+  if (esMixto) {
+    if (!efectivoMixtoRegistrado.value || !montoEfectivoMixto.value || montoEfectivoMixto.value <= 0) {
+      Swal.fire({ icon: 'warning', title: 'Atención', text: 'Registre el monto a cobrar en efectivo para el pago mixto.' })
+      return
+    }
+    if (!pagoConfirmado.value) {
+      Swal.fire({ icon: 'warning', title: 'Atención', text: 'Debe cobrar el saldo con Mercado Pago (generar el QR y esperar la confirmación, o registrar la transferencia por alias).' })
+      return
+    }
+  }
+
+  if (esAliasPuro && !aliasValor.value && !pagoConfirmado.value) {
     Swal.fire({ icon: 'warning', title: 'Alias no configurado', text: 'No hay un alias de Mercado Pago registrado. Ve a Ajustes del Local para configurarlo.' })
     return
   }
@@ -1076,14 +1346,15 @@ const crearTurno = async () => {
     canal: 'PRESENCIAL',
     silla: form.value.silla,
     tipo_pago: esPagoSena ? 'SENA_50' : 'TOTAL',
-    medio_pago: form.value.medio_pago,
+    medio_pago: medioFinal,
     monto_total: totalCalculado,
     monto_seña: montoSena,
     duracion_total: duracion,
-    entidad_pago: esAlias ? 'MERCADOPAGO' : null,
-    mp_payment_id: esAlias ? nroComprobante.value || null : null,
+    entidad_pago: esMixto ? (esMixtoQR ? 'MERCADOPAGO_QR' : 'MERCADOPAGO_ALIAS') : (esAliasPuro ? 'MERCADOPAGO' : null),
+    mp_payment_id: esAliasPuro ? nroComprobante.value || null : null,
     codigo_transaccion: null,
-    pago_uuid: esQR && pagoConfirmado.value ? pagoUuid.value : null
+    pago_uuid: (esQR || esMixtoQR) && pagoConfirmado.value ? pagoUuid.value : null,
+    ...(esMixto ? { pago_mixto: true, monto_mp: montoMixtoMP.value, monto_efectivo: montoEfectivoMixto.value } : {})
   }
 
   try {
@@ -2139,6 +2410,102 @@ onBeforeUnmount(() => {
   font-weight: 500;
 }
 
+.btn-registrar-efectivo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 18px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.btn-registrar-efectivo:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn-registrar-efectivo:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mixto-efectivo-registrado {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 12px;
+}
+
+.efectivo-registrado-display {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #16a34a;
+}
+
+.efectivo-registrado-display div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #166534;
+}
+
+.btn-modificar-efectivo {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+  color: #16a34a;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-modificar-efectivo:hover {
+  background: #ecfdf5;
+}
+
+.btn-confirmar-transferencia {
+  width: 100%;
+  justify-content: center;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.25s ease;
+}
+
+.btn-confirmar-transferencia:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+
+.btn-confirmar-transferencia:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .pago-section {
   margin-bottom: 25px;
 }
@@ -2168,6 +2535,21 @@ onBeforeUnmount(() => {
 .radio-active { 
   border-color: #3b82f6; 
   background: #eff6ff; 
+}
+
+.radio-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.radio-disabled:hover {
+  border-color: #e5e7eb;
+  transform: none;
+}
+
+.select-bloqueado {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .hidden-radio { 

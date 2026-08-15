@@ -1,7 +1,7 @@
 import json, re, requests, unicodedata, logging, secrets, traceback, uuid
 
 from datetime import datetime, timedelta, time
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 # 2. Django Core
 from django.db import models, transaction
@@ -1302,25 +1302,79 @@ def crear_turno(request):
         # 7. CALCULAR PAGO
         # ---------------------------------------------------------
         tipo_pago = data.get('tipo_pago', 'SENA_50')
-        
-        monto_seña = monto_final * 0.5 if tipo_pago == 'SENA_50' else monto_final
-        
+        monto_seña_declarado = monto_final * 0.5 if tipo_pago == 'SENA_50' else monto_final
+
         codigo_transaccion = data.get('codigo_transaccion')
         entidad_pago = data.get('entidad_pago')
         mp_payment_id = data.get('mp_payment_id')
         pago_uuid = data.get('pago_uuid')
 
+        # 💳 PAGO MIXTO (EFECTIVO + MERCADO PAGO): misma filosofía del POS.
+        # La suma de las partes debe cubrir EXACTAMENTE el monto a cobrar.
+        es_mixto = bool(data.get('pago_mixto')) or (str(medio_pago).upper() == 'MIXTO')
+        monto_mp = None
+        monto_efectivo = None
+        if es_mixto:
+            try:
+                monto_mp = Decimal(str(data.get('monto_mp') or 0))
+                monto_efectivo = Decimal(str(data.get('monto_efectivo') or 0))
+            except (TypeError, ValueError, InvalidOperation):
+                monto_mp = monto_efectivo = Decimal('0')
+            monto_a_cobrar = Decimal(str(monto_seña_declarado))
+            if monto_mp <= 0 or monto_efectivo < 0 or abs((monto_mp + monto_efectivo) - monto_a_cobrar) > Decimal('0.01'):
+                return Response({
+                    'status': 'error',
+                    'error': 'Pago mixto inválido: el efectivo y el QR deben cubrir exactamente el monto a cobrar.'
+                }, status=400)
+
+        # 🔒 Si el cliente pagó con QR de Mercado Pago (pago_uuid de un PagoTemporal APROBADO),
+        # el pago aprobado es la FUENTE DE LA VERDAD: derivamos tipo/medio/montos reales
+        # y NO confiamos en lo que el frontend declare (evita cambiar SEÑA<->TOTAL tras aprobar).
         if pago_uuid:
             from .models import PagoTemporal
             pago_temp = PagoTemporal.objects.filter(uid=pago_uuid, pagado=True, usado=False).first()
             if not pago_temp:
                 return Response({'status': 'error', 'error': 'Pago no encontrado o ya utilizado'}, status=400)
-            if pago_temp.monto < monto_seña:
-                return Response({'status': 'error', 'error': f'El monto del pago (${pago_temp.monto}) no cubre la seña (${monto_seña})'}, status=400)
+            monto_mp_declarado = monto_mp if es_mixto else Decimal(str(monto_seña_declarado))
+            if Decimal(str(pago_temp.monto)) < (monto_mp_declarado - Decimal('0.01')):
+                return Response({'status': 'error', 'error': f'El monto del pago (${pago_temp.monto}) no cubre lo que se quiere cobrar (${monto_mp_declarado})'}, status=400)
             mp_payment_id = pago_temp.mp_payment_id
+            medio_pago = 'MERCADO_PAGO'
+            if es_mixto:
+                # El mixto cubre íntegramente el monto declarado (seña o total): se respeta el tipo elegido
+                monto_seña = monto_seña_declarado
+                entidad_pago = 'MIXTO'
+                # Sub-método del restante (misma filosofía del POS: MERCADOPAGO_QR / MERCADOPAGO_ALIAS)
+                forma_mp = str(data.get('entidad_pago') or 'MERCADOPAGO_QR').upper()
+                if forma_mp not in ('MERCADOPAGO_QR', 'MERCADOPAGO_ALIAS'):
+                    forma_mp = 'MERCADOPAGO_QR'
+                codigo_transaccion = f"{forma_mp}:{float(monto_mp):.2f}|EFECTIVO:{float(monto_efectivo):.2f}"
+            else:
+                monto_aprobado = Decimal(str(pago_temp.monto))
+                if monto_aprobado >= Decimal(str(monto_final)):
+                    tipo_pago = 'TOTAL'
+                    monto_seña = monto_final
+                else:
+                    tipo_pago = 'SENA_50'
+                    monto_seña = monto_aprobado
             pago_temp.usado = True
             pago_temp.save()
-        
+        else:
+            monto_seña = monto_seña_declarado
+            if es_mixto:
+                # Mixto SIN QR aprobado: el restante se cobra por ALIAS (confirmado por el cajero,
+                # exactamente igual que en el POS). No se exige mp_payment_id: la confirmación del
+                # alias es la que respalda la parte de Mercado Pago.
+                forma_mp = str(data.get('entidad_pago') or '').upper()
+                if forma_mp != 'MERCADOPAGO_ALIAS':
+                    return Response({
+                        'status': 'error',
+                        'error': 'La parte de Mercado Pago del pago mixto debe estar confirmada (QR aprobado o transferencia por alias).'
+                    }, status=400)
+                medio_pago = 'MERCADO_PAGO'
+                entidad_pago = 'MIXTO'
+                codigo_transaccion = f"{forma_mp}:{float(monto_mp):.2f}|EFECTIVO:{float(monto_efectivo):.2f}"
+
         # ---------------------------------------------------------
         # 8. CREAR TURNO CON SILLA ASIGNADA
         # ---------------------------------------------------------
@@ -1400,22 +1454,46 @@ def crear_turno(request):
         
         # 💵 SI ES PRESENCIAL (NO QR) Y SE PAGÓ ALGO, LO REGISTRAMOS EN LA CAJA
         elif canal == 'PRESENCIAL' and sesion_abierta and monto_seña > 0:
-            metodo_pago_caja = 'EFECTIVO'
-            if 'MERCADO' in str(medio_pago).upper():
-                metodo_pago_caja = 'MERCADO_PAGO'
-            elif 'TRANS' in str(medio_pago).upper():
-                metodo_pago_caja = 'TRANSFERENCIA'
-                
-            MovimientoCaja.objects.create(
-                sesion_caja=sesion_abierta,
-                tipo='INGRESO',
-                metodo_pago=metodo_pago_caja,
-                concepto='TURNO_PRESENCIAL',
-                monto=monto_seña,
-                descripcion=f"Cobro Turno (Presencial) #{turno.id} - Cliente: {cliente.nombre}",
-                turno_relacionado=turno
-            )
-            print(f"✅ Ingreso a caja registrado por ${monto_seña}")
+            if es_mixto:
+                # Pago mixto: un movimiento de caja por cada medio (filosofía del POS)
+                if monto_efectivo > 0:
+                    MovimientoCaja.objects.create(
+                        sesion_caja=sesion_abierta,
+                        tipo='INGRESO',
+                        metodo_pago='EFECTIVO',
+                        concepto='TURNO_PRESENCIAL',
+                        monto=monto_efectivo,
+                        descripcion=f"Cobro Turno (Presencial) #{turno.id} - Cliente: {cliente.nombre} (pago mixto efectivo)",
+                        turno_relacionado=turno
+                    )
+                if monto_mp > 0:
+                    MovimientoCaja.objects.create(
+                        sesion_caja=sesion_abierta,
+                        tipo='INGRESO',
+                        metodo_pago='MERCADO_PAGO',
+                        concepto='TURNO_PRESENCIAL',
+                        monto=monto_mp,
+                        descripcion=f"Cobro Turno (Presencial) #{turno.id} - Cliente: {cliente.nombre} (pago mixto MP)",
+                        turno_relacionado=turno
+                    )
+                print(f"✅ Ingreso a caja registrado por ${monto_efectivo} EFECTIVO + ${monto_mp} MERCADO_PAGO")
+            else:
+                metodo_pago_caja = 'EFECTIVO'
+                if 'MERCADO' in str(medio_pago).upper():
+                    metodo_pago_caja = 'MERCADO_PAGO'
+                elif 'TRANS' in str(medio_pago).upper():
+                    metodo_pago_caja = 'TRANSFERENCIA'
+
+                MovimientoCaja.objects.create(
+                    sesion_caja=sesion_abierta,
+                    tipo='INGRESO',
+                    metodo_pago=metodo_pago_caja,
+                    concepto='TURNO_PRESENCIAL',
+                    monto=monto_seña,
+                    descripcion=f"Cobro Turno (Presencial) #{turno.id} - Cliente: {cliente.nombre}",
+                    turno_relacionado=turno
+                )
+                print(f"✅ Ingreso a caja registrado por ${monto_seña}")
 
         # ---------------------------------------------------------
         # 11. RESPUESTA FINAL
@@ -1943,54 +2021,115 @@ def actualizar_pago_presencial(request, turno_id):
     try:
         turno = Turno.objects.get(id=turno_id)
         data = request.data
-        
-        nuevo_tipo = data.get('tipo_pago', 'TOTAL')
-        metodo_pago_raw = data.get('medio_pago', 'EFECTIVO')
-        
-        # 🔥 MAGIA DEFINITIVA: Calculamos la deuda real matemáticamente
-        monto_a_cobrar = turno.monto_total - (turno.monto_seña or 0)
-        
+
+        metodo_pago_raw = str(data.get('medio_pago', 'EFECTIVO')).upper()
+        nuevo_tipo = data.get('tipo_pago')
+
+        # 🛡️ REGLA DE NEGOCIO FUNDAMENTAL: pago ya registrado = IRROMPIBLE.
+        # Fuente única de verdad: métodos del modelo Turno.
+        # Una vez cobrado, el medio principal y el mp_payment_id no pueden cambiarse,
+        # pero SÍ se puede cobrar el saldo restante pendiente con otro medio
+        # (flujo "Cobrar restante": EFECTIVO o MERCADO PAGO QR).
+        tiene_pago_mp_aprobado = turno.tiene_pago_principal_irrompible()
+        tiene_seña_registrada = turno.tiene_pago_registrado()
+        monto_total = (turno.monto_total or Decimal('0'))
+        saldo_previamente_cobrado = Decimal(str(turno.monto_seña or 0))
+        monto_pendiente = max(monto_total - saldo_previamente_cobrado, Decimal('0'))
+
+        # Un request "reemplaza" el pago si NO hay saldo pendiente (pago total completo)
+        busca_reemplazar_pago = (monto_pendiente <= 0)
+
+        if tiene_pago_mp_aprobado and str(turno.medio_pago or '').upper() == 'MERCADO_PAGO':
+            # No se puede cambiar el medio de pago principal de un turno MP total
+            if busca_reemplazar_pago and metodo_pago_raw not in ('MERCADO_PAGO', 'PENDIENTE'):
+                return Response(
+                    {"error": "El turno tiene un pago por Mercado Pago aprobado e irrompible. No se puede cambiar a otro medio de pago."},
+                    status=status.HTTP_409_CONFLICT
+                )
+            # No se puede cambiar SEÑA <-> PAGO TOTAL en un pago MP aprobado
+            if nuevo_tipo and nuevo_tipo != turno.tipo_pago:
+                return Response(
+                    {"error": "El turno tiene un pago por Mercado Pago aprobado e irrompible. No se puede cambiar el tipo de pago (SEÑA/PAGO TOTAL)."},
+                    status=status.HTTP_409_CONFLICT
+                )
+            # Nunca sobre-escribir mp_payment_id: solo se bloquea si se envía explícitamente
+            # un nro_transaccion distinto al registrado.
+            nuevo_nro_transaccion = str(data.get('nro_transaccion', '')).strip()
+            if nuevo_nro_transaccion and nuevo_nro_transaccion != str(turno.mp_payment_id).strip():
+                return Response(
+                    {"error": "El pago por Mercado Pago es irrompible. No se puede sobre-escribir el mp_payment_id."},
+                    status=status.HTTP_409_CONFLICT
+                )
+            # El saldo restante SÍ puede cobrarse con otro medio (efectivo, MP, transferencia),
+            # pero nunca se sobre-escribe el medio_pago principal ni mp_payment_id:
+            # el cobro restante va a medio_pago_restante.
+
+        elif tiene_seña_registrada and str(turno.medio_pago or '').upper() not in ('', 'PENDIENTE'):
+            # Pago inicial registrado (ej: seña en EFECTIVO): no se puede reemplazar el cobro principal.
+            if busca_reemplazar_pago and metodo_pago_raw not in (str(turno.medio_pago or '').upper(), 'PENDIENTE'):
+                return Response(
+                    {"error": f"El turno tiene un pago registrado e irrompible por {turno.medio_pago}. No se puede cambiar de medio de pago."},
+                    status=status.HTTP_409_CONFLICT
+                )
+            if nuevo_tipo and nuevo_tipo != turno.tipo_pago:
+                return Response(
+                    {"error": "El turno tiene un pago registrado e irrompible. No se puede cambiar el tipo de pago (SEÑA/PAGO TOTAL)."},
+                    status=status.HTTP_409_CONFLICT
+                )
+            # Si hay saldo pendiente, el cobro va a medio_pago_restante (flujo "Cobrar restante"),
+            # que permite EFECTIVO o MERCADO PAGO QR indistintamente.
+
+        # monto_a_cobrar refleja la nueva deuda (0 si ya está todo pagado)
+        monto_a_cobrar = monto_pendiente
+
         if monto_a_cobrar > 0:
-            if turno.monto_seña and turno.monto_seña > 0:
-                # Si ya había puesto plata (Seña), guardamos este pago nuevo como el restante
+            if tiene_pago_mp_aprobado or tiene_seña_registrada or (turno.medio_pago and str(turno.medio_pago).upper() not in ('PENDIENTE', '')):
+                # Pago principal ya existe (MP o seña registrada) -> este cobro es SOLO el saldo restante
                 turno.medio_pago_restante = metodo_pago_raw
                 turno.entidad_pago_restante = data.get('entidad_pago')
                 turno.codigo_transaccion_restante = data.get('nro_transaccion')
             else:
-                # Si nunca pagó nada, es el primer pago principal
+                # Primer cobro principal: EFECTIVO u otro medio
                 turno.medio_pago = metodo_pago_raw
                 turno.entidad_pago = data.get('entidad_pago')
                 turno.codigo_transaccion = data.get('nro_transaccion')
-                if 'MERCADO' in str(turno.medio_pago).upper(): 
-                    turno.mp_payment_id = data.get('nro_transaccion', '')
+                # Solo el webhook/autogenerado puede setear mp_payment_id, no el cliente
 
-        # Actualizamos la plata y liquidamos la deuda en el turno
-        turno.tipo_pago = 'TOTAL'
-        
-        # 🟢 ESTO ARREGLA LA PANTALLA: Igualamos la seña al total porque ya canceló la deuda
-        turno.monto_seña = turno.monto_total
-        
+
+        # Actualizamos los montos: la seña refleja el total cobrado (seña previa + este cobro restante)
+        cobro_restante_este_request = monto_a_cobrar
+        turno.monto_seña = (turno.monto_seña or Decimal('0')) + cobro_restante_este_request
+        # Recalcular pendiente tras aplicar este cobro
+        monto_pendiente_despues = max((turno.monto_total or Decimal('0')) - (turno.monto_seña or 0), Decimal('0'))
+        if monto_pendiente_despues <= 0 or (monto_a_cobrar <= 0):
+            turno.tipo_pago = 'TOTAL'
+        elif turno.tipo_pago in ('PENDIENTE', '') and monto_pendiente_despues < (turno.monto_total or Decimal('0')):
+            turno.tipo_pago = 'SENA_50'
         turno.save()
 
-        # 💵 REGISTRAR MOVIMIENTO EN LA CAJA (Solo por la guita nueva que entró)
-        metodo_pago_caja = 'EFECTIVO'
-        if 'MERCADO' in str(metodo_pago_raw).upper():
-            metodo_pago_caja = 'MERCADO_PAGO'
-        elif 'TRANS' in str(metodo_pago_raw).upper():
-            metodo_pago_caja = 'TRANSFERENCIA'
-
+        # 💵 REGISTRAR MOVIMIENTO EN LA CAJA (solo el nuevo dinero: saldo restante)
+        # Usamos concepto 'COBRO_RESTANTE' para diferenciar del movimiento de la seña principal,
+        # evitando colisiones falsas en el chequeo de idempotencia.
         if monto_a_cobrar > 0:
-            MovimientoCaja.objects.create(
-                sesion_caja=sesion_abierta,
-                tipo='INGRESO',
-                metodo_pago=metodo_pago_caja,
-                concepto='TURNO_PRESENCIAL',
-                monto=monto_a_cobrar,
-                descripcion=f"Cobro Turno #{turno.id} - Cliente: {turno.cliente.nombre}",
-                turno_relacionado=turno
+            concepto_mov = 'COBRO_RESTANTE' if (tiene_pago_mp_aprobado or tiene_seña_registrada) else 'TURNO_PRESENCIAL'
+            descripcion_mov = f"Cobro Turno #{turno.id} - Cliente: {turno.cliente.nombre} - Restante ${monto_a_cobrar}" if concepto_mov == 'COBRO_RESTANTE' else f"Cobro Turno #{turno.id} - Cliente: {turno.cliente.nombre}"
+            existing_filter = MovimientoCaja.objects.filter(
+                turno_relacionado=turno, tipo='INGRESO', concepto=concepto_mov, monto=monto_a_cobrar
             )
+            if existing_filter.exists():
+                print(f"⚠️ Ya existe movimiento de caja para Turno #{turno.id} ({concepto_mov}) por ${monto_a_cobrar}. No se duplica ingreso.")
+            else:
+                MovimientoCaja.objects.create(
+                    sesion_caja=sesion_abierta,
+                    tipo='INGRESO',
+                    metodo_pago=metodo_pago_raw,
+                    concepto=concepto_mov,
+                    monto=monto_a_cobrar,
+                    descripcion=descripcion_mov,
+                    turno_relacionado=turno
+                )
 
-        return Response({'status': 'ok'})
+        return Response({'status': 'ok', 'saldo_cobrado': float(monto_a_cobrar)})
     except Exception as e: 
         return Response({'error': str(e)}, status=500)
 
@@ -2163,11 +2302,52 @@ def modificar_turno(request, turno_id):
                 turno.duracion_total = data.get('duracion_total', turno.duracion_total)
                 turno.silla_id = data.get('silla', turno.silla_id)
                 
-                # Los pagos se mantienen o se actualizan según lo que mandó el frontend
-                turno.tipo_pago = nuevo_tipo_pago
-                turno.medio_pago = nuevo_medio_pago
-                turno.entidad_pago = nueva_entidad_pago
-                
+                # 🔒 Regla: pago registrado = IRROMPIBLE. No cambiar medio principal.
+                # Fuente única de verdad: métodos del modelo Turno.
+                # Cubre: MP aprobado (-> no sobre-escribir mp_payment_id ni cambiar a efectivo)
+                #        seña registrada por efectivo (-> no cambiar a QR/MP)
+                pago_mp_aprobado = turno.tiene_pago_principal_irrompible()
+                tiene_pago_registrado = turno.tiene_pago_registrado()
+                medio_actual = str(turno.medio_pago or '').upper()
+
+                if pago_mp_aprobado and medio_actual == 'MERCADO_PAGO':
+                    if str(nuevo_medio_pago or '').upper() not in ('', 'MERCADO_PAGO', 'PENDIENTE'):
+                        return JsonResponse(
+                            {'error': 'El turno tiene un pago por Mercado Pago aprobado e irrompible. No se puede cambiar el medio de pago.'},
+                            status=409
+                        )
+                    # Irrompible: tampoco se puede convertir SEÑA <-> PAGO TOTAL ni sobre-escribir el mp_payment_id.
+                    if nuevo_tipo_pago and nuevo_tipo_pago != turno.tipo_pago:
+                        return JsonResponse(
+                            {'error': 'El turno tiene un pago registrado e irrompible. No se puede cambiar el tipo de pago (SEÑA/PAGO TOTAL).'},
+                            status=409
+                        )
+                    # conserva medio_pago / mp_payment_id / tipo_pago / monto_seña; solo permite ajustar montos/restante
+                    turno.tipo_pago = turno.tipo_pago
+                    turno.monto_seña = turno.monto_seña
+                    turno.mp_payment_id = turno.mp_payment_id
+                    turno.entidad_pago = nueva_entidad_pago or turno.entidad_pago
+                    # solo se permite setear codigo_transaccion si no existía previo
+                    if not turno.codigo_transaccion and nuevo_codigo_transaccion:
+                        turno.codigo_transaccion = nuevo_codigo_transaccion
+                elif tiene_pago_registrado and str(nuevo_medio_pago or '').upper() not in ('', 'PENDIENTE', medio_actual):
+                    # Seña previa por medio distinto -> no cambiar el medio principal
+                    return JsonResponse(
+                        {'error': f'El turno ya tiene un pago registrado por {medio_actual}. No se puede cambiar a {str(nuevo_medio_pago or "").upper()}.'},
+                        status=409
+                    )
+                # 🔒 Irrompible con pago registrado: tampoco cambiar tipo_pago (SEÑA <-> TOTAL)
+                elif (pago_mp_aprobado or tiene_pago_registrado) and nuevo_tipo_pago and nuevo_tipo_pago != turno.tipo_pago:
+                    return JsonResponse(
+                        {'error': 'El turno tiene un pago registrado e irrompible. No se puede cambiar el tipo de pago.'},
+                        status=409
+                    )
+                else:
+                    # SIN pago previo: se permite modificar los datos de pago libremente
+                    turno.tipo_pago = nuevo_tipo_pago
+                    turno.medio_pago = nuevo_medio_pago
+                    turno.entidad_pago = nueva_entidad_pago
+
                 if nuevo_codigo_transaccion:
                     turno.codigo_transaccion = nuevo_codigo_transaccion
                     
@@ -2213,7 +2393,12 @@ def modificar_turno(request, turno_id):
                 mp_data = None
                 es_modificacion_tarde = "Fuera de término" in mensaje_service
                 
-                if es_modificacion_tarde and nuevo_turno.medio_pago == 'MERCADO_PAGO':
+                # 🔒 Bloqueo: si el turno YA tiene un pago aprobado registrado (mp_payment_id),
+                # no se debe regenerar QR ni sobre-escribir el cobro existente.
+                # (Fuente única de verdad: Turno.tiene_pago_principal_irrompible)
+                pago_ya_registrado = nuevo_turno.tiene_pago_principal_irrompible()
+                
+                if es_modificacion_tarde and nuevo_turno.medio_pago == 'MERCADO_PAGO' and not pago_ya_registrado:
                     try:
                         from .mercadopago_service import MercadoPagoService
                         monto_total_float = float(nuevo_turno.monto_total or 0)
@@ -3035,6 +3220,23 @@ def crear_preferencia_pago_seña(request):
                 'success': False, 
                 'error': 'Faltan datos requeridos: turno_id y monto_sena'
             })
+
+        # 🔒 Bloqueo: no generar otro QR si el turno YA tiene un pago aprobado registrado.
+        # Un mp_payment_id aprobado es irrompible: no se regenera ni reemplaza el cobro.
+        # (Fuente única de verdad: Turno.tiene_pago_principal_irrompible)
+        from .models import Turno
+        turno_existente = Turno.objects.filter(id=turno_id).first()
+        if turno_existente and turno_existente.tiene_pago_principal_irrompible():
+            return JsonResponse({
+                'success': False,
+                'error': 'El turno ya tiene un pago por Mercado Pago aprobado e irrompible. No se puede generar otro QR.'
+            }, status=409)
+        if turno_existente and turno_existente.tiene_pago_registrado():
+            # Si el mp_payment_id existe pero no era el medio principal, igual bloqueamos regeneración
+            return JsonResponse({
+                'success': False,
+                'error': 'El turno ya tiene un pago registrado. No se puede generar otro QR.'
+            }, status=409)
 
         mp_service = MercadoPagoService()
         
@@ -6580,13 +6782,196 @@ def confirmar_reset_password(request):
     except PasswordResetToken.DoesNotExist:
         return Response({"error": "Token inválido."}, status=400)
 
+def procesar_pago_aprobado_mp(payment_id):
+    """
+    Procesa un payment_id de Mercado Pago de forma 100% idempotente.
+    Actualiza PedidoWeb, Turno o PagoTemporal y registra el movimiento en Caja
+    si aún no fue registrado.
+    """
+    if not payment_id:
+        return False
+
+    try:
+        from .mercadopago_service import MercadoPagoService
+        mp_service = MercadoPagoService()
+        payment_info = mp_service.sdk.payment().get(str(payment_id))
+
+        if payment_info.get('status') != 200:
+            print(f"❌ Error al consultar MP para payment_id {payment_id}. Status: {payment_info.get('status')}")
+            return False
+
+        payment_data = payment_info.get('response', {})
+        estado = payment_data.get('status')
+        monto = payment_data.get('transaction_amount')
+        referencia = payment_data.get('external_reference', '')
+
+        print(f"📌 [MP Processor] Estado: {estado} | Ref: {referencia} | Monto: ${monto} | ID: {payment_id}")
+
+        if estado != 'approved':
+            print(f"⏳ El pago {payment_id} está '{estado}'. No se procesa como aprobado.")
+            return False
+
+        id_obj = referencia.split('_')[1] if '_' in referencia else None
+        if not id_obj:
+            print(f"❌ No hay referencia válida en el pago {payment_id}: '{referencia}'.")
+            return False
+
+        concepto_caja = 'OTROS'
+        descripcion_mov = f"Cobro Web #{id_obj} (MP: {payment_id})"
+        turno_rel = None
+        pedido_rel = None
+
+        from usuarios.middleware import _thread_locals
+        if not hasattr(_thread_locals, 'request_data') or _thread_locals.request_data is None:
+            _thread_locals.request_data = {}
+
+        # 1. Pago Temporal (previo a crear turno presencial)
+        if 'TEMP_' in referencia.upper():
+            uid_str = referencia.split('_')[1]
+            from .models import PagoTemporal
+            pago = PagoTemporal.objects.filter(uid=uid_str).first()
+            if pago:
+                pago.mp_payment_id = str(payment_id)
+                pago.pagado = True
+                pago.save()
+                print(f"✅ Pago temporal {uid_str} actualizado con payment_id {payment_id}")
+            else:
+                print(f"⚠️ Pago temporal {uid_str} no encontrado")
+            concepto_caja = None
+
+        # 2. Saldo de Turno (pago del restante)
+        elif 'TURNO_SALDO' in referencia.upper():
+            turno_id = referencia.split('_')[2]
+            concepto_caja = 'COBRO_RESTANTE'
+            descripcion_mov = f"Pago saldo Turno #{turno_id} (MP: {payment_id})"
+            from usuarios.models import Turno, Auditoria as Aud
+            turno_rel = Turno.objects.filter(id=turno_id).first()
+            if turno_rel:
+                if str(turno_rel.mp_payment_id_saldo) != str(payment_id):
+                    _thread_locals._suspender_auditoria = True
+                    try:
+                        turno_rel.medio_pago_restante = 'MERCADO_PAGO'
+                        turno_rel.mp_payment_id_saldo = str(payment_id)
+                        turno_rel.tipo_pago = 'TOTAL'
+                        turno_rel.monto_seña = (turno_rel.monto_seña or 0) + Decimal(str(monto))
+                        turno_rel.save()
+                    finally:
+                        _thread_locals._suspender_auditoria = False
+
+                    Aud.objects.create(
+                        usuario=getattr(turno_rel, 'cliente', None),
+                        modelo_afectado='Turno',
+                        objeto_id=str(turno_id),
+                        accion='COBRO_RESTANTE',
+                        detalles={
+                            'metodo': 'MERCADO_PAGO', 'monto': float(monto),
+                            '__meta__': {'navegador': _thread_locals.request_data.get('navegador', 'Desconocido')}
+                        },
+                        ip_address='127.0.0.1'
+                    )
+                print(f"✅ Saldo Turno {turno_id} actualizado en BD.")
+
+        # 3. Pago asociado a un Turno (TURNO_id — tanto web como presencial)
+        #     Un mp_payment_id aprobado significa que el pago es real e irrompible:
+        #     no se debe sobreescbir ni reemplazar, y bloquea MP -> EFECTIVO.
+        elif 'TURNO' in referencia.upper():
+            turno_id = referencia.split('_')[1] if '_' in referencia else ''
+            concepto_caja = 'TURNO_PRESENCIAL' if referencia.upper().startswith('TURNO_') else 'TURNO_WEB'
+            descripcion_mov = f"Cobro Turno #{turno_id} (MP: {payment_id})"
+            from usuarios.models import Turno, MovimientoCaja, SesionCaja
+            turno_rel = Turno.objects.filter(id=turno_id).first()
+            # Idempotencia Caja: no crear un segundo ingreso si el movimiento ya existe
+            caja_ya_registrada = MovimientoCaja.objects.filter(descripcion=descripcion_mov).exists()
+            if turno_rel:
+                _thread_locals.request_data['user'] = getattr(turno_rel, 'cliente', None)
+                _thread_locals._suspender_auditoria = True
+                try:
+                    # Si el turno YA tiene un mp_payment_id aprobado distinto, no reescribimos (idempotencia MP)
+                    if turno_rel.mp_payment_id and str(turno_rel.mp_payment_id) != str(payment_id):
+                        print(f"⚠️ Turno {turno_id} ya tenía mp_payment_id={turno_rel.mp_payment_id}. El pago aprobado es irrompible; no se sobre-escribe.")
+                        _thread_locals._suspender_auditoria = False
+                        return True
+                    turno_rel.mp_payment_id = str(payment_id)
+                    turno_rel.medio_pago = 'MERCADO_PAGO'
+                    if turno_rel.estado == 'PENDIENTE':
+                        turno_rel.estado = 'RESERVADO'
+                    # Marcamos el estado de pago consistente: si el monto aprobado == monto_total => TOTAL; si < total => SENA_50
+                    monto_aprobado = Decimal(str(monto or 0))
+                    if monto_aprobado >= (turno_rel.monto_total or 0):
+                        turno_rel.tipo_pago = 'TOTAL'
+                        turno_rel.monto_seña = turno_rel.monto_total
+                    else:
+                        # seña parcial: conserva cualquier monto_seña previo y registra el cobrado parcialmente
+                        if not turno_rel.tipo_pago or turno_rel.tipo_pago == 'PENDIENTE':
+                            turno_rel.tipo_pago = 'SENA_50'
+                        turno_rel.monto_seña = (turno_rel.monto_seña or Decimal('0')) + monto_aprobado
+                    turno_rel.save()
+                finally:
+                    _thread_locals._suspender_auditoria = False
+                print(f"✅ Turno {turno_id} actualizado en BD (mp_payment_id={payment_id}, medio={turno_rel.medio_pago}, tipo={turno_rel.tipo_pago}).")
+
+        # 4. Actualizar Pedido Web
+        elif 'PEDIDO' in referencia.upper():
+            concepto_caja = 'PEDIDO_WEB'
+            descripcion_mov = f"Pago Pedido Web #{id_obj} (MP: {payment_id})"
+            from usuarios.models import PedidoWeb, Notificacion
+            pedido_rel = PedidoWeb.objects.filter(id=id_obj).first()
+            if pedido_rel:
+                _thread_locals.request_data['user'] = pedido_rel.cliente
+                _thread_locals._suspender_auditoria = True
+                try:
+                    pedido_rel.estado = 'PAGADO'
+                    pedido_rel.mp_payment_id = str(payment_id)
+                    pedido_rel.save()
+                finally:
+                    _thread_locals._suspender_auditoria = False
+                print(f"✅ Pedido {id_obj} actualizado en BD a PAGADO.")
+
+                if not Notificacion.objects.filter(tipo='PEDIDO', mensaje__contains=f'#{id_obj}').exists():
+                    Notificacion.objects.create(
+                        tipo='PEDIDO',
+                        mensaje=f'Nuevo pedido web #{id_obj} abonado (${monto}).',
+                        link='/pedidos-web-admin'
+                    )
+
+        # 5. Creación del Movimiento de Caja (Idempotente)
+        if concepto_caja:
+            from usuarios.models import MovimientoCaja, SesionCaja
+            if MovimientoCaja.objects.filter(descripcion=descripcion_mov).exists():
+                print(f"⚠️ El pago MP {payment_id} ya está registrado en caja. Ignorando duplicado.")
+            else:
+                sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+                _thread_locals._suspender_auditoria = True
+                try:
+                    MovimientoCaja.objects.create(
+                        sesion_caja=sesion_abierta,
+                        tipo='INGRESO',
+                        metodo_pago='MERCADO_PAGO',
+                        concepto=concepto_caja,
+                        monto=monto,
+                        descripcion=descripcion_mov,
+                        turno_relacionado=turno_rel,
+                    )
+                finally:
+                    _thread_locals._suspender_auditoria = False
+
+                estado_caja = f"en Caja #{sesion_abierta.id}" if sesion_abierta else "como HUÉRFANO (caja cerrada)"
+                print(f"💰 ¡PAGO APROBADO! ${monto} guardado {estado_caja}")
+
+        return True
+
+    except Exception as e:
+        print(f"❌ Error al procesar pago MP {payment_id}: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return False
+
 @csrf_exempt
 def mercadopago_webhook(request):
     if request.method != 'POST':
         return HttpResponse(status=405)
 
     try:
-        # 1. LOG INICIAL
         print(f"\n--- 🔔 WEBHOOK DE MERCADO PAGO RECIBIDO ---")
         print(f"GET params: {request.GET}")
         
@@ -6597,11 +6982,48 @@ def mercadopago_webhook(request):
                 print(f"JSON Body: {data}")
             except Exception as e:
                 print(f"Error decodificando body: {e}")
-        
-        # Ignorar las notificaciones de merchant_order (solo nos importan los payments)
+
         topic = request.GET.get('topic') or data.get('type')
-        if topic == 'merchant_order':
-            print("Ignorando merchant_order (solo queremos el payment)")
+        resource = request.GET.get('resource') or data.get('resource', '')
+
+        # 1. SOPORTE PARA MERCHANT_ORDER (Admite merchant_order sin ignorarlo)
+        if topic == 'merchant_order' or 'merchant_orders' in str(resource) or data.get('action') == 'payment.created':
+            order_id = request.GET.get('id') or (data.get('data', {}).get('id') if isinstance(data.get('data'), dict) else None) or data.get('id')
+            if not order_id and resource:
+                parts = str(resource).rstrip('/').split('/')
+                if parts and parts[-1].isdigit():
+                    order_id = parts[-1]
+
+            print(f"🔎 Webhook merchant_order detectado. ID orden: {order_id}")
+            if order_id:
+                try:
+                    from .mercadopago_service import MercadoPagoService
+                    mp_service = MercadoPagoService()
+                    order_info = mp_service.sdk.merchant_order().get(str(order_id))
+                    
+                    if order_info.get('status') == 200:
+                        order_data = order_info.get('response', {})
+                        payments = order_data.get('payments', [])
+                        print(f"📦 Merchant Order {order_id} contiene {len(payments)} pagos")
+                        for p in payments:
+                            if p.get('status') == 'approved':
+                                pay_id = p.get('id')
+                                procesar_pago_aprobado_mp(pay_id)
+                        
+                        # Fallback si merchant_order no devuelve lista de pagos o da vacía pero tiene external_reference
+                        if not payments and order_data.get('external_reference'):
+                            ext_ref = order_data.get('external_reference')
+                            print(f"🔍 Buscando pagos por external_reference desde merchant_order: {ext_ref}")
+                            search_res = mp_service.sdk.payment().search({'external_reference': ext_ref})
+                            if search_res.get('status') == 200:
+                                for p in search_res.get('response', {}).get('results', []):
+                                    if p.get('status') == 'approved':
+                                        procesar_pago_aprobado_mp(p.get('id'))
+                    else:
+                        print(f"⚠️ No se pudo consultar merchant_order {order_id} (Status: {order_info.get('status')}). Intentando búsqueda por pagos recientes.")
+                except Exception as ex:
+                    print(f"⚠️ Excepción procesando merchant_order {order_id}: {ex}")
+
             return HttpResponse(status=200)
 
         # 2. CAPTURA A PRUEBA DE BALAS DEL PAYMENT_ID
@@ -6610,175 +7032,21 @@ def mercadopago_webhook(request):
             payment_id = request.GET.get('data.id')
         elif 'id' in request.GET:
             payment_id = request.GET.get('id')
-        elif 'data' in data and 'id' in data['data']:
+        elif 'data' in data and isinstance(data['data'], dict) and 'id' in data['data']:
             payment_id = data['data']['id']
         elif 'id' in data:
             payment_id = data['id']
+        elif resource and 'payments' in str(resource):
+            parts = str(resource).rstrip('/').split('/')
+            if parts and parts[-1].isdigit():
+                payment_id = parts[-1]
 
         if not payment_id:
             print("❌ No se encontró payment_id en la petición.")
             return HttpResponse(status=200)
 
         print(f"🔎 ID del pago a consultar en MP: {payment_id}")
-
-        from .mercadopago_service import MercadoPagoService 
-        mp_service = MercadoPagoService()   
-
-        payment_info = mp_service.sdk.payment().get(payment_id)
-        
-        if payment_info['status'] != 200:
-            print(f"❌ Error al consultar MP. Status: {payment_info['status']}")
-            return HttpResponse(status=200)
-
-        payment_data = payment_info['response']
-        estado = payment_data.get('status')
-        monto = payment_data.get('transaction_amount')
-        referencia = payment_data.get('external_reference', '') 
-
-        print(f"📌 Estado en MP: {estado.upper()} | Ref: {referencia} | Monto: ${monto}")
-
-        if estado == 'approved':
-            id_obj = referencia.split('_')[1] if '_' in referencia else None
-            
-            if not id_obj:
-                print("❌ No hay referencia válida para asociar el pago.")
-                return HttpResponse(status=200)
-
-            concepto_caja = 'OTROS'
-            descripcion_mov = f"Cobro Web #{id_obj} (MP: {payment_id})" 
-            turno_rel = None
-            pedido_rel = None
-
-            from usuarios.middleware import _thread_locals
-            if not hasattr(_thread_locals, 'request_data') or _thread_locals.request_data is None:
-                _thread_locals.request_data = {}
-
-            # Pago Temporal (previo a crear turno presencial)
-            if 'TEMP_' in referencia.upper():
-                uid_str = referencia.split('_')[1]
-                from .models import PagoTemporal
-                pago = PagoTemporal.objects.filter(uid=uid_str).first()
-                if pago:
-                    pago.mp_payment_id = str(payment_id)
-                    pago.pagado = True
-                    pago.save()
-                    print(f"✅ Pago temporal {uid_str} actualizado con payment_id {payment_id}")
-                else:
-                    print(f"⚠️ Pago temporal {uid_str} no encontrado")
-                # No crear MovimientoCaja todavia — se crea al confirmar reserva
-                concepto_caja = None
-
-            # Saldo de Turno (pago del restante)
-            elif 'TURNO_SALDO' in referencia.upper():
-                turno_id = referencia.split('_')[2]
-                concepto_caja = 'COBRO_RESTANTE'
-                descripcion_mov = f"Pago saldo Turno #{turno_id} (MP: {payment_id})"
-                from usuarios.models import Turno
-                turno_rel = Turno.objects.filter(id=turno_id).first()
-                if turno_rel:
-                    _thread_locals._suspender_auditoria = True
-                    try:
-                        turno_rel.medio_pago_restante = 'MERCADO_PAGO'
-                        turno_rel.mp_payment_id_saldo = payment_id
-                        turno_rel.tipo_pago = 'TOTAL'
-                        turno_rel.monto_seña = (turno_rel.monto_seña or 0) + Decimal(str(monto))
-                        turno_rel.save()
-                    finally:
-                        _thread_locals._suspender_auditoria = False
-                    from usuarios.models import Auditoria as Aud
-                    Aud.objects.create(
-                        usuario=getattr(turno_rel, 'cliente', None),
-                        modelo_afectado='Turno',
-                        objeto_id=str(turno_id),
-                        accion='COBRO_RESTANTE',
-                        detalles={
-                            'metodo': 'MERCADO_PAGO', 'monto': monto,
-                            '__meta__': {'navegador': _thread_locals.request_data.get('navegador', 'Desconocido')}
-                        },
-                        ip_address='127.0.0.1'
-                    )
-                    print(f"✅ Saldo Turno {turno_id} actualizado en BD.")
-
-            # Seña de Turno
-            elif 'TURNO_' in referencia.upper():
-                turno_id = referencia.split('_')[1]
-                concepto_caja = 'TURNO_WEB'
-                descripcion_mov = f"Pago Turno Web #{turno_id} (MP: {payment_id})"
-                from usuarios.models import Turno
-                turno_rel = Turno.objects.filter(id=turno_id).first()
-                if turno_rel:
-                    _thread_locals.request_data['user'] = getattr(turno_rel, 'cliente', None)
-                    _thread_locals._suspender_auditoria = True
-                    try:
-                        turno_rel.mp_payment_id = payment_id
-                        if turno_rel.estado == 'PENDIENTE': 
-                            turno_rel.estado = 'RESERVADO'
-                        turno_rel.save()
-                    finally:
-                        _thread_locals._suspender_auditoria = False
-                    print(f"✅ Turno {turno_id} actualizado en BD.")
-
-            # Actualizar Pedido Web
-            elif 'PEDIDO' in referencia.upper():
-                concepto_caja = 'PEDIDO_WEB'
-                descripcion_mov = f"Pago Pedido Web #{id_obj} (MP: {payment_id})"
-                from usuarios.models import PedidoWeb, Notificacion
-                pedido_rel = PedidoWeb.objects.filter(id=id_obj).first()
-                if pedido_rel:
-                    _thread_locals.request_data['user'] = pedido_rel.cliente
-                    _thread_locals._suspender_auditoria = True
-                    try:
-                        pedido_rel.estado = 'PAGADO'
-                        pedido_rel.mp_payment_id = payment_id
-                        pedido_rel.save()
-                    finally:
-                        _thread_locals._suspender_auditoria = False
-                    print(f"✅ Pedido {id_obj} actualizado en BD.")
-                    
-                    # 🔥 DISPARADOR DE NOTIFICACIÓN AGREGADO AQUÍ 🔥
-                    Notificacion.objects.create(
-                        tipo='PEDIDO',
-                        mensaje=f'Nuevo pedido web #{id_obj} abonado (${monto}).',
-                        link='/pedidos-web-admin'
-                    )
-
-            # 4. CREACIÓN DEL MOVIMIENTO DE CAJA
-            from usuarios.models import MovimientoCaja, SesionCaja
-            
-            # Filtro anti-duplicados 
-            if MovimientoCaja.objects.filter(descripcion=descripcion_mov).exists():
-                print(f"⚠️ El pago ya está en la caja. Ignorando duplicado.")
-                return HttpResponse(status=200)
-
-            # Buscamos caja abierta
-            sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
-
-            if concepto_caja:
-                # Solo suprimimos auditoría para el MovimientoCaja (es automático del sistema)
-                _thread_locals._suspender_auditoria = True
-                try:
-                    MovimientoCaja.objects.create(
-                        sesion_caja=sesion_abierta, 
-                        tipo='INGRESO',
-                        metodo_pago='MERCADO_PAGO',
-                        concepto=concepto_caja,
-                        monto=monto,
-                        descripcion=descripcion_mov,
-                        turno_relacionado=turno_rel,
-                    )
-                finally:
-                    _thread_locals._suspender_auditoria = False
-            
-            if concepto_caja:
-                estado_caja = f"en Caja #{sesion_abierta.id}" if sesion_abierta else "como HUÉRFANO (caja cerrada)"
-                print(f"💰 ¡PAGO APROBADO! ${monto} guardado {estado_caja}")
-            else:
-                print(f"💰 ¡PAGO APROBADO! ${monto} - Temporal (sin caja aún)")
-            
-        else:
-            print(f"⏳ El pago está '{estado}'. Esperando que MP lo marque como 'approved'.")
-
-        print("------------------------------------------\n")
+        procesar_pago_aprobado_mp(payment_id)
 
     except Exception as e:
         print(f"❌ Error webhook crítico: {e}")
@@ -7396,20 +7664,41 @@ def descargar_comprobante_pedido_web(request, pedido_id):
 
 def retorno_mercadopago(request):
     """
-    Ataja la redirección HTTPS de Mercado Pago, captura los parámetros
+    Ataja la redirección HTTPS de Mercado Pago, captura los parámetros,
+    ejecuta el fallback síncrono para asegurar el procesamiento del pago
     y redirige al frontend conservando la info para que Vue muestre el cartelito.
     """
     from django.conf import settings
     from .models import PedidoWeb
     external_reference = request.GET.get('external_reference', '')
-    payment_id = request.GET.get('payment_id', '')
-    
+    payment_id = request.GET.get('payment_id') or request.GET.get('collection_id')
+    collection_status = request.GET.get('collection_status') or request.GET.get('status')
+
+    # 🔥 FALLBACK SÍNCRONO: Si el cliente retorna con éxito de MP, asegurar procesamiento
+    if payment_id and collection_status == 'approved':
+        try:
+            print(f"🔄 [Retorno MP Fallback] Procesando payment_id {payment_id} (Ref: {external_reference})")
+            procesar_pago_aprobado_mp(payment_id)
+        except Exception as e:
+            print(f"⚠️ Error en fallback síncrono de retorno MP: {e}")
+    elif external_reference and collection_status == 'approved':
+        try:
+            from .mercadopago_service import MercadoPagoService
+            mp_service = MercadoPagoService()
+            search_res = mp_service.sdk.payment().search({'external_reference': external_reference})
+            if search_res.get('status') == 200:
+                for p in search_res.get('response', {}).get('results', []):
+                    if p.get('status') == 'approved':
+                        procesar_pago_aprobado_mp(p.get('id'))
+        except Exception as e:
+            print(f"⚠️ Error buscando pago por external_reference en retorno: {e}")
+
     if external_reference.startswith('PEDIDO_'):
         pedido_id = external_reference.split('_')[1]
         pedido = PedidoWeb.objects.filter(id=pedido_id).first()
         # Usa el origen donde se creó el pedido para mantener el token de auth
         frontend_url = pedido.frontend_origen if pedido and pedido.frontend_origen else settings.FRONTEND_URL
-        url_frontend = f"{frontend_url}/client/mis-pedidos?pago_exitoso=true&pedido_id={pedido_id}&payment_id={payment_id}"
+        url_frontend = f"{frontend_url}/client/mis-pedidos?pago_exitoso=true&pedido_id={pedido_id}&payment_id={payment_id or ''}"
     else:
         frontend_url = settings.FRONTEND_URL
         turno_id = external_reference.replace('TURNO_', '') if external_reference.startswith('TURNO_') else ''

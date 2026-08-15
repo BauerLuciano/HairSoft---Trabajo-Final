@@ -332,6 +332,7 @@ const getMedioPagoTexto = (medioPago, entidadPago = null) => {
   const map = {
     'MERCADO_PAGO': 'Mercado Pago',
     'EFECTIVO': 'Efectivo',
+    'MIXTO': 'Mixto',
   }
   return map[medioPago] || medioPago
 }
@@ -524,7 +525,7 @@ const cancelarTurno = async (turno) => {
               <div>
                 <strong style="color: #166534; font-size: 0.95rem; display: block; margin-bottom: 4px;">Reembolso a favor del cliente</strong>
                 <span style="color: #15803d; font-size: 0.85rem; line-height: 1.4; display: block;">
-                  Se generará un <b>reembolso pendiente de $${formatPrecio(montoTotal)}</b> porque cancela con ${Math.floor(horasFaltantes)}hs de anticipación. Luego podrás gestionarlo desde la tabla.
+                  Se generará un <b>reembolso pendiente de $${formatPrecio(montoTotal)}</b> porque cancela con ${Math.floor(horasFaltantes)}hs de anticipación.
                 </span>
               </div>
             </div>
