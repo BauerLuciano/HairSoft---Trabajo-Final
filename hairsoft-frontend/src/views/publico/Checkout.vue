@@ -42,8 +42,9 @@
                   <span class="card-title">Moto mandado</span>
                   <span class="card-desc">Te lo llevamos hasta tu domicilio.</span>
                 </div>
-                <div class="card-price" :class="{ 'price-calculated': costoEnvioCalculado > 0 }">
-                  {{ costoEnvioCalculado > 0 ? `$${costoEnvioCalculado.toLocaleString('es-AR')}` : 'A calcular' }}
+                <div class="card-price" :class="{ 'price-calculated': costoEnvioCalculado > 0 && dentroCobertura, 'price-error': !dentroCobertura && costoEnvioCalculado > 0 }">
+                  <span v-if="!dentroCobertura && costoEnvioCalculado > 0">No disponible</span>
+                  <span v-else>{{ costoEnvioCalculado > 0 ? `$${costoEnvioCalculado.toLocaleString('es-AR')}` : 'A calcular' }}</span>
                 </div>
               </label>
             </div>
@@ -113,14 +114,21 @@
                       v-for="sug in sugerencias"
                       :key="sug.lat + ',' + sug.lon"
                       class="suggestion-item"
+                      @mousedown.prevent
                       @click="seleccionarDireccion(sug)"
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="suggestion-icon">
                         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
                         <circle cx="12" cy="10" r="3"></circle>
                       </svg>
-                      <span>{{ sug.display_name }}</span>
+                      <span class="suggestion-text">
+                        <span class="suggestion-title">{{ sug.titulo || sug.display_name }}</span>
+                        <span v-if="sug.subtitulo" class="suggestion-sub">{{ sug.subtitulo }}</span>
+                      </span>
                     </div>
+                  </div>
+                  <div v-else-if="sinResultados" class="no-results-msg">
+                    No encontramos esa dirección. Probá con otra búsqueda o usá el GPS / el mapa.
                   </div>
                 </div>
 
@@ -193,12 +201,21 @@
                         <polyline points="20 6 9 17 4 12"></polyline>
                       </svg>
                       <span>Dirección detectada</span>
+                      <span v-if="confianzaInfo" class="confianza-chip" :class="confianzaInfo.clase">{{ confianzaInfo.texto }}</span>
                     </div>
                     <p class="address-detected-text">{{ direccionDetectada }}</p>
                     <div v-if="detalleDireccion" class="address-detected-details">
                       <span><strong>Calle:</strong> {{ detalleDireccion.calle }}</span>
+                      <span v-if="detalleDireccion.altura"><strong>Altura:</strong> {{ detalleDireccion.altura }}</span>
                       <span v-if="detalleDireccion.ciudad"><strong>Ciudad:</strong> {{ detalleDireccion.ciudad }}</span>
                       <span v-if="detalleDireccion.provincia"><strong>Provincia:</strong> {{ detalleDireccion.provincia }}</span>
+                    </div>
+
+                    <div v-if="confianzaDireccion === 'parcial'" class="address-confirm-warning">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>
+                      </svg>
+                      <span>Encontramos la calle, pero no pudimos determinar automáticamente el punto exacto de la altura. Arrastrá el marcador para confirmar la ubicación antes de confirmar el pedido.</span>
                     </div>
 
                     <div v-if="deliveryLatLng && !calculandoCosto && distanciaKm > 0" class="delivery-status">
@@ -244,17 +261,18 @@
                   <span>{{ fueraCoberturaMsg }}</span>
                 </div>
 
-                <div v-if="costoEnvioCalculado > 0 && !calculandoCosto" class="costo-card">
-                  <div class="costo-item">
-                    <span class="costo-label">Distancia</span>
-                    <span class="costo-value">{{ distanciaKm }} km</span>
-                  </div>
-                  <div class="costo-divider"></div>
-                  <div class="costo-item">
-                    <span class="costo-label">Costo de envío</span>
-                    <span class="costo-value costo-price">${{ costoEnvioCalculado.toLocaleString('es-AR') }}</span>
-                  </div>
-                </div>
+                 <div v-if="costoEnvioCalculado > 0 && !calculandoCosto" class="costo-card">
+                   <div class="costo-item">
+                     <span class="costo-label">Distancia</span>
+                     <span class="costo-value">{{ distanciaKm }} km</span>
+                   </div>
+                   <div class="costo-divider"></div>
+                   <div class="costo-item">
+                     <span class="costo-label">Costo de envío</span>
+                     <span v-if="dentroCobertura" class="costo-value costo-price">${{ costoEnvioCalculado.toLocaleString('es-AR') }}</span>
+                     <span v-else class="costo-value" style="color: #ef4444; font-weight: 700; font-size: 0.95rem;">Envío no disponible</span>
+                   </div>
+                 </div>
 
                 <div v-if="errorCalculo" class="error-msg">{{ errorCalculo }}</div>
               </div>
@@ -433,12 +451,30 @@ let timeoutBusqueda = null
 const errorCalculo = ref('')
 const direccionDetectada = ref('')
 const detalleDireccion = ref(null)
+const numeroIngresado = ref('')
+const calleConfirmada = ref('')
+const confianzaDireccion = ref('')
 
 const zoom = ref(14)
 const mapRef = ref(null)
 let dragTimeout = null
 
 const NOMINATIM_UA = 'HairSoft/1.0'
+
+const localCiudad = ref('')
+const localProvincia = ref('')
+const localPais = ref('')
+const sinResultados = ref(false)
+let secuenciaBusqueda = 0
+
+const TIPOS_DIRECCION = new Set([
+  'house', 'residential', 'apartments', 'building', 'retail', 'commercial',
+  'industrial', 'hotel', 'detached', 'terrace', 'semidetached_house', 'houseboat',
+  'apartment', 'garage', 'roof', 'ger', 'dormitory', 'bungalow', 'cabin',
+  'service', 'warehouse', 'office', 'clinic', 'hospital', 'school', 'college',
+  'university', 'church', 'factory', 'kiosk', 'hut', 'shack', 'station',
+  'substation', 'sports_centre', 'address',
+])
 
 const tilesBase = [
   { name: 'Calle', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', visible: true, att: '&copy; <a href="https://osm.org">OpenStreetMap</a>' },
@@ -457,6 +493,136 @@ function formatearDireccion(data) {
   const pais = a.country || ''
   const partes = [direccion, ciudad, provincia, pais].filter(Boolean)
   return partes.length ? partes.join(', ') : null
+}
+
+function normalizarTexto(texto) {
+  if (!texto) return ''
+  return String(texto)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizarDivision(texto) {
+  return normalizarTexto(texto)
+    .replace(/^(provincia|province|departamento|department|municipio|municipality|partido|ciudad|city|comuna|region|estado|state|distrito|district|localidad)\s+(del|de|la|el|los|las)\s+/, '')
+    .replace(/^(provincia|province|departamento|department|municipio|municipality|partido|ciudad|city|comuna|region|estado|state|distrito|district|localidad)\s+/, '')
+}
+
+function normalizarCalle(texto) {
+  return normalizarTexto(texto)
+    .replace(/^(avda\.?|avenida|av\.|calle|ruta|boulevard|bulevar|bvd\.|paseo|pasaje|plaza|camino|esquina|calzada)\s+(de|del|la|el|los|las)\s+/, '')
+    .replace(/^(avda\.?|avenida|av\.|calle|ruta|boulevard|bulevar|bvd\.|paseo|pasaje|plaza|camino|esquina|calzada)\s+/, '')
+    .trim()
+}
+
+function callesCoinciden(a, b) {
+  const na = normalizarCalle(a)
+  const nb = normalizarCalle(b)
+  if (!na || !nb) return false
+  if (na === nb) return true
+  if (na.length >= 5 && nb.includes(na)) return true
+  if (nb.length >= 5 && na.includes(nb)) return true
+  return false
+}
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371
+  const toRad = (g) => (g * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function extraerLocalidad(addr) {
+  return (addr && (addr.city || addr.town || addr.village || addr.municipality)) || ''
+}
+
+function esTipoDireccion(sug) {
+  const a = sug.address || {}
+  if (a.house_number) return true
+  if (TIPOS_DIRECCION.has(sug.type)) return true
+  if (sug.class === 'building') return true
+  if (sug.class === 'highway') return true
+  return false
+}
+
+function sugerenciaEnriquecida(sug) {
+  const a = sug.address || {}
+  const calle = a.road || a.pedestrian || a.pedestrians || ''
+  const altura = a.house_number || ''
+  const titulo =
+    [calle, altura].filter(Boolean).join(' ') ||
+    (sug.display_name ? sug.display_name.split(',')[0].trim() : '') ||
+    sug.name ||
+    ''
+  const localidad = extraerLocalidad(a)
+  const provincia = a.state || ''
+  const pais = a.country || ''
+  const subtitulo = [localidad, provincia, pais].filter(Boolean).join(', ')
+  return { ...sug, titulo, subtitulo }
+}
+
+function reordenarSugerencias(data) {
+  const normCiudad = normalizarDivision(localCiudad.value)
+  const normProvincia = normalizarDivision(localProvincia.value)
+  const normPais = normalizarTexto(localPais.value)
+  const tienenLocal = localLat.value != null && localLng.value != null
+
+  const ordenadas = (data || [])
+    .map((sug, idx) => {
+      const a = sug.address || {}
+      const lat = parseFloat(sug.lat)
+      const lng = parseFloat(sug.lon)
+      const latOk = !isNaN(lat) && !isNaN(lng)
+      const distLocal = latOk && tienenLocal
+        ? haversineKm(lat, lng, localLat.value, localLng.value)
+        : Infinity
+
+      const localidad = extraerLocalidad(a)
+      const provincia = a.state || ''
+      const pais = a.country || ''
+
+      let score = 0
+      if (esTipoDireccion(sug)) score += 200
+      if (normCiudad && normalizarDivision(localidad) === normCiudad) score += 1000
+      else if (normProvincia && normalizarDivision(provincia) === normProvincia) score += 300
+      if (normPais && normalizarTexto(pais) === normPais) score += 20
+      if (distLocal <= 5) score += 60
+      else if (distLocal <= 15) score += 40
+      else if (distLocal <= 40) score += 20
+
+      return { sug, score, idx }
+    })
+    .sort((x, y) => {
+      if (y.score !== x.score) return y.score - x.score
+      return x.idx - y.idx
+    })
+    .map(({ sug }) => sugerenciaEnriquecida(sug))
+
+  return ordenadas
+}
+
+function separarCalleNumero(q) {
+  const m = q.match(/^(.+?)\s+(\d{1,5})\s*$/)
+  if (m) return { street: m[1].trim(), housenumber: m[2] }
+  return { street: q, housenumber: null }
+}
+
+function extraerNumero(q) {
+  const m = String(q || '').trim().match(/^(.*?)\s+(\d{1,5})\s*(?:,.*)?$/)
+  return m ? { calle: m[1].trim(), numero: m[2] } : { calle: String(q || '').trim(), numero: '' }
+}
+
+function etiquetaDireccion(detalle, pais = '') {
+  if (!detalle) return ''
+  const direccion = [detalle.calle, detalle.altura].filter(Boolean).join(' ')
+  return [direccion, detalle.ciudad, detalle.provincia, pais].filter(Boolean).join(', ')
 }
 
 async function reverseGeocode(lat, lng) {
@@ -493,6 +659,9 @@ onMounted(async () => {
       reverseGeocode(localLat.value, localLng.value).then(data => {
         if (data && data.address) {
           localDireccion.value = formatearDireccion(data) || `${localLat.value.toFixed(4)}, ${localLng.value.toFixed(4)}`
+          localCiudad.value = extraerLocalidad(data.address)
+          localProvincia.value = data.address.state || ''
+          localPais.value = data.address.country || ''
         } else {
           localDireccion.value = `${localLat.value.toFixed(4)}, ${localLng.value.toFixed(4)}`
         }
@@ -540,34 +709,105 @@ const obtenerGPS = () => {
   )
 }
 
+const buscarEnNominatim = async (params) => {
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+    { headers: { 'User-Agent': NOMINATIM_UA, 'Accept-Language': 'es' } }
+  )
+  if (!res.ok) throw new Error('Error en Nominatim')
+  return await res.json()
+}
+
+const viewboxPara = (span) => {
+  if (localLat.value == null || localLng.value == null) return null
+  const lonMin = localLng.value - span
+  const latMin = localLat.value - span
+  const lonMax = localLng.value + span
+  const latMax = localLat.value + span
+  return `${lonMin},${latMin},${lonMax},${latMax}`
+}
+
+const buscarLibre = async (q, span, acotada) => {
+  const params = new URLSearchParams({
+    format: 'json',
+    q,
+    limit: acotada ? '8' : '10',
+    addressdetails: '1',
+    countrycodes: 'ar',
+    dedupe: '1',
+    'accept-language': 'es',
+  })
+  const viewbox = viewboxPara(span)
+  if (viewbox) {
+    params.set('viewbox', viewbox)
+    if (acotada) params.set('bounded', '1')
+  }
+  return await buscarEnNominatim(params)
+}
+
+const intentarBusquedaEstructurada = async (q, miSecuencia) => {
+  if (!localProvincia.value && !localCiudad.value) return []
+  try {
+    const { street, housenumber } = separarCalleNumero(q)
+    const params = new URLSearchParams({
+      format: 'json',
+      street,
+      country: 'Argentina',
+      limit: '5',
+      addressdetails: '1',
+      dedupe: '1',
+      'accept-language': 'es',
+    })
+    if (housenumber) params.set('housenumber', housenumber)
+    if (localProvincia.value) params.set('state', localProvincia.value)
+    if (localCiudad.value) params.set('city', localCiudad.value)
+    const data = await buscarEnNominatim(params)
+    return miSecuencia === secuenciaBusqueda ? data : []
+  } catch {
+    return []
+  }
+}
+
 const onBuscarDireccion = () => {
   if (timeoutBusqueda) clearTimeout(timeoutBusqueda)
   const q = busquedaDir.value.trim()
-  if (q.length < 3) { sugerencias.value = []; return }
+  if (q.length < 3) {
+    sugerencias.value = []
+    sinResultados.value = false
+    return
+  }
   buscandoDir.value = true
+  sinResultados.value = false
+  const miSecuencia = ++secuenciaBusqueda
+
   timeoutBusqueda = setTimeout(async () => {
     try {
-      const params = new URLSearchParams({
-        format: 'json',
-        q,
-        limit: '8',
-        addressdetails: '1',
-        countrycodes: 'ar',
-      })
-      if (localLat.value && localLng.value) {
-        const span = 1.2
-        params.set('viewbox', `${localLng.value - span},${localLat.value - span},${localLng.value + span},${localLat.value + span}`)
+      // 1) Primero: búsqueda acotada alrededor del comercio (prioriza la localidad, no bloquea).
+      let data = await buscarLibre(q, 0.08, true)
+      if (miSecuencia !== secuenciaBusqueda) return
+
+      // 2) Si no hay resultados locales, abrir a toda Argentina con sesgo local.
+      if (!data || data.length === 0) {
+        data = await buscarLibre(q, 0.3, false)
+        if (miSecuencia !== secuenciaBusqueda) return
       }
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?${params.toString()}`,
-        { headers: { 'User-Agent': NOMINATIM_UA, 'Accept-Language': 'es' } }
-      )
-      const data = await res.json()
-      sugerencias.value = (data || []).filter(s => s.lat && s.lon)
+
+      // 3) Rescate final: búsqueda estructurada acotada a la provincia/localidad del comercio.
+      if (!data || data.length === 0) {
+        data = await intentarBusquedaEstructurada(q, miSecuencia)
+        if (miSecuencia !== secuenciaBusqueda) return
+      }
+
+      const conCoord = (data || []).filter(s => s.lat && s.lon)
+      sugerencias.value = reordenarSugerencias(conCoord)
+      sinResultados.value = conCoord.length === 0
     } catch {
-      sugerencias.value = []
+      if (miSecuencia === secuenciaBusqueda) {
+        sugerencias.value = []
+        sinResultados.value = true
+      }
     } finally {
-      buscandoDir.value = false
+      if (miSecuencia === secuenciaBusqueda) buscandoDir.value = false
     }
   }, 350)
 }
@@ -580,29 +820,39 @@ const confirmarDireccion = () => {
 
 const onBlurBusqueda = () => {
   setTimeout(() => {
-    if (sugerencias.value.length > 0 && !deliveryLatLng.value) {
-      seleccionarDireccion(sugerencias.value[0])
-    }
-  }, 200)
+    sugerencias.value = []
+    sinResultados.value = false
+  }, 150)
 }
 
 const seleccionarDireccion = (sug) => {
-  busquedaDir.value = sug.display_name
+  const queryOriginal = busquedaDir.value
+  const addr = sug.address || {}
+  const calle = addr.road || addr.pedestrian || ''
+  const { calle: calleQuery, numero } = extraerNumero(queryOriginal)
+  let altura = addr.house_number || ''
+  if (!altura && numero && callesCoinciden(calleQuery, calle)) {
+    altura = numero
+  }
+  const localidad = extraerLocalidad(addr)
+  const provincia = addr.state || ''
+  const pais = addr.country || ''
+  detalleDireccion.value = { calle, altura, ciudad: localidad, provincia }
+  const etiqueta = etiquetaDireccion(detalleDireccion.value, pais) || sug.display_name || ''
+  busquedaDir.value = etiqueta
   sugerencias.value = []
+  sinResultados.value = false
   if (timeoutBusqueda) clearTimeout(timeoutBusqueda)
+  secuenciaBusqueda++
   const lat = parseFloat(sug.lat)
   const lng = parseFloat(sug.lon)
   deliveryLatLng.value = [lat, lng]
   errorGPS.value = ''
   errorCalculo.value = ''
-  const addr = sug.address || {}
-  direccionDetectada.value = sug.display_name || `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`
-  detalleDireccion.value = {
-    calle: addr.road || addr.pedestrian || '',
-    altura: addr.house_number || '',
-    ciudad: addr.city || addr.town || addr.village || '',
-    provincia: addr.state || '',
-  }
+  direccionDetectada.value = etiqueta || `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`
+  numeroIngresado.value = altura
+  calleConfirmada.value = normalizarCalle(calle)
+  confianzaDireccion.value = addr.house_number ? 'alta' : 'parcial'
   calcularCostoEnvio(lat, lng)
 }
 
@@ -619,16 +869,27 @@ const colocarEnPosicion = async (lat, lng) => {
   const geo = await reverseGeocode(lat, lng)
   if (geo && geo.address) {
     const addr = geo.address
-    direccionDetectada.value = formatearDireccion(geo) || `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`
+    const calle = addr.road || addr.pedestrian || ''
+    const nuevaCalleNorm = normalizarCalle(calle)
+    const mismaCalle = !!(calleConfirmada.value && nuevaCalleNorm && nuevaCalleNorm === calleConfirmada.value)
+    const altura = addr.house_number || (mismaCalle ? numeroIngresado.value : '')
+    const pais = addr.country || ''
     detalleDireccion.value = {
-      calle: addr.road || addr.pedestrian || '',
-      altura: addr.house_number || '',
+      calle,
+      altura,
       ciudad: addr.city || addr.town || addr.village || '',
       provincia: addr.state || '',
     }
+    direccionDetectada.value = etiquetaDireccion(detalleDireccion.value, pais) || `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`
+    calleConfirmada.value = calle ? nuevaCalleNorm : ''
+    numeroIngresado.value = altura
+    confianzaDireccion.value = 'manual'
   } else {
     direccionDetectada.value = `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`
     detalleDireccion.value = { calle: '', altura: '', ciudad: '', provincia: '' }
+    numeroIngresado.value = ''
+    calleConfirmada.value = ''
+    confianzaDireccion.value = 'manual'
   }
 
   calcularCostoEnvio(lat, lng)
@@ -675,11 +936,14 @@ watch(tipoEntrega, () => {
     observaciones.value = ''
     direccionDetectada.value = ''
     detalleDireccion.value = null
+    numeroIngresado.value = ''
+    calleConfirmada.value = ''
+    confianzaDireccion.value = ''
   }
 })
 
 const costoEnvio = computed(() => {
-  if (tipoEntrega.value === 'MOTO' && costoEnvioCalculado.value > 0) return costoEnvioCalculado.value
+  if (tipoEntrega.value === 'MOTO' && dentroCobertura.value && costoEnvioCalculado.value > 0) return costoEnvioCalculado.value
   return 0
 })
 
@@ -694,6 +958,13 @@ const distanciaDisplay = computed(() =>
   distanciaKm.value ? distanciaKm.value.toLocaleString('es-AR', { maximumFractionDigits: 1 }) : '0'
 )
 
+const confianzaInfo = computed(() => {
+  if (confianzaDireccion.value === 'alta') return { texto: 'Exacta', clase: 'alta' }
+  if (confianzaDireccion.value === 'parcial') return { texto: 'Aproximada', clase: 'parcial' }
+  if (confianzaDireccion.value === 'manual') return { texto: 'Ubicación confirmada', clase: 'manual' }
+  return null
+})
+
 const fueraCoberturaMsg = computed(() => {
   let msg = `Esta dirección se encuentra a ${distanciaDisplay.value} km del local.`
   if (radioCoberturaKm.value) msg += ` La cobertura máxima para Moto Mandado es de ${radioCoberturaDisplay.value} km.`
@@ -707,6 +978,16 @@ const procesarPedido = async () => {
     Swal.fire({
       title: 'Falta la dirección',
       text: 'Usá el GPS o hacé clic en el mapa para indicar la dirección de entrega.',
+      icon: 'warning',
+      confirmButtonColor: '#0ea5e9'
+    })
+    return
+  }
+
+  if (tipoEntrega.value === 'MOTO' && confianzaDireccion.value === 'parcial') {
+    Swal.fire({
+      title: 'Ubicación aproximada',
+      text: 'No pudimos determinar automáticamente la altura exacta de esta dirección. Arrastrá el marcador o hacé clic en el mapa para confirmar la ubicación.',
       icon: 'warning',
       confirmButtonColor: '#0ea5e9'
     })
@@ -844,6 +1125,7 @@ const procesarPedido = async () => {
 }
 .card-price.free { color: #059669; background: #ecfdf5; border-color: #a7f3d0; }
 .card-price.price-calculated { color: #0ea5e9; background: #f0f9ff; border-color: #bae6fd; }
+.card-price.price-error { color: #ef4444; background: #fef2f2; border-color: #fecaca; }
 
 .retiro-section { background: linear-gradient(to bottom, #ffffff, #f0f9ff); }
 .retiro-card {
@@ -911,10 +1193,19 @@ const procesarPedido = async () => {
 .address-search-input::placeholder { color: #94a3b8; }
 .search-spinner { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; border: 3px solid #e2e8f0; border-left-color: #0ea5e9; border-radius: 50%; animation: spin 0.6s linear infinite; }
 .suggestions-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #1e1e2e; border: 1px solid #334155; border-radius: 0 0 12px 12px; max-height: 220px; overflow-y: auto; z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
-.suggestion-item { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; color: #e2e8f0; font-size: 0.85rem; border-bottom: 1px solid #334155; transition: background 0.15s; }
+.suggestion-item { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; cursor: pointer; color: #e2e8f0; font-size: 0.85rem; border-bottom: 1px solid #334155; transition: background 0.15s; }
 .suggestion-item:last-child { border-bottom: none; border-radius: 0 0 12px 12px; }
 .suggestion-item:hover { background: #334155; }
-.suggestion-item svg { flex-shrink: 0; color: #0ea5e9; }
+.suggestion-icon { flex-shrink: 0; color: #0ea5e9; margin-top: 2px; }
+.suggestion-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.suggestion-title { color: #f1f5f9; font-weight: 600; line-height: 1.3; }
+.suggestion-sub { color: #94a3b8; font-size: 0.78rem; line-height: 1.3; }
+.no-results-msg {
+  position: absolute; top: 100%; left: 0; right: 0; background: #1e1e2e;
+  border: 1px solid #334155; border-radius: 0 0 12px 12px;
+  padding: 14px 16px; color: #cbd5e1; font-size: 0.85rem;
+  z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
 
 .map-hint {
   display: flex; align-items: center; gap: 8px;
@@ -942,6 +1233,21 @@ const procesarPedido = async () => {
   font-size: 0.85rem; color: #475569;
 }
 .address-detected-details strong { color: #334155; }
+.confianza-chip {
+  display: inline-flex; align-items: center;
+  margin-left: auto; padding: 3px 10px; border-radius: 999px;
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+}
+.confianza-chip.alta { color: #059669; background: #ecfdf5; border: 1px solid #a7f3d0; }
+.confianza-chip.parcial { color: #b45309; background: #fffbeb; border: 1px solid #fde68a; }
+.confianza-chip.manual { color: #0369a1; background: #f0f9ff; border: 1px solid #bae6fd; }
+.address-confirm-warning {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-top: 10px; padding: 10px 12px;
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+  font-size: 0.85rem; color: #92400e; line-height: 1.4;
+}
+.address-confirm-warning svg { flex-shrink: 0; margin-top: 1px; }
 .delivery-status {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
   margin-top: 12px; padding-top: 12px; border-top: 1px dashed #bbf7d0;

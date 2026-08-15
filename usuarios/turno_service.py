@@ -283,7 +283,6 @@ class TurnoService:
 
             interesados_validos_ids = []
 
-            # Filtrado Tetris: Validar que LA SUMA de los servicios entre en el tiempo libre
             for cliente_id, lista_intereses in intereses_agrupados.items():
                 hora_solicitada = lista_intereses[0].hora_deseada
                 inicio_bloque = datetime.combine(turno.fecha, hora_solicitada)
@@ -485,7 +484,7 @@ class TurnoService:
 
 
 class ReofertaAutomaticaService:
-    print("🚀 Clase ReofertaAutomaticaService cargada correctamente")
+    print("Clase ReofertaAutomaticaService cargada correctamente")
 
     @staticmethod
     def procesar_reoferta(turno_cancelado):
@@ -654,7 +653,6 @@ class ReofertaAutomaticaService:
 
                 monto_seña = pagado_previo
 
-                # 🔥 ACÁ CREAMOS EL TURNO Y LE PASAMOS LA SILLA
                 nuevo = Turno.objects.create(
                     fecha=turno_target.fecha,
                     hora=turno_target.hora,
@@ -672,7 +670,7 @@ class ReofertaAutomaticaService:
                     oferta_activa=True,
                     motivo_cancelacion="",
                     obs_cancelacion="Turno obtenido por canje",
-                    silla=turno_target.silla  # ✅ ESTA ES LA SOLUCIÓN
+                    silla=turno_target.silla  
                 )
 
                 for item in lista_intereses:
