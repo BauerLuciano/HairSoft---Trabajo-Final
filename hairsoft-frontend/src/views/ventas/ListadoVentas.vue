@@ -289,7 +289,7 @@ import Swal from 'sweetalert2'
 import { 
   Plus, Trash2, Eye, FileText, Loader, PackageX,
   ChevronLeft, ChevronRight, RefreshCw, AlertTriangle, CheckCircle,
-  CreditCard, Banknote, Smartphone, ArrowRightLeft, HelpCircle, Info
+  Banknote, Smartphone, Info
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -518,8 +518,6 @@ const metodoPagoResumen = (venta) => {
   const tipo = (venta.medio_pago_tipo || '').toUpperCase()
   const nombre = venta.medio_pago_nombre || ''
   if (tipo === 'EFECTIVO') return nombre || 'Efectivo'
-  if (tipo === 'TARJETA') return nombre || 'Tarjeta'
-  if (tipo === 'TRANSFERENCIA') return nombre || 'Transferencia'
   if (tipo === 'MERCADO_PAGO') return nombre || 'Mercado Pago'
   return nombre || tipo || '-'
 }
@@ -544,10 +542,8 @@ const getMedioPagoInfo = (venta) => {
     const tipo = (venta.medio_pago_tipo || '').toUpperCase()
     const nombre = (venta.medio_pago_nombre || '').toUpperCase()
     if (tipo === 'EFECTIVO' || nombre.includes('EFECTIVO')) return { clase: 'pago-efectivo', icono: Banknote }
-    if (tipo === 'TARJETA' || nombre.includes('TARJETA')) return { clase: 'pago-tarjeta', icono: CreditCard }
-    if (tipo === 'TRANSFERENCIA' || nombre.includes('TRANSF')) return { clase: 'pago-transferencia', icono: ArrowRightLeft }
     if (tipo === 'MERCADO_PAGO' || nombre.includes('MERCADO')) return { clase: 'pago-mp', icono: Smartphone }
-    return { clase: 'pago-otro', icono: HelpCircle }
+    return { clase: 'pago-efectivo', icono: Banknote }
 }
 
 const getClaseTipoVenta = (t) => t === 'TURNO' ? 'tipo-turno' : 'tipo-prod'
@@ -683,10 +679,7 @@ const verMotivoAnulacion = async (venta) => {
 
 .badge-pago { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid transparent; }
 .pago-efectivo { background: rgba(16, 185, 129, 0.1); color: #10b981; border-color: rgba(16, 185, 129, 0.3); }
-.pago-tarjeta { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border-color: rgba(139, 92, 246, 0.3); }
-.pago-transferencia { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-color: rgba(245, 158, 11, 0.3); }
 .pago-mp { background: rgba(14, 165, 233, 0.1); color: #0ea5e9; border-color: rgba(14, 165, 233, 0.3); }
-.pago-otro { background: rgba(156, 163, 175, 0.1); color: #9ca3af; border-color: rgba(156, 163, 175, 0.3); }
 
 .badge-tipo, .badge-estado { padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
 .tipo-turno { background: rgba(236, 72, 153, 0.1); color: #ec4899; border: 1px solid rgba(236, 72, 153, 0.3); }

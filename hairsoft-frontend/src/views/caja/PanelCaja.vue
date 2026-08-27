@@ -359,12 +359,15 @@
                   <i class="ri-error-warning-line" style="font-size: 1.4rem; margin-top: -2px;"></i> 
                   <div style="flex: 1;">
                     <strong style="display: block; font-size: 0.95rem; margin-bottom: 4px; text-transform: uppercase;">
-                      Diferencia: {{ (diferenciaCierre > 0 ? '+' : '') }}{{ formatearMoneda(diferenciaCierre) }} ({{ tipoDiferencia }})
+                      Diferencias detectadas ({{ tipoDiferencia }}):
                     </strong>
-                    <span v-if="tipoDiferencia === 'REPOSICIÓN EXTERNA'" style="color: #d97706; font-size: 0.8rem; line-height: 1.3; display: block; font-weight: 600;">
-                      La caja quedó en negativo. Indicá en las observaciones de dónde salió el dinero para cubrir los gastos/anulaciones (Ej: "Aporte del dueño").
+                    <span v-if="Math.abs(diferenciaEfectivo) > 0.01" style="display: block; font-size: 0.85rem;">
+                      Efectivo: {{ (diferenciaEfectivo > 0 ? '+' : '') }}{{ formatearMoneda(diferenciaEfectivo) }}
                     </span>
-                    <span v-else style="color: #ef4444; font-size: 0.8rem; display: block;">
+                    <span v-if="Math.abs(diferenciaMP) > 0.01" style="display: block; font-size: 0.85rem;">
+                      Mercado Pago: {{ (diferenciaMP > 0 ? '+' : '') }}{{ formatearMoneda(diferenciaMP) }}
+                    </span>
+                    <span style="color: #ef4444; font-size: 0.8rem; display: block; margin-top: 4px;">
                       Ingrese obligatoriamente la justificación del descuadre:
                     </span>
                   </div>
@@ -572,7 +575,6 @@ const formApertura = ref({
 const formCierre = ref({ 
   saldo_final_efectivo_real: 0, 
   saldo_final_mp_real: 0, 
-  saldo_final_transf_real: 0, 
   observaciones: '' 
 });
 
@@ -642,50 +644,34 @@ const limpiarFiltros = () => {
   currentPageCajas.value = 1;
 };
 
-const diferenciaCierre = computed(() => {
+const diferenciaEfectivo = computed(() => {
   if (!balance.value) return 0;
-  
-  const esperado = parseFloat(balance.value.esperado_efectivo || 0) + 
-                   parseFloat(balance.value.esperado_mp || 0) + 
-                   parseFloat(balance.value.esperado_transf || 0); 
+  const esperado = parseFloat(balance.value.esperado_efectivo || 0);
+  const real = parseFloat(formCierre.value.saldo_final_efectivo_real || 0);
+  return real - esperado;
+});
 
-  const real = parseFloat(formCierre.value.saldo_final_efectivo_real || 0) + 
-               parseFloat(formCierre.value.saldo_final_mp_real || 0) +
-               parseFloat(formCierre.value.saldo_final_transf_real || 0);
-  
-  return real - esperado; 
+const diferenciaMP = computed(() => {
+  if (!balance.value) return 0;
+  const esperado = parseFloat(balance.value.esperado_mp || 0);
+  const real = parseFloat(formCierre.value.saldo_final_mp_real || 0);
+  return real - esperado;
 });
 
 const hayDiferencia = computed(() => {
-  return Math.abs(diferenciaCierre.value) > 0.01;
+  return Math.abs(diferenciaEfectivo.value) > 0.01 || Math.abs(diferenciaMP.value) > 0.01;
 });
 
-// 🔥 CORRECCIÓN DEL TIPO DE DIFERENCIA 🔥
 const tipoDiferencia = computed(() => {
-  if (!balance.value) return '';
-  const esperado = parseFloat(balance.value.esperado_efectivo || 0) + 
-                   parseFloat(balance.value.esperado_mp || 0) + 
-                   parseFloat(balance.value.esperado_transf || 0);
-
-  if (diferenciaCierre.value < 0) {
-      return 'FALTANTE';
-  }
-  
-  if (diferenciaCierre.value > 0) {
-      // Si el sistema esperaba que la caja esté en negativo, y se declara 0
-      if (esperado < 0 && parseFloat(formCierre.value.saldo_final_efectivo_real || 0) === 0) {
-          return 'REPOSICIÓN EXTERNA';
-      }
-      return 'SOBRANTE';
-  }
-  
-  return '';
+  if (!hayDiferencia.value) return '';
+  const total = diferenciaEfectivo.value + diferenciaMP.value;
+  if (total < 0) return 'FALTANTE';
+  return 'SOBRANTE';
 });
 
 const calcularTotalRealDeclarado = (caja) => {
   return parseFloat(caja.saldo_final_efectivo_real || 0) + 
-         parseFloat(caja.saldo_final_mp_real || 0) + 
-         parseFloat(caja.saldo_final_transf_real || 0);
+         parseFloat(caja.saldo_final_mp_real || 0);
 };
 
 const calcularTotalCaja = (caja) => {
@@ -759,7 +745,6 @@ const cargarDatosCajaAbierta = async (sesionId) => {
   
   formCierre.value.saldo_final_efectivo_real = Math.max(0, parseFloat(balance.value.esperado_efectivo || 0));
   formCierre.value.saldo_final_mp_real = Math.max(0, parseFloat(balance.value.esperado_mp || 0)); 
-  formCierre.value.saldo_final_transf_real = Math.max(0, parseFloat(balance.value.esperado_transf || 0)); 
   formCierre.value.observaciones = ''; 
 };
 
@@ -829,7 +814,8 @@ const descargarPDFCaja = async (sesionId) => {
 
 const cerrarCaja = async () => {
   if (hayDiferencia.value && !formCierre.value.observaciones.trim()) {
-      Swal.fire({ icon: 'warning', title: 'Justificación Requerida', text: `Debe justificar la diferencia de ${formatearMoneda(Math.abs(diferenciaCierre.value))} (${tipoDiferencia.value})` });
+      const totalDif = Math.abs(diferenciaEfectivo.value) + Math.abs(diferenciaMP.value);
+      Swal.fire({ icon: 'warning', title: 'Justificación Requerida', text: `Debe justificar las diferencias detectadas (Total: ${formatearMoneda(totalDif)})` });
       return;
   }
   Swal.fire({
@@ -871,9 +857,6 @@ const registrarGastoManual = async () => {
       } else if (formGasto.value.metodo_pago === 'MERCADO_PAGO') {
           saldoDisponible = parseFloat(balance.value.esperado_mp);
           metodoNombre = 'Mercado Pago';
-      } else if (formGasto.value.metodo_pago === 'TRANSFERENCIA') {
-          saldoDisponible = parseFloat(balance.value.esperado_transf || 0); 
-          metodoNombre = 'Transferencia';
       }
 
       if (montoEgreso > saldoDisponible) {
@@ -909,8 +892,7 @@ const verDetalleCajaCerrada = async (caja) => {
 const calcularTotalActual = (bal) => {
   if (!bal) return 0;
   return parseFloat(bal.esperado_efectivo || 0) + 
-         parseFloat(bal.esperado_mp || 0) + 
-         parseFloat(bal.esperado_transf || 0);
+         parseFloat(bal.esperado_mp || 0);
 };
 
 const formatearFecha = (f) => f ? new Date(f).toLocaleString('es-AR') : '';
@@ -1031,7 +1013,6 @@ onUnmounted(() => detenerRadar());
 .balance-card.total-general { border: 2px solid var(--accent-color); background: rgba(14, 165, 233, 0.05); justify-content: flex-start;}
 .balance-card.highlight .b-icon { background: #10b981; color: white; } 
 .balance-card.mp .b-icon { background: #00a1f1; color: white; }
-.balance-card.transfer .b-icon { background: #8b5cf6; color: white; }
 
 .resumen-esperado { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 18px; margin-bottom: 25px; }
 .resumen-esperado h4 { margin: 0 0 15px 0; color: var(--text-primary); font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;}

@@ -452,9 +452,6 @@
                   <option value="EFECTIVO">💵 Efectivo</option>
                   <option value="MERCADO_PAGO">🔵 Mercado Pago</option>
                   <option v-if="form.medio_pago === 'MIXTO'" value="MIXTO">🔀 Mixto</option>
-                  <option value="TRANSFERENCIA">
-                    🏦 Transferencia Bancaria
-                  </option>
                 </select>
               </div>
 
@@ -462,41 +459,9 @@
                 v-if="form.medio_pago !== 'EFECTIVO'"
                 class="datos-transferencia-container slide-in"
               >
-                <div
-                  class="input-group"
-                  v-if="form.medio_pago === 'TRANSFERENCIA'"
-                >
-                  <label class="label-modern"
-                    >Billetera / Banco de Origen</label
-                  >
-                  <select
-                    v-model="form.entidad_pago"
-                    class="select-modern"
-                    :disabled="tienePagoPrevio"
-                  >
-                    <option value="" disabled selected>
-                      Seleccione entidad...
-                    </option>
-                    <option value="UALA">Ualá</option>
-                    <option value="BRUBANK">Brubank</option>
-                    <option value="LEMON">Lemon Cash</option>
-                    <option value="NARANJAX">Naranja X</option>
-                    <option value="MODO">MODO</option>
-                    <option value="SANTANDER">Santander</option>
-                    <option value="GALICIA">Galicia</option>
-                    <option value="BBVA">BBVA</option>
-                    <option value="MACRO">Macro</option>
-                    <option value="OTRO">Otro</option>
-                  </select>
-                </div>
-
                 <div class="input-group">
                   <label class="label-modern">
-                    {{
-                      form.medio_pago === "MERCADO_PAGO"
-                        ? "ID Transacción Mercado Pago *"
-                        : "Código de Comprobante *"
-                    }}
+                    ID Transacción Mercado Pago *
                   </label>
 
                   <input
@@ -824,11 +789,6 @@ const formularioValido = computed(() => {
 
   if (!tienePagoPrevio.value) {
     if (!form.value.tipo_pago || !form.value.medio_pago) return false;
-    if (
-      form.value.medio_pago === "TRANSFERENCIA" &&
-      !form.value.codigo_transaccion
-    )
-      return false;
   }
 
   return true;
@@ -1239,21 +1199,6 @@ const cargarDatosTurno = async () => {
 };
 
 const modificarTurno = async () => {
-  if (
-    !tienePagoPrevio.value &&
-    form.value.medio_pago === "TRANSFERENCIA" &&
-    !form.value.codigo_transaccion
-  ) {
-    errorValidacion.value = true;
-    Swal.fire({
-      icon: "error",
-      title: "Error",
-      text: "Falta el código de transacción",
-      confirmButtonText: "Entendido",
-    });
-    return;
-  }
-
   // 🔒 Bloqueo frontend: si el turno tiene pago MP aprobado e irrompible, no permitir cambiar el medio
   if (pagoMpAprobado.value && form.value.medio_pago !== "MERCADO_PAGO") {
     errorValidacion.value = true;
@@ -1270,8 +1215,6 @@ const modificarTurno = async () => {
 
   let entidadFinal = null;
   if (form.value.medio_pago === "MERCADO_PAGO") entidadFinal = "MERCADO_PAGO";
-  else if (form.value.medio_pago === "TRANSFERENCIA")
-    entidadFinal = form.value.entidad_pago;
 
   const duracion = form.value.servicios_ids.reduce((acc, id) => {
     const s = servicios.value.find((x) => Number(x.id) === Number(id));
@@ -1313,9 +1256,7 @@ const modificarTurno = async () => {
         : null,
     codigo_transaccion: tienePagoPrevio.value
       ? turnoOriginal.value.codigo_transaccion
-      : form.value.medio_pago === "TRANSFERENCIA"
-        ? form.value.codigo_transaccion
-        : null,
+      : null,
   };
 
   try {

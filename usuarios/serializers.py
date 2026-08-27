@@ -1228,28 +1228,27 @@ class SesionCajaSerializer(serializers.ModelSerializer):
             'id', 'caja', 'caja_nombre', 'usuario_apertura', 'usuario_apertura_nombre',
             'usuario_cierre', 'usuario_cierre_nombre', 'fecha_apertura', 'fecha_cierre',
             'saldo_inicial_efectivo', 'saldo_inicial_mp', 'saldo_final_efectivo_real', 'saldo_final_mp_real',
-            'saldo_final_transf_real', 'observaciones', 'esta_abierta',
+            'observaciones', 'esta_abierta',
             'diferencia_detalle', 'total_esperado_cierre'
         ]
         read_only_fields = ['fecha_apertura', 'fecha_cierre', 'usuario_apertura', 'usuario_cierre']
 
     def get_total_esperado_cierre(self, obj):
-        """Calcula la Verdad Contable: Inicial (Efvo + MP) + Ingresos - Egresos"""
+        """Calcula el total esperado por método: Efectivo + MP"""
         if obj.esta_abierta: return None
         movs = obj.movimientos.all()
-        total_movs = Decimal('0.00')
-        for m in movs:
-            if m.tipo == 'INGRESO':
-                total_movs += m.monto
-            else:
-                total_movs -= m.monto
-        return float(obj.saldo_inicial_efectivo + obj.saldo_inicial_mp + total_movs)
+        def sum_m(metodo, tipo):
+            return movs.filter(metodo_pago=metodo, tipo=tipo).aggregate(
+                t=serializers.models.Sum('monto'))['t'] or Decimal('0')
+        esp_ef = obj.saldo_inicial_efectivo + sum_m('EFECTIVO', 'INGRESO') - sum_m('EFECTIVO', 'EGRESO')
+        esp_mp = obj.saldo_inicial_mp + sum_m('MERCADO_PAGO', 'INGRESO') - sum_m('MERCADO_PAGO', 'EGRESO')
+        return float(esp_ef + esp_mp)
 
     def get_diferencia_detalle(self, obj):
         """Diferencia = Lo declarado - Lo esperado contablemente"""
         if obj.esta_abierta: return 0
         esperado = Decimal(str(self.get_total_esperado_cierre(obj)))
-        real = obj.saldo_final_efectivo_real + obj.saldo_final_mp_real + obj.saldo_final_transf_real
+        real = (obj.saldo_final_efectivo_real or Decimal('0')) + (obj.saldo_final_mp_real or Decimal('0'))
         return float(real - esperado)
 
 # ----------------------------------------------------------------------

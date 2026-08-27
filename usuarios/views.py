@@ -1481,8 +1481,6 @@ def crear_turno(request):
                 metodo_pago_caja = 'EFECTIVO'
                 if 'MERCADO' in str(medio_pago).upper():
                     metodo_pago_caja = 'MERCADO_PAGO'
-                elif 'TRANS' in str(medio_pago).upper():
-                    metodo_pago_caja = 'TRANSFERENCIA'
 
                 MovimientoCaja.objects.create(
                     sesion_caja=sesion_abierta,
@@ -2189,8 +2187,6 @@ def actualizar_pago_turno(request, turno_id):
         metodo_pago_caja = 'EFECTIVO'
         if 'MERCADO' in str(metodo_pago_raw).upper():
             metodo_pago_caja = 'MERCADO_PAGO'
-        elif 'TRANS' in str(metodo_pago_raw).upper():
-            metodo_pago_caja = 'TRANSFERENCIA'
 
         if monto_a_cobrar > 0:
             MovimientoCaja.objects.create(
@@ -3624,8 +3620,6 @@ def registrar_venta(request):
             else:
                 if tipo_mp == 'MERCADO_PAGO' or 'MERCADO' in nombre_mp:
                     metodo_pago_caja = 'MERCADO_PAGO'
-                elif tipo_mp == 'TRANSFERENCIA' or 'TRANSF' in nombre_mp:
-                    metodo_pago_caja = 'TRANSFERENCIA'
                 else:
                     metodo_pago_caja = 'EFECTIVO'
 
@@ -3991,8 +3985,6 @@ def anular_venta(request, venta_id):
                 metodo_pago_caja = 'EFECTIVO'
                 if venta.medio_pago and venta.medio_pago.tipo == 'MERCADO_PAGO':
                     metodo_pago_caja = 'MERCADO_PAGO'
-                elif venta.medio_pago and venta.medio_pago.tipo == 'TRANSFERENCIA':
-                    metodo_pago_caja = 'TRANSFERENCIA'
                 egresos = [(metodo_pago_caja, venta.total, f"Anulación de Venta #{venta.id} - Reintegro")]
 
             if venta.total and venta.total > 0:
@@ -7468,15 +7460,15 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         if not sesion.esta_abierta:
             return Response({'error': 'La sesión ya está cerrada.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 1. Calcular Esperado Contable
+        # 1. Calcular Esperado POR MÉTODO
         movs = sesion.movimientos.all()
-        ingresos = movs.filter(tipo='INGRESO').aggregate(t=Sum('monto'))['t'] or Decimal('0')
-        egresos = movs.filter(tipo='EGRESO').aggregate(t=Sum('monto'))['t'] or Decimal('0')
-        
-        # El total esperado es la suma de los fondos iniciales + ingresos - egresos
-        total_esperado = sesion.saldo_inicial_efectivo + sesion.saldo_inicial_mp + ingresos - egresos
+        def sum_m(metodo, tipo):
+            return movs.filter(metodo_pago=metodo, tipo=tipo).aggregate(t=Sum('monto'))['t'] or Decimal('0')
 
-        # Función auxiliar segura para parsear decimales evitando el error de string vacio
+        esp_ef = sesion.saldo_inicial_efectivo + sum_m('EFECTIVO', 'INGRESO') - sum_m('EFECTIVO', 'EGRESO')
+        esp_mp = sesion.saldo_inicial_mp + sum_m('MERCADO_PAGO', 'INGRESO') - sum_m('MERCADO_PAGO', 'EGRESO')
+
+        # Función auxiliar segura para parsear decimales
         def parse_decimal(val):
             if val is None or val == '':
                 return Decimal('0.00')
@@ -7488,31 +7480,27 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         # 2. Capturar Real declarado por el cajero
         real_ef = parse_decimal(request.data.get('saldo_final_efectivo_real'))
         real_mp = parse_decimal(request.data.get('saldo_final_mp_real'))
-        real_tr = parse_decimal(request.data.get('saldo_final_transf_real'))
-        
-        total_real = real_ef + real_mp + real_tr
-        
+
+        diferencia_ef = real_ef - esp_ef
+        diferencia_mp = real_mp - esp_mp
+
         observaciones = request.data.get('observaciones', '').strip()
 
-        # 3. Validar Descuadre
-        diferencia = total_real - total_esperado
-        
-        # Usamos 0.01 para evitar problemas de flotantes
-        if abs(diferencia) > Decimal('0.01') and not observaciones:
+        # 3. Validar Descuadre por cada método
+        if (abs(diferencia_ef) > Decimal('0.01') or abs(diferencia_mp) > Decimal('0.01')) and not observaciones:
             return Response(
-                {'error': f'Hay una diferencia de ${abs(diferencia):.2f}. Ingrese el motivo obligatoriamente.'}, 
+                {'error': f'Diferencia efectivo: ${abs(diferencia_ef):.2f} | Diferencia MP: ${abs(diferencia_mp):.2f}. Ingrese el motivo obligatoriamente.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         # 4. Guardar
         sesion.saldo_final_efectivo_real = real_ef
         sesion.saldo_final_mp_real = real_mp
-        sesion.saldo_final_transf_real = real_tr
         sesion.observaciones = observaciones
         sesion.fecha_cierre = timezone.now()
         sesion.usuario_cierre = request.user
         sesion.save()
-        
+
         return Response({'mensaje': 'Caja cerrada correctamente.', 'sesion': self.get_serializer(sesion).data})
     
     @action(detail=True, methods=['GET'])
@@ -7544,14 +7532,12 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         
         esp_ef = sesion.saldo_inicial_efectivo + sum_m('EFECTIVO', 'INGRESO') - sum_m('EFECTIVO', 'EGRESO')
         esp_mp = sesion.saldo_inicial_mp + sum_m('MERCADO_PAGO', 'INGRESO') - sum_m('MERCADO_PAGO', 'EGRESO')
-        esp_tr = sum_m('TRANSFERENCIA', 'INGRESO') - sum_m('TRANSFERENCIA', 'EGRESO')
         
         return Response({
             'saldo_inicial_efectivo': sesion.saldo_inicial_efectivo,
             'saldo_inicial_mp': sesion.saldo_inicial_mp,
             'esperado_efectivo': esp_ef, 
-            'esperado_mp': esp_mp, 
-            'esperado_transf': esp_tr
+            'esperado_mp': esp_mp
         })
 
     # 🔥 NUEVO ENDPOINT PARA DESCARGAR PDF

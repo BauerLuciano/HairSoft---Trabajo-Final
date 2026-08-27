@@ -285,23 +285,6 @@
 
             <div v-if="esMedioPagoConRecargo || esMixto" class="datos-extra-pago slide-in">
               
-              <div class="form-group" v-if="esTransferencia">
-                <label>Billetera / Banco de Origen</label>
-                <select v-model="datosVenta.entidad_pago" class="input-select">
-                  <option value="" disabled selected>Seleccione entidad...</option>
-                  <option value="UALA">Ualá</option>
-                  <option value="BRUBANK">Brubank</option>
-                  <option value="LEMON">Lemon Cash</option>
-                  <option value="NARANJAX">Naranja X</option>
-                  <option value="MODO">MODO</option>
-                  <option value="SANTANDER">Santander</option>
-                  <option value="GALICIA">Galicia</option>
-                  <option value="BBVA">BBVA</option>
-                  <option value="MACRO">Macro</option>
-                  <option value="OTRO">Otro</option>
-                </select>
-              </div>
-
               <!-- MERCADO PAGO SUB-OPTIONS -->
               <div v-if="esMercadoPago || esMixto" class="mp-options-wrapper">
                 <label class="mp-sub-label">Elegí cómo cobrar con Mercado Pago:</label>
@@ -463,20 +446,6 @@
                     </div>
                   </div>
                 </div>
-              </div>
-
-              <div class="form-group" v-if="esTransferencia">
-                <label>Código de Comprobante *</label>
-                <input 
-                  type="text" 
-                  v-model="datosVenta.codigo_transaccion" 
-                  class="input-search"
-                  placeholder="Ej: A123B456789"
-                  maxlength="25"
-                />
-                <small style="color: #6b7280; font-size: 0.8rem; margin-top: 4px; display: block;">
-                  Copie el código del comprobante bancario.
-                </small>
               </div>
             </div>
 
@@ -696,18 +665,11 @@ export default {
         return this.metodoPagoSeleccionado?.tipo === 'MERCADOPAGO' || 
                this.metodoPagoSeleccionado?.nombre.toUpperCase().includes('MERCADO');
     },
-    esTransferencia() {
-        // 🔥 CORRECCIÓN: Si es Mercado Pago, NO es Transferencia
-        if (this.esMercadoPago) return false;
-        
-        return this.metodoPagoSeleccionado?.tipo === 'TRANSFERENCIA' ||
-               this.metodoPagoSeleccionado?.nombre.toUpperCase().includes('TRANSFERENCIA');
-    },
     esMedioPagoConRecargo() {
-        return this.esMercadoPago || this.esTransferencia;
+        return this.esMercadoPago;
     },
     esEfectivo() {
-        if (this.esMercadoPago || this.esTransferencia) return false;
+        if (this.esMercadoPago) return false;
         const mp = this.metodoPagoSeleccionado;
         if (!mp) return false;
         const tipo = (mp.tipo || '').toUpperCase();
@@ -789,10 +751,6 @@ export default {
     formularioValido() {
       if (this.carrito.length === 0) return false;
       if (!this.datosVenta.medio_pago) return false;
-
-      if (this.esTransferencia && !this.datosVenta.codigo_transaccion) {
-         return false;
-      }
 
       if (this.esMercadoPago && !this.esMixto && this.mpSubOption === 'qr' && this.mpPagoEstado !== 'confirmed') {
         return false;
@@ -1053,7 +1011,7 @@ export default {
         
         // 🔥 FILTRO ANTI-TARJETAS 🔥
         if (Array.isArray(metodosPagoResponse.data)) {
-            const permitidos = ['EFECTIVO', 'MERCADOPAGO', 'TRANSFERENCIA'];
+            const permitidos = ['EFECTIVO', 'MERCADOPAGO'];
             this.metodosPago = metodosPagoResponse.data.filter(mp => 
                 mp.activo !== false && 
                 (permitidos.includes(mp.tipo) || permitidos.includes(mp.nombre.toUpperCase())) &&
@@ -1152,12 +1110,6 @@ export default {
         return;
       }
 
-      // Validación extra para transferencia
-      if (this.esTransferencia && !this.datosVenta.codigo_transaccion) {
-          Swal.fire('Atención', 'Falta el código de transacción', 'warning');
-          return;
-      }
-
       if (this.esMercadoPago && !this.mpSubOption) {
           Swal.fire('Atención', 'Debe elegir entre alias o QR para cobrar con Mercado Pago', 'warning');
           return;
@@ -1235,8 +1187,6 @@ export default {
           entidadFinal = this.mpSubOption === 'qr' ? 'MERCADOPAGO_QR' : 'MERCADOPAGO_ALIAS';
       } else if (this.esMercadoPago) {
           entidadFinal = this.mpSubOption === 'qr' ? 'MERCADOPAGO_QR' : 'MERCADOPAGO_ALIAS';
-      } else if (this.esTransferencia) {
-          entidadFinal = this.datosVenta.entidad_pago;
       }
 
       const payload = { 

@@ -1494,7 +1494,6 @@ class SesionCaja(models.Model):
     # Saldos reales (lo que el recepcionista cuenta y declara al cerrar)
     saldo_final_efectivo_real = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     saldo_final_mp_real = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    saldo_final_transf_real = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     
     observaciones = models.TextField(blank=True, null=True)
 

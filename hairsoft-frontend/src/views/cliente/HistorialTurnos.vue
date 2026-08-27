@@ -288,8 +288,7 @@ const claseEstado = (estado) => {
 }
 
 const getMedioPagoTexto = (medio, entidad = null) => {
-  if (medio === 'TRANSFERENCIA' && entidad) return entidad
-  const map = { 'MERCADO_PAGO': 'Mercado Pago', 'EFECTIVO': 'Efectivo', 'TRANSFERENCIA': 'Transferencia' }
+  const map = { 'MERCADO_PAGO': 'Mercado Pago', 'EFECTIVO': 'Efectivo' }
   return map[medio] || medio
 }
 

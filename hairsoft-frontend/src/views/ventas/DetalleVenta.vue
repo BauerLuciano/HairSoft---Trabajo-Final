@@ -257,8 +257,6 @@ const getNombrePago = (v) => {
     const map = {
         'MERCADO_PAGO': 'Mercado Pago',
         'MERCADOPAGO': 'Mercado Pago',
-        'TRANSFERENCIA': 'Transferencia',
-        'TARJETA': 'Tarjeta',
         'EFECTIVO': 'Efectivo',
         'MIXTO': 'Mixto'
     };
@@ -271,14 +269,11 @@ const getClaseTipoPago = (v) => {
   
   // Inferencia por IDs para el color
   if (v.mp_payment_id) return 'pago-mp';
-  if (v.codigo_transaccion) return 'transferencia'; // Asumimos color transferencia para refs bancarias
 
   // Inferencia normal por tipo
   const tipo = (v.medio_pago_tipo || '').toUpperCase();
   const tipos = { 
       'EFECTIVO': 'efectivo', 
-      'TARJETA': 'tarjeta', 
-      'TRANSFERENCIA': 'transferencia', 
       'MERCADO_PAGO': 'pago-mp', 
       'MERCADOPAGO': 'pago-mp' 
   }
@@ -606,22 +601,10 @@ onMounted(() => { obtenerVenta() })
   border: 1px solid #0ea5e9;
 }
 
-.badge-pago.transferencia {
-  background: rgba(139, 92, 246, 0.1);
-  color: #8b5cf6;
-  border: 1px solid #8b5cf6;
-}
-
 .badge-pago.efectivo {
   background: rgba(16, 185, 129, 0.1);
   color: #10b981;
   border: 1px solid #10b981;
-}
-
-.badge-pago.tarjeta {
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
-  border: 1px solid #f59e0b;
 }
 
 .badge-tipo {

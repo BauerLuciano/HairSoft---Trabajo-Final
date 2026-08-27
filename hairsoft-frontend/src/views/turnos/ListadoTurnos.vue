@@ -326,9 +326,6 @@ const getEntidadPagoTexto = (entidad) => {
 
 const getMedioPagoTexto = (medioPago, entidadPago = null) => {
   if (!medioPago || medioPago === 'PENDIENTE') return 'Pendiente'
-  if (medioPago === 'TRANSFERENCIA' && entidadPago) {
-    return getEntidadPagoTexto(entidadPago)
-  }
   const map = {
     'MERCADO_PAGO': 'Mercado Pago',
     'EFECTIVO': 'Efectivo',
@@ -1377,8 +1374,6 @@ const turnosFiltrados = computed(() => {
         return mp1.includes('MERCADO') || mp2.includes('MERCADO')
       } else if (filtros.value.medioPago === 'EFECTIVO') {
         return mp1.includes('EFECTIVO') || mp2.includes('EFECTIVO')
-      } else if (filtros.value.medioPago === 'TRANSFERENCIA') {
-        return mp1.includes('TRANSF') || mp2.includes('TRANSF')
       }
       return true
     })
@@ -2032,18 +2027,6 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   background: rgba(16, 185, 129, 0.12);
   color: #10b981;
   border: 1px solid rgba(16, 185, 129, 0.25);
-}
-
-.medio-pago-badge.tarjeta {
-  background: rgba(139, 92, 246, 0.12);
-  color: #8b5cf6;
-  border: 1px solid rgba(139, 92, 246, 0.25);
-}
-
-.medio-pago-badge.transferencia {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
 .medio-pago-badge.pendiente {

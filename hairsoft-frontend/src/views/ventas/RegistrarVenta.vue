@@ -34,9 +34,8 @@
               </svg>
               <input
                 v-model="filtroNombre"
-                placeholder="Buscar..."
+                placeholder="Buscar por nombre o código (ej: SHA-001)"
                 class="input-search input-search-icon"
-                @input="filtrarProductos"
               />
             </div>
           </div>
@@ -96,6 +95,7 @@
             <div class="producto-info">
               <div class="producto-nombre-row">
                 <h3 class="producto-nombre">{{ producto.nombre }}</h3>
+                <span class="producto-codigo" v-if="producto.codigo">{{ producto.codigo }}</span>
                 <span class="producto-categoria">{{ obtenerNombreCategoria(producto.categoria) }}</span>
               </div>
               <div class="producto-detalles">
@@ -773,9 +773,11 @@ export default {
         productosFiltrados() {
             return this.productos
                 .filter(p => {
-                    const nombreMatch = p.nombre.toLowerCase().includes(this.filtroNombre.toLowerCase())
+                    const termino = this.filtroNombre.toLowerCase()
+                    const nombreMatch = p.nombre.toLowerCase().includes(termino)
+                    const codigoMatch = (p.codigo || '').toLowerCase().includes(termino)
                     const categoriaMatch = this.filtroCategoria ? p.categoria === parseInt(this.filtroCategoria) : true 
-                    return nombreMatch && categoriaMatch && p.estado === 'ACTIVO' 
+                    return (nombreMatch || codigoMatch) && categoriaMatch && p.estado === 'ACTIVO' 
                 })
                 .sort((a, b) => (b.stock > 0) - (a.stock > 0))
         },
@@ -884,14 +886,6 @@ export default {
             const nombre = (this.metodoPagoSeleccionado.nombre || '').toUpperCase();
             return tipo === 'MERCADOPAGO' || tipo === 'MERCADO_PAGO' || nombre.includes('MERCADO');
         },
-        esTransferencia() {
-            if (!this.metodoPagoSeleccionado) return false;
-            if (this.esMercadoPago) return false;
-
-            const tipo = (this.metodoPagoSeleccionado.tipo || '').toUpperCase();
-            const nombre = (this.metodoPagoSeleccionado.nombre || '').toUpperCase();
-            return tipo === 'TRANSFERENCIA' || nombre.includes('TRANSF');
-        },
         esEfectivo() {
             if (!this.metodoPagoSeleccionado) return false;
             const tipo = (this.metodoPagoSeleccionado.tipo || '').toUpperCase();
@@ -903,14 +897,6 @@ export default {
             if (this.carrito.length === 0) return false;
             if (!this.datosVenta.medio_pago) return false;
             
-            if (this.esTransferencia && !this.datosVenta.entidad_pago) {
-                return false;
-            }
-
-            if (this.esTransferencia && !this.datosVenta.codigo_transaccion) {
-                return false;
-            }
-
             if (this.esMercadoPago && !this.esMixto && (!this.mpSubOption || this.mpPagoEstado !== 'confirmed')) {
                 return false;
             }
@@ -1444,7 +1430,7 @@ export default {
                 this.cantidades[producto.id] = actual - 1;
             }
         },
-        filtrarProductos() {}, 
+
         restablecerFiltros() {
             this.filtroNombre = '';
             this.filtroCategoria = '';
@@ -1703,15 +1689,6 @@ export default {
             return false;
           }
 
-          if (this.esTransferencia && !this.datosVenta.entidad_pago) {
-             this.mostrarMensaje('Debe seleccionar la entidad bancaria', 'warning');
-             return false;
-          }
-
-          if (this.esTransferencia && !this.datosVenta.codigo_transaccion) {
-             this.mostrarMensaje('Falta el código de transacción', 'warning');
-             return false;
-          }
           return true;
         },
 
@@ -1746,8 +1723,6 @@ export default {
                 }
             } else if (this.esMercadoPago) {
                 entidadFinal = this.mpSubOption === 'qr' ? 'MERCADOPAGO_QR' : 'MERCADOPAGO_ALIAS';
-            } else if (this.esTransferencia) {
-                entidadFinal = this.datosVenta.entidad_pago;
             }
 
             const payload = { 
@@ -2412,6 +2387,20 @@ export default {
   font-weight: 600;
   line-height: 1.7;
   text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.producto-codigo {
+  flex-shrink: 0;
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  font-family: monospace;
+  line-height: 1.7;
   letter-spacing: 0.3px;
 }
 
