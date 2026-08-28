@@ -224,11 +224,34 @@ class MercadoPagoService:
     def reembolsar_pago(self, payment_id):
         """
         Reembolsa un pago aprobado usando el SDK oficial de Mercado Pago.
+
+        Devuelve SIEMPRE un diccionario con contrato estable:
+            {success: bool, refund_id: str|None, status: str|None, error: str|None}
+        Nunca lanza excepción por un rechazo de MP: el error se devuelve en el contrato.
         """
-        respuesta = self.sdk.refund().create(payment_id)
-        
-        if respuesta.get("status") in [200, 201]:
-            return respuesta.get("response")
-        else:
+        try:
+            respuesta = self.sdk.refund().create(payment_id)
+
+            if respuesta.get("status") in [200, 201]:
+                response = respuesta.get("response") or {}
+                return {
+                    "success": True,
+                    "refund_id": response.get("id"),
+                    "status": response.get("status"),
+                    "error": None,
+                }
+
             mensaje_error = respuesta.get("response", {}).get("message", "Error desconocido de MP")
-            raise Exception(f"Fallo al reembolsar en MP: {mensaje_error}")
+            return {
+                "success": False,
+                "refund_id": None,
+                "status": respuesta.get("status"),
+                "error": str(mensaje_error) or "Error desconocido de MP",
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "refund_id": None,
+                "status": None,
+                "error": str(e) or "Error desconocido de MP",
+            }

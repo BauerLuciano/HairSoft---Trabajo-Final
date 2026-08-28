@@ -587,7 +587,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import axios from '../../utils/axiosConfig'
@@ -673,6 +673,9 @@ const metodoPagoWeb = ref('LINK')
 const pagoUuid = ref(null)
 const pagoConfirmado = ref(false)
 const cargandoQR = ref(false)
+let pollingQR = null
+const confirmandoTurnoQR = ref(false)
+const uidQRConfirmado = ref(null)
 const cargandoHorarios = ref(false)
 const cargandoDatos = ref(true)
 const mostrarModalInteres = ref(false)
@@ -1043,6 +1046,7 @@ const crearPagoMercadoPago = async () => {
 }
 
 const pagarConQR = async () => {
+  if (cargandoQR.value || confirmandoTurnoQR.value) return
   cargandoQR.value = true
   try {
     const monto = montoAPagarAhora()
@@ -1067,7 +1071,15 @@ const pagarConQR = async () => {
   }
 }
 
+const pararPollingQR = () => {
+  if (pollingQR) {
+    clearInterval(pollingQR)
+    pollingQR = null
+  }
+}
+
 const mostrarQRWeb = async (qrUrl, uid, monto) => {
+  pararPollingQR()
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrUrl)}`
 
   const result = await Swal.fire({
@@ -1088,11 +1100,12 @@ const mostrarQRWeb = async (qrUrl, uid, monto) => {
     cancelButtonColor: '#999',
     allowOutsideClick: false,
     didOpen: () => {
-      const interval = setInterval(async () => {
+      pollingQR = setInterval(async () => {
         try {
           const check = await api.get(`/api/check-pago-temporal/${uid}/`)
-          if (check.data.pagado) {
-            clearInterval(interval)
+          if (check.data.pagado && uidQRConfirmado.value !== uid) {
+            uidQRConfirmado.value = uid
+            pararPollingQR()
             pagoConfirmado.value = true
             const estadoEl = document.getElementById('qr-estado')
             if (estadoEl) {
@@ -1111,12 +1124,16 @@ const mostrarQRWeb = async (qrUrl, uid, monto) => {
   })
 
   if (result.dismiss === Swal.DismissReason.cancel) {
+    pararPollingQR()
     pagoUuid.value = null
     pagoConfirmado.value = false
   }
 }
 
 const confirmarTurnoConPagoQR = async (uid) => {
+  if (uidQRConfirmado.value === uid || confirmandoTurnoQR.value) return
+  uidQRConfirmado.value = uid
+  confirmandoTurnoQR.value = true
   cargandoMercadoPago.value = true
   try {
     const payload = {
@@ -1146,6 +1163,7 @@ const confirmarTurnoConPagoQR = async (uid) => {
     Swal.fire('No se pudo confirmar', errorMsg, 'error')
   } finally {
     cargandoMercadoPago.value = false
+    confirmandoTurnoQR.value = false
   }
 }
 

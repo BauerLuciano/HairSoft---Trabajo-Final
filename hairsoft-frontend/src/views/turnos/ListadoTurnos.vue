@@ -160,12 +160,12 @@
                   </span>
 
                   <div style="font-size: 0.85rem; color: #94a3b8; margin-top: 6px; font-weight: 500;">
-                    <template v-if="turno.tipo_pago === 'SENA_50'">
-                      Seña: ${{ formatPrecio(turno.monto_seña || 0) }} ({{ getMedioPagoTexto(turno.medio_pago, turno.entidad_pago) }})
-                    </template>
-                    <template v-else>
-                      Pago total: ${{ formatPrecio(turno.monto_total || 0) }} ({{ getMedioPagoTexto(turno.medio_pago, turno.entidad_pago) }})
-                    </template>
+                    <div>
+                      {{ etiquetaMedioPagoCompacta(turno.medio_pago, turno.entidad_pago, turno.codigo_transaccion) }} · ${{ formatPrecio(turno.tipo_pago === 'SENA_50' ? (turno.monto_seña || 0) : (turno.monto_total || 0)) }}
+                    </div>
+                    <div v-if="desgloseMedioPagoCompacto(turno.medio_pago, turno.entidad_pago, turno.codigo_transaccion)" style="font-size: 0.8rem; opacity: 0.75; margin-top: 2px;">
+                      {{ desgloseMedioPagoCompacto(turno.medio_pago, turno.entidad_pago, turno.codigo_transaccion) }}
+                    </div>
                   </div>
                   <div style="font-size: 0.85rem; color: #94a3b8; opacity: 0.8;">
                     Total Turno: ${{ formatPrecio(turno.monto_total || 0) }}
@@ -324,7 +324,7 @@ const getEntidadPagoTexto = (entidad) => {
   return mapaEntidades[entidad] || entidad
 }
 
-const getMedioPagoTexto = (medioPago, entidadPago = null) => {
+const labelMedioPago = (medioPago) => {
   if (!medioPago || medioPago === 'PENDIENTE') return 'Pendiente'
   const map = {
     'MERCADO_PAGO': 'Mercado Pago',
@@ -332,6 +332,71 @@ const getMedioPagoTexto = (medioPago, entidadPago = null) => {
     'MIXTO': 'Mixto',
   }
   return map[medioPago] || medioPago
+}
+
+const getSubtipoMP = (entidad) => {
+  const e = String(entidad || '').toUpperCase()
+  if (e === 'MERCADOPAGO_ALIAS') return 'Alias'
+  if (e === 'MERCADOPAGO_QR') return 'QR'
+  return null
+}
+
+const esCodigoMixto = (codigoTransaccion, entidadPago = null) => {
+  if (String(entidadPago || '').toUpperCase() === 'MIXTO') return true
+  const codigo = String(codigoTransaccion || '').trim()
+  if (!codigo) return false
+  const partes = codigo.split('|')
+  if (partes.length < 2) return false
+  return partes.every(p => /^[A-Z_]+:\d+(\.\d+)?$/.test(p))
+}
+
+const parsePartePago = (parte) => {
+  const idx = String(parte).indexOf(':')
+  const medio = idx > -1 ? String(parte).slice(0, idx) : String(parte)
+  const monto = idx > -1 ? parseFloat(String(parte).slice(idx + 1)) : 0
+  let etiqueta = labelMedioPago(medio)
+  const subtipo = getSubtipoMP(medio)
+  if (subtipo && etiqueta === 'Mercado Pago') etiqueta += ` (${subtipo})`
+  return { medio, etiqueta, monto: isNaN(monto) ? 0 : monto }
+}
+
+const formatearMedioPagoTurno = (medioPago, entidadPago = null, codigoTransaccion = null) => {
+  const codigo = String(codigoTransaccion || '').trim()
+  if (esCodigoMixto(codigoTransaccion, entidadPago) && codigo.includes('|')) {
+    const detalle = codigo.split('|').map(parsePartePago)
+    return 'Mixto: ' + detalle.map(p => `${p.etiqueta} $${formatPrecio(p.monto)}`).join(' + ')
+  }
+  let etiqueta = labelMedioPago(medioPago)
+  if (etiqueta === 'Mercado Pago') {
+    const subtipo = getSubtipoMP(entidadPago)
+    if (subtipo) etiqueta += ` (${subtipo})`
+  }
+  return etiqueta
+}
+
+const desglosarMedioPagoTurno = (medioPago, entidadPago = null, codigoTransaccion = null) => {
+  const codigo = String(codigoTransaccion || '').trim()
+  if (esCodigoMixto(codigoTransaccion, entidadPago) && codigo.includes('|')) {
+    return { mixto: true, partes: codigo.split('|').map(parsePartePago) }
+  }
+  return { mixto: false, etiqueta: formatearMedioPagoTurno(medioPago, entidadPago, codigoTransaccion) }
+}
+
+const etiquetaMedioPagoCompacta = (medioPago, entidadPago = null, codigoTransaccion = null) => {
+  const codigo = String(codigoTransaccion || '').trim()
+  if (esCodigoMixto(codigoTransaccion, entidadPago) && codigo.includes('|')) return 'Mixto'
+  return formatearMedioPagoTurno(medioPago, entidadPago, codigoTransaccion)
+}
+
+const desgloseMedioPagoCompacto = (medioPago, entidadPago = null, codigoTransaccion = null) => {
+  const codigo = String(codigoTransaccion || '').trim()
+  if (!(esCodigoMixto(codigoTransaccion, entidadPago) && codigo.includes('|'))) return ''
+  return codigo.split('|').map((parte) => {
+    const { medio, monto } = parsePartePago(parte)
+    const base = String(medio).startsWith('MERCADOPAGO') ? 'MP' : labelMedioPago(medio)
+    const subtipo = getSubtipoMP(medio)
+    return `${base}${subtipo === 'QR' ? ' (QR)' : ''} $${formatPrecio(monto)}`
+  }).join(' · ')
 }
 
 const calcularFaltaPagar = (turno) => {
@@ -349,6 +414,45 @@ const calcularMontoReembolso = (turno) => {
   }
   
   return parseFloat(turno.monto_seña) || parseFloat(turno.monto_total) || 0
+}
+
+// Un ID real de Mercado Pago SOLO proviene de mp_payment_id o mp_payment_id_saldo.
+// Nunca de codigo_transaccion ni de comprobantes manuales de Alias.
+const esIdMPReal = (turno) => {
+  const paymentId = String(turno.mp_payment_id || turno.mp_payment_id_saldo || '').trim()
+  if (!paymentId || paymentId === 'None') return false
+  const entidad = String(turno.entidad_pago || '').toUpperCase()
+  // Presencial Alias puro: el cajero guardó el comprobante manual en mp_payment_id → NO es un ID real
+  if (entidad === 'MERCADOPAGO') return false
+  const desglose = desglosarMedioPagoTurno(turno.medio_pago, turno.entidad_pago, turno.codigo_transaccion)
+  if (desglose.mixto) {
+    const parteMP = desglose.partes.find((p) => String(p.medio).startsWith('MERCADOPAGO'))
+    if (!parteMP) return false
+    return getSubtipoMP(parteMP.medio) === 'QR'
+  }
+  return true
+}
+
+const esOrigenAlias = (turno) => {
+  if (String(turno.entidad_pago || '').toUpperCase() === 'MERCADOPAGO') return true
+  const desglose = desglosarMedioPagoTurno(turno.medio_pago, turno.entidad_pago, turno.codigo_transaccion)
+  if (desglose.mixto) {
+    return desglose.partes.some((p) => getSubtipoMP(p.medio) === 'Alias')
+  }
+  return false
+}
+
+// Importe máximo que la API puede devolver para este turno (0 = no API).
+const montoMPAPI = (turno, montoTotal) => {
+  if (!esIdMPReal(turno)) return 0
+  const desglose = desglosarMedioPagoTurno(turno.medio_pago, turno.entidad_pago, turno.codigo_transaccion)
+  if (desglose.mixto) {
+    const parteMP = desglose.partes.find((p) => String(p.medio).startsWith('MERCADOPAGO'))
+    return parteMP ? parteMP.monto : 0
+  }
+  // Saldo web (TURNO_SALDO): desde el frontend no se conoce el importe del pago del saldo
+  if (String(turno.medio_pago_restante || '').toUpperCase() === 'MERCADO_PAGO') return 0
+  return montoTotal
 }
 
 const esTurnoPorCanje = (turno) => {
@@ -832,12 +936,18 @@ const confirmarPagoTotal = async (turno) => {
 
 const gestionarReembolsoManual = async (turno) => {
   const montoTotal = calcularMontoReembolso(turno);
-  
-  // 1. Detectar si hay pago Online (Mercado Pago)
-  const idMP = turno.mp_payment_id || turno.codigo_transaccion;
-  const esPagoOnline = idMP && !['EFECTIVO', 'PRESENCIAL', 'None', null, ''].includes(idMP);
 
-  // 2. Lógica de Preferencia e Inteligencia de sugerencia
+  // 1. ID REAL de Mercado Pago: solo desde mp_payment_id / mp_payment_id_saldo.
+  //    Nunca codigo_transaccion ni comprobantes manuales de Alias.
+  const paymentIdReal = String(turno.mp_payment_id || turno.mp_payment_id_saldo || '').trim();
+  const hasIdReal = esIdMPReal(turno) && paymentIdReal && paymentIdReal !== 'None';
+  const apiMax = montoMPAPI(turno, montoTotal);
+  const esAliasOrigen = esOrigenAlias(turno);
+
+  const desglose = desglosarMedioPagoTurno(turno.medio_pago, turno.entidad_pago, turno.codigo_transaccion);
+  const partesMixto = desglose.mixto ? desglose.partes : null;
+
+  // 2. Lógica de Preferencia e Inteligencia de sugerencia (SOLO sugiere/precarga, no restringe)
   let valorEfe = 0;
   let valorMP = 0;
   let prefeTexto = "No especificada";
@@ -861,24 +971,68 @@ const gestionarReembolsoManual = async (turno) => {
       prefeColor = "#1d4ed8";
       prefeBg = "#eff6ff";
     }
-  } else {
-    // 💡 SUGERENCIA AUTOMÁTICA: Si no especificó, sugerimos según cómo entró la plata
-    if (esPagoOnline) {
-      valorMP = montoTotal;
-      prefeTexto = "Mercado Pago";
-      prefeIcono = "💳";
-      prefeColor = "#1d4ed8";
-      prefeBg = "#eff6ff";
-    } else {
-      valorEfe = montoTotal;
-      prefeTexto = "Efectivo";
-      prefeIcono = "💵";
-      prefeColor = "#15803d";
-      prefeBg = "#f0fdf4";
+  } else if (partesMixto) {
+    // Prefill = desglose original (editable, no es una restricción)
+    const parteEfe = partesMixto.find(p => String(p.medio) === 'EFECTIVO');
+    const parteMP = partesMixto.find(p => String(p.medio).startsWith('MERCADOPAGO'));
+    valorEfe = parteEfe ? parteEfe.monto : 0;
+    valorMP = parteMP ? parteMP.monto : 0;
+    if (Math.abs((valorEfe + valorMP) - montoTotal) > 0.01) {
+      valorEfe = Math.max(0, montoTotal - valorMP);
     }
+    prefeTexto = "Según desglose original";
+    prefeIcono = "🧾";
+    prefeColor = "#475569";
+    prefeBg = "#f8fafc";
+  } else if (hasIdReal) {
+    valorMP = montoTotal;
+    prefeTexto = "Mercado Pago (API automática)";
+    prefeIcono = "📱";
+    prefeColor = "#1d4ed8";
+    prefeBg = "#eff6ff";
+  } else if (String(turno.medio_pago || '').toUpperCase() === 'MERCADO_PAGO' || esAliasOrigen) {
+    valorMP = montoTotal;
+    prefeTexto = "Mercado Pago (manual - transferencia)";
+    prefeIcono = "📱";
+    prefeColor = "#1d4ed8";
+    prefeBg = "#eff6ff";
+  } else {
+    valorEfe = montoTotal;
+    prefeTexto = "Efectivo";
+    prefeIcono = "💵";
+    prefeColor = "#15803d";
+    prefeBg = "#f0fdf4";
   }
 
   const formatear = (n) => n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // 3. Bloques informativos del pago original (nunca el string crudo del desglose como ID)
+  let bloqueOrigen = '';
+  if (hasIdReal && paymentIdReal) {
+    bloqueOrigen = `
+    <div style="background: #0f172a; padding: 18px; border-radius: 16px; margin-top: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
+      <span style="display: block; font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 8px; letter-spacing: 0.5px;">ID de pago Mercado Pago</span>
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.15rem; color: #38bdf8; font-weight: 800; letter-spacing: 1px;">${paymentIdReal}</span>
+    </div>`;
+  } else if (esAliasOrigen) {
+    bloqueOrigen = `
+    <div style="background: #fffbeb; border: 1px solid #f59e0b44; padding: 14px 16px; border-radius: 16px; margin-top: 12px;">
+      <span style="display: block; font-size: 0.7rem; text-transform: uppercase; color: #b45309; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Pago original por Alias</span>
+      <span style="font-size: 0.9rem; color: #92400e; font-weight: 600;">La devolución mediante Mercado Pago se realizará manualmente mediante transferencia.</span>
+    </div>`;
+  }
+
+  let bloqueMixto = '';
+  if (partesMixto) {
+    bloqueMixto = `
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px 16px; border-radius: 16px; margin-top: 12px;">
+      <span style="display: block; font-size: 0.7rem; text-transform: uppercase; color: #64748b; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px;">Pago original (desglose)</span>
+      ${partesMixto.map(p => `<div style="display: flex; justify-content: space-between; padding: 3px 0;"><span style="font-size: 0.9rem; color: #334155; font-weight: 600;">${p.etiqueta}</span><span style="font-size: 0.9rem; color: #0f172a; font-weight: 800;">$${formatear(p.monto)}</span></div>`).join('')}
+    </div>`;
+  }
+
+  // Modo de devolución MP (compartido entre didOpen y preConfirm)
+  let modoMp = (hasIdReal && valorMP > 0 && Math.abs(valorMP - apiMax) <= 0.01) ? 'api' : 'manual';
 
   await Swal.fire({
     title: '',
@@ -902,20 +1056,13 @@ const gestionarReembolsoManual = async (turno) => {
         <div style="margin-bottom: 25px;">
            <div style="background: ${prefeBg}; border: 1px solid ${prefeColor}33; padding: 15px; border-radius: 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
               <div>
-                <span style="display: block; font-size: 0.65rem; text-transform: uppercase; color: ${prefeColor}; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 2px;">Método recomendado</span>
+                <span style="display: block; font-size: 0.65rem; text-transform: uppercase; color: ${prefeColor}; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 2px;">Método recomendado (podés cambiarlo)</span>
                 <span style="font-size: 1.05rem; color: ${prefeColor}; font-weight: 700;">${prefeIcono} ${prefeTexto}</span>
               </div>
            </div>
 
-           ${esPagoOnline ? `
-           <div style="background: #0f172a; padding: 18px; border-radius: 16px; margin-top: 12px; position: relative; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
-              <span style="display: block; font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 8px; letter-spacing: 0.5px;">ID de Transacción Mercado Pago</span>
-              <div style="display: flex; align-items: center; justify-content: space-between;">
-                <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.25rem; color: #38bdf8; font-weight: 800; letter-spacing: 1px;">${idMP}</span>
-              </div>
-           </div>
-           ` : `
-           `}
+           ${bloqueOrigen}
+           ${bloqueMixto}
         </div>
 
         <div style="background: #ffffff; border: 2px solid #f1f5f9; padding: 20px; border-radius: 20px;">
@@ -948,8 +1095,16 @@ const gestionarReembolsoManual = async (turno) => {
               </div>
             </div>
 
-            ${!esPagoOnline ? `
-            <div id="mp_manual_fields" style="margin-top: 15px; padding: 18px; background: #f0f9ff; border-radius: 16px; border: 2px solid #bae6fd; ${Number(valorMP) > 0 ? '' : 'display: none;'}">
+            <div id="mp_modo_wrap" style="margin-top: 6px; padding: 14px; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 16px; display: none;">
+              <span style="display:block; font-size:0.7rem; text-transform:uppercase; color:#64748b; font-weight:800; letter-spacing:0.5px; margin-bottom:10px;">¿Cómo devolver por Mercado Pago?</span>
+              <div style="display:flex; gap:8px;">
+                <div id="modo_api" style="flex:1; padding:10px 12px; border-radius:12px; cursor:pointer; font-size:0.85rem; font-weight:700; text-align:center; border:2px solid #e2e8f0; background:#ffffff; color:#64748b;">🔁 API automática ${hasIdReal ? '' : '<span style="color:#94a3b8; font-weight:600;">(no disponible)</span>'}</div>
+                <div id="modo_manual" style="flex:1; padding:10px 12px; border-radius:12px; cursor:pointer; font-size:0.85rem; font-weight:700; text-align:center; border:2px solid #e2e8f0; background:#ffffff; color:#64748b;">✍️ Transferencia manual</div>
+              </div>
+              <div id="api_limit_note" style="display:none; margin-top:8px; font-size:0.75rem; color:#0369a1; font-weight:600;"></div>
+            </div>
+
+            <div id="mp_manual_fields" style="margin-top: 6px; padding: 18px; background: #f0f9ff; border-radius: 16px; border: 2px solid #bae6fd; display: none;">
               <h4 style="margin: 0 0 14px 0; font-size: 0.85rem; font-weight: 800; color: #1d4ed8; text-transform: uppercase; letter-spacing: 0.5px;">📱 Devolución por Mercado Pago (manual)</h4>
               
               <div style="margin-bottom: 12px;">
@@ -968,14 +1123,13 @@ const gestionarReembolsoManual = async (turno) => {
               
               <div style="margin-bottom: 4px;">
                 <label style="display:block; margin-bottom:6px; font-weight:700; color:#0f172a; font-size:0.85rem;">
-                  Comprobante - Id de Transaccion <span style="color:#94a3b8; font-weight:400;">(opcional)</span>
+                  Comprobante de la NUEVA transferencia - Id de Transaccion <span style="color:#94a3b8; font-weight:400;">(opcional)</span>
                 </label>
                 <input id="reembolso_id_transaccion" type="text" inputmode="numeric" class="swal2-input"
                        style="width:100%; margin:0; height:44px; border-radius:10px; font-size:0.95rem; padding:0 12px; border:2px solid #e2e8f0;"
                        placeholder="ej: 166504981991" maxlength="12">
               </div>
             </div>
-            ` : ''}
           </div>
         </div>
 
@@ -1006,11 +1160,60 @@ const gestionarReembolsoManual = async (turno) => {
         i.value = p.join(',');
       };
 
+      const wrap = document.getElementById('mp_modo_wrap');
+      const modoApiBtn = document.getElementById('modo_api');
+      const modoManualBtn = document.getElementById('modo_manual');
+      const manualFields = document.getElementById('mp_manual_fields');
+      const apiLimitNote = document.getElementById('api_limit_note');
+
+      const apiPosibleActual = () => {
+        const v = parse(inMP.value);
+        return hasIdReal && v > 0 && Math.abs(v - apiMax) <= 0.01;
+      };
+
+      const pintarModo = () => {
+        const vMP = parse(inMP.value);
+        const apiPosible = apiPosibleActual();
+        if (vMP <= 0) {
+          if (wrap) wrap.style.display = 'none';
+          if (manualFields) manualFields.style.display = 'none';
+          return;
+        }
+        if (wrap) wrap.style.display = 'block';
+        if (!apiPosible) modoMp = 'manual';
+        const activeApi = modoMp === 'api';
+
+        if (modoApiBtn) {
+          styleBtn(modoApiBtn, activeApi && apiPosible, apiPosible);
+        }
+        if (modoManualBtn) {
+          styleBtn(modoManualBtn, !activeApi, true);
+        }
+        if (manualFields) {
+          manualFields.style.display = (vMP > 0 && !activeApi) ? 'block' : 'none';
+        }
+        if (apiLimitNote) {
+          if (hasIdReal && vMP > 0 && Math.abs(vMP - apiMax) > 0.01) {
+            apiLimitNote.style.display = 'block';
+            apiLimitNote.textContent = `La API solo cubre hasta $${formatear(apiMax)} (importe del pago MP real). Ajustá el monto o usá transferencia manual.`;
+          } else {
+            apiLimitNote.style.display = 'none';
+          }
+        }
+      };
+
+      const styleBtn = (btn, activo, habilitado) => {
+        btn.style.cursor = habilitado ? 'pointer' : 'not-allowed';
+        btn.style.opacity = habilitado ? '1' : '0.4';
+        btn.style.background = activo ? '#0ea5e9' : '#ffffff';
+        btn.style.color = activo ? '#ffffff' : '#64748b';
+        btn.style.border = `2px solid ${activo ? '#0ea5e9' : (habilitado ? '#e2e8f0' : '#f1f5f9')}`;
+      };
+
       const validate = () => {
         const total = parse(inEfe.value) + parse(inMP.value);
         const diff = total - montoTotal;
-        const mpManualBlock = document.getElementById('mp_manual_fields');
-        const mpManualVisible = mpManualBlock && mpManualBlock.style.display !== 'none';
+        const mpManualVisible = manualFields && manualFields.style.display !== 'none';
         const alias = document.getElementById('reembolso_alias')?.value.trim() || '';
         const titular = document.getElementById('reembolso_titular')?.value.trim() || '';
         const faltaMttoTitular = mpManualVisible && (!alias || !titular);
@@ -1042,15 +1245,20 @@ const gestionarReembolsoManual = async (turno) => {
       };
 
       inEfe.addEventListener('input', () => { mask(inEfe); validate(); });
-      inMP.addEventListener('input', () => { 
-        mask(inMP); validate();
-        const manualFields = document.getElementById('mp_manual_fields');
-        if (manualFields) {
-          manualFields.style.display = parse(inMP.value) > 0 ? 'block' : 'none';
-        }
+      inMP.addEventListener('input', () => {
+        mask(inMP); pintarModo(); validate();
       });
       inEfe.addEventListener('focus', () => inEfe.select());
       inMP.addEventListener('focus', () => inMP.select());
+
+      if (modoApiBtn) {
+        modoApiBtn.addEventListener('click', () => {
+          if (apiPosibleActual()) { modoMp = 'api'; pintarModo(); validate(); }
+        });
+      }
+      if (modoManualBtn) {
+        modoManualBtn.addEventListener('click', () => { modoMp = 'manual'; pintarModo(); validate(); });
+      }
 
       const inIdTrans = document.getElementById('reembolso_id_transaccion');
       if (inIdTrans) {
@@ -1064,6 +1272,7 @@ const gestionarReembolsoManual = async (turno) => {
       if (inAlias) inAlias.addEventListener('input', validate);
       if (inTitular) inTitular.addEventListener('input', validate);
 
+      pintarModo();
       validate();
     },
     preConfirm: () => {
@@ -1072,9 +1281,9 @@ const gestionarReembolsoManual = async (turno) => {
       const data = {
         monto_efectivo: vEfe,
         monto_mp: vMP,
-        reembolso_api_mp: vMP > 0 && esPagoOnline
+        reembolso_api_mp: vMP > 0 && modoMp === 'api'
       };
-      if (vMP > 0 && !esPagoOnline) {
+      if (vMP > 0 && modoMp === 'manual') {
         data.reembolso_alias = document.getElementById('reembolso_alias')?.value || '';
         data.reembolso_titular = document.getElementById('reembolso_titular')?.value || '';
         data.reembolso_id_transaccion = document.getElementById('reembolso_id_transaccion')?.value || '';
@@ -1153,6 +1362,25 @@ const verDetalleTurno = async (turno) => {
     const medioPago = turnoDetalle.medio_pago || '';
     const entidadPago = turnoDetalle.entidad_pago || null;
     const transactionId = turnoDetalle.codigo_transaccion || turnoDetalle.mp_payment_id;
+
+    const detallePago = desglosarMedioPagoTurno(medioPago, entidadPago, turnoDetalle.codigo_transaccion);
+    const comprobantePago = detallePago.mixto
+      ? (turnoDetalle.mp_payment_id || 'Sin Comprobante')
+      : (transactionId || 'Sin Comprobante');
+
+    const detalleMedioPagoHTML = detallePago.mixto
+      ? `<div style="display: flex; flex-direction: column; gap: 5px;">
+          ${detallePago.partes.map(p => `
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 600; color: #e2e8f0;">
+              <span style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 1.1rem;">🏦</span> ${p.etiqueta}
+              </span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #a5f3fc;">$${formatPrecio(p.monto)}</span>
+            </div>`).join('')}
+        </div>`
+      : `<span style="font-size: 0.9rem; font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 1.2rem;">🏦</span> ${detallePago.etiqueta}
+        </span>`;
 
     Swal.fire({
       title: `<div style="display: flex; align-items: center; gap: 10px; color: #0f172a;">
@@ -1272,11 +1500,9 @@ const verDetalleTurno = async (turno) => {
               <div style="margin-bottom: ${turnoDetalle.medio_pago_restante ? '12px' : '0'}; border-bottom: ${turnoDetalle.medio_pago_restante ? '1px solid #334155' : 'none'}; padding-bottom: ${turnoDetalle.medio_pago_restante ? '12px' : '0'};">
                 <span style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">${turnoDetalle.medio_pago_restante ? '1er Pago (Seña)' : 'Pago Único / Seña'}</span>
                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                  <span style="font-size: 0.9rem; font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 6px;">
-                    <span style="font-size: 1.2rem;">🏦</span> ${getMedioPagoTexto(medioPago, entidadPago)}
-                  </span>
+                  ${detalleMedioPagoHTML}
                   <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; background: #1e293b; padding: 4px 12px; border-radius: 40px; color: #a5f3fc; letter-spacing: 0.5px; margin-left: auto;">
-                    ${transactionId || 'Sin Comprobante'}
+                    ${comprobantePago}
                   </span>
                 </div>
               </div>
@@ -1286,7 +1512,7 @@ const verDetalleTurno = async (turno) => {
                   <span style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">2do Pago (Restante)</span>
                   <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                     <span style="font-size: 0.9rem; font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 6px;">
-                      <span style="font-size: 1.2rem;">🏦</span> ${getMedioPagoTexto(turnoDetalle.medio_pago_restante, turnoDetalle.entidad_pago_restante)}
+                      <span style="font-size: 1.2rem;">🏦</span> ${formatearMedioPagoTurno(turnoDetalle.medio_pago_restante, turnoDetalle.entidad_pago_restante, turnoDetalle.codigo_transaccion_restante)}
                     </span>
                     <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; background: #1e293b; padding: 4px 12px; border-radius: 40px; color: #a5f3fc; letter-spacing: 0.5px; margin-left: auto;">
                       ${turnoDetalle.mp_payment_id_saldo || turnoDetalle.codigo_transaccion_restante || 'Sin Comprobante'}
