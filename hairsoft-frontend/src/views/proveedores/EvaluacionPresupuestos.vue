@@ -79,6 +79,10 @@
                   </div>
                   <div class="info-main">
                     <strong>{{ solicitud.producto_nombre }}</strong>
+                    <span v-if="solicitud.tipo_solicitud === 'MANUAL'" class="meta-proveedor">
+                      {{ nombreProveedor(solicitud) }}
+                      <span class="meta-productos">{{ totalProductos(solicitud) }} producto{{ totalProductos(solicitud) === 1 ? '' : 's' }}</span>
+                    </span>
                     <span class="meta-date">{{ formatDate(solicitud.fecha_creacion) }}</span>
                   </div>
                 </div>
@@ -227,11 +231,38 @@
             <div class="info-detalle">
               <h3>{{ licitacionSeleccionada.producto_nombre }}</h3>
               <div class="meta-info">
+                <span v-if="licitacionSeleccionada.tipo_solicitud === 'MANUAL'"><strong>Proveedor:</strong> {{ nombreProveedor(licitacionSeleccionada) }}</span>
                 <span><strong>Cantidad requerida:</strong> {{ licitacionSeleccionada.cantidad_requerida }} unidades</span>
                 <span><strong>Stock actual:</strong> {{ licitacionSeleccionada.producto_stock }} unidades</span>
                 <span><strong>Fecha creación:</strong> {{ formatDate(licitacionSeleccionada.fecha_creacion) }} {{ formatHora(licitacionSeleccionada.fecha_creacion) }}</span>
                 <span><strong>Días desde creación:</strong> {{ diasDesdeCreacion(licitacionSeleccionada) }} días</span>
               </div>
+            </div>
+          </div>
+
+          <div v-if="licitacionSeleccionada.tipo_solicitud === 'MANUAL' && licitacionSeleccionada.productos && licitacionSeleccionada.productos.length > 0" class="productos-pedido">
+            <div class="cotizaciones-header">
+              <h4>Productos del Pedido ({{ licitacionSeleccionada.productos.length }})</h4>
+            </div>
+            <div class="table-responsive">
+              <table class="users-table detail-table">
+                <thead>
+                  <tr>
+                    <th>Producto</th>
+                    <th>Cantidad</th>
+                    <th>Precio Unitario</th>
+                    <th>Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="prod in licitacionSeleccionada.productos" :key="prod.id">
+                    <td><span class="font-bold">{{ prod.producto_nombre }}</span></td>
+                    <td>{{ prod.cantidad }} u.</td>
+                    <td>${{ (prod.precio_unitario || 0).toLocaleString('es-AR', {minimumFractionDigits: 2}) }}</td>
+                    <td class="precio-cell">${{ (prod.precio_total || 0).toLocaleString('es-AR', {minimumFractionDigits: 2}) }}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -375,7 +406,10 @@ const cargarDatos = async () => {
 
 const solicitudesFiltradas = computed(() => {
   let filtradas = solicitudes.value.filter(s => {
-    const matchBusqueda = s.producto_nombre.toLowerCase().includes(filtros.value.busqueda.toLowerCase())
+    const textoBusqueda = filtros.value.busqueda.toLowerCase()
+    const matchBusqueda = (s.producto_nombre || '').toLowerCase().includes(textoBusqueda) ||
+                          (s.productos || []).some(p => (p.producto_nombre || '').toLowerCase().includes(textoBusqueda)) ||
+                          (s.cotizaciones || []).some(c => (c.proveedor_nombre || '').toLowerCase().includes(textoBusqueda))
     const matchEstado = !filtros.value.estado || s.estado === filtros.value.estado
     const matchTipo = !filtros.value.tipo || s.tipo_solicitud === filtros.value.tipo // 👈 LÓGICA FILTRO TIPO
     return matchBusqueda && matchEstado && matchTipo
@@ -385,6 +419,9 @@ const solicitudesFiltradas = computed(() => {
   if (filtros.value.orden === 'fecha_desc') filtradas.sort((a, b) => new Date(b.fecha_creacion) - new Date(a.fecha_creacion))
   return filtradas
 })
+
+const nombreProveedor = (sol) => (sol.cotizaciones && sol.cotizaciones[0]) ? sol.cotizaciones[0].proveedor_nombre : 'Proveedor'
+const totalProductos = (sol) => (sol.productos && sol.productos.length) ? sol.productos.length : 1
 
 const totalPaginas = computed(() => Math.max(1, Math.ceil(solicitudesFiltradas.value.length / itemsPorPagina)))
 const solicitudesPaginadas = computed(() => {
@@ -432,7 +469,7 @@ const generarOrden = async (sol, cotId) => {
   const esManual = sol.tipo_solicitud === 'MANUAL'
   const result = await Swal.fire({
     title: esManual ? '¿Aprobar Presupuesto?' : '¿Confirmar Adjudicación?',
-    text: esManual ? 'El pedido pasará a estado Confirmado.' : 'Se generará la orden de compra.',
+    text: esManual ? `Se confirmará el pedido completo (${totalProductos(sol)} producto${totalProductos(sol) === 1 ? '' : 's'}) y pasará a estado Confirmado.` : 'Se generará la orden de compra.',
     icon: 'question', showCancelButton: true, confirmButtonColor: '#10b981'
   })
   if (!result.isConfirmed) return
@@ -796,6 +833,10 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 
 .meta-date { font-size: 0.8rem; color: var(--text-tertiary); display: block; }
 .meta-hora { font-size: 0.75rem; color: var(--text-tertiary); display: block; }
+.meta-proveedor { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.82rem; color: var(--text-secondary); font-weight: 600; margin-bottom: 2px; }
+.meta-productos { font-size: 0.72rem; color: var(--accent-color); background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 1px 8px; border-radius: 12px; font-weight: 700; }
+
+.productos-pedido { margin-top: 30px; }
 .meta-info { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; }
 
 .ofertas-info { display: flex; flex-direction: column; gap: 6px; }

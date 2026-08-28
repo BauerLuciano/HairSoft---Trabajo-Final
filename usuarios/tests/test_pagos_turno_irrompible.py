@@ -5,7 +5,7 @@ from rest_framework.test import APIClient
 from rest_framework.authtoken.models import Token
 
 from usuarios.factories import UsuarioFactory, ServicioFactory
-from usuarios.models import Caja, SesionCaja, Turno, MovimientoCaja, PagoTemporal
+from usuarios.models import Caja, SesionCaja, Turno, MovimientoCaja, PagoTemporal, Silla
 
 
 def _setup_base():
@@ -15,6 +15,7 @@ def _setup_base():
     servicio = ServicioFactory(precio=2000.00, duracion=30)
     caja = Caja.objects.create(nombre=f"Caja Test {uuid.uuid4().hex[:8]}")
     sesion = SesionCaja.objects.create(caja=caja, usuario_apertura=admin, saldo_inicial_efectivo=0)
+    Silla.objects.create(nombre=f"Silla {uuid.uuid4().hex[:8]}", orden=1)
     return {'admin': admin, 'peluquero': peluquero, 'cliente': cliente, 'servicio': servicio, 'sesion': sesion}
 
 

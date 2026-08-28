@@ -551,6 +551,7 @@ import {
 import Swal from 'sweetalert2'
 import axios from '@/utils/axiosConfig'
 import QRCode from 'qrcode'
+import { obtenerErrorDisponibilidad } from '@/utils/disponibilidadErrores'
 
 const router = useRouter()
 const API_BASE_URL = 'http://127.0.0.1:8000'; 
@@ -1378,13 +1379,19 @@ const crearTurno = async () => {
       limpiarContexto()
       router.push('/turnos')
     } else {
-      let errorMsg = 'Error al crear turno'
-      if (data.error) errorMsg = data.error
-      else if (data.message) errorMsg = data.message
-      else if (data.errors) {
-        errorMsg = Object.entries(data.errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
+      // Mensajes naturales de disponibilidad según el code del backend
+      const dispos = obtenerErrorDisponibilidad(data && data.code)
+      if (dispos) {
+        await Swal.fire({ icon: 'warning', title: dispos.title, text: dispos.message, confirmButtonText: 'Entendido' })
+      } else {
+        let errorMsg = 'Error al crear turno'
+        if (data.error) errorMsg = data.error
+        else if (data.message) errorMsg = data.message
+        else if (data.errors) {
+          errorMsg = Object.entries(data.errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
+        }
+        await Swal.fire({ icon: 'warning', title: 'Atención', text: errorMsg, confirmButtonText: 'Entendido' })
       }
-      await Swal.fire({ icon: 'warning', title: 'Atención', text: errorMsg, confirmButtonText: 'Entendido' })
     }
   } catch (e) {
     await Swal.fire({ icon: 'error', title: 'Error de conexión', text: 'No se pudo conectar con el servidor.', confirmButtonText: 'Entendido' })

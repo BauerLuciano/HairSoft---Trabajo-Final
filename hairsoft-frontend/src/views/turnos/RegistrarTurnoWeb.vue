@@ -593,6 +593,7 @@ import api from '@/services/api'
 import axios from '../../utils/axiosConfig'
 import Swal from 'sweetalert2'
 import { limpiarSesionLocal } from '@/utils/authPrompt'
+import { obtenerErrorDisponibilidad } from '@/utils/disponibilidadErrores'
 
 import { 
   Calendar, ArrowLeft, User, UserCheck, FolderOpen, Tag, 
@@ -919,6 +920,18 @@ const cargarTurnosOcupados = async (f) => {
         ocupadosSet.add(`${Math.floor(i/60).toString().padStart(2,'0')}:${(i%60).toString().padStart(2,'0')}`)
       }
     })
+
+    // 🔥 CAPACIDAD DE SILLAS: un horario también queda no disponible si en ese
+    // minuto no hay ningún puesto libre (LOCAL_LLENO). Reutilizamos ocupacion-grilla,
+    // que suma las sillas ocupadas de TODO el local. No se agrega selector de silla;
+    // la silla la asigna automáticamente el backend al confirmar.
+    try {
+      const resGrilla = await api.get(`/api/turnos/ocupacion-grilla/?fecha=${f}&peluquero_id=${form.value.peluquero}`)
+      const ocupados = (resGrilla.data && resGrilla.data.ocupados) || {}
+      Object.keys(ocupados).forEach(minuto => ocupadosSet.add(minuto))
+    } catch (err) {
+      console.error('Error cargando ocupacion-grilla (sillas):', err)
+    }
     
     slotsOcupadosReales.value = Array.from(ocupadosSet)
     
@@ -1014,6 +1027,12 @@ const crearPagoMercadoPago = async () => {
     console.error('Error:', error)
     if (error.response?.status === 401) {
       limpiarSesionInvalida()
+      return
+    }
+    // Mensajes naturales de disponibilidad según el code del backend
+    const dispos = obtenerErrorDisponibilidad(error.response?.data?.code)
+    if (dispos) {
+      Swal.fire(dispos.title, dispos.message, 'error')
       return
     }
     let errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Error al completar la operación';

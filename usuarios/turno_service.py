@@ -30,8 +30,8 @@ class TurnoService:
         ids_ocupadas = Turno.objects.filter(
             fecha=fecha,
             hora=hora,
-            estado__in=['RESERVADO', 'CONFIRMADO', 'PENDIENTE', 'PAGADO', 'SENADO']
-        ).exclude(silla__isnull=True).values_list('silla_id', flat=True)
+            estado__in=['RESERVADO', 'COMPLETADO']
+        ).exclude(estado='CANCELADO').exclude(silla__isnull=True).values_list('silla_id', flat=True)
 
         for silla in sillas_activas:
             if silla.id not in ids_ocupadas:
@@ -53,8 +53,8 @@ class TurnoService:
                 fecha=datos['fecha'],
                 hora=datos['hora'],
                 cliente_id=cliente_id,
-                estado__in=['RESERVADO', 'CONFIRMADO', 'PENDIENTE', 'PAGADO', 'SENADO']
-            ).exists()
+                estado__in=['RESERVADO', 'COMPLETADO']
+            ).exclude(estado='CANCELADO').exists()
             
             if ya_tiene_turno:
                 raise ValidationError({"error": "No puedes reservar. Ya tienes un turno para esta misma fecha y hora con otro profesional."})
@@ -73,8 +73,8 @@ class TurnoService:
                     fecha=datos['fecha'],
                     hora=datos['hora'],
                     silla=silla_elegida,
-                    estado__in=['RESERVADO', 'CONFIRMADO', 'PENDIENTE', 'PAGADO', 'SENADO']
-                ).exists()
+                    estado__in=['RESERVADO', 'COMPLETADO']
+                ).exclude(estado='CANCELADO').exists()
 
                 if esta_ocupada:
                     raise ValidationError({"error": f"La {silla_elegida.nombre} ya está ocupada en ese horario."})

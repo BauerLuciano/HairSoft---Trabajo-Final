@@ -134,10 +134,10 @@
                           </svg>
                         </button>
                         <button 
-                          @click="lista.activo ? desactivarLista(lista) : activarLista(lista)" 
+                          @click="lista.activo ? quitarProductoDeLista(lista) : activarLista(lista)" 
                           class="btn-action"
                           :class="lista.activo ? 'btn-deactivate' : 'btn-activate'"
-                          :title="lista.activo ? 'Desactivar' : 'Activar'"
+                          :title="lista.activo ? 'Quitar producto de la lista' : 'Activar'"
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle v-if="lista.activo" cx="12" cy="12" r="10"/>
@@ -220,6 +220,9 @@
                     <small class="hint-text">Disponibles: {{ productosSinLista.length }}</small>
                   </div>
                 </div>
+                <p class="hint-text form-note">
+                  El "Precio de Venta Estimado" solo ajusta el margen de ganancia sugerido; se guarda el precio base y el margen.
+                </p>
 
                 <div class="table-responsive">
                   <table class="form-table">
@@ -229,7 +232,7 @@
                         <th>Precio Base</th>
                         <th>Margen %</th>
                         <th>Precio Sugerido</th>
-                        <th>Precio Final</th>
+                        <th>Precio de Venta Estimado</th>
                         <th style="width: 60px;"></th>
                       </tr>
                     </thead>
@@ -304,7 +307,6 @@
                           <button 
                             @click="eliminarFila(index)" 
                             class="btn-action btn-danger"
-                            :disabled="filasProductos.length === 1"
                             title="Eliminar fila"
                           >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -374,12 +376,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import axios from 'axios'
-
-// --- TUS COMPONENTES ---
-// (Asegurate de importar los iconos que usas en tu template si no son globales)
-
-const API_BASE = 'http://127.0.0.1:8000'
+import api from '../../services/api'
+import Swal from 'sweetalert2'
 
 // Estados
 const proveedores = ref([])
@@ -428,7 +426,7 @@ const filasValidas = computed(() => {
 // Métodos
 const cargarProveedores = async () => {
   try {
-    const response = await axios.get(`${API_BASE}/api/proveedores/?estado=ACTIVO`)
+    const response = await api.get(`/api/proveedores/?estado=ACTIVO`)
     proveedores.value = Array.isArray(response.data) ? response.data : (response.data.results || [])
   } catch (error) {
     console.error('Error cargando proveedores:', error)
@@ -440,7 +438,7 @@ const cargarProveedores = async () => {
 const cargarTodosLosProductos = async () => {
   try {
     // Pedimos todos los productos activos
-    const response = await axios.get(`${API_BASE}/api/productos/?estado=ACTIVO&page_size=1000`)
+    const response = await api.get(`/api/productos/?estado=ACTIVO&page_size=1000`)
     productosDisponibles.value = Array.isArray(response.data) ? response.data : (response.data.results || [])
   } catch (error) {
     console.error('Error cargando productos:', error)
@@ -457,7 +455,7 @@ const cargarListasPrecios = async () => {
   cargando.value = true
   try {
     // 1. Cargamos las listas
-    const response = await axios.get(`${API_BASE}/api/listas-precios/por-proveedor/?proveedor_id=${proveedorSeleccionado.value}`)
+    const response = await api.get(`/api/listas-precios/por-proveedor/?proveedor_id=${proveedorSeleccionado.value}`)
     listasPrecios.value = response.data
     
     // 2. Si no tenemos productos cargados, los cargamos ahora
@@ -504,8 +502,14 @@ const agregarFilaProducto = () => {
 }
 
 const eliminarFila = (index) => {
-  if (filasProductos.value.length > 1) {
-    filasProductos.value.splice(index, 1)
+  filasProductos.value.splice(index, 1)
+  if (filasProductos.value.length === 0) {
+    filasProductos.value.push({ 
+      producto_id: '', 
+      precio_base: '', 
+      margen_ganancia: 30.0,
+      precio_final: '' 
+    })
   }
 }
 
@@ -579,7 +583,7 @@ const guardarListasMultiples = async () => {
           activo: true
         }
         
-        await axios.post(`${API_BASE}/api/listas-precios/`, datos)
+        await api.post(`/api/listas-precios/`, datos)
         exitosas++
       } catch (error) {
         console.error(`Error guardando producto ${fila.producto_id}:`, error.response?.data)
@@ -613,21 +617,31 @@ const editarLista = (lista) => {
   mostrarFormulario.value = true
 }
 
-const desactivarLista = async (lista) => {
-  if (!confirm(`¿Desactivar la lista de precios de ${lista.producto_nombre}?`)) return
+const quitarProductoDeLista = async (lista) => {
+  const { isConfirmed } = await Swal.fire({
+    title: '¿Quitar producto de la lista?',
+    text: `Se quitará ${lista.producto_nombre} de la lista de precios de este proveedor.`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#dc2626',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: 'Sí, quitar',
+    cancelButtonText: 'Cancelar',
+  })
+  if (!isConfirmed) return
   
   try {
-    await axios.post(`${API_BASE}/api/listas-precios/${lista.id}/desactivar/`)
-    mostrarToast('Lista desactivada correctamente', 'success')
+    await api.post(`/api/listas-precios/${lista.id}/desactivar/`)
+    mostrarToast('Producto quitado de la lista', 'success')
     await cargarListasPrecios()
   } catch (error) {
-    mostrarToast('Error al desactivar la lista', 'error')
+    mostrarToast('Error al quitar el producto de la lista', 'error')
   }
 }
 
 const activarLista = async (lista) => {
   try {
-    await axios.put(`${API_BASE}/api/listas-precios/${lista.id}/`, {
+    await api.put(`/api/listas-precios/${lista.id}/`, {
       ...lista,
       activo: true
     })
@@ -653,19 +667,14 @@ const getMargenClass = (margen) => {
 }
 
 const mostrarToast = (mensaje, tipo) => {
-  // Si usas Swal:
-  if (typeof Swal !== 'undefined') {
-      Swal.fire({
-          icon: tipo === 'error' ? 'error' : (tipo === 'warning' ? 'warning' : 'success'),
-          title: mensaje,
-          toast: true,
-          position: 'top-end',
-          showConfirmButton: false,
-          timer: 3000
-      })
-  } else {
-      alert(mensaje)
-  }
+  Swal.fire({
+      icon: tipo === 'error' ? 'error' : (tipo === 'warning' ? 'warning' : 'success'),
+      title: mensaje,
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 3000
+  })
 }
 
 // Inicialización
@@ -1260,6 +1269,12 @@ onMounted(() => {
 .hint-text {
   color: #6b7280;
   font-size: 0.9rem;
+}
+
+.form-note {
+  margin-bottom: 16px;
+  font-style: italic;
+  color: #6b7280;
 }
 
 /* ============================================

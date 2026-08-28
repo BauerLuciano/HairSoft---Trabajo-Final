@@ -270,10 +270,11 @@ class Producto(models.Model):
 
         print(f"🔄 GUARDANDO: {self.nombre} | Stock: {self.stock_actual}")
 
-        if self.estado == 'ACTIVO' and self.stock_actual <= self.stock_minimo:
-            from .tasks import procesar_alertas_stock_proveedores
-            procesar_alertas_stock_proveedores.delay(self.id)
-            print(f"🚀 [CELERY] Tarea de stock encolada para {self.nombre}")
+        # Nota: la reposición (SolicitudPresupuesto + Cotizacion) ya NO se dispara desde el
+        # guardado del Producto. Se gestiona de forma unificada por la tarea periódica
+        # `reposicion_automatica_stock`, que incluye protección anti-duplicados (un solo
+        # SolicitudPresupuesto PENDIENTE por producto) y usa las ListaPrecioProveedor activas
+        # como fuente única de proveedores. Esto evita disparos repetidos y solicitudes duplicadas.
 
     def __str__(self):
         if self.marca:
@@ -492,8 +493,8 @@ class Turno(models.Model):
             hora = datetime.strptime(hora, "%H:%M").time()
         
         turnos_solapados = Turno.objects.filter(
-            fecha=fecha, hora=hora, peluquero_id=peluquero_id, estado__in=['RESERVADO', 'DISPONIBLE']
-        )
+            fecha=fecha, hora=hora, peluquero_id=peluquero_id, estado__in=['RESERVADO', 'COMPLETADO']
+        ).exclude(estado='CANCELADO')
         if excluir_turno_id:
             turnos_solapados = turnos_solapados.exclude(id=excluir_turno_id)
         

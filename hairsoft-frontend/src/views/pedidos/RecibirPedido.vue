@@ -131,6 +131,7 @@ const cargarPedido = async () => {
 }
 
 const confirmarRecepcion = async () => {
+  let medioPagoSeleccionado = 'EFECTIVO'
   const total = formatPrecio(pedido.value.total)
   const proveedor = pedido.value.proveedor_nombre
   const cantProd = pedido.value.detalles.length
@@ -172,7 +173,7 @@ const confirmarRecepcion = async () => {
         </div>
 
         <!-- Egreso -->
-        <div style="display: flex; align-items: center; gap: 10px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 12px 14px;">
+        <div style="display: flex; align-items: center; gap: 10px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;">
           <span style="font-size: 1.4rem;">💳</span>
           <div>
             <div style="font-size: 0.7rem; text-transform: uppercase; color: #991b1b; font-weight: 700;">Egreso de Caja</div>
@@ -182,8 +183,26 @@ const confirmarRecepcion = async () => {
           </div>
         </div>
 
+        <!-- Medio de pago -->
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;">
+          <div style="font-size: 0.7rem; text-transform: uppercase; color: #475569; font-weight: 700; margin-bottom: 8px;">Medio de pago del egreso</div>
+          <label style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; cursor: pointer; margin-bottom: 6px;">
+            <input type="radio" name="swal-metodo-pago" value="EFECTIVO" checked style="width: 16px; height: 16px; accent-color: #10b981;">
+            <span style="font-weight: 600; color: #1f2937;">💵 Efectivo</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; cursor: pointer;">
+            <input type="radio" name="swal-metodo-pago" value="MERCADO_PAGO" style="width: 16px; height: 16px; accent-color: #00a1f1;">
+            <span style="font-weight: 600; color: #1f2937;">🟦 Mercado Pago</span>
+          </label>
+        </div>
+
       </div>
     `,
+    preConfirm: () => {
+      const seleccionado = Swal.getPopup().querySelector('input[name="swal-metodo-pago"]:checked');
+      medioPagoSeleccionado = seleccionado ? seleccionado.value : 'EFECTIVO';
+      return true;
+    },
     icon: 'warning',
     showCancelButton: true,
     confirmButtonColor: '#059669',
@@ -200,7 +219,7 @@ const confirmarRecepcion = async () => {
     const token = localStorage.getItem('token')
     
     // Llamada a tu función recibir_pedido del back (sin prefijo usuarios)
-    await axios.post(`${API_BASE}/api/pedidos/${pedidoId.value}/recibir/`, {}, {
+    await axios.post(`${API_BASE}/api/pedidos/${pedidoId.value}/recibir/`, { metodo_pago: medioPagoSeleccionado }, {
       headers: { 'Authorization': `Token ${token}` }
     })
 

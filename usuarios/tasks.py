@@ -518,7 +518,7 @@ def limpiar_tokens_expirados():
 
 @shared_task
 def procesar_alertas_stock_proveedores(producto_id):
-    from .models import Producto, SolicitudPresupuesto, Cotizacion
+    from .models import Producto, SolicitudPresupuesto, Cotizacion, ListaPrecioProveedor
     from django.core.mail import send_mail
     from django.utils import timezone
     from django.conf import settings
@@ -528,7 +528,15 @@ def procesar_alertas_stock_proveedores(producto_id):
     try:
         producto = Producto.objects.get(id=producto_id)
         logger.info(f"📦 [CELERY] Iniciando envío de emails para: {producto.nombre}")
-        
+
+        # 🔒 PROTECCIÓN ANTI-DUPLICADOS: si ya existe una SolicitudPresupuesto PENDIENTE
+        # para este producto, NO se crea otra ni se reenvían cotizaciones. Evita solicitudes
+        # y cotizaciones duplicadas para un mismo producto mientras haya una reposición
+        # pendiente o en curso (sin adjudicar/cerrar).
+        if SolicitudPresupuesto.objects.filter(producto=producto, estado='PENDIENTE').exists():
+            logger.info(f"⏭️  Ya existe una solicitud PENDIENTE para {producto.nombre}; se omite la reposición.")
+            return f"Ya existe solicitud PENDIENTE para {producto.nombre}; no se creó duplicado."
+
         fecha_hoy = timezone.now().strftime("%d/%m/%Y")
         
         solicitud = SolicitudPresupuesto.objects.create(
@@ -539,8 +547,27 @@ def procesar_alertas_stock_proveedores(producto_id):
 
         base_url = 'https://brandi-palmar-pickily.ngrok-free.dev'
 
-        for proveedor in producto.proveedores.all():
+        # 🎯 FUENTE ÚNICA DE DISPONIBILIDAD: solo cotizamos a proveedores que tengan una
+        # ListaPrecioProveedor ACTIVA para este producto (la misma fuente que usa el pedido
+        # manual). Así, la reposición nunca cotiza a un proveedor sin configuración comercial.
+        # La solicitud ya quedó creada, de modo que la necesidad de reposición queda registrada
+        # aunque aún no haya proveedores con lista activa configurada.
+        listas_activas = ListaPrecioProveedor.objects.filter(
+            producto=producto, activo=True
+        ).select_related('proveedor')
+
+        if not listas_activas.exists():
+            logger.info(f"⏭️  {producto.nombre} no tiene proveedores con lista de precios activa; la solicitud queda sin cotizaciones.")
+
+        for lista in listas_activas:
+            proveedor = lista.proveedor
             if not proveedor.email:
+                continue
+
+            # 🔒 ANTI-DUPLICADOS A NIVEL DE COTIZACIÓN: si esta solicitud ya tiene una
+            # cotización creada para este proveedor, no la duplicamos.
+            if Cotizacion.objects.filter(solicitud=solicitud, proveedor=proveedor).exists():
+                logger.info(f"⏭️  Ya existe cotización para {proveedor.nombre} en solicitud #{solicitud.id}; se omite.")
                 continue
 
             cotizacion = Cotizacion.objects.create(
@@ -624,6 +651,34 @@ def procesar_alertas_stock_proveedores(producto_id):
 
     except Producto.DoesNotExist:
         logger.error("❌ Producto no encontrado")
+
+
+@shared_task
+def reposicion_automatica_stock():
+    """
+    Tarea periódica UNIFICADA de reposición. Recorre los productos ACTIVOS cuyo stock
+    llegó a su mínimo y delega en `procesar_alertas_stock_proveedores` por producto.
+
+    Reemplaza al sistema zombie (`chequear_stock_y_generar_solicitudes` +
+    `SolicitudReabastecimiento`), que no tenía UI ni endpoints. La protección
+    anti-duplicados (guarda sobre `SolicitudPresupuesto` PENDIENTE) evita generar
+    solicitudes/cotizaciones repetidas para un mismo producto.
+    """
+    from .models import Producto
+
+    productos_con_stock_bajo = Producto.objects.filter(
+        estado='ACTIVO'
+    ).exclude(stock_minimo__isnull=True).exclude(stock_actual__isnull=True)
+
+    contador = 0
+    for producto in productos_con_stock_bajo:
+        if producto.stock_actual <= producto.stock_minimo:
+            # La propia tarea anti-duplicados evita repetir una solicitud ya pendiente.
+            procesar_alertas_stock_proveedores.delay(producto.id)
+            contador += 1
+
+    logger.info(f"🔁 [CELERY] Reposición automática: {contador} producto(s) con stock bajo procesado(s).")
+    return f"{contador} producto(s) evaluado(s) para reposición."
 
 #cancelar pedido a proveedor
 @shared_task

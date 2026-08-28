@@ -400,17 +400,38 @@ const registrarPago = async (empleado) => {
   if (empleado.total_a_pagar <= 0) return Swal.fire('Atención', 'El monto a pagar es 0', 'warning');
 
   const isDark = !document.documentElement.classList.contains('light-theme');
+  let medioPagoSeleccionado = 'EFECTIVO';
 
   const result = await Swal.fire({
     title: `Pagar $${formatPrecio(empleado.total_a_pagar)}`,
-    text: `Confirmar pago a ${empleado.nombre}.`,
+    html: `
+      <div style="text-align: left; font-family: system-ui, sans-serif; color: ${isDark ? '#e2e8f0' : '#1f2937'};">
+        <div style="margin-bottom: 14px; color: ${isDark ? '#94a3b8' : '#6b7280'}; font-size: 0.9rem;">
+          Confirmar pago a <strong>${empleado.nombre}</strong>.
+        </div>
+        <div style="font-size: 0.7rem; text-transform: uppercase; color: ${isDark ? '#94a3b8' : '#475569'}; font-weight: 700; margin-bottom: 8px;">Medio de pago del egreso</div>
+        <label style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: ${isDark ? '#0f172a' : '#fff'}; cursor: pointer; margin-bottom: 6px;">
+          <input type="radio" name="swal-metodo-pago" value="EFECTIVO" checked style="width: 16px; height: 16px; accent-color: #10b981;">
+          <span style="font-weight: 600;">💵 Efectivo</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: ${isDark ? '#0f172a' : '#fff'}; cursor: pointer;">
+          <input type="radio" name="swal-metodo-pago" value="MERCADO_PAGO" style="width: 16px; height: 16px; accent-color: #00a1f1;">
+          <span style="font-weight: 600;">🟦 Mercado Pago</span>
+        </label>
+      </div>
+    `,
     icon: 'question',
     showCancelButton: true,
     confirmButtonText: 'Sí, Pagar',
     confirmButtonColor: '#10b981',
     cancelButtonText: 'Cancelar',
     background: isDark ? '#1e293b' : '#ffffff',
-    color: isDark ? '#ffffff' : '#1e293b'
+    color: isDark ? '#ffffff' : '#1f2937',
+    preConfirm: () => {
+      const seleccionado = Swal.getPopup().querySelector('input[name="swal-metodo-pago"]:checked');
+      medioPagoSeleccionado = seleccionado ? seleccionado.value : 'EFECTIVO';
+      return true;
+    }
   });
 
   if (result.isConfirmed) {
@@ -419,6 +440,7 @@ const registrarPago = async (empleado) => {
         empleado_id: empleado.id,
         fecha_inicio: fechaInicio.value,
         fecha_fin: fechaFin.value,
+        metodo_pago: medioPagoSeleccionado,
       };
       await axios.post(`${API_URL}/liquidaciones/registrar/`, payload);
       

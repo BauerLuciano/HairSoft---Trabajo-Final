@@ -26,8 +26,8 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=9, minute=0), 
     },
     'reposicion-automatica-stock': {
-        'task': 'usuarios.tasks.chequear_stock_y_generar_solicitudes',
-        'schedule': 60.0,  # Cada 1 minuto
+        'task': 'usuarios.tasks.reposicion_automatica_stock',
+        'schedule': 1800.0,  # Cada 30 minutos (fuente única + anti-duplicados)
     },
     'limpiar-tokens-expirados': {
         'task': 'usuarios.tasks.limpiar_tokens_expirados',

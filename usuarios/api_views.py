@@ -207,6 +207,14 @@ class RegistrarPagoLiquidacionView(APIView):
         inicio = data.get('fecha_inicio')
         fin = data.get('fecha_fin')
         
+        # 💳 MEDIO DE PAGO del egreso (fallback a EFECTIVO para compatibilidad con llamadas antiguas)
+        metodo_pago = (data.get('metodo_pago') or 'EFECTIVO').upper()
+        if metodo_pago not in ('EFECTIVO', 'MERCADO_PAGO'):
+            return Response(
+                {"error": f"Medio de pago inválido: {metodo_pago}. Use EFECTIVO o MERCADO_PAGO."},
+                status=400
+            )
+        
         try:
             empleado = Usuario.objects.get(id=empleado_id)
         except Usuario.DoesNotExist:
@@ -225,6 +233,20 @@ class RegistrarPagoLiquidacionView(APIView):
         if total == 0:
              return Response({"error": "No hay monto pendiente para liquidar."}, status=400)
 
+        # 🔥 Validar que la liquidación no deje el saldo del método seleccionado en negativo
+        from decimal import Decimal
+        from .views import validar_egreso_saldo
+        nombre_metodo = 'Mercado Pago' if metodo_pago == 'MERCADO_PAGO' else 'Efectivo'
+        ok, disponible, faltante = validar_egreso_saldo(sesion_abierta, metodo_pago, Decimal(str(total)))
+        if not ok:
+            return Response({
+                "error": (
+                    f"Saldo insuficiente de {nombre_metodo}. Disponible: ${float(disponible):,.2f}. "
+                    f"Egreso: ${float(total):,.2f}. Faltan: ${float(faltante):,.2f}. "
+                    f"Registrá primero un ingreso (ej. Aporte del dueño) y volvé a liquidar."
+                )
+            }, status=400)
+
         try:
             with transaction.atomic():
                 liquidacion = Liquidacion.objects.create(
@@ -242,7 +264,7 @@ class RegistrarPagoLiquidacionView(APIView):
                 MovimientoCaja.objects.create(
                     sesion_caja=sesion_abierta,
                     tipo='EGRESO',
-                    metodo_pago='EFECTIVO',
+                    metodo_pago=metodo_pago,
                     concepto='LIQUIDACION_SUELDO',
                     monto=total,
                     descripcion=f"Liquidación a {empleado.nombre} {empleado.apellido} (Periodo: {inicio} al {fin})"

@@ -1107,6 +1107,7 @@ def crear_turno(request):
         if not horario_dia or not horario_dia['trabaja']:
             return Response({
                 'status': 'error',
+                'code': 'FUERA_HORARIO_ATENCION',
                 'message': 'El local no atiende ese día de la semana.'
             }, status=400)
 
@@ -1124,6 +1125,7 @@ def crear_turno(request):
                 en_rango_valido(horario_dia['hora_apertura_tarde'], horario_dia['hora_cierre_tarde'])):
             return Response({
                 'status': 'error',
+                'code': 'FUERA_HORARIO_ATENCION',
                 'message': 'El turno excede el horario de atención. Verificá que la hora de inicio y la duración del servicio quepan dentro del horario laboral.'
             }, status=400)
 
@@ -1134,13 +1136,14 @@ def crear_turno(request):
             fecha=fecha_obj,
             hora=hora_obj,
             cliente=cliente,
-            estado__in=['RESERVADO', 'CONFIRMADO', 'PENDIENTE', 'PAGADO', 'SENADO']
-        ).exists()
+            estado__in=['RESERVADO', 'COMPLETADO']
+        ).exclude(estado='CANCELADO').exists()
         
         if ya_tiene_turno:
             print(f"❌ Bloqueado: El cliente {cliente.nombre} ya tiene un turno a las {hora_str}")
             return Response({
                 'status': 'error', 
+                'code': 'CLIENTE_YA_TIENE_TURNO',
                 'error': "Ya tienes un turno reservado para esta misma fecha y hora.",
                 'message': "Ya tienes un turno reservado para esta misma fecha y hora."
             }, status=400)
@@ -1172,6 +1175,7 @@ def crear_turno(request):
             if inicio_nuevo < t_fin and fin_nuevo > t_inicio:
                 return Response({
                     'status': 'error',
+                    'code': 'PELUQUERO_OCUPADO',
                     'message': f'Horario ocupado. Se cruza con turno de {t.hora} a {t_fin.time()}.'
                 }, status=400)
         
@@ -1209,6 +1213,7 @@ def crear_turno(request):
                 if inicio_nuevo < t_fin and fin_nuevo > t_inicio:
                     return Response({
                         'status': 'error',
+                        'code': 'SILLA_OCUPADA',
                         'message': f"La silla {silla_asignada.nombre} ya está ocupada en ese horario."
                     }, status=400)
         else:
@@ -1239,11 +1244,18 @@ def crear_turno(request):
                 if not ocupada:
                     sillas_libres.append(silla)
             
+            # 🔥 REGLA FINAL: un turno SIEMPRE necesita una silla. Si no hay ninguna
+            # libre en ese horario, se RECHAZA la reserva (nunca crear con silla=None).
             if sillas_libres:
                 silla_asignada = sillas_libres[0]  # Elegir la primera libre
                 print(f"🪑 Silla asignada automáticamente: {silla_asignada.nombre} (ID: {silla_asignada.id})")
             else:
-                print("⚠️ No hay sillas libres en este horario. El turno quedará sin silla asignada.")
+                print(f"❌ No hay sillas libres en este horario. Rechazando turno.")
+                return Response({
+                    'status': 'error',
+                    'code': 'SIN_SILLA_DISPONIBLE',
+                    'message': 'No hay puestos de trabajo disponibles en este horario (Local lleno).'
+                }, status=400)
         
         # ---------------------------------------------------------
         # 5. LIMPIEZA ZOMBIES
@@ -1726,8 +1738,8 @@ def verificar_disponibilidad(request):
         turnos_existentes = Turno.objects.filter(
             fecha=fecha_obj,
             peluquero_id=peluquero_id,
-            estado__in=['RESERVADO', 'CONFIRMADO']
-        ).prefetch_related('servicios')
+            estado__in=['RESERVADO', 'COMPLETADO']
+        ).exclude(estado='CANCELADO').prefetch_related('servicios')
 
         disponible = True
         mensaje = "Disponible"
@@ -1774,7 +1786,7 @@ def obtener_horarios_disponibles(request):
         turnos = Turno.objects.filter(
             fecha=fecha_solicitada, 
             peluquero_id=peluquero_id,
-            estado__in=['RESERVADO', 'CONFIRMADO', 'COMPLETADO']
+            estado__in=['RESERVADO', 'COMPLETADO']
         ).exclude(estado='CANCELADO')
 
         # 3. Crear lista de rangos ocupados (SOLO HORAS)
@@ -4434,6 +4446,11 @@ def recibir_pedido(request, pedido_id):
         if pedido.estado not in ['CONFIRMADO', 'EN_CAMINO']:
             return Response({'error': 'El pedido debe estar CONFIRMADO o EN_CAMINO para recibirse.'}, status=400)
 
+        # 💳 MEDIO DE PAGO del egreso (fallback a EFECTIVO para compatibilidad con llamadas antiguas)
+        metodo_pago = (request.data.get('metodo_pago') or 'EFECTIVO').upper()
+        if metodo_pago not in ('EFECTIVO', 'MERCADO_PAGO'):
+            return Response({'error': f'Medio de pago inválido: {metodo_pago}. Use EFECTIVO o MERCADO_PAGO.'}, status=400)
+
         with transaction.atomic():
             for detalle in pedido.detalles.all():
                 producto = detalle.producto
@@ -4503,10 +4520,20 @@ def recibir_pedido(request, pedido_id):
 
             # 💵 REGISTRAR EGRESO DE CAJA
             if pedido.total and pedido.total > 0:
+                nombre_metodo = 'Mercado Pago' if metodo_pago == 'MERCADO_PAGO' else 'Efectivo'
+                # 🔥 Validar que el pago al proveedor no deje el saldo del método seleccionado en negativo
+                ok, disponible, faltante = validar_egreso_saldo(sesion_abierta, metodo_pago, pedido.total)
+                if not ok:
+                    raise Exception(
+                        f"Saldo insuficiente de {nombre_metodo}. Disponible: ${float(disponible):,.2f}. "
+                        f"Egreso: ${float(pedido.total):,.2f}. Faltan: ${float(faltante):,.2f}. "
+                        f"Registrá primero un ingreso (ej. Aporte del dueño) y volvé a recibir el pedido."
+                    )
+
                 MovimientoCaja.objects.create(
                     sesion_caja=sesion_abierta,
                     tipo='EGRESO',
-                    metodo_pago='EFECTIVO', # Por defecto
+                    metodo_pago=metodo_pago,
                     concepto='PAGO_PROVEEDOR',
                     monto=pedido.total,
                     descripcion=f"Pago Pedido #{pedido.id} a {pedido.proveedor.nombre}",
@@ -4768,6 +4795,10 @@ def evaluaciones_compras_unificadas(request):
 
     # 2. Pedidos Manuales
     # 🔥 CORRECCIÓN: Agregamos ENTREGADO para que no desaparezcan del historial
+    # 🔥 CORRECCIÓN ADJUDICACIÓN: Una fila por PEDIDO (no por detalle). La cotización
+    #    y la adjudicación operan a nivel de pedido completo (el proveedor cotiza todo
+    #    el pedido y la aprobación confirma el pedido entero). Cada producto del pedido
+    #    se expone en 'productos' para mostrarlos juntos en el detalle.
     pedidos_manuales = Pedido.objects.filter(estado__in=['ENVIADO', 'COTIZADO', 'CONFIRMADO', 'ENTREGADO'])\
                                      .prefetch_related('detalles__producto', 'proveedor')
     
@@ -4777,41 +4808,59 @@ def evaluaciones_compras_unificadas(request):
             diferencia = ped.fecha_esperada_recepcion - hoy
             dias_calculados = max(0, diferencia.days)
 
-        for det in ped.detalles.all():
-            
-            # 🔥 CORRECCIÓN: Si está Confirmado o ya Entregado, lo mostramos como CERRADA
-            estado_vista = "PENDIENTE"
-            if ped.estado == 'COTIZADO':
-                estado_vista = "COTIZADO"
-            elif ped.estado in ['CONFIRMADO', 'ENTREGADO']:
-                estado_vista = "CERRADA"
+        # 🔥 CORRECCIÓN: Si está Confirmado o ya Entregado, lo mostramos como CERRADA
+        estado_vista = "PENDIENTE"
+        if ped.estado == 'COTIZADO':
+            estado_vista = "COTIZADO"
+        elif ped.estado in ['CONFIRMADO', 'ENTREGADO']:
+            estado_vista = "CERRADA"
 
-            precio_total = det.subtotal if det.subtotal else (det.precio_unitario * det.cantidad if det.precio_unitario else 0)
+        detalles = list(ped.detalles.all())
+        total_unidades = sum(det.cantidad for det in detalles)
 
-            datos.append({
-                "id": f"manual_{ped.id}_{det.id}",
-                "pedido_real_id": ped.id,
-                "tipo_solicitud": "MANUAL", 
+        # Resumen del pedido: si tiene varios productos, mostramos el primero + "+N más"
+        primer_nombre = detalles[0].producto.nombre if detalles else "Sin productos"
+        if len(detalles) > 1:
+            producto_nombre = f"{primer_nombre} +{len(detalles) - 1} más"
+        else:
+            producto_nombre = primer_nombre
+
+        productos = [
+            {
+                "id": det.id,
                 "producto_nombre": det.producto.nombre,
                 "producto_stock": det.producto.stock_actual,
-                "cantidad_requerida": det.cantidad,
-                "fecha_creacion": ped.fecha_pedido,
-                "estado": estado_vista, 
-                "cotizaciones": [
-                    {
-                        "id": ped.id,
-                        "proveedor_nombre": ped.proveedor.nombre,
-                        # Si ya no está en 'ENVIADO', es porque respondió
-                        "respondio": ped.estado != 'ENVIADO',
-                        "cantidad_ofertada": det.cantidad,
-                        "precio_ofrecido": precio_total,
-                        "dias_entrega": dias_calculados,
-                        "rechazada": False,
-                        # Es la mejor/ganadora si ya se confirmó o entregó
-                        "es_la_mejor": ped.estado in ['CONFIRMADO', 'ENTREGADO']
-                    }
-                ]
-            })
+                "cantidad": det.cantidad,
+                "precio_unitario": det.precio_unitario,
+                "precio_total": det.subtotal if det.subtotal else (det.precio_unitario * det.cantidad if det.precio_unitario else 0),
+            } for det in detalles
+        ]
+
+        datos.append({
+            "id": f"manual_{ped.id}",
+            "pedido_real_id": ped.id,
+            "tipo_solicitud": "MANUAL", 
+            "producto_nombre": producto_nombre,
+            "producto_stock": min((det.producto.stock_actual for det in detalles), default=0),
+            "cantidad_requerida": total_unidades,
+            "productos": productos,
+            "fecha_creacion": ped.fecha_pedido,
+            "estado": estado_vista, 
+            "cotizaciones": [
+                {
+                    "id": ped.id,
+                    "proveedor_nombre": ped.proveedor.nombre,
+                    # Si ya no está en 'ENVIADO', es porque respondió
+                    "respondio": ped.estado != 'ENVIADO',
+                    "cantidad_ofertada": total_unidades,
+                    "precio_ofrecido": ped.total,
+                    "dias_entrega": dias_calculados,
+                    "rechazada": False,
+                    # Es la mejor/ganadora si ya se confirmó o entregó
+                    "es_la_mejor": ped.estado in ['CONFIRMADO', 'ENTREGADO']
+                }
+            ]
+        })
 
     datos.sort(key=lambda x: x['fecha_creacion'], reverse=True)
     return Response(datos, status=200)
@@ -4984,7 +5033,7 @@ def confirmar_precios(request, pedido_id):
 class ListaPrecioProveedorViewSet(viewsets.ModelViewSet):
     queryset = ListaPrecioProveedor.objects.all()
     serializer_class = ListaPrecioProveedorSerializer
-    permission_classes = []
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """Filtra por proveedor y producto si se especifican"""
@@ -7338,7 +7387,7 @@ def obtener_ocupacion_grilla(request):
         
         turnos_del_dia = Turno.objects.filter(
             fecha=fecha_obj,
-            estado__in=['RESERVADO', 'CONFIRMADO', 'COMPLETADO']
+            estado__in=['RESERVADO', 'COMPLETADO']
         ).exclude(estado='CANCELADO').prefetch_related('servicios')
 
         minutos_ocupados = {} # 🔥 AHORA ES UN DICCIONARIO
@@ -7420,6 +7469,36 @@ class CajaViewSet(viewsets.ModelViewSet):
     serializer_class = CajaSerializer
     permission_classes = [IsAuthenticated]
 
+
+def validar_egreso_saldo(sesion, metodo_pago, monto):
+    """
+    Valida que un egreso no deje el saldo esperado de la sesión en negativo.
+
+    Regla de negocio: la caja nunca debe quedar con saldo esperado negativo.
+    Si el egreso supera el saldo disponible del método, se bloquea y se exige
+    regularizar (ej. registrar primero un ingreso manual "Aporte del dueño").
+
+    Devuelve una tupla (ok, disponible, faltante):
+      - ok: bool (True si el egreso está permitido)
+      - disponible: Decimal (saldo esperado actual del método)
+      - faltante: Decimal (cuánto falta para poder hacer el egreso, 0 si ok)
+    """
+    def sum_m(tipo):
+        return sesion.movimientos.filter(metodo_pago=metodo_pago, tipo=tipo).aggregate(t=Sum('monto'))['t'] or Decimal('0')
+
+    base = sesion.saldo_inicial_efectivo if metodo_pago == 'EFECTIVO' else sesion.saldo_inicial_mp
+    disponible = base + sum_m('INGRESO') - sum_m('EGRESO')
+
+    monto_dec = Decimal(str(monto))
+    # Tolerancia de centavos: solo bloquea si deja el saldo efectivamente negativo
+    if disponible - monto_dec < -Decimal('0.01'):
+        faltante = monto_dec - disponible
+        if faltante < Decimal('0'):
+            faltante = Decimal('0')
+        return False, disponible, faltante
+    return True, disponible, Decimal('0')
+
+
 class SesionCajaViewSet(viewsets.ModelViewSet):
     queryset = SesionCaja.objects.all().order_by('-id')
     serializer_class = SesionCajaSerializer
@@ -7467,6 +7546,18 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
 
         esp_ef = sesion.saldo_inicial_efectivo + sum_m('EFECTIVO', 'INGRESO') - sum_m('EFECTIVO', 'EGRESO')
         esp_mp = sesion.saldo_inicial_mp + sum_m('MERCADO_PAGO', 'INGRESO') - sum_m('MERCADO_PAGO', 'EGRESO')
+
+        # 🔥 Guardia: No se puede cerrar la caja con saldo esperado NEGATIVO.
+        # Evita el arqueo inválido tipo "SOBRANTE" cuando en realidad hubo egresos sin respaldo.
+        if esp_ef < -Decimal('0.01') or esp_mp < -Decimal('0.01'):
+            return Response(
+                {'error': (
+                    f"No se puede cerrar la caja con saldo esperado negativo. "
+                    f"Efectivo: ${esp_ef:.2f} | Mercado Pago: ${esp_mp:.2f}. "
+                    f"Registrá un ingreso (ej. Aporte del dueño) para regularizar antes del arqueo."
+                )},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Función auxiliar segura para parsear decimales
         def parse_decimal(val):
@@ -7593,7 +7684,24 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
         sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
         if not sesion_abierta:
             raise serializers.ValidationError({"error": "No puede registrar movimientos manuales si la caja está cerrada."})
-        
+
+        # 🔥 Validar que un EGRESO no deje el saldo esperado en negativo
+        tipo = serializer.validated_data.get('tipo')
+        metodo_pago = serializer.validated_data.get('metodo_pago')
+        monto = serializer.validated_data.get('monto')
+        if tipo == 'EGRESO':
+            ok, disponible, faltante = validar_egreso_saldo(sesion_abierta, metodo_pago, monto)
+            if not ok:
+                nombre_metodo = 'Mercado Pago' if metodo_pago == 'MERCADO_PAGO' else 'Efectivo'
+                raise serializers.ValidationError({
+                    "error": (
+                        f"Saldo insuficiente de {nombre_metodo}. "
+                        f"Disponible: ${float(disponible):,.2f}. Egreso: ${float(monto):,.2f}. "
+                        f"Faltan: ${float(faltante):,.2f}. "
+                        f"Registrá primero un ingreso (ej. Aporte del dueño)."
+                    )
+                })
+
         movimiento = serializer.save(sesion_caja=sesion_abierta)
         
         from .models import Auditoria

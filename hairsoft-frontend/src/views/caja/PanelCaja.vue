@@ -221,12 +221,18 @@
               </div>
 
               <div class="balances-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
-                <div class="balance-card">
-                  <div class="b-icon"><i class="ri-wallet-3-line"></i></div>
+                <div class="balance-card fondoinicial">
+                  <div class="b-icon"><i class="ri-lock-2-line"></i></div>
                   <div class="b-data">
-                    <p>Fondo Inicial</p>
-                    <h3 style="font-size: 1.2rem;">{{ formatearMoneda(balance.saldo_inicial_efectivo) }}</h3>
-                    <h3 style="font-size: 1.2rem;">{{ formatearMoneda(balance.saldo_inicial_mp) }}</h3>
+                    <p>FONDO INICIAL <span class="fondo-sub">(al abrir la caja)</span></p>
+                    <div class="fondo-fila">
+                      <span class="fondo-etiqueta"><i class="ri-cash-line"></i> Efectivo</span>
+                      <strong>{{ formatearMoneda(balance.saldo_inicial_efectivo) }}</strong>
+                    </div>
+                    <div class="fondo-fila">
+                      <span class="fondo-etiqueta"><i class="ri-qr-scan-2-line"></i> Mercado Pago</span>
+                      <strong>{{ formatearMoneda(balance.saldo_inicial_mp) }}</strong>
+                    </div>
                   </div>
                 </div>
                 <div class="balance-card highlight">
@@ -876,7 +882,10 @@ const registrarGastoManual = async () => {
     mostrarModalGasto.value = false;
     formGasto.value = { tipo: 'EGRESO', concepto: 'GASTO_OPERATIVO', metodo_pago: 'EFECTIVO', monto: '', descripcion: '' };
     cargarDatosCajaAbierta(sesionActual.value.id);
-  } catch (error) { Swal.fire('Error', 'Error al registrar', 'error'); }
+  } catch (error) {
+    const msg = error.response?.data?.error || error.response?.data?.message || 'Error al registrar';
+    Swal.fire('Error', msg, 'error');
+  }
 };
 
 const verDetalleCajaCerrada = async (caja) => {
@@ -1013,6 +1022,18 @@ onUnmounted(() => detenerRadar());
 .balance-card.total-general { border: 2px solid var(--accent-color); background: rgba(14, 165, 233, 0.05); justify-content: flex-start;}
 .balance-card.highlight .b-icon { background: #10b981; color: white; } 
 .balance-card.mp .b-icon { background: #00a1f1; color: white; }
+
+.balance-card.fondoinicial { align-items: flex-start; }
+.balance-card.fondoinicial .b-icon { background: rgba(139, 120, 200, 0.15); color: #8b5cf6; margin-top: 2px; }
+.balance-card.fondoinicial .b-data { flex: 1; min-width: 0; }
+.balance-card.fondoinicial .b-data p { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-bottom: 10px; }
+.balance-card.fondoinicial .fondo-sub { font-size: 0.7rem; text-transform: none; font-weight: 500; letter-spacing: 0; color: var(--text-secondary); }
+.fondo-fila { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-top: 1px dashed var(--border-color); }
+.fondo-fila:first-of-type { margin-top: 4px; }
+.fondo-fila .fondo-etiqueta { display: inline-flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 0.9rem; font-weight: 600; }
+.fondo-fila .fondo-etiqueta i { color: var(--accent-color); font-size: 1rem; }
+.fondo-fila strong { color: var(--text-primary); font-size: 1.15rem; font-weight: 800; }
+
 
 .resumen-esperado { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 18px; margin-bottom: 25px; }
 .resumen-esperado h4 { margin: 0 0 15px 0; color: var(--text-primary); font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;}

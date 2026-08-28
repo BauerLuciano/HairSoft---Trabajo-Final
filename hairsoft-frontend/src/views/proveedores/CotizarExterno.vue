@@ -133,6 +133,7 @@
 import { ref, onMounted, watch, computed } from 'vue' 
 import { useRoute } from 'vue-router'
 import axios from 'axios'
+import Swal from 'sweetalert2'
 
 const route = useRoute()
 const token = route.params.token
@@ -205,7 +206,11 @@ onMounted(async () => {
 
 const enviarCotizacion = async () => {
   if (esCantidadInvalida.value) {
-    alert("La cantidad no puede superar lo solicitado.");
+    Swal.fire({
+      icon: 'warning',
+      title: 'Cantidad inválida',
+      text: 'La cantidad no puede superar lo solicitado.',
+    });
     return;
   }
 
@@ -215,7 +220,11 @@ const enviarCotizacion = async () => {
     enviado.value = true
     datos.value.estado = 'COTIZADO' // Forzar actualización visual
   } catch (e) {
-    alert('Error al enviar presupuesto.')
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'Error al enviar presupuesto.',
+    });
   } finally {
     enviando.value = false
   }
@@ -223,16 +232,33 @@ const enviarCotizacion = async () => {
 
 // NUEVA FUNCIÓN PARA MARCAR EN CAMINO
 const marcarEnCamino = async () => {
-  const result = confirm("¿Despachar pedido?\nLe avisaremos al local que la mercadería ya salió de tu depósito.");
-  if (!result) return;
+  const { isConfirmed } = await Swal.fire({
+    title: '¿Despachar pedido?',
+    text: 'Le avisaremos al local que la mercadería ya salió de tu depósito.',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#10b981',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: 'Sí, despachar',
+    cancelButtonText: 'Cancelar',
+  });
+  if (!isConfirmed) return;
 
   enviando.value = true;
   try {
     await axios.post(`${API_RUTA_EN_CAMINO}/${token}/en-camino/`);
-    alert('¡El local ya fue notificado de que el pedido está en camino!');
+    Swal.fire({
+      icon: 'success',
+      title: '¡Pedido en camino!',
+      text: 'El local ya fue notificado de que el pedido está en camino.',
+    });
     datos.value.estado = 'EN_CAMINO'; // Forzar actualización visual
   } catch (err) {
-    alert('Error al actualizar el estado.');
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'Error al actualizar el estado.',
+    });
   } finally {
     enviando.value = false;
   }
