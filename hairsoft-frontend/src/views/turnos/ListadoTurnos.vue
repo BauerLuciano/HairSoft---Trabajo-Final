@@ -1551,11 +1551,6 @@ const verDetalleTurno = async (turno) => {
 <div style="border-top: 1px solid #e2e8f0; margin-top: 18px; padding-top: 16px; display: flex; flex-direction: column; gap: 16px;">
 
                 <div>
-                  <div style="font-size: 0.68rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 9px;">Medio de pago</div>
-                  ${medioPagoResumenHTML}
-                </div>
-
-                <div>
                   <div style="font-size: 0.68rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 9px;">${turnoDetalle.medio_pago_restante ? '1er Pago · Seña' : 'Pago registrado'}</div>
                   <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                     ${detalleMedioPagoHTML}
