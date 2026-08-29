@@ -1078,6 +1078,10 @@ const pararPollingQR = () => {
   }
 }
 
+onUnmounted(() => {
+  pararPollingQR()
+})
+
 const mostrarQRWeb = async (qrUrl, uid, monto) => {
   pararPollingQR()
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrUrl)}`

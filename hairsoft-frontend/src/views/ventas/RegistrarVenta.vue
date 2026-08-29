@@ -690,7 +690,7 @@
                 </svg>
               </div>
               <span class="status-text">¡Pago confirmado!</span>
-              <span class="status-sub">Ahora confirmá la venta</span>
+              <span class="status-sub">Registrando la venta automáticamente...</span>
             </div>
             <div v-else class="qr-fullscreen-status status-wait">
               <div class="fs-pending-ring"></div>
@@ -1615,6 +1615,7 @@ export default {
         },
         
         async registrarVenta() {
+            if (this.procesandoVenta) return;
             if (!this.validarVenta()) return;
 
             this.procesandoVenta = true;
@@ -1857,7 +1858,10 @@ export default {
                         this.mpPagoEstado = 'confirmed';
                         this.detenerPollingPago();
                         this.mostrarMensaje('Pago confirmado', 'success');
-                        this.dirigirAlBotonConfirmar();
+                        // 🔥 QR: la venta se registra automáticamente (sin clic en "Confirmar Venta").
+                        // El Alias sigue siendo manual: el cajero confirma la venta explícitamente.
+                        this.qrFullscreen = false;
+                        this.registrarVenta();
                     }
                 } catch (err) {
                     console.error("Error al verificar pago:", err);

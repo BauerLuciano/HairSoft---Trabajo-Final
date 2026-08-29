@@ -341,9 +341,7 @@
                     <AlertTriangle :size="14" /> No hay alias configurado — ve a <strong>Ajustes del Local</strong> para registrarlo.
                   </div>
                   <div v-if="aliasValor || pagoConfirmado" class="input-group" style="margin-top: 8px;">
-                    <label class="label-modern">Comprobante (opcional)</label>
-                    <input type="text" v-model="nroComprobante" class="input-modern" placeholder="ID de operación (12 dígitos)" maxlength="12" @input="nroComprobante = nroComprobante.replace(/\D/g, '')" />
-                    <small class="helper-text"><Info :size="12" /> Ingrese el ID de operación si el cliente transfirió.</small>
+                    <small class="helper-text" style="color: #15803d;"><CheckCircle :size="12" /> Pago mediante Mercado Pago (Alias). No se requiere comprobante.</small>
                   </div>
                 </div>
 
@@ -605,7 +603,6 @@ const subMetodoPago = ref('QR')
 
 const aliasValor = ref('')
 const aliasCargando = ref(false)
-const nroComprobante = ref('')
 const pagoUuid = ref(null)
 const pagoConfirmado = ref(false)
 const qrGenerando = ref(false)
@@ -1056,7 +1053,6 @@ const onCambioMedioPago = () => {
     return
   }
   subMetodoPago.value = 'QR'
-  nroComprobante.value = ''
   pagoUuid.value = null
   pagoConfirmado.value = false
   montoEfectivoMixto.value = null
@@ -1072,7 +1068,6 @@ const onCambioTipoPago = () => {
     return
   }
   subMetodoPago.value = 'QR'
-  nroComprobante.value = ''
   pagoUuid.value = null
   pagoConfirmado.value = false
   montoEfectivoMixto.value = null
@@ -1130,7 +1125,6 @@ const onCambioSubMetodo = async () => {
     finally { aliasCargando.value = false }
   } else {
     aliasValor.value = ''
-    nroComprobante.value = ''
   }
 }
 
@@ -1352,7 +1346,7 @@ const crearTurno = async () => {
     monto_seña: montoSena,
     duracion_total: duracion,
     entidad_pago: esMixto ? (esMixtoQR ? 'MERCADOPAGO_QR' : 'MERCADOPAGO_ALIAS') : (esAliasPuro ? 'MERCADOPAGO' : null),
-    mp_payment_id: esAliasPuro ? nroComprobante.value || null : null,
+    mp_payment_id: null,
     codigo_transaccion: null,
     pago_uuid: (esQR || esMixtoQR) && pagoConfirmado.value ? pagoUuid.value : null,
     ...(esMixto ? { pago_mixto: true, monto_mp: montoMixtoMP.value, monto_efectivo: montoEfectivoMixto.value } : {})

@@ -442,19 +442,6 @@ const esOrigenAlias = (turno) => {
   return false
 }
 
-// Importe máximo que la API puede devolver para este turno (0 = no API).
-const montoMPAPI = (turno, montoTotal) => {
-  if (!esIdMPReal(turno)) return 0
-  const desglose = desglosarMedioPagoTurno(turno.medio_pago, turno.entidad_pago, turno.codigo_transaccion)
-  if (desglose.mixto) {
-    const parteMP = desglose.partes.find((p) => String(p.medio).startsWith('MERCADOPAGO'))
-    return parteMP ? parteMP.monto : 0
-  }
-  // Saldo web (TURNO_SALDO): desde el frontend no se conoce el importe del pago del saldo
-  if (String(turno.medio_pago_restante || '').toUpperCase() === 'MERCADO_PAGO') return 0
-  return montoTotal
-}
-
 const esTurnoPorCanje = (turno) => {
   if (turno.estado === 'CANCELADO') {
     if (turno.motivo_cancelacion && 
@@ -941,19 +928,27 @@ const gestionarReembolsoManual = async (turno) => {
   //    Nunca codigo_transaccion ni comprobantes manuales de Alias.
   const paymentIdReal = String(turno.mp_payment_id || turno.mp_payment_id_saldo || '').trim();
   const hasIdReal = esIdMPReal(turno) && paymentIdReal && paymentIdReal !== 'None';
-  const apiMax = montoMPAPI(turno, montoTotal);
   const esAliasOrigen = esOrigenAlias(turno);
 
   const desglose = desglosarMedioPagoTurno(turno.medio_pago, turno.entidad_pago, turno.codigo_transaccion);
   const partesMixto = desglose.mixto ? desglose.partes : null;
 
+  // Íconos SVG (los mismos que usa la app: lucide)
+  const icEfectivo = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>`;
+  const icMP = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>`;
+  const icDesglose = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>`;
+  const icRotate = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`;
+  const icAt = `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>`;
+  const icCheck = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+  const icAlert = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
+  const icX = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>`;
+
   // 2. Lógica de Preferencia e Inteligencia de sugerencia (SOLO sugiere/precarga, no restringe)
   let valorEfe = 0;
   let valorMP = 0;
   let prefeTexto = "No especificada";
-  let prefeIcono = "❓";
+  let prefeIcono = "";
   let prefeColor = "#94a3b8"; // Gris por defecto
-  let prefeBg = "#f8fafc";
   const obs = turno.obs_cancelacion || "";
 
   if (obs.includes("PREFIERE DEVOLUCIÓN EN:")) {
@@ -961,15 +956,13 @@ const gestionarReembolsoManual = async (turno) => {
     if (obs.includes("Efectivo")) {
       valorEfe = montoTotal;
       prefeTexto = "Efectivo en el local";
-      prefeIcono = "💵";
+      prefeIcono = icEfectivo;
       prefeColor = "#15803d";
-      prefeBg = "#f0fdf4";
     } else {
       valorMP = montoTotal;
       prefeTexto = "Mercado Pago";
-      prefeIcono = "📱";
+      prefeIcono = icMP;
       prefeColor = "#1d4ed8";
-      prefeBg = "#eff6ff";
     }
   } else if (partesMixto) {
     // Prefill = desglose original (editable, no es una restricción)
@@ -981,174 +974,217 @@ const gestionarReembolsoManual = async (turno) => {
       valorEfe = Math.max(0, montoTotal - valorMP);
     }
     prefeTexto = "Según desglose original";
-    prefeIcono = "🧾";
+    prefeIcono = icDesglose;
     prefeColor = "#475569";
-    prefeBg = "#f8fafc";
   } else if (hasIdReal) {
     valorMP = montoTotal;
-    prefeTexto = "Mercado Pago (API automática)";
-    prefeIcono = "📱";
+    prefeTexto = "Mercado Pago";
+    prefeIcono = icMP;
     prefeColor = "#1d4ed8";
-    prefeBg = "#eff6ff";
   } else if (String(turno.medio_pago || '').toUpperCase() === 'MERCADO_PAGO' || esAliasOrigen) {
     valorMP = montoTotal;
     prefeTexto = "Mercado Pago (manual - transferencia)";
-    prefeIcono = "📱";
+    prefeIcono = icMP;
     prefeColor = "#1d4ed8";
-    prefeBg = "#eff6ff";
   } else {
     valorEfe = montoTotal;
     prefeTexto = "Efectivo";
-    prefeIcono = "💵";
+    prefeIcono = icEfectivo;
     prefeColor = "#15803d";
-    prefeBg = "#f0fdf4";
   }
 
   const formatear = (n) => n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  // 3. Bloques informativos del pago original (nunca el string crudo del desglose como ID)
-  let bloqueOrigen = '';
-  if (hasIdReal && paymentIdReal) {
-    bloqueOrigen = `
-    <div style="background: #0f172a; padding: 18px; border-radius: 16px; margin-top: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
-      <span style="display: block; font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 8px; letter-spacing: 0.5px;">ID de pago Mercado Pago</span>
-      <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.15rem; color: #38bdf8; font-weight: 800; letter-spacing: 1px;">${paymentIdReal}</span>
-    </div>`;
-  } else if (esAliasOrigen) {
-    bloqueOrigen = `
-    <div style="background: #fffbeb; border: 1px solid #f59e0b44; padding: 14px 16px; border-radius: 16px; margin-top: 12px;">
-      <span style="display: block; font-size: 0.7rem; text-transform: uppercase; color: #b45309; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Pago original por Alias</span>
-      <span style="font-size: 0.9rem; color: #92400e; font-weight: 600;">La devolución mediante Mercado Pago se realizará manualmente mediante transferencia.</span>
-    </div>`;
-  }
+  // 3. Pago original (secundario) y ayuda contextual (nunca el string crudo del desglose como ID)
+  let panelOrigenHTML = '';
+  let panelAyudaHTML = '';
 
-  let bloqueMixto = '';
   if (partesMixto) {
-    bloqueMixto = `
-    <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px 16px; border-radius: 16px; margin-top: 12px;">
-      <span style="display: block; font-size: 0.7rem; text-transform: uppercase; color: #64748b; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px;">Pago original (desglose)</span>
-      ${partesMixto.map(p => `<div style="display: flex; justify-content: space-between; padding: 3px 0;"><span style="font-size: 0.9rem; color: #334155; font-weight: 600;">${p.etiqueta}</span><span style="font-size: 0.9rem; color: #0f172a; font-weight: 800;">$${formatear(p.monto)}</span></div>`).join('')}
+    panelOrigenHTML = `
+    <div style="background: #ffffff; border: 1px solid #eef2f7; border-radius: 12px; padding: 13px 15px;">
+      <div style="font-size: 0.66rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">Pago original · desglose</div>
+      ${partesMixto.map((p) => `
+      <div style="display: flex; align-items: center; gap: 9px; padding: 6px 0;">
+        <span style="width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: ${String(p.medio).startsWith('MERCADOPAGO') ? '#dbeafe' : '#d1fae5'}; color: ${String(p.medio).startsWith('MERCADOPAGO') ? '#1d4ed8' : '#15803d'};">${String(p.medio).startsWith('MERCADOPAGO') ? icMP : icEfectivo}</span>
+        <span style="font-size: 0.82rem; color: #334155; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.etiqueta}</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #0f172a; font-weight: 700;">$${formatear(p.monto)}</span>
+      </div>`).join('')}
+      ${hasIdReal ? `
+      <div style="display: flex; align-items: center; gap: 9px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
+        <span style="width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #dbeafe; color: #1d4ed8;">${icMP}</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #0f172a; font-weight: 700; letter-spacing: 0.3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${paymentIdReal}</span>
+      </div>` : ''}
+    </div>`;
+  } else if (hasIdReal && paymentIdReal) {
+    panelOrigenHTML = `
+    <div style="background: #ffffff; border: 1px solid #eef2f7; border-radius: 12px; padding: 14px 15px;">
+      <div style="font-size: 0.66rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">Pago original</div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #dbeafe; color: #1d4ed8;">${icMP}</span>
+        <div style="min-width: 0;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; color: #0f172a; font-weight: 700; letter-spacing: 0.3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${paymentIdReal}</div>
+          <div style="font-size: 0.66rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; margin-top: 3px;">Mercado Pago</div>
+        </div>
+      </div>
+      <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 10px; line-height: 1.45;">Buscá este ID en Mercado Pago para hacer la devolución manual.</div>
+    </div>`;
+  } else if (esAliasOrigen && !partesMixto) {
+    panelOrigenHTML = `
+    <div style="background: #ffffff; border: 1px solid #eef2f7; border-radius: 12px; padding: 14px 15px;">
+      <div style="font-size: 0.66rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">Pago original</div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #dbeafe; color: #1d4ed8;">${icAt}</span>
+        <span style="font-size: 0.86rem; color: #334155; font-weight: 600; line-height: 1.45;">Se devuelve mediante transferencia manual a un Alias.</span>
+      </div>
+    </div>`;
+  } else {
+    panelOrigenHTML = `
+    <div style="background: #ffffff; border: 1px solid #eef2f7; border-radius: 12px; padding: 14px 15px;">
+      <div style="font-size: 0.66rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">Pago original</div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #d1fae5; color: #15803d;">${icEfectivo}</span>
+        <span style="font-size: 0.86rem; color: #334155; font-weight: 600;">El pago original fue en efectivo.</span>
+      </div>
     </div>`;
   }
 
-  // Modo de devolución MP (compartido entre didOpen y preConfirm)
-  let modoMp = (hasIdReal && valorMP > 0 && Math.abs(valorMP - apiMax) <= 0.01) ? 'api' : 'manual';
-
+  if (esAliasOrigen && !partesMixto) {
+    panelAyudaHTML = `
+    <div style="background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 14px 15px;">
+      <div style="display: flex; align-items: center; gap: 9px;">
+        <span style="width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #dbeafe; color: #1d4ed8;"><span style="display: flex;">${icAt}</span></span>
+        <span style="font-size: 0.8rem; font-weight: 700; color: #1e3a8a; line-height: 1.4;">La transferencia se identifica con el Alias del cliente.</span>
+      </div>
+    </div>`;
+  }
   await Swal.fire({
     title: '',
-    width: '520px',
+    width: '720px',
     background: '#ffffff',
     showCancelButton: true,
     confirmButtonText: 'Confirmar Devolución',
     confirmButtonColor: '#0ea5e9',
     cancelButtonText: 'Cerrar',
     html: `
-      <div style="font-family: 'Inter', -apple-system, sans-serif; text-align: left; padding: 5px;">
-        
-        <div style="text-align: center; margin-bottom: 25px;">
-          <div style="display: inline-block; padding: 8px 16px; background: #f0f9ff; border-radius: 30px; color: #0ea5e9; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">
-            Gestión de Reintegro
+      <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: left;">
+
+        <div style="display: flex; align-items: flex-start; gap: 16px; padding: 4px 2px 0;">
+          <span style="width: 54px; height: 54px; border-radius: 17px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #dbeafe, #bfdbfe); color: #1d4ed8; box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.08);">${icRotate}</span>
+          <div style="flex: 1; min-width: 0; padding-top: 1px;">
+            <div style="font-size: 0.68rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.4px;">Gestión de Reintegro</div>
+            <div style="font-size: 1.5rem; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${turno.cliente_nombre || 'Cliente'} ${turno.cliente_apellido || ''}</div>
+            <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">Devolución sobre el turno #${turno.id}</div>
           </div>
-          <h2 style="margin: 0; font-size: 2.8rem; font-weight: 900; color: #0f172a; letter-spacing: -1.5px;">$${formatear(montoTotal)}</h2>
-          <p style="margin: 5px 0 0 0; color: #64748b; font-size: 1rem; font-weight: 500;">Total a devolver a <b>${turno.cliente_nombre}</b></p>
+          <div style="text-align: right; flex-shrink: 0; padding-top: 2px;">
+            <div style="font-size: 0.66rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.1px; margin-bottom: 4px;">A devolver</div>
+            <div style="font-size: 2rem; font-weight: 800; color: #0f172a; letter-spacing: -1px; line-height: 1;">$${formatear(montoTotal)}</div>
+          </div>
         </div>
 
-        <div style="margin-bottom: 25px;">
-           <div style="background: ${prefeBg}; border: 1px solid ${prefeColor}33; padding: 15px; border-radius: 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
-              <div>
-                <span style="display: block; font-size: 0.65rem; text-transform: uppercase; color: ${prefeColor}; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 2px;">Método recomendado (podés cambiarlo)</span>
-                <span style="font-size: 1.05rem; color: ${prefeColor}; font-weight: 700;">${prefeIcono} ${prefeTexto}</span>
-              </div>
-           </div>
-
-           ${bloqueOrigen}
-           ${bloqueMixto}
+        <div style="display: flex; align-items: center; gap: 10px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 12px; padding: 10px 14px; margin-top: 18px;">
+          <span style="width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #ffffff; color: ${prefeColor}; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);">${prefeIcono ? prefeIcono : icDesglose}</span>
+          <span style="font-size: 0.68rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px;">Sugerido</span>
+          <span style="font-size: 0.92rem; font-weight: 700; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${prefeTexto}</span>
+          <span style="flex: 1; height: 1px; background: #eef2f7;"></span>
+          <span style="font-size: 0.7rem; color: #cbd5e1; font-weight: 700; white-space: nowrap;">Podés cambiarlo</span>
         </div>
 
-        <div style="background: #ffffff; border: 2px solid #f1f5f9; padding: 20px; border-radius: 20px;">
-          <h4 style="margin: 0 0 18px 0; font-size: 0.85rem; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Confirmar Montos de Salida</h4>
-          
-          <div style="display: flex; flex-direction: column; gap: 15px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid #f1f5f9;">
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="width: 42px; height: 42px; background: #f0fdf4; color: #16a34a; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">💵</div>
-                <span style="font-weight: 700; color: #1e293b; font-size: 1rem;">Efectivo</span>
-              </div>
-              <div style="position: relative; width: 180px;">
-                <span style="position: absolute; left: 14px; top: 12px; font-weight: 800; color: #94a3b8; font-size: 1.1rem;">$</span>
-                <input id="val_efe" type="text" class="swal2-input" 
-                       style="width: 100%; margin: 0; height: 50px; padding-left: 28px; font-size: 1.3rem; font-weight: 800; border-radius: 12px; border: 2px solid #e2e8f0; text-align: right; color: #0f172a;" 
-                       value="${valorEfe > 0 ? formatear(valorEfe) : '0'}">
-              </div>
-            </div>
+        <div style="display: flex; align-items: center; gap: 10px; margin: 20px 0 12px;">
+          <span style="width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #e0f2fe; color: #0284c7;">${icDesglose}</span>
+          <span style="font-size: 0.76rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.8px;">Método de devolución</span>
+          <span style="flex: 1; height: 1px; background: #eef2f7;"></span>
+          <span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8;">Podés dividir el total</span>
+        </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 5px;">
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="width: 42px; height: 42px; background: #eff6ff; color: #2563eb; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">📱</div>
-                <span style="font-weight: 700; color: #1e293b; font-size: 1rem;">Mercado Pago</span>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div id="opt_efe" style="border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 14px; background: #ffffff; transition: border-color 0.2s, background 0.2s;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #d1fae5; color: #15803d;">${icEfectivo}</span>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 0.92rem; font-weight: 800; color: #0f172a;">Efectivo</div>
+                <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 1px;">Devolución en el local</div>
               </div>
-              <div style="position: relative; width: 180px;">
-                <span style="position: absolute; left: 14px; top: 12px; font-weight: 800; color: #94a3b8; font-size: 1.1rem;">$</span>
-                <input id="val_mp" type="text" class="swal2-input" 
-                       style="width: 100%; margin: 0; height: 50px; padding-left: 28px; font-size: 1.3rem; font-weight: 800; border-radius: 12px; border: 2px solid #e2e8f0; text-align: right; color: #0f172a;" 
-                       value="${valorMP > 0 ? formatear(valorMP) : '0'}">
-              </div>
+              <span id="dot_efe" style="width: 22px; height: 22px; border-radius: 50%; border: 2px solid #e2e8f0; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: #ffffff; transition: all 0.2s;"></span>
             </div>
-
-            <div id="mp_modo_wrap" style="margin-top: 6px; padding: 14px; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 16px; display: none;">
-              <span style="display:block; font-size:0.7rem; text-transform:uppercase; color:#64748b; font-weight:800; letter-spacing:0.5px; margin-bottom:10px;">¿Cómo devolver por Mercado Pago?</span>
-              <div style="display:flex; gap:8px;">
-                <div id="modo_api" style="flex:1; padding:10px 12px; border-radius:12px; cursor:pointer; font-size:0.85rem; font-weight:700; text-align:center; border:2px solid #e2e8f0; background:#ffffff; color:#64748b;">🔁 API automática ${hasIdReal ? '' : '<span style="color:#94a3b8; font-weight:600;">(no disponible)</span>'}</div>
-                <div id="modo_manual" style="flex:1; padding:10px 12px; border-radius:12px; cursor:pointer; font-size:0.85rem; font-weight:700; text-align:center; border:2px solid #e2e8f0; background:#ffffff; color:#64748b;">✍️ Transferencia manual</div>
-              </div>
-              <div id="api_limit_note" style="display:none; margin-top:8px; font-size:0.75rem; color:#0369a1; font-weight:600;"></div>
+            <div id="wrap_efe" style="display: flex; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 11px; margin-top: 12px; transition: border-color 0.2s;">
+              <span style="font-size: 1rem; font-weight: 700; color: #94a3b8; padding-left: 11px; line-height: 1;">$</span>
+              <input id="val_efe" type="text" class="swal2-input"
+                     style="flex: 1; min-width: 0; margin: 0; height: 44px; border: 0; background: transparent; font-size: 1.05rem; font-weight: 800; text-align: right; padding: 0 12px; color: #0f172a; box-sizing: border-box;"
+                     value="${valorEfe > 0 ? formatear(valorEfe) : '0'}">
             </div>
+          </div>
 
-            <div id="mp_manual_fields" style="margin-top: 6px; padding: 18px; background: #f0f9ff; border-radius: 16px; border: 2px solid #bae6fd; display: none;">
-              <h4 style="margin: 0 0 14px 0; font-size: 0.85rem; font-weight: 800; color: #1d4ed8; text-transform: uppercase; letter-spacing: 0.5px;">📱 Devolución por Mercado Pago (manual)</h4>
-              
-              <div style="margin-bottom: 12px;">
-                <label style="display:block; margin-bottom:6px; font-weight:700; color:#0f172a; font-size:0.85rem;">Alias del cliente</label>
-                <input id="reembolso_alias" type="text" class="swal2-input" 
-                       style="width:100%; margin:0; height:44px; border-radius:10px; font-size:0.95rem; padding:0 12px; border:2px solid #e2e8f0;"
-                       placeholder="ej: peluqueria.alias">
+          <div id="opt_mp" style="border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 14px; background: #ffffff; transition: border-color 0.2s, background 0.2s;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #dbeafe; color: #1d4ed8;">${icMP}</span>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 0.92rem; font-weight: 800; color: #0f172a;">Mercado Pago</div>
+                <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 1px;">Transferencia manual</div>
               </div>
-              
-              <div style="margin-bottom: 12px;">
-                <label style="display:block; margin-bottom:6px; font-weight:700; color:#0f172a; font-size:0.85rem;">Nombre del titular</label>
-                <input id="reembolso_titular" type="text" class="swal2-input"
-                       style="width:100%; margin:0; height:44px; border-radius:10px; font-size:0.95rem; padding:0 12px; border:2px solid #e2e8f0;"
-                       placeholder="ej: Juan Pérez">
-              </div>
-              
-              <div style="margin-bottom: 4px;">
-                <label style="display:block; margin-bottom:6px; font-weight:700; color:#0f172a; font-size:0.85rem;">
-                  Comprobante de la NUEVA transferencia - Id de Transaccion <span style="color:#94a3b8; font-weight:400;">(opcional)</span>
-                </label>
-                <input id="reembolso_id_transaccion" type="text" inputmode="numeric" class="swal2-input"
-                       style="width:100%; margin:0; height:44px; border-radius:10px; font-size:0.95rem; padding:0 12px; border:2px solid #e2e8f0;"
-                       placeholder="ej: 166504981991" maxlength="12">
-              </div>
+              <span id="dot_mp" style="width: 22px; height: 22px; border-radius: 50%; border: 2px solid #e2e8f0; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: #ffffff; transition: all 0.2s;"></span>
+            </div>
+            <div id="wrap_mp" style="display: flex; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 11px; margin-top: 12px; transition: border-color 0.2s;">
+              <span style="font-size: 1rem; font-weight: 700; color: #94a3b8; padding-left: 11px; line-height: 1;">$</span>
+              <input id="val_mp" type="text" class="swal2-input"
+                     style="flex: 1; min-width: 0; margin: 0; height: 44px; border: 0; background: transparent; font-size: 1.05rem; font-weight: 800; text-align: right; padding: 0 12px; color: #0f172a; box-sizing: border-box;"
+                     value="${valorMP > 0 ? formatear(valorMP) : '0'}">
             </div>
           </div>
         </div>
 
-        <div id="val_status" style="margin-top: 20px; padding: 15px; border-radius: 14px; text-align: center; font-weight: 800; font-size: 0.95rem; transition: all 0.3s;"></div>
+        <div id="mp_manual_fields" style="display: none; margin-top: 12px; border: 1px solid #bfdbfe; background: #f0f7ff; border-radius: 12px; padding: 13px 14px;">
+          <div style="display: flex; align-items: center; gap: 9px;">
+            <span style="width: 28px; height: 28px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #dbeafe; color: #1d4ed8;"><span style="display: flex;">${icAt}</span></span>
+            <span style="font-size: 0.8rem; font-weight: 800; color: #1e3a8a;">Alias del cliente</span>
+            <span style="font-size: 0.62rem; color: #dc2626; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-left: auto;">Requerido</span>
+          </div>
+          <input id="reembolso_alias" type="text" class="swal2-input"
+                 style="width: 100%; margin: 9px 0 0; height: 44px; border-radius: 11px; font-size: 0.95rem; padding: 0 12px; border: 1px solid #dbeafe; background: #ffffff; box-sizing: border-box; transition: border-color 0.2s;"
+                 placeholder="ej: peluqueria.alias">
+          <div style="font-size: 0.7rem; color: #64748b; margin-top: 6px;">Alias CBU al que se transferirá el reembolso.</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: ${panelAyudaHTML ? '1fr 1fr' : '1fr'}; gap: 12px; margin-top: 14px;">
+          ${panelOrigenHTML}
+          ${panelAyudaHTML}
+        </div>
+
+        <div id="val_status" style="display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 14px; padding: 12px 14px; font-size: 0.88rem; font-weight: 600; min-height: 46px; transition: all 0.25s; border: 1px solid transparent; margin-top: 14px;"></div>
       </div>
     `,
-    didOpen: () => {
+didOpen: () => {
       const inEfe = document.getElementById('val_efe');
       const inMP = document.getElementById('val_mp');
       const status = document.getElementById('val_status');
       const confirmBtn = Swal.getConfirmButton();
+      const cancelBtn = Swal.getCancelButton();
+      const optEfe = document.getElementById('opt_efe');
+      const optMP = document.getElementById('opt_mp');
+      const dotEfe = document.getElementById('dot_efe');
+      const dotMP = document.getElementById('dot_mp');
+      const wrapEfe = document.getElementById('wrap_efe');
+      const wrapMP = document.getElementById('wrap_mp');
 
       confirmBtn.style.width = '100%';
       confirmBtn.style.height = '55px';
       confirmBtn.style.borderRadius = '14px';
       confirmBtn.style.fontSize = '1.1rem';
       confirmBtn.style.fontWeight = '800';
-      confirmBtn.style.marginTop = '15px';
+      confirmBtn.style.marginTop = '16px';
       confirmBtn.style.boxShadow = '0 10px 15px -3px rgba(14, 165, 233, 0.3)';
+
+      if (cancelBtn) {
+        cancelBtn.style.width = '100%';
+        cancelBtn.style.height = '55px';
+        cancelBtn.style.borderRadius = '14px';
+        cancelBtn.style.fontSize = '1.02rem';
+        cancelBtn.style.fontWeight = '700';
+        cancelBtn.style.background = '#ffffff';
+        cancelBtn.style.color = '#64748b';
+        cancelBtn.style.border = '1.5px solid #e2e8f0';
+        cancelBtn.style.marginTop = '10px';
+        cancelBtn.style.boxShadow = 'none';
+      }
 
       const parse = (v) => parseFloat(v.replace(/\./g, '').replace(',', '.')) || 0;
       const mask = (i) => {
@@ -1160,119 +1196,94 @@ const gestionarReembolsoManual = async (turno) => {
         i.value = p.join(',');
       };
 
-      const wrap = document.getElementById('mp_modo_wrap');
-      const modoApiBtn = document.getElementById('modo_api');
-      const modoManualBtn = document.getElementById('modo_manual');
       const manualFields = document.getElementById('mp_manual_fields');
-      const apiLimitNote = document.getElementById('api_limit_note');
 
-      const apiPosibleActual = () => {
-        const v = parse(inMP.value);
-        return hasIdReal && v > 0 && Math.abs(v - apiMax) <= 0.01;
+      const pintarSeleccion = () => {
+        const vE = parse(inEfe.value);
+        const vM = parse(inMP.value);
+        const onE = vE > 0;
+        const onM = vM > 0;
+        if (optEfe) {
+          optEfe.style.borderColor = onE ? '#059669' : '#e2e8f0';
+          optEfe.style.background = onE ? '#f0fdf9' : '#ffffff';
+        }
+        if (optMP) {
+          optMP.style.borderColor = onM ? '#2563eb' : '#e2e8f0';
+          optMP.style.background = onM ? '#eff6ff' : '#ffffff';
+        }
+        if (dotEfe) {
+          dotEfe.style.borderColor = onE ? '#059669' : '#e2e8f0';
+          dotEfe.style.background = onE ? '#059669' : '#ffffff';
+          dotEfe.innerHTML = onE ? `<span style="display: flex;">${icCheck}</span>` : '';
+        }
+        if (dotMP) {
+          dotMP.style.borderColor = onM ? '#2563eb' : '#e2e8f0';
+          dotMP.style.background = onM ? '#2563eb' : '#ffffff';
+          dotMP.innerHTML = onM ? `<span style="display: flex;">${icCheck}</span>` : '';
+        }
       };
 
-      const pintarModo = () => {
+      const pintar = () => {
         const vMP = parse(inMP.value);
-        const apiPosible = apiPosibleActual();
-        if (vMP <= 0) {
-          if (wrap) wrap.style.display = 'none';
-          if (manualFields) manualFields.style.display = 'none';
-          return;
-        }
-        if (wrap) wrap.style.display = 'block';
-        if (!apiPosible) modoMp = 'manual';
-        const activeApi = modoMp === 'api';
-
-        if (modoApiBtn) {
-          styleBtn(modoApiBtn, activeApi && apiPosible, apiPosible);
-        }
-        if (modoManualBtn) {
-          styleBtn(modoManualBtn, !activeApi, true);
-        }
         if (manualFields) {
-          manualFields.style.display = (vMP > 0 && !activeApi) ? 'block' : 'none';
+          manualFields.style.display = (!hasIdReal && vMP > 0) ? 'block' : 'none';
         }
-        if (apiLimitNote) {
-          if (hasIdReal && vMP > 0 && Math.abs(vMP - apiMax) > 0.01) {
-            apiLimitNote.style.display = 'block';
-            apiLimitNote.textContent = `La API solo cubre hasta $${formatear(apiMax)} (importe del pago MP real). Ajustá el monto o usá transferencia manual.`;
-          } else {
-            apiLimitNote.style.display = 'none';
-          }
-        }
-      };
-
-      const styleBtn = (btn, activo, habilitado) => {
-        btn.style.cursor = habilitado ? 'pointer' : 'not-allowed';
-        btn.style.opacity = habilitado ? '1' : '0.4';
-        btn.style.background = activo ? '#0ea5e9' : '#ffffff';
-        btn.style.color = activo ? '#ffffff' : '#64748b';
-        btn.style.border = `2px solid ${activo ? '#0ea5e9' : (habilitado ? '#e2e8f0' : '#f1f5f9')}`;
       };
 
       const validate = () => {
-        const total = parse(inEfe.value) + parse(inMP.value);
+        pintarSeleccion();
+        const vMP = parse(inMP.value);
+        const total = parse(inEfe.value) + vMP;
         const diff = total - montoTotal;
-        const mpManualVisible = manualFields && manualFields.style.display !== 'none';
         const alias = document.getElementById('reembolso_alias')?.value.trim() || '';
-        const titular = document.getElementById('reembolso_titular')?.value.trim() || '';
-        const faltaMttoTitular = mpManualVisible && (!alias || !titular);
-        if (Math.abs(diff) <= 0.01 && !faltaMttoTitular) {
-          status.style.background = '#dcfce7'; status.style.color = '#15803d'; status.style.border = '1px solid #bbf7d0';
-          status.innerHTML = '¡Listo! Los montos coinciden perfectamente';
+        const faltaAlias = vMP > 0 && !hasIdReal && !alias;
+        if (Math.abs(diff) <= 0.01 && !faltaAlias) {
+          status.style.background = '#ecfdf5'; status.style.color = '#047857'; status.style.border = '1px solid #a7f3d0';
+          status.innerHTML = `<span style="display: flex;">${icCheck}</span> Los montos coinciden con el total a devolver`;
           confirmBtn.disabled = false;
           confirmBtn.style.background = 'linear-gradient(135deg, #0ea5e9, #2563eb)';
           confirmBtn.style.boxShadow = '0 10px 15px -3px rgba(14, 165, 233, 0.3)';
-        } else if (faltaMttoTitular) {
-          status.style.background = '#fef2f2'; status.style.color = '#dc2626'; status.style.border = '1px solid #fecaca';
-          status.innerHTML = '⚠️ Debes completar Alias y Titular del cliente';
+        } else if (faltaAlias) {
+          status.style.background = '#fffbeb'; status.style.color = '#b45309'; status.style.border = '1px solid #fde68a';
+          status.innerHTML = `<span style="display: flex;">${icAlert}</span> Debes completar el Alias del cliente para devolver por Mercado Pago`;
           confirmBtn.disabled = true;
           confirmBtn.style.background = '#cbd5e1';
           confirmBtn.style.boxShadow = 'none';
         } else if (diff > 0) {
           status.style.background = '#fef2f2'; status.style.color = '#dc2626'; status.style.border = '1px solid #fecaca';
-          status.innerHTML = `⚠️ Superaste el monto a devolver en $${formatear(diff)}`;
+          status.innerHTML = `<span style="display: flex;">${icX}</span> El monto supera el total a devolver en $${formatear(diff)}`;
           confirmBtn.disabled = true;
           confirmBtn.style.background = '#cbd5e1';
           confirmBtn.style.boxShadow = 'none';
         } else {
           status.style.background = '#fef2f2'; status.style.color = '#dc2626'; status.style.border = '1px solid #fecaca';
-          status.innerHTML = `⚠️ Falta asignar $${formatear(Math.abs(diff))}`;
+          status.innerHTML = `<span style="display: flex;">${icX}</span> Falta asignar $${formatear(Math.abs(diff))} del total`;
           confirmBtn.disabled = true;
           confirmBtn.style.background = '#cbd5e1';
           confirmBtn.style.boxShadow = 'none';
         }
       };
 
+      const focusWrap = (wrap, on) => {
+        if (!wrap) return;
+        wrap.style.borderColor = on ? '#38bdf8' : '#e2e8f0';
+      };
+
       inEfe.addEventListener('input', () => { mask(inEfe); validate(); });
-      inMP.addEventListener('input', () => {
-        mask(inMP); pintarModo(); validate();
-      });
-      inEfe.addEventListener('focus', () => inEfe.select());
-      inMP.addEventListener('focus', () => inMP.select());
-
-      if (modoApiBtn) {
-        modoApiBtn.addEventListener('click', () => {
-          if (apiPosibleActual()) { modoMp = 'api'; pintarModo(); validate(); }
-        });
-      }
-      if (modoManualBtn) {
-        modoManualBtn.addEventListener('click', () => { modoMp = 'manual'; pintarModo(); validate(); });
-      }
-
-      const inIdTrans = document.getElementById('reembolso_id_transaccion');
-      if (inIdTrans) {
-        inIdTrans.addEventListener('input', () => {
-          inIdTrans.value = inIdTrans.value.replace(/\D/g, '').slice(0, 12);
-        });
-      }
+      inMP.addEventListener('input', () => { mask(inMP); pintar(); validate(); });
+      inEfe.addEventListener('focus', () => { inEfe.select(); focusWrap(wrapEfe, true); });
+      inEfe.addEventListener('blur', () => focusWrap(wrapEfe, false));
+      inMP.addEventListener('focus', () => { inMP.select(); focusWrap(wrapMP, true); });
+      inMP.addEventListener('blur', () => focusWrap(wrapMP, false));
 
       const inAlias = document.getElementById('reembolso_alias');
-      const inTitular = document.getElementById('reembolso_titular');
-      if (inAlias) inAlias.addEventListener('input', validate);
-      if (inTitular) inTitular.addEventListener('input', validate);
+      if (inAlias) {
+        inAlias.addEventListener('input', validate);
+        inAlias.addEventListener('focus', () => { inAlias.style.borderColor = '#38bdf8'; });
+        inAlias.addEventListener('blur', () => { inAlias.style.borderColor = '#dbeafe'; });
+      }
 
-      pintarModo();
+      pintar();
       validate();
     },
     preConfirm: () => {
@@ -1280,13 +1291,11 @@ const gestionarReembolsoManual = async (turno) => {
       const vMP = parseFloat(document.getElementById('val_mp').value.replace(/\./g, '').replace(',', '.')) || 0;
       const data = {
         monto_efectivo: vEfe,
-        monto_mp: vMP,
-        reembolso_api_mp: vMP > 0 && modoMp === 'api'
+        monto_mp: vMP
       };
-      if (vMP > 0 && modoMp === 'manual') {
-        data.reembolso_alias = document.getElementById('reembolso_alias')?.value || '';
-        data.reembolso_titular = document.getElementById('reembolso_titular')?.value || '';
-        data.reembolso_id_transaccion = document.getElementById('reembolso_id_transaccion')?.value || '';
+      if (vMP > 0) {
+        const alias = document.getElementById('reembolso_alias')?.value.trim() || '';
+        if (alias) data.reembolso_alias = alias;
       }
       return data;
     }
@@ -1329,31 +1338,32 @@ const verDetalleTurno = async (turno) => {
     let totalPrecio = 0;
 
     if (turnoDetalle.servicios && turnoDetalle.servicios.length > 0) {
-      serviciosHTML = turnoDetalle.servicios.map(s => {
+      serviciosHTML = turnoDetalle.servicios.map((s, idx) => {
         // Vamos sumando para el total
         totalDuracion += (s.duracion || 0);
         totalPrecio += (parseFloat(s.precio) || 0);
 
         return `
-        <tr style="border-bottom: 1px solid #f1f5f9;">
-          <td style="padding: 12px; font-weight: 500; color: #1e293b; font-size: 0.95rem;">${s.nombre || 'Sin nombre'}</td>
-          <td style="padding: 12px; text-align: right; color: #64748b; font-size: 0.9rem;">${s.duracion || 0}m</td>
-          <td style="padding: 12px; text-align: right; font-weight: 700; color: #0f172a;">$${formatPrecio(s.precio || 0)}</td>
+        <tr style="${idx % 2 === 1 ? 'background: #fcfdfe;' : ''}">
+          <td style="padding: 11px 16px; border-bottom: 1px solid #f1f5f9; font-weight: 600; color: #1e293b; font-size: 0.9rem;">${s.nombre || 'Sin nombre'}</td>
+          <td style="padding: 11px 16px; border-bottom: 1px solid #f1f5f9; text-align: right;">
+            <span style="display: inline-block; background: #f1f5f9; color: #475569; border-radius: 8px; padding: 3px 10px; font-size: 0.74rem; font-weight: 700;">${s.duracion || 0} min</span>
+          </td>
+          <td style="padding: 11px 16px; border-bottom: 1px solid #f1f5f9; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 800; color: #0f172a; font-size: 0.9rem;">$${formatPrecio(s.precio || 0)}</td>
         </tr>
       `}).join('');
 
-      // 🔥 AGREGAMOS LA FILA DE TOTAL AL FINAL DE LA TABLA
       if (turnoDetalle.servicios.length > 1) {
         serviciosHTML += `
-          <tr style="background-color: #f8fafc; border-top: 2px solid #e2e8f0;">
-            <td style="padding: 12px; font-weight: 800; color: #0f172a; font-size: 1rem;">TOTAL SERVICIOS</td>
-            <td style="padding: 12px; text-align: right; color: #475569; font-weight: 700; font-size: 0.95rem;">${totalDuracion}m</td>
-            <td style="padding: 12px; text-align: right; font-weight: 900; color: #0ea5e9; font-size: 1.1rem;">$${formatPrecio(totalPrecio)}</td>
+          <tr style="background: #f8fafc;">
+            <td style="padding: 13px 16px; border-top: 1px solid #e2e8f0; font-weight: 800; color: #334155; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.9px;">Total de servicios</td>
+            <td style="padding: 13px 16px; border-top: 1px solid #e2e8f0; text-align: right; color: #475569; font-weight: 700; font-size: 0.82rem;">${totalDuracion}m</td>
+            <td style="padding: 13px 16px; border-top: 1px solid #e2e8f0; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 900; color: #0f172a; font-size: 1.05rem;">$${formatPrecio(totalPrecio)}</td>
           </tr>
         `;
       }
     } else {
-      serviciosHTML = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #94a3b8;">Sin servicios detallados</td></tr>`;
+      serviciosHTML = `<tr><td colspan="3" style="padding: 16px; text-align: center; color: #94a3b8; font-size: 0.9rem;">Sin servicios detallados</td></tr>`;
     }
 
     const faltaPagar = calcularFaltaPagar(turnoDetalle);
@@ -1368,24 +1378,68 @@ const verDetalleTurno = async (turno) => {
       ? (turnoDetalle.mp_payment_id || 'Sin Comprobante')
       : (transactionId || 'Sin Comprobante');
 
+    const totalTurno = parseFloat(turnoDetalle.monto_total) || 0;
+    const totalAbonado = parseFloat(montoAbonado) || 0;
+    const paidPct = totalTurno > 0 ? Math.min(100, Math.max(0, Math.round((totalAbonado / totalTurno) * 100))) : 0;
+    const reembEstado = String(turnoDetalle.reembolso_estado || '').toUpperCase();
+    const reembCompletado = turnoDetalle.estado === 'CANCELADO' && reembEstado === 'COMPLETADO';
+    const reembPendiente = turnoDetalle.estado === 'CANCELADO' && reembEstado === 'PENDIENTE';
+
+    // Íconos SVG (los mismos que usa la app: lucide)
+    const icUser = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+    const icScissors = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg>`;
+    const icArmchair = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 9V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v3"/><path d="M3 16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v2H7v-2a2 2 0 0 0-4 0Z"/><path d="M5 18v2"/><path d="M19 18v2"/></svg>`;
+    const icList = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>`;
+    const icCredit = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>`;
+    const icEfectivo = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>`;
+    const icMP = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>`;
+    const icX = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>`;
+    const icDesglose = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>`;
+    const icCalendar = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>`;
+    const icCheck = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+    const icWallet = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>`;
+
+    const medioUpper = String(medioPago).toUpperCase();
+    const singleIcon = medioUpper.includes('MERCADO') ? icMP : (medioUpper.includes('EFECTIVO') ? icEfectivo : icWallet);
+    const singleTint = medioUpper.includes('MERCADO') ? '#dbeafe' : (medioUpper.includes('EFECTIVO') ? '#d1fae5' : '#fef3c7');
+    const singleAccent = medioUpper.includes('MERCADO') ? '#1d4ed8' : (medioUpper.includes('EFECTIVO') ? '#15803d' : '#b45309');
+
+    const restUpper = String(turnoDetalle.medio_pago_restante || '').toUpperCase();
+    const restIcon = restUpper.includes('MERCADO') ? icMP : (restUpper.includes('EFECTIVO') ? icEfectivo : icWallet);
+    const restTint = restUpper.includes('MERCADO') ? '#dbeafe' : (restUpper.includes('EFECTIVO') ? '#d1fae5' : '#fef3c7');
+    const restAccent = restUpper.includes('MERCADO') ? '#1d4ed8' : (restUpper.includes('EFECTIVO') ? '#15803d' : '#b45309');
+
     const detalleMedioPagoHTML = detallePago.mixto
-      ? `<div style="display: flex; flex-direction: column; gap: 5px;">
+      ? `<div style="display: flex; flex-direction: column; gap: 7px;">
           ${detallePago.partes.map(p => `
-            <div style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 600; color: #e2e8f0;">
-              <span style="display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 1.1rem;">🏦</span> ${p.etiqueta}
-              </span>
-              <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #a5f3fc;">$${formatPrecio(p.monto)}</span>
+            <div style="display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 600; color: #334155;">
+              <span style="width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: ${String(p.medio).startsWith('MERCADOPAGO') ? '#dbeafe' : '#d1fae5'}; color: ${String(p.medio).startsWith('MERCADOPAGO') ? '#1d4ed8' : '#15803d'};">${String(p.medio).startsWith('MERCADOPAGO') ? icMP : icEfectivo}</span>
+              ${p.etiqueta}
+              <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #0f172a; margin-left: auto;">$${formatPrecio(p.monto)}</span>
             </div>`).join('')}
         </div>`
-      : `<span style="font-size: 0.9rem; font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 6px;">
-          <span style="font-size: 1.2rem;">🏦</span> ${detallePago.etiqueta}
+      : `<span style="font-size: 0.92rem; font-weight: 600; color: #334155; display: flex; align-items: center; gap: 10px;">
+          <span style="width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: ${singleTint}; color: ${singleAccent};">${singleIcon}</span>
+          <span style="overflow: hidden; text-overflow: ellipsis;">${detallePago.etiqueta}</span>
         </span>`;
 
+    const chipResumenMedio = (p) => {
+      const esMP = String(p.medio).startsWith('MERCADOPAGO');
+      const tint = esMP ? '#dbeafe' : '#d1fae5';
+      const accent = esMP ? '#1d4ed8' : '#15803d';
+      const icon = esMP ? icMP : icEfectivo;
+      return `<span style="display: inline-flex; align-items: center; gap: 8px; background: ${tint}; color: ${accent}; border-radius: 9px; padding: 6px 11px; font-size: 0.82rem; font-weight: 700;"><span style="width: 22px; height: 22px; border-radius: 7px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #ffffff;">${icon}</span>${p.etiqueta || labelMedioPago(p.medio)}</span>`;
+    };
+
+    const medioPagoResumenHTML = detallePago.mixto
+      ? `<div style="display: flex; align-items: center; gap: 9px; flex-wrap: wrap;">
+          <span style="display: inline-flex; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; border-radius: 9px; padding: 5px 10px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px;">Mixto</span>
+          ${detallePago.partes.map(chipResumenMedio).join('<span style="color: #cbd5e1; font-weight: 800;">+</span>')}
+        </div>`
+      : `<span style="display: inline-flex; align-items: center; gap: 8px; background: ${singleTint}; color: ${singleAccent}; border-radius: 9px; padding: 6px 11px; font-size: 0.82rem; font-weight: 700;"><span style="width: 22px; height: 22px; border-radius: 7px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #ffffff;">${singleIcon}</span>${detallePago.etiqueta || 'Sin especificar'}</span>`;
+
     Swal.fire({
-      title: `<div style="display: flex; align-items: center; gap: 10px; color: #0f172a;">
-                <span style="background: #0ea5e9; color: white; padding: 6px 14px; border-radius: 40px; font-size: 0.9rem; font-weight: 600;">Turno #${turnoDetalle.id}</span>
-              </div>`,
+      title: '',
       width: '800px',
       background: '#ffffff',
       showConfirmButton: false,
@@ -1393,73 +1447,70 @@ const verDetalleTurno = async (turno) => {
       html: `
         <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: left;">
 
-          <div style="display: flex; gap: 12px; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #f1f5f9;">
-            <span class="badge-estado ${getEstadoClass(turnoDetalle.estado, turnoDetalle.tipo_pago)}" style="padding: 8px 16px; border-radius: 30px; font-weight: 700; font-size: 0.9rem;">
+          <div style="display: flex; align-items: flex-start; gap: 16px;">
+            <span style="width: 56px; height: 56px; border-radius: 17px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #e0f2fe, #bae6fd); color: #0369a1; box-shadow: inset 0 0 0 1px rgba(3, 105, 161, 0.08);">${icCalendar}</span>
+            <div style="flex: 1; min-width: 0; padding-top: 1px;">
+              <div style="font-size: 0.68rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.4px;">Detalle del Turno</div>
+              <div style="font-size: 1.65rem; font-weight: 800; color: #0f172a; letter-spacing: -0.6px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${turnoDetalle.cliente_nombre || 'Cliente'} ${turnoDetalle.cliente_apellido || ''}</div>
+              <div style="font-size: 0.82rem; color: #64748b; margin-top: 3px;">Turno #${turnoDetalle.id} · ${turnoDetalle.canal || 'PRESENCIAL'}</div>
+            </div>
+            <div style="text-align: right; flex-shrink: 0; padding-top: 2px;">
+              <div style="font-size: 2.1rem; font-weight: 800; color: #0f172a; letter-spacing: -1px; line-height: 1; font-family: 'JetBrains Mono', monospace;">$${formatPrecio(totalTurno)}</div>
+              <div style="font-size: 0.66rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.9px; margin-top: 4px;">Valor del turno</div>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px;">
+            <span class="badge-estado ${getEstadoClass(turnoDetalle.estado, turnoDetalle.tipo_pago)}" style="padding: 7px 16px; border-radius: 30px; font-weight: 800; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px;">
               ${getEstadoTexto(turnoDetalle.estado, turnoDetalle.tipo_pago)}
             </span>
-            <span class="canal-badge ${(turnoDetalle.canal || 'PRESENCIAL').toLowerCase()}" style="padding: 8px 16px; border-radius: 30px; font-weight: 600; font-size: 0.9rem;">
+            <span class="canal-badge ${(turnoDetalle.canal || 'PRESENCIAL').toLowerCase()}" style="padding: 7px 16px; border-radius: 30px; font-weight: 700; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.5px;">
               ${turnoDetalle.canal || 'PRESENCIAL'}
+            </span>
+            <span style="padding: 7px 16px; border-radius: 30px; font-weight: 700; font-size: 0.76rem; background: #f1f5f9; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">
+              ${turnoDetalle.tipo_pago === 'TOTAL' ? 'Pago Total' : turnoDetalle.tipo_pago === 'SEÑA' ? 'Con seña' : (turnoDetalle.tipo_pago || 'Pago')}
             </span>
           </div>
 
-          ${turnoDetalle.estado === 'CANCELADO' ? `
-            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 16px; padding: 20px; margin-bottom: 25px; display: flex; flex-direction: column; gap: 10px;">
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 1.8rem;">🚫</span>
-                <div>
-                  <h4 style="margin: 0; color: #991b1b; font-size: 0.9rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Motivo de Cancelación</h4>
-                  <span style="color: #7f1d1d; font-size: 1.2rem; font-weight: 800;">${turnoDetalle.motivo_cancelacion || 'No especificado'}</span>
-                </div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px;">
+            <div style="background: #f8fafc; border: 1px solid #eef2f7; border-radius: 14px; padding: 13px 15px;">
+              <div style="display: flex; align-items: center; gap: 9px;">
+                <span style="width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #e0f2fe; color: #0284c7;">${icUser}</span>
+                <span style="font-size: 0.62rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.9px;">Cliente</span>
               </div>
-              ${turnoDetalle.obs_cancelacion ? `
-                <div style="background: white; border-radius: 10px; padding: 12px; color: #991b1b; font-size: 0.95rem; font-style: italic; border: 1px dashed #fca5a5;">
-                  " ${turnoDetalle.obs_cancelacion} "
-                </div>
-              ` : ''}
-              ${turnoDetalle.reembolso_estado === 'COMPLETADO' && turnoDetalle.reembolso_alias ? `
-                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin-top: 8px;">
-                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-                    <span style="font-size: 1.2rem;">💰</span>
-                    <span style="font-weight: 800; color: #166534; font-size: 0.95rem;">Reembolso completado — Transferencia MP manual</span>
-                  </div>
-                  <div style="font-size: 0.9rem; color: #15803d; display: grid; gap: 4px; padding-left: 28px;">
-                    <div><b>Alias:</b> ${turnoDetalle.reembolso_alias}</div>
-                    <div><b>Titular:</b> ${turnoDetalle.reembolso_titular}</div>
-                    ${turnoDetalle.reembolso_id_transaccion ? `<div><b>Id Transacción:</b> ${turnoDetalle.reembolso_id_transaccion}</div>` : ''}
-                  </div>
-                </div>
-              ` : ''}
+              <div style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin-top: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${turnoDetalle.cliente_nombre || 'Cliente'} ${turnoDetalle.cliente_apellido || ''}</div>
             </div>
-          ` : ''}
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px;">
-            <div style="background: #f8fafc; padding: 18px; border-radius: 16px; border: 1px solid #e2e8f0;">
-              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
-                <span style="font-size: 1.5rem;">👤</span>
-                <span style="font-weight: 700; color: #334155;">Cliente</span>
+            <div style="background: #f8fafc; border: 1px solid #eef2f7; border-radius: 14px; padding: 13px 15px;">
+              <div style="display: flex; align-items: center; gap: 9px;">
+                <span style="width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #ede9fe; color: #7c3aed;">${icScissors}</span>
+                <span style="font-size: 0.62rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.9px;">Profesional</span>
               </div>
-              <div style="font-size: 1.25rem; font-weight: 700; color: #0f172a;">${turnoDetalle.cliente_nombre || 'Cliente'} ${turnoDetalle.cliente_apellido || ''}</div>
+              <div style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin-top: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${turnoDetalle.peluquero_nombre || 'Profesional'}</div>
             </div>
-            <div style="background: #f8fafc; padding: 18px; border-radius: 16px; border: 1px solid #e2e8f0;">
-              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
-                <span style="font-size: 1.5rem;">✂️</span>
-                <span style="font-weight: 700; color: #334155;">Profesional</span>
+            <div style="background: ${turnoDetalle.silla_nombre ? '#f0fdf9' : '#f8fafc'}; border: 1px solid ${turnoDetalle.silla_nombre ? '#a7f3d0' : '#eef2f7'}; border-radius: 14px; padding: 13px 15px;">
+              <div style="display: flex; align-items: center; gap: 9px;">
+                <span style="width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: ${turnoDetalle.silla_nombre ? '#d1fae5' : '#f1f5f9'}; color: ${turnoDetalle.silla_nombre ? '#059669' : '#64748b'};">${icArmchair}</span>
+                <span style="font-size: 0.62rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.9px;">Puesto</span>
               </div>
-              <div style="font-size: 1.25rem; font-weight: 700; color: #0f172a;">${turnoDetalle.peluquero_nombre || 'Profesional'}</div>
+              <div style="font-size: 0.95rem; font-weight: 700; color: ${turnoDetalle.silla_nombre ? '#14532d' : '#64748b'}; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${turnoDetalle.silla_nombre || 'Pendiente de asignación'}</div>
+              <div style="font-size: 0.66rem; font-weight: 800; color: ${turnoDetalle.silla_nombre ? '#059669' : '#64748b'}; text-transform: uppercase; letter-spacing: 0.7px; margin-top: 4px;">${turnoDetalle.silla_nombre ? 'Asignado' : 'Sin asignar'}</div>
             </div>
           </div>
 
-          <div style="margin-bottom: 25px;">
-            <h4 style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 15px; letter-spacing: 0.5px;">
-              <span style="font-size: 1.2rem;">📋</span> Detalle de Servicios
-            </h4>
-            <div style="border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
+          <div style="margin-top: 22px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #e0f2fe; color: #0284c7;">${icList}</span>
+              <span style="font-size: 0.78rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.8px;">Detalle de servicios</span>
+              <span style="flex: 1; height: 1px; background: #eef2f7;"></span>
+              <span style="font-size: 0.72rem; font-weight: 800; color: #64748b; background: #f1f5f9; padding: 4px 11px; border-radius: 20px;">${(turnoDetalle.servicios && turnoDetalle.servicios.length) ? `${turnoDetalle.servicios.length} servicio${turnoDetalle.servicios.length > 1 ? 's' : ''}` : 'Sin servicios'}</span>
+            </div>
+            <div style="border: 1px solid #eef2f7; border-radius: 16px; overflow: hidden; margin-top: 12px;">
               <table style="width: 100%; border-collapse: collapse;">
-                <thead style="background: #f1f5f9;">
+                <thead style="background: #f8fafc;">
                   <tr>
-                    <th style="padding: 12px; text-align: left; font-weight: 600; color: #334155;">Servicio</th>
-                    <th style="padding: 12px; text-align: right; font-weight: 600; color: #334155;">Duración</th>
-                    <th style="padding: 12px; text-align: right; font-weight: 600; color: #334155;">Precio</th>
+                    <th style="padding: 11px 16px; text-align: left; font-weight: 700; font-size: 0.66rem; letter-spacing: 0.9px; text-transform: uppercase; color: #94a3b8; border-bottom: 1px solid #eef2f7;">Servicio</th>
+                    <th style="padding: 11px 16px; text-align: right; font-weight: 700; font-size: 0.66rem; letter-spacing: 0.9px; text-transform: uppercase; color: #94a3b8; border-bottom: 1px solid #eef2f7;">Duración</th>
+                    <th style="padding: 11px 16px; text-align: right; font-weight: 700; font-size: 0.66rem; letter-spacing: 0.9px; text-transform: uppercase; color: #94a3b8; border-bottom: 1px solid #eef2f7;">Precio</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1469,60 +1520,114 @@ const verDetalleTurno = async (turno) => {
             </div>
           </div>
 
-          <div style="background: ${turnoDetalle.silla_nombre ? '#f0fdf4' : '#fef2f2'}; padding: 16px; border-radius: 16px; border: 1px solid ${turnoDetalle.silla_nombre ? '#bbf7d0' : '#fecaca'}; display: flex; align-items: center; gap: 15px; margin-bottom: 25px;">
-            <span style="font-size: 2rem;">🪑</span>
-            <div>
-              <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: ${turnoDetalle.silla_nombre ? '#16a34a' : '#dc2626'};">Puesto de trabajo</span>
-              <div style="font-size: 1.3rem; font-weight: 800; color: ${turnoDetalle.silla_nombre ? '#14532d' : '#7f1d1d'};">${turnoDetalle.silla_nombre || 'Pendiente de asignación'}</div>
-            </div>
-          </div>
-
-          <div style="background: linear-gradient(145deg, #1e293b, #0f172a); padding: 24px; border-radius: 20px; color: white;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-              <h4 style="margin:0; font-size: 1rem; font-weight: 600; color: #94a3b8; display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 1.4rem;">💰</span> Resumen de pago
-              </h4>
+          <div style="margin-top: 22px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #e0f2fe; color: #0284c7;">${icCredit}</span>
+              <span style="font-size: 0.78rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.8px;">Resumen de pago</span>
+              <span style="flex: 1; height: 1px; background: #eef2f7;"></span>
+              <span style="font-size: 0.72rem; font-weight: 800; color: ${faltaPagar > 0 ? '#b45309' : '#047857'}; background: ${faltaPagar > 0 ? '#fffbeb' : '#ecfdf5'}; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.4px;">${faltaPagar > 0 ? 'Pendiente' : 'Pagado'}</span>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-              <div>
-                <span style="font-size: 0.8rem; color: #94a3b8;">Abonado</span>
-                <div style="font-size: 2rem; font-weight: 800; color: #4ade80;">$${formatPrecio(montoAbonado || 0)}</div>
-              </div>
-              <div>
-                <span style="font-size: 0.8rem; color: #94a3b8;">Pendiente</span>
-                <div style="font-size: 2rem; font-weight: 800; color: ${faltaPagar > 0 ? '#fbbf24' : '#ffffff'};">$${formatPrecio(faltaPagar > 0 ? faltaPagar : 0)}</div>
-              </div>
-            </div>
+            <div style="background: linear-gradient(150deg, #f8fafc, #eff6ff); border: 1px solid #e2e8f0; border-radius: 20px; padding: 22px; margin-top: 12px;">
 
-            <div style="background: #0f172a; border-radius: 14px; padding: 16px; border: 1px solid #334155; margin-top: 10px;">
-              
-              <div style="margin-bottom: ${turnoDetalle.medio_pago_restante ? '12px' : '0'}; border-bottom: ${turnoDetalle.medio_pago_restante ? '1px solid #334155' : 'none'}; padding-bottom: ${turnoDetalle.medio_pago_restante ? '12px' : '0'};">
-                <span style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">${turnoDetalle.medio_pago_restante ? '1er Pago (Seña)' : 'Pago Único / Seña'}</span>
-                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                  ${detalleMedioPagoHTML}
-                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; background: #1e293b; padding: 4px 12px; border-radius: 40px; color: #a5f3fc; letter-spacing: 0.5px; margin-left: auto;">
-                    ${comprobantePago}
-                  </span>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div>
+                  <div style="font-size: 0.68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.1px; margin-bottom: 6px;">Abonado</div>
+                  <div style="font-size: 2.1rem; font-weight: 800; color: #059669; letter-spacing: -0.8px; line-height: 1; font-family: 'JetBrains Mono', monospace;">$${formatPrecio(totalAbonado)}</div>
+                </div>
+                <div style="padding-left: 20px; border-left: 1px solid #e2e8f0;">
+                  <div style="font-size: 0.68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.1px; margin-bottom: 6px;">Pendiente</div>
+                  <div style="font-size: 2.1rem; font-weight: 800; color: ${faltaPagar > 0 ? '#d97706' : '#94a3b8'}; letter-spacing: -0.8px; line-height: 1; font-family: 'JetBrains Mono', monospace;">$${formatPrecio(faltaPagar > 0 ? faltaPagar : 0)}</div>
                 </div>
               </div>
 
-              ${turnoDetalle.medio_pago_restante ? `
-                <div style="margin-top: 12px;">
-                  <span style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">2do Pago (Restante)</span>
+              <div style="height: 8px; background: #eef2f7; border-radius: 20px; margin-top: 18px; overflow: hidden;">
+                <div style="width: ${paidPct}%; height: 100%; border-radius: 20px; background: linear-gradient(90deg, #10b981, #059669);"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+                <span style="font-size: 0.68rem; font-weight: 700; color: #94a3b8;">${paidPct}% abonado</span>
+                <span style="font-size: 0.68rem; font-weight: 700; color: #94a3b8;">Total: $${formatPrecio(totalTurno)}</span>
+              </div>
+<div style="border-top: 1px solid #e2e8f0; margin-top: 18px; padding-top: 16px; display: flex; flex-direction: column; gap: 16px;">
+
+                <div>
+                  <div style="font-size: 0.68rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 9px;">Medio de pago</div>
+                  ${medioPagoResumenHTML}
+                </div>
+
+                <div>
+                  <div style="font-size: 0.68rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 9px;">${turnoDetalle.medio_pago_restante ? '1er Pago · Seña' : 'Pago registrado'}</div>
                   <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                    <span style="font-size: 0.9rem; font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 6px;">
-                      <span style="font-size: 1.2rem;">🏦</span> ${formatearMedioPagoTurno(turnoDetalle.medio_pago_restante, turnoDetalle.entidad_pago_restante, turnoDetalle.codigo_transaccion_restante)}
-                    </span>
-                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; background: #1e293b; padding: 4px 12px; border-radius: 40px; color: #a5f3fc; letter-spacing: 0.5px; margin-left: auto;">
-                      ${turnoDetalle.mp_payment_id_saldo || turnoDetalle.codigo_transaccion_restante || 'Sin Comprobante'}
-                    </span>
+                    ${detalleMedioPagoHTML}
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 700; color: #475569; background: #ffffff; border: 1px solid #e2e8f0; padding: 4px 11px; border-radius: 9px; letter-spacing: 0.4px; margin-left: auto;">${comprobantePago}</span>
                   </div>
                 </div>
-              ` : ''}
-              
+
+                ${turnoDetalle.medio_pago_restante ? `
+                  <div>
+                    <div style="font-size: 0.68rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 9px;">2do Pago · Restante</div>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                      <span style="font-size: 0.92rem; font-weight: 600; color: #334155; display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: ${restTint}; color: ${restAccent};">${restIcon}</span>
+                        ${formatearMedioPagoTurno(turnoDetalle.medio_pago_restante, turnoDetalle.entidad_pago_restante, turnoDetalle.codigo_transaccion_restante)}
+                      </span>
+                      <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 700; color: #475569; background: #ffffff; border: 1px solid #e2e8f0; padding: 4px 11px; border-radius: 9px; letter-spacing: 0.4px; margin-left: auto;">
+                        ${turnoDetalle.mp_payment_id_saldo || turnoDetalle.codigo_transaccion_restante || 'Sin Comprobante'}
+                      </span>
+                    </div>
+                  </div>
+                ` : ''}
+              </div>
             </div>
           </div>
+
+          ${turnoDetalle.estado === 'CANCELADO' ? `
+            <div style="margin-top: 22px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #fee2e2; color: #dc2626;">${icX}</span>
+                <span style="font-size: 0.78rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.8px;">Cancelación y reintegro</span>
+                <span style="flex: 1; height: 1px; background: #eef2f7;"></span>
+                <span style="font-size: 0.72rem; font-weight: 800; color: ${reembCompletado ? '#047857' : '#b45309'}; background: ${reembCompletado ? '#ecfdf5' : '#fffbeb'}; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.4px;">${reembCompletado ? 'Reembolso completado' : 'Reintegro pendiente'}</span>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+                <div style="background: #fff7f6; border: 1px solid #fecaca; border-radius: 14px; padding: 15px 16px;">
+                  <div style="font-size: 0.66rem; font-weight: 800; color: #dc2626; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">Motivo de cancelación</div>
+                  <div style="font-size: 1rem; font-weight: 800; color: #7f1d1d; line-height: 1.3;">${turnoDetalle.motivo_cancelacion || 'No especificado'}</div>
+                  ${turnoDetalle.obs_cancelacion ? `
+                    <div style="background: #ffffff; border: 1px dashed #fca5a5; border-radius: 10px; padding: 9px 12px; margin-top: 10px; color: #991b1b; font-size: 0.84rem; font-style: italic;">
+                      ${turnoDetalle.obs_cancelacion}
+                    </div>
+                  ` : ''}
+                </div>
+
+                ${reembCompletado ? `
+                  <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 14px; padding: 15px 16px;">
+                    <div style="font-size: 0.66rem; font-weight: 800; color: #059669; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">Reembolso completado</div>
+                    <div style="font-size: 0.88rem; font-weight: 700; color: #166534; margin-top: 2px;">Transferencia MP manual</div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+                      <span style="width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #d1fae5; color: #15803d;">${icCheck}</span>
+                      <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 700; color: #047857; background: #ffffff; border: 1px solid #a7f3d0; padding: 4px 11px; border-radius: 9px;">${turnoDetalle.reembolso_alias || 'Alias'}</span>
+                    </div>
+                  </div>
+                ` : reembPendiente ? `
+                  <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 14px; padding: 15px 16px;">
+                    <div style="font-size: 0.66rem; font-weight: 800; color: #b45309; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">Reintegro pendiente</div>
+                    <div style="font-size: 0.88rem; font-weight: 700; color: #92400e; margin-top: 2px;">Aún no se registró la devolución.</div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+                      <span style="width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #fef3c7; color: #b45309;">${icCredit}</span>
+                      <span style="font-size: 0.78rem; font-weight: 600; color: #78350f; line-height: 1.4;">Usá la opción “Devolver” del turno para registrar el reintegro.</span>
+                    </div>
+                  </div>
+                ` : `
+                  <div style="background: #f8fafc; border: 1px solid #eef2f7; border-radius: 14px; padding: 15px 16px;">
+                    <div style="font-size: 0.66rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">Reintegro</div>
+                    <div style="font-size: 0.88rem; font-weight: 700; color: #475569; margin-top: 2px;">Sin movimiento de reintegro registrado.</div>
+                  </div>
+                `}
+              </div>
+            </div>
+          ` : ''}
         </div>
       `
     });

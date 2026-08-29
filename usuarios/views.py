@@ -6080,82 +6080,12 @@ def get_client_ip(request):
         ip = request.META.get('REMOTE_ADDR')
     return ip
 
-def _partes_pago_mixto(codigo_transaccion):
-    """
-    Parsea un desglose de pago mixto 'MERCADOPAGO_ALIAS:1.50|EFECTIVO:1.00'
-    a [{medio, monto}, ...]. Devuelve None si no es un desglose válido.
-    """
-    codigo = str(codigo_transaccion or '').strip()
-    if not codigo or '|' not in codigo:
-        return None
-    partes = []
-    for parte in codigo.split('|'):
-        if ':' not in parte:
-            return None
-        medio, _, monto_str = parte.partition(':')
-        try:
-            monto = Decimal(monto_str)
-        except (InvalidOperation, ValueError, TypeError):
-            return None
-        partes.append({'medio': medio.upper(), 'monto': monto})
-    return partes if partes else None
-
-
-def obtener_refund_api_para_turno(turno, monto_total_devolucion):
-    """
-    Determina si un turno tiene un ID REAL de pago de Mercado Pago utilizable
-    para devolución por API, y el importe máximo que esa API puede devolver.
-
-    Un payment_id real SOLO puede provenir de mp_payment_id o mp_payment_id_saldo.
-    NUNCA de codigo_transaccion ni de comprobantes manuales de Alias.
-
-    Devuelve (payment_id_real | None, monto_max_api Decimal).
-    """
-    payment_id = turno.mp_payment_id or turno.mp_payment_id_saldo
-    if not payment_id:
-        return None, Decimal('0')
-
-    entidad = str(turno.entidad_pago or '').upper()
-
-    # Presencial Alias puro: el cajero guardó el comprobante manual en mp_payment_id
-    if entidad == 'MERCADOPAGO':
-        return None, Decimal('0')
-
-    # Pago mixto: el desglose indica el submedio; solo la parte QR tiene ID real.
-    partes = _partes_pago_mixto(turno.codigo_transaccion)
-    if partes:
-        parte_mp = next((p for p in partes if p['medio'].startswith('MERCADOPAGO')), None)
-        if parte_mp:
-            if parte_mp['medio'] == 'MERCADOPAGO_ALIAS':
-                return None, Decimal('0')
-            if parte_mp['medio'] == 'MERCADOPAGO_QR':
-                return payment_id, parte_mp['monto']
-
-    # Saldo cobrado por Mercado Pago (web, external_reference TURNO_SALDO):
-    # el ID real es mp_payment_id_saldo y su importe es el cobro restante registrado en caja.
-    if str(turno.medio_pago_restante or '').upper() == 'MERCADO_PAGO' and turno.mp_payment_id_saldo:
-        from django.db.models import Sum as _Sum
-        monto_saldo = MovimientoCaja.objects.filter(
-            turno_relacionado=turno, tipo='INGRESO', concepto='COBRO_RESTANTE', metodo_pago='MERCADO_PAGO'
-        ).aggregate(total=_Sum('monto'))['total']
-        if monto_saldo and Decimal(monto_saldo) > 0:
-            # El ID real que cubre el saldo es mp_payment_id_saldo (NO mp_payment_id,
-            # que pertenece al pago de la seña original).
-            return str(turno.mp_payment_id_saldo), Decimal(monto_saldo)
-        # No se pudo verificar el importe del pago: no habilitamos API para evitar
-        # registrar un egreso mayor al que realmente devuelve Mercado Pago.
-        return None, Decimal('0')
-
-    # Pago único (WEB o Presencial QR): el payment_id cubre el total a devolver.
-    return payment_id, Decimal(str(monto_total_devolucion))
-
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def completar_reembolso_manual(request, turno_id):
-    """Marca un reembolso como completado (Manual o Automático por API MP) y registra EGRESOS"""
+    """Marca un reembolso como completado (devolución manual) y registra EGRESOS"""
     from .models import SesionCaja, Turno, MovimientoCaja, Auditoria
-    from .mercadopago_service import MercadoPagoService # 🔥 Importamos tu servicio de MP
 
     sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
     if not sesion_abierta:
@@ -6203,48 +6133,14 @@ def completar_reembolso_manual(request, turno_id):
             if abs(suma_devuelta - monto_total_devolucion) > 0.01:
                 return Response({'error': 'La suma no coincide con el total a reembolsar'}, status=400)
 
-            es_reembolso_api = bool(request.data.get('reembolso_api_mp', False))
-            refund_id = None
-
+            # La devolución por Mercado Pago es SIEMPRE manual (fuera de HairSoft).
+            # El sistema solo registra la operación y, si el administrador lo indica,
+            # el Alias de destino de la transferencia. Nunca se ejecuta refund por API.
             if monto_mp > 0:
-                if es_reembolso_api:
-                    # Devolución AUTOMÁTICA: solo con un ID REAL de Mercado Pago.
-                    payment_id, monto_max_api = obtener_refund_api_para_turno(turno, monto_total_devolucion)
-                    if not payment_id:
-                        return Response({
-                            'error': 'Este turno no tiene un ID real de pago de Mercado Pago para la devolución automática. Usá Mercado Pago manual (transferencia a un Alias) o efectivo.'
-                        }, status=400)
-                    if abs(monto_mp - float(monto_max_api)) > 0.01:
-                        return Response({
-                            'error': f'La devolución automática por Mercado Pago solo puede cubrir ${float(monto_max_api):.2f} (importe del pago MP real). Ajustá los montos o usá la devolución manual.'
-                        }, status=400)
+                turno.reembolso_alias = str(request.data.get('reembolso_alias', '') or '').strip()[:100] or None
 
-                    mp_service = MercadoPagoService()
-                    resultado_mp = mp_service.reembolsar_pago(str(payment_id).strip())
-
-                    # Contrato del servicio: {success, refund_id, status, error}
-                    if not resultado_mp.get('success'):
-                        return Response({
-                            'error': f"Mercado Pago rechazó la devolución: {resultado_mp.get('error') or 'Error desconocido'}"
-                        }, status=400)
-
-                    refund_id = resultado_mp.get('refund_id')
-                    if refund_id:
-                        turno.mp_refund_id = str(refund_id)
-                else:
-                    # Devolución MANUAL por Mercado Pago: transferencia a un Alias.
-                    # reembolso_id_transaccion = comprobante de la NUEVA transferencia (no el pago original).
-                    turno.reembolso_alias = str(request.data.get('reembolso_alias', '') or '').strip()[:100]
-                    turno.reembolso_titular = str(request.data.get('reembolso_titular', '') or '').strip()[:100]
-                    id_transaccion = str(request.data.get('reembolso_id_transaccion', '') or '').strip()
-                    if id_transaccion and not re.fullmatch(r'\d{1,12}', id_transaccion):
-                        return Response({
-                            'error': 'El Id de Transacción de la NUEVA transferencia debe ser solo dígitos (máximo 12).'
-                        }, status=400)
-                    turno.reembolso_id_transaccion = id_transaccion or None
-
-            # Marcar como COMPLETADO SOLO cuando el circuito completo tuvo éxito.
-            # Si MP API fue confirmado, NUNCA dejar el turno como PENDIENTE en este punto.
+            # Marcar como COMPLETADO solo cuando el circuito completo tuvo éxito
+            # (devolución manual realizada y registrada).
             turno.reembolso_estado = 'COMPLETADO'
             turno.reembolsado = True
             turno._disable_audit = True
@@ -6261,21 +6157,14 @@ def completar_reembolso_manual(request, turno_id):
 
             # Movimiento de Caja - MP (solo el monto realmente devuelto por MP)
             if monto_mp > 0:
-                if es_reembolso_api:
-                    id_info = f" (Refund MP: {refund_id})" if refund_id else ""
-                elif turno.reembolso_id_transaccion:
-                    id_info = f" (ID: {turno.reembolso_id_transaccion})"
-                else:
-                    id_info = ""
-                descripcion_mp = f"Reembolso Cancelación (MP {'API Auto' if es_reembolso_api else 'Manual'}) - Turno #{turno.id}{id_info}"
+                id_info = f" (Alias: {turno.reembolso_alias})" if turno.reembolso_alias else ""
+                descripcion_mp = f"Reembolso Cancelación (MP Manual) - Turno #{turno.id}{id_info}"
                 MovimientoCaja.objects.create(
                     sesion_caja=sesion_abierta, tipo='EGRESO', metodo_pago='MERCADO_PAGO', concepto='OTROS', 
                     monto=monto_mp, turno_relacionado=turno, descripcion=descripcion_mp
                 )
 
-            if es_reembolso_api:
-                tipo_reembolso = 'DEVOLUCION_MP_API'
-            elif monto_mp > 0 and monto_efectivo == 0:
+            if monto_mp > 0 and monto_efectivo == 0:
                 tipo_reembolso = 'DEVOLUCION_MP_MANUAL'
             elif monto_efectivo > 0 and monto_mp == 0:
                 tipo_reembolso = 'DEVOLUCION_EFECTIVO'
@@ -6283,8 +6172,6 @@ def completar_reembolso_manual(request, turno_id):
                 tipo_reembolso = 'DEVOLUCION_MIXTA'
 
             detalles_auditoria = {'reembolso': tipo_reembolso}
-            if es_reembolso_api and refund_id:
-                detalles_auditoria['mp_refund_id'] = str(refund_id)
 
             Auditoria.objects.create(
                 usuario=request.user, modelo_afectado='Turno', objeto_id=turno.id, accion='EDITAR',
