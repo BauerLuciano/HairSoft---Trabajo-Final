@@ -70,9 +70,11 @@
         <div class="turno-content">
           <div class="turno-header">
             <div class="turno-fecha">
-              <Calendar :size="14" />
-              <span class="fecha-texto">{{ formatFecha(turno.fecha) }}</span>
-              <span class="fecha-hora">{{ turno.hora }}hs</span>
+              <span class="fecha-icono"><Calendar :size="15" /></span>
+              <span class="fecha-datos">
+                <span class="fecha-texto">{{ formatFecha(turno.fecha) }}</span>
+                <span class="fecha-hora">{{ turno.hora }}hs</span>
+              </span>
             </div>
             <div class="turno-estado">
               <span :class="['estado-badge', claseEstado(turno.estado)]">
@@ -86,13 +88,13 @@
             
             <div class="turno-detalles">
               <div class="detalle-item">
-                <User :size="14" />
+                <span class="detalle-icono"><User :size="14" /></span>
                 <span class="detalle-label">Peluquero:</span>
                 <span class="detalle-valor">{{ turno.peluquero_nombre || 'No asignado' }}</span>
               </div>
               
               <div class="detalle-item">
-                <Clock :size="14" />
+                <span class="detalle-icono"><Clock :size="14" /></span>
                 <span class="detalle-label">Duración:</span>
                 <span class="detalle-valor">{{ turno.duracion || 30 }} minutos</span>
               </div>
@@ -100,22 +102,28 @@
           </div>
 
           <div class="turno-footer">
-            <div class="turno-precio">
-              <div class="precio-total" v-if="turno.tipo_pago === 'TOTAL' || !turno.tipo_pago">
-                <span class="precio-simbolo">$</span>
-                <span class="precio-valor">{{ formatPrecio(turno.monto_total || 0) }}</span>
+            <div class="turno-pago">
+              <div class="pago-principal">
+                <div class="precio-total" v-if="turno.tipo_pago === 'TOTAL' || !turno.tipo_pago">
+                  <span class="precio-simbolo">$</span>
+                  <span class="precio-valor">{{ formatPrecio(turno.monto_total || 0) }}</span>
+                </div>
+                <div class="precio-total" v-else>
+                  <span class="precio-simbolo">$</span>
+                  <span class="precio-valor">{{ formatPrecio(turno.monto_seña || 0) }}</span>
+                </div>
+                <div class="pago-etiquetas">
+                  <span class="precio-texto" v-if="turno.tipo_pago === 'TOTAL' || !turno.tipo_pago">Total abonado</span>
+                  <span class="precio-texto" v-else>Seña abonada</span>
+                  <span v-if="turno.tipo_pago" :class="['pago-badge', turno.tipo_pago === 'TOTAL' ? 'pago-total' : 'pago-sena']">
+                    {{ turno.tipo_pago === 'TOTAL' ? 'Pagado' : 'Seña' }}
+                  </span>
+                </div>
               </div>
-              <div class="precio-total" v-else>
-                <span class="precio-simbolo">$</span>
-                <span class="precio-valor">{{ formatPrecio(turno.monto_seña || 0) }}</span>
-              </div>
-              <span class="precio-texto" v-if="turno.tipo_pago === 'TOTAL' || !turno.tipo_pago">Total abonado</span>
-              <span class="precio-texto" v-else>Seña abonada</span>
-              <span v-if="turno.tipo_pago" :class="['pago-badge', turno.tipo_pago === 'TOTAL' ? 'pago-total' : 'pago-sena']">
-                {{ turno.tipo_pago === 'TOTAL' ? 'Pagado' : 'Seña' }}
-              </span>
+
               <span v-if="turno.tipo_pago === 'SENA_50'" class="saldo-pendiente">
-                Saldo: ${{ formatPrecio((turno.monto_total || 0) - (turno.monto_seña || 0)) }}
+                <span class="saldo-pendiente-label">Saldo:</span>
+                <span class="saldo-pendiente-valor">${{ formatPrecio((turno.monto_total || 0) - (turno.monto_seña || 0)) }}</span>
               </span>
             </div>
             
@@ -327,8 +335,9 @@ const modificarTurno = async (turno) => {
     let margenConfig = 3;
     try {
       const resConfig = await api.get('/api/configuracion/');
-      if (resConfig.data && resConfig.data.margen_horas_cancelacion) {
-        margenConfig = resConfig.data.margen_horas_cancelacion;
+      const raw = resConfig.data && resConfig.data.margen_horas_cancelacion;
+      if (typeof raw === 'number') {
+        margenConfig = raw;
       }
     } catch (e) { console.error('Error cargando config para modificar', e) }
 
@@ -400,8 +409,9 @@ const cancelarTurno = async (turno) => {
   let margenConfig = 3;
   try {
     const resConfig = await api.get('/api/configuracion/');
-    if (resConfig.data && resConfig.data.margen_horas_cancelacion) {
-      margenConfig = resConfig.data.margen_horas_cancelacion;
+    const raw = resConfig.data && resConfig.data.margen_horas_cancelacion;
+    if (typeof raw === 'number') {
+      margenConfig = raw;
     }
   } catch (error) { console.error(error) }
 
@@ -411,7 +421,9 @@ const cancelarTurno = async (turno) => {
   const hayReembolso = horasFaltantes >= margenConfig;
 
   const mensajeReembolso = hayReembolso 
-    ? `Como estás cancelando con anticipación (más de ${margenConfig}hs), te corresponde la devolución de tu dinero.`
+    ? (margenConfig === 0
+        ? 'Como tu cancelación se realiza antes del inicio del turno, te corresponde la devolución de tu dinero.'
+        : `Como estás cancelando con anticipación (más de ${margenConfig}hs), te corresponde la devolución de tu dinero.`)
     : `Estás cancelando con menos de ${margenConfig}hs de anticipación. Según nuestras políticas de cancelación tardía, se pierde el valor de la reserva.`;
 
   const { value: formValues } = await Swal.fire({
@@ -435,9 +447,14 @@ const cancelarTurno = async (turno) => {
           ${hayReembolso ? `
           <label style="display:block; margin-bottom:8px; font-weight:700; color: #0f172a; font-size: 0.95rem;">¿Cómo preferís recibir tu dinero?</label>
           <select id="preferencia_reembolso" class="swal2-input" style="width: 100%; margin: 0 0 20px 0; height: 48px; border-radius: 10px; font-size: 0.95rem; font-weight: 600; color: #0f172a; border: 1px solid #0ea5e9; background-color: #f0f9ff;">
-            <option value="Mercado Pago / Transferencia">📱 Devolución a mi cuenta (Mercado Pago)</option>
-            <option value="Efectivo en el local">💵 Paso a buscar el efectivo por el local</option>
+            <option value="Mercado Pago"> Devolución a mi cuenta (Mercado Pago)</option>
+            <option value="Efectivo"> Paso a buscar el efectivo por el local</option>
           </select>
+          <div id="alias_reembolso_wrap" style="display: none; margin-bottom: 20px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px; padding: 14px;">
+            <label style="display:block; margin-bottom:8px; font-weight:700; color: #0f172a; font-size: 0.95rem;">Alias de Mercado Pago para recibir la devolución <span style="color:#dc2626;">*</span></label>
+            <input id="alias_reembolso" class="swal2-input" placeholder="ej: mis.pagos.cbu" style="width: 100%; margin: 0; height: 46px; border-radius: 10px; font-size: 0.95rem; padding: 0 12px; border: 1px solid #38bdf8;" />
+            <small style="color:#64748b; display:block; margin-top:6px; line-height:1.4;">Escribí el Alias de tu cuenta de Mercado Pago a la que se transferirá la devolución.</small>
+          </div>
           ` : ''}
 
           <label style="display:block; margin-bottom:8px; font-weight:700; color: #334155; font-size: 0.95rem;">¿Por qué necesitás cancelar?</label>
@@ -466,12 +483,28 @@ const cancelarTurno = async (turno) => {
       confirmBtn.style.fontWeight = '700';
       cancelBtn.style.borderRadius = '10px';
       cancelBtn.style.fontWeight = '700';
+      const selPref = document.getElementById('preferencia_reembolso');
+      const aliasWrap = document.getElementById('alias_reembolso_wrap');
+      if (selPref && aliasWrap) {
+        const toggleAlias = () => {
+          aliasWrap.style.display = selPref.value === 'Mercado Pago' ? 'block' : 'none';
+        };
+        selPref.addEventListener('change', toggleAlias);
+        toggleAlias();
+      }
     },
     preConfirm: () => {
       const motivo = document.getElementById('motivo').value;
       const obsCliente = document.getElementById('obs').value.trim();
       const preferencia = document.getElementById('preferencia_reembolso') ? document.getElementById('preferencia_reembolso').value : null;
-      
+      const aliasInput = document.getElementById('alias_reembolso');
+      const alias = aliasInput ? aliasInput.value.trim() : '';
+
+      if (preferencia === 'Mercado Pago' && !alias) {
+        Swal.showValidationMessage('Debés ingresar el Alias de tu cuenta de Mercado Pago para recibir la devolución.');
+        return false;
+      }
+
       const observacionFinal = preferencia 
         ? `PREFIERE DEVOLUCIÓN EN: ${preferencia}. ${obsCliente}`
         : obsCliente;
@@ -479,7 +512,8 @@ const cancelarTurno = async (turno) => {
       return { 
         motivo: motivo, 
         observaciones: observacionFinal,
-        obs_cancelacion: observacionFinal 
+        obs_cancelacion: observacionFinal,
+        reembolso_alias: preferencia === 'Mercado Pago' ? alias : null
       };
     }
   });
@@ -1114,31 +1148,60 @@ watch(tabActiva, () => { pagina.value = 1 })
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .turno-fecha {
   display: flex;
   align-items: center;
-  gap: 10px;
-  color: var(--text-primary);
-  font-weight: 700;
+  gap: 12px;
+  min-width: 0;
+}
+
+.fecha-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(14, 165, 233, 0.1);
+  border: 1px solid rgba(14, 165, 233, 0.22);
+  color: #0ea5e9;
+  flex-shrink: 0;
+}
+
+.fecha-datos {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .fecha-texto {
-  font-size: 1rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.15;
 }
 
 .fecha-hora {
   background: var(--bg-primary);
   color: var(--text-secondary);
-  padding: 4px 10px;
+  padding: 3px 10px;
   border-radius: 20px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.78rem;
+  font-weight: 700;
   border: 1px solid var(--border-color);
+  width: fit-content;
+}
+
+.turno-estado {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .estado-badge {
@@ -1177,12 +1240,12 @@ watch(tabActiva, () => { pagina.value = 1 })
 
 /* INFO DEL TURNO */
 .turno-info {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 .turno-titulo {
   margin: 0 0 14px 0;
-  font-size: 1.25rem;
+  font-size: 1.22rem;
   color: var(--text-primary);
   font-weight: 800;
   line-height: 1.35;
@@ -1191,21 +1254,32 @@ watch(tabActiva, () => { pagina.value = 1 })
 .turno-detalles {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .detalle-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   color: var(--text-secondary);
-  font-size: 0.95rem;
+  font-size: 0.93rem;
 }
 
-.detalle-item svg {
+.detalle-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   color: var(--text-tertiary);
-  opacity: 0.7;
   flex-shrink: 0;
+}
+
+.detalle-icono svg {
+  display: block;
 }
 
 .detalle-label {
@@ -1215,55 +1289,75 @@ watch(tabActiva, () => { pagina.value = 1 })
 
 .detalle-valor {
   color: var(--text-primary);
-  font-weight: 500;
+  font-weight: 600;
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* FOOTER DEL TURNO */
 .turno-footer {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 20px;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 16px;
   border-top: 1px solid var(--border-color);
-  flex-wrap: wrap;
-  gap: 15px;
 }
 
-.turno-precio {
+.turno-pago {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 13px 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+}
+
+.pago-principal {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
 }
 
 .precio-total {
   display: flex;
   align-items: baseline;
   gap: 2px;
-  margin-bottom: 4px;
 }
 
 .precio-simbolo {
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 1.05rem;
+  font-weight: 800;
   color: var(--text-primary);
 }
 
 .precio-valor {
-  font-size: 1.8rem;
+  font-size: 1.55rem;
   font-weight: 900;
   color: var(--text-primary);
   line-height: 1;
 }
 
+.pago-etiquetas {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
 .precio-texto {
   color: var(--text-tertiary);
-  font-size: 0.85rem;
-  font-weight: 500;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .pago-badge {
   display: inline-block;
-  margin-top: 4px;
   padding: 2px 10px;
   border-radius: 6px;
   font-size: 0.7rem;
@@ -1283,17 +1377,34 @@ watch(tabActiva, () => { pagina.value = 1 })
 }
 
 .saldo-pendiente {
-  display: block;
-  margin-top: 4px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #f59e0b;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.saldo-pendiente-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #b45309;
+}
+
+.saldo-pendiente-valor {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #d97706;
 }
 
 .turno-acciones {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-self: flex-end;
 }
 
 /* 🔥 ESTILOS PARA EL NUEVO BOTÓN MODIFICAR */
@@ -1418,7 +1529,7 @@ watch(tabActiva, () => { pagina.value = 1 })
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-top: 8px;
+  margin: 0;
   font-weight: 600;
 }
 
@@ -1582,11 +1693,20 @@ watch(tabActiva, () => { pagina.value = 1 })
   .turno-footer {
     flex-direction: column;
     align-items: stretch;
-    gap: 20px;
+    gap: 14px;
   }
   
   .turno-acciones {
-    justify-content: flex-start;
+    justify-content: stretch;
+    flex-direction: column;
+    align-self: stretch;
+  }
+  
+  .turno-acciones .btn-detalles,
+  .turno-acciones .btn-modificar,
+  .turno-acciones .btn-cancelar {
+    width: 100%;
+    justify-content: center;
   }
   
   .paginacion-turnos {
@@ -1630,6 +1750,15 @@ watch(tabActiva, () => { pagina.value = 1 })
   
   .precio-valor {
     font-size: 1.5rem;
+  }
+  
+  .turno-pago {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .pago-principal {
+    flex-wrap: wrap;
   }
   
   .turnos-estadisticas {

@@ -3,13 +3,10 @@
     <div class="offer-card animate-in">
       
       <div class="card-header">
-        <h1>¡Turno Disponible!</h1>
-        <p class="subtitle" v-if="info.descuento_porcentaje">
-          Se liberó un espacio y tenés el <span class="highlight-text">{{ info.descuento_porcentaje }}% de descuento</span>.
-        </p>
-        <p class="subtitle" v-else>
-          ¡Se liberó un espacio exclusivo para vos!
-        </p>
+        <div v-if="info.cliente_nombre" class="client-chip">
+          <span class="client-avatar">{{ clienteIniciales }}</span>
+          <span class="client-name">{{ info.cliente_nombre }}</span>
+        </div>
         <div class="header-glow"></div>
       </div>
 
@@ -37,93 +34,124 @@
         </div>
 
         <div v-else>
-          
-          <div class="turno-preview">
-            <div class="tp-row">
-              <span class="tp-label">Profesional</span>
-              <span class="tp-val">{{ info.profesional }}</span>
-            </div>
-            <div class="tp-row">
-              <span class="tp-label">Fecha</span>
-              <span class="tp-val date-val">{{ formatFecha(info.fecha) }}</span>
-            </div>
-            <div class="tp-row">
-              <span class="tp-label">Hora</span>
-              <span class="tp-val time-val">{{ formatHora(info.hora) }}hs</span>
-            </div>
-            <div class="tp-row">
-              <span class="tp-label">Servicio</span>
-              <span class="tp-val">{{ info.servicio }}</span>
-            </div>
-          </div>
 
-          <div class="offer-box" v-if="info.descuento_porcentaje">
-            <div class="offer-badge">-{{ info.descuento_porcentaje }}% OFF</div>
-            <div class="price-compare">
-              <div class="p-old">
-                <span>Precio Regular</span>
-                <del>${{ formatPrecio(info.precio_original) }}</del>
-              </div>
-              <div class="p-divider">
-                <i class="bi bi-arrow-right"></i>
-              </div>
-              <div class="p-new">
-                <span>Precio Oferta</span>
-                <strong>${{ formatPrecio(info.precio_final) }}</strong>
-              </div>
-            </div>
-          </div>
+          <div class="offer-layout">
+            <div class="offer-col offer-col-left">
 
-          <div class="wallet-section">
-            <div class="wallet-header">
-              <div class="wallet-title">
-                <i class="bi bi-wallet2 me-2"></i> Tu Pago Anterior
-              </div>
-              <span class="wallet-amount">${{ formatPrecio(info.pagado_anterior) }}</span>
-            </div>
-
-            <div v-if="info.saldo_a_favor > 0" class="result-box winner">
-              <div class="result-icon"><i class="bi bi-check-circle-fill"></i></div>
-              <div class="result-title">¡TE SOBRA DINERO!</div>
-              <div class="result-amount">
-                + ${{ formatPrecio(info.saldo_a_favor) }}
-              </div>
-              <p class="result-desc">
-                Este saldo queda a tu favor. <strong>¡El cambio te sale GRATIS!</strong>
+              <h1 class="offer-title">¡Turno Disponible!</h1>
+              <p class="subtitle" v-if="info.descuento_porcentaje">
+                Se liberó un espacio y tenés el <span class="highlight-text">{{ info.descuento_porcentaje }}% de descuento</span>.
               </p>
-            </div>
+              <p class="subtitle" v-else>
+                ¡Se liberó un espacio exclusivo para vos!
+              </p>
 
-            <div v-else-if="info.monto_final_a_pagar > 0" class="result-box owing">
-              <div class="result-icon"><i class="bi bi-exclamation-circle-fill"></i></div>
-              <div class="result-title">Solo abonás la diferencia</div>
-              <div class="result-amount">
-                ${{ formatPrecio(info.monto_final_a_pagar) }}
+              <div class="turno-preview">
+                <div class="tp-row">
+                  <div class="tp-left">
+                    <span class="tp-icon"><i class="ri-user-line"></i></span>
+                    <span class="tp-label">Profesional</span>
+                  </div>
+                  <span class="tp-val">{{ info.profesional }}</span>
+                </div>
+                <div class="tp-row">
+                  <div class="tp-left">
+                    <span class="tp-icon"><i class="ri-calendar-line"></i></span>
+                    <span class="tp-label">Fecha</span>
+                  </div>
+                  <span class="tp-val date-val">{{ formatFecha(info.fecha) }}</span>
+                </div>
+                <div class="tp-row">
+                  <div class="tp-left">
+                    <span class="tp-icon"><i class="ri-time-line"></i></span>
+                    <span class="tp-label">Hora</span>
+                  </div>
+                  <span class="tp-val time-val">{{ formatHora(info.hora) }}hs</span>
+                </div>
+                <div class="tp-row">
+                  <div class="tp-left">
+                    <span class="tp-icon"><i class="ri-scissors-cut-line"></i></span>
+                    <span class="tp-label">Servicio</span>
+                  </div>
+                  <span class="tp-val">{{ info.servicio }}</span>
+                </div>
               </div>
-              <p class="result-desc">Se descuenta lo que ya pagaste. Pagarás el resto en el local.</p>
+
             </div>
-            
-            <div v-else class="result-box zero">
-              <div class="result-icon"><i class="bi bi-shield-check"></i></div>
-              <div class="result-title">¡Cubierto al 100%!</div>
-              <div class="result-amount">$0.00</div>
-              <p class="result-desc">Tu pago anterior cubre todo el costo.</p>
+
+            <div class="offer-col offer-col-right">
+
+              <div class="offer-box" v-if="info.descuento_porcentaje">
+                <div class="offer-badge">-{{ info.descuento_porcentaje }}% OFF</div>
+                <div class="price-compare">
+                  <div class="p-old">
+                    <span>Precio Regular</span>
+                    <del>${{ formatPrecio(info.precio_original) }}</del>
+                  </div>
+                  <div class="p-divider">
+                    <i class="bi bi-arrow-right"></i>
+                  </div>
+                  <div class="p-new">
+                    <span>Precio Oferta</span>
+                    <strong>${{ formatPrecio(info.precio_final) }}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div class="wallet-section">
+                <div class="wallet-header">
+                  <div class="wallet-title">
+                    <i class="bi bi-wallet2 me-2"></i> Tu Pago Anterior
+                  </div>
+                  <span class="wallet-amount">${{ formatPrecio(info.pagado_anterior) }}</span>
+                </div>
+
+                <div v-if="info.saldo_a_favor > 0" class="result-box winner">
+                  <div class="result-icon"><i class="bi bi-check-circle-fill"></i></div>
+                  <div class="result-title">¡TE SOBRA DINERO!</div>
+                  <div class="result-amount">
+                    + ${{ formatPrecio(info.saldo_a_favor) }}
+                  </div>
+                  <p class="result-desc">
+                    Este saldo queda a tu favor. <strong>¡El cambio te sale GRATIS!</strong>
+                  </p>
+                </div>
+
+                <div v-else-if="info.monto_final_a_pagar > 0" class="result-box owing">
+                  <div class="result-icon"><i class="bi bi-exclamation-circle-fill"></i></div>
+                  <div class="result-title">Solo abonás la diferencia</div>
+                  <div class="result-amount">
+                    ${{ formatPrecio(info.monto_final_a_pagar) }}
+                  </div>
+                  <p class="result-desc">Se descuenta lo que ya pagaste. Pagarás el resto en el local.</p>
+                </div>
+                
+                <div v-else class="result-box zero">
+                  <div class="result-icon"><i class="bi bi-shield-check"></i></div>
+                  <div class="result-title">¡Cubierto al 100%!</div>
+                  <div class="result-amount">$0.00</div>
+                  <p class="result-desc">Tu pago anterior cubre todo el costo.</p>
+                </div>
+              </div>
+
+              <div class="actions">
+                <button @click="confirmarOferta" class="btn-primary full shine-effect" :disabled="procesando">
+                  <span v-if="!procesando" class="btn-content">
+                    <i class="bi bi-check2-circle"></i> 
+                    {{ info.saldo_a_favor > 0 ? 'ACEPTAR Y CANJEAR GRATIS' : 'CONFIRMAR CANJE' }}
+                  </span>
+                  <span v-else class="btn-content">
+                    <i class="bi bi-arrow-repeat spin"></i> Procesando...
+                  </span>
+                </button>
+                <button @click="volver" class="btn-text">Mantener mi turno anterior</button>
+              </div>
+              
+              <p class="disclaimer">Al aceptar, tu turno anterior se cancelará automáticamente y conservaremos tu pago para este nuevo horario.</p>
+
             </div>
           </div>
 
-          <div class="actions">
-            <button @click="confirmarOferta" class="btn-primary full shine-effect" :disabled="procesando">
-              <span v-if="!procesando" class="btn-content">
-                <i class="bi bi-check2-circle"></i> 
-                {{ info.saldo_a_favor > 0 ? 'ACEPTAR Y CANJEAR GRATIS' : 'CONFIRMAR CANJE' }}
-              </span>
-              <span v-else class="btn-content">
-                <i class="bi bi-arrow-repeat spin"></i> Procesando...
-              </span>
-            </button>
-            <button @click="volver" class="btn-text">Mantener mi turno anterior</button>
-          </div>
-          
-          <p class="disclaimer">Al aceptar, tu turno anterior se cancelará automáticamente y conservaremos tu pago para este nuevo horario.</p>
         </div>
 
       </div>
@@ -132,7 +160,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from '../../utils/axiosConfig';
 import Swal from 'sweetalert2';
@@ -150,6 +178,14 @@ const turnoId = route.params.turno_id;
 const token = route.params.token;
 
 const autenticado = ref(false);
+
+const clienteIniciales = computed(() => {
+  const nombre = (info.value.cliente_nombre || '').trim();
+  if (!nombre) return '';
+  const partes = nombre.split(/\s+/).filter(Boolean);
+  if (partes.length >= 2) return (partes[0][0] + partes[1][0]).toUpperCase();
+  return (partes[0][0] || '').toUpperCase();
+});
 
 const formatPrecio = (v) => {
   if (v === undefined || v === null) return '0.00';
@@ -289,32 +325,47 @@ const volver = () => {
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
+/* =============================================================================
+   ¡TURNO DISPONIBLE! — PANTALLA DE OFERTA (rediseño)
+   Fondo con glow de marca, tarjeta y paneles con variables de tema.
+   Compatible con modo claro/oscuro y escritorio/móvil.
+   =============================================================================
+*/
+
 .page-container {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f1f5f9;
-  background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
-  background-size: 24px 24px;
   font-family: 'Inter', sans-serif;
   padding: 40px 20px;
+  background-color: #0a0e16;
+  background-image:
+    radial-gradient(900px circle at 12% 8%, rgba(59, 130, 246, 0.18), transparent 45%),
+    radial-gradient(800px circle at 90% 95%, rgba(14, 165, 233, 0.14), transparent 50%);
+  --offer-shadow: 0 30px 60px -15px rgba(2, 6, 23, 0.55);
+}
+
+:global(:root.light-theme .page-container) {
+  --offer-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.18);
 }
 
 .offer-card {
-  background: #ffffff;
+  background: var(--bg-secondary, #ffffff);
   width: 100%;
-  max-width: 580px;
+  max-width: 1060px;
   border-radius: 28px;
   overflow: hidden;
-  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15), 0 0 0 1px rgba(15, 23, 42, 0.05);
+  border: 1px solid var(--border-color, #334155);
+  box-shadow: var(--offer-shadow);
 }
 
-/* HEADER AZUL PROFUNDO Y MODERNO */
+/* HEADER AZUL PROFUNDO Y MODERNO (funciona en ambos temas) */
 .card-header {
-  background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
+  background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 62%, #020617 100%);
+  background-image: radial-gradient(600px circle at 30% -20%, rgba(59, 130, 246, 0.28), transparent 60%);
   color: #ffffff;
-  padding: 45px 35px;
+  padding: 18px 28px;
   text-align: center;
   position: relative;
 }
@@ -324,69 +375,110 @@ const volver = () => {
   top: -50px;
   left: 50%;
   transform: translateX(-50%);
-  width: 200px;
-  height: 100px;
+  width: 220px;
+  height: 110px;
   background: #3b82f6;
   filter: blur(80px);
-  opacity: 0.4;
+  opacity: 0.5;
   pointer-events: none;
 }
 
-.brand-tag {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  color: #fbbf24; /* Ámbar/Oro sutil */
-  display: inline-block;
-  padding: 8px 16px;
-  border-radius: 50px;
-  font-size: 0.75rem;
+.offer-title {
+  margin: 0 0 10px;
+  font-size: 2.1rem;
+  color: var(--text-primary, #0f172a);
   font-weight: 800;
-  margin-bottom: 20px;
-  letter-spacing: 1px;
-  border: 1px solid rgba(251, 191, 36, 0.3);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-}
-
-.card-header h1 { 
-  margin: 0; 
-  font-size: 2.2rem; 
-  color: #ffffff; 
-  font-weight: 800; 
   letter-spacing: -0.5px;
+  line-height: 1.15;
 }
 
-.subtitle { 
-  margin: 12px 0 0; 
-  color: #94a3b8; 
-  font-size: 1.05rem; 
+.subtitle {
+  margin: 0 0 26px;
+  color: var(--text-secondary, #64748b);
+  font-size: 1.05rem;
   line-height: 1.5;
 }
 
 .highlight-text {
-  color: #fbbf24;
+  color: var(--warning-color, #f59e0b);
   font-weight: 700;
 }
 
-.card-body { 
-  padding: 40px 35px; 
-  background: #ffffff;
+.card-body {
+  padding: 38px 40px;
+  background: var(--bg-secondary, #ffffff);
+  color: var(--text-primary, #0f172a);
 }
 
-/* TURNO PREVIEW - LIMPIO Y ELEGANTE */
-.turno-preview { 
-  background: #f8fafc;
+/* LAYOUT DOS COLUMNAS (escritorio) */
+.offer-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.offer-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* CHIP IDENTIDAD DEL CLIENTE (nombre + iniciales reales) */
+.client-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50px;
+  padding: 6px 18px 6px 6px;
+  backdrop-filter: blur(6px);
+}
+
+.client-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 0.9rem;
+  letter-spacing: 0.5px;
+}
+
+.client-name {
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.98rem;
+}
+
+.card-body {
+  padding: 40px 35px;
+  background: var(--bg-secondary, #ffffff);
+  color: var(--text-primary, #0f172a);
+}
+
+/* TURNO PREVIEW - SECCIÓN AGRUPADA DE DATOS */
+.turno-preview {
+  background: var(--bg-primary, #f8fafc);
   border-radius: 20px;
-  padding: 25px;
-  margin-bottom: 25px; 
-  border: 1px solid #e2e8f0;
+  padding: 22px 25px;
+  margin-bottom: 25px;
+  border: 1px solid var(--border-color, #e2e8f0);
 }
 
-.tp-row { 
-  display: flex; 
-  justify-content: space-between; 
+.tp-row {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
   padding: 12px 0;
-  border-bottom: 1px dashed #cbd5e1;
+  border-bottom: 1px dashed var(--border-color, #cbd5e1);
+  gap: 12px;
 }
 
 .tp-row:last-child {
@@ -397,104 +489,129 @@ const volver = () => {
   padding-top: 0;
 }
 
-.tp-label { 
-  color: #64748b; 
-  font-weight: 600;
-  font-size: 0.95rem;
+.tp-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
-.tp-val { 
-  font-weight: 700; 
-  color: #0f172a; 
+.tp-icon {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  color: var(--accent-color, #3b82f6);
+  background: var(--accent-light, rgba(59, 130, 246, 0.1));
+  font-size: 1rem;
+}
+
+.tp-label {
+  color: var(--text-secondary, #64748b);
+  font-weight: 600;
+  font-size: 0.93rem;
+}
+
+.tp-val {
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
   font-size: 1.05rem;
   text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .date-val, .time-val {
-  color: #1e3a8a;
+  color: var(--accent-color, #1e3a8a);
 }
 
-/* OFFER BOX - PREMIUM */
-.offer-box { 
-  background: linear-gradient(to right, #eff6ff, #f0fdf4); 
-  border-radius: 20px; 
-  padding: 25px; 
+/* OFFER BOX - EL DESCUENTO PROTAGONISTA */
+.offer-box {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(16, 185, 129, 0.05)), var(--bg-secondary, #ffffff);
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  border-radius: 20px;
+  padding: 26px 25px;
   position: relative;
   margin-bottom: 25px;
-  border: 1px solid #bae6fd;
 }
 
 .offer-badge {
   position: absolute;
-  top: -15px; 
+  top: -18px;
   right: 25px;
-  background: linear-gradient(135deg, #ef4444, #b91c1c); 
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
   color: white;
-  font-weight: 800; 
-  font-size: 0.85rem;
-  padding: 6px 16px; 
+  font-weight: 800;
+  font-size: 1rem;
+  padding: 9px 20px;
   border-radius: 50px;
-  box-shadow: 0 8px 15px rgba(239, 68, 68, 0.25);
+  box-shadow: 0 10px 18px rgba(239, 68, 68, 0.35);
+  letter-spacing: 0.5px;
 }
 
-.price-compare { 
-  display: flex; 
-  justify-content: space-between; 
-  align-items: center; 
+.price-compare {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 
-.p-old, .p-new { 
-  display: flex; 
-  flex-direction: column; 
+.p-old, .p-new {
+  display: flex;
+  flex-direction: column;
 }
 
-.p-old span { font-size: 0.85rem; color: #64748b; font-weight: 600; margin-bottom: 4px;}
-.p-old del { font-size: 1.2rem; color: #94a3b8; font-weight: 700;}
+.p-old span { font-size: 0.85rem; color: var(--text-secondary, #64748b); font-weight: 600; margin-bottom: 4px; }
+.p-old del { font-size: 1.3rem; color: var(--text-tertiary, #94a3b8); font-weight: 700; }
 
 .p-divider {
-  color: #94a3b8;
-  font-size: 1.5rem;
-  opacity: 0.5;
+  color: var(--text-tertiary, #94a3b8);
+  font-size: 1.6rem;
+  opacity: 0.6;
 }
 
 .p-new { text-align: right; }
-.p-new span { font-size: 0.85rem; color: #1e3a8a; font-weight: 700; margin-bottom: 4px;}
-.p-new strong { font-size: 2.2rem; color: #1e3a8a; font-weight: 900; line-height: 1;}
+.p-new span { font-size: 0.85rem; color: var(--accent-color, #1e3a8a); font-weight: 700; margin-bottom: 4px; }
+.p-new strong { font-size: 2.5rem; color: var(--accent-color, #1e3a8a); font-weight: 900; line-height: 1; }
 
 /* WALLET SECTION */
-.wallet-section { 
-  background: #ffffff; 
-  border-radius: 20px; 
-  margin-bottom: 35px; 
-  border: 2px solid #f1f5f9;
+.wallet-section {
+  background: var(--bg-primary, #ffffff);
+  border-radius: 20px;
+  margin-bottom: 35px;
+  border: 1px solid var(--border-color, #f1f5f9);
   overflow: hidden;
 }
 
-.wallet-header { 
-  background: #f8fafc;
-  display: flex; 
-  justify-content: space-between; 
+.wallet-header {
+  background: var(--bg-tertiary, #f8fafc);
+  display: flex;
+  justify-content: space-between;
   align-items: center;
   padding: 18px 25px;
-  border-bottom: 2px solid #f1f5f9;
+  border-bottom: 1px solid var(--border-color, #f1f5f9);
 }
 
 .wallet-title {
-  color: #475569;
+  color: var(--text-secondary, #475569);
   font-weight: 700;
   font-size: 0.95rem;
 }
 
 .wallet-amount {
-  color: #0f172a;
+  color: var(--text-primary, #0f172a);
   font-weight: 800;
   font-size: 1.2rem;
 }
 
-.result-box { 
-  text-align: center; 
-  padding: 30px 25px; 
+.result-box {
+  text-align: center;
+  padding: 28px 25px;
   position: relative;
+  border-top: 4px solid transparent;
 }
 
 .result-icon {
@@ -502,15 +619,19 @@ const volver = () => {
   margin-bottom: 10px;
 }
 
+.winner { background: rgba(16, 185, 129, 0.09); border-top-color: #10b981; }
+.owing { background: rgba(245, 158, 11, 0.09); border-top-color: #f59e0b; }
+.zero { background: rgba(59, 130, 246, 0.09); border-top-color: #3b82f6; }
+
 .winner .result-icon { color: #10b981; }
 .owing .result-icon { color: #f59e0b; }
 .zero .result-icon { color: #3b82f6; }
 
-.result-title { 
-  font-size: 1rem; 
-  font-weight: 800; 
-  text-transform: uppercase; 
-  margin-bottom: 10px; 
+.result-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-bottom: 10px;
   letter-spacing: 0.5px;
 }
 
@@ -518,10 +639,10 @@ const volver = () => {
 .owing .result-title { color: #d97706; }
 .zero .result-title { color: #1d4ed8; }
 
-.result-amount { 
-  font-size: 3rem; 
-  font-weight: 900; 
-  margin-bottom: 15px; 
+.result-amount {
+  font-size: 3.2rem;
+  font-weight: 900;
+  margin-bottom: 15px;
   line-height: 1;
   letter-spacing: -1px;
 }
@@ -530,32 +651,32 @@ const volver = () => {
 .owing .result-amount { color: #f59e0b; }
 .zero .result-amount { color: #3b82f6; }
 
-.result-desc { 
-  font-size: 0.95rem; 
-  line-height: 1.5; 
-  color: #64748b; 
-  margin: 0; 
+.result-desc {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text-secondary, #64748b);
+  margin: 0;
 }
 
 /* BOTONES */
-.actions { 
-  display: flex; 
-  flex-direction: column; 
-  gap: 15px; 
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
   margin-bottom: 25px;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
-  color: #ffffff; 
+  background: linear-gradient(135deg, var(--accent-color, #1e40af) 0%, #0ea5e9 100%);
+  color: #ffffff;
   border: none;
-  padding: 20px; 
-  border-radius: 16px; 
-  font-weight: 700; 
+  padding: 20px;
+  border-radius: 16px;
+  font-weight: 700;
   font-size: 1.1rem;
-  cursor: pointer; 
+  cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 10px 25px -5px rgba(30, 58, 138, 0.4);
+  box-shadow: 0 12px 28px -6px rgba(37, 99, 235, 0.5);
 }
 
 .btn-primary .btn-content {
@@ -565,36 +686,37 @@ const volver = () => {
   gap: 10px;
 }
 
-.btn-primary:hover:not(:disabled) { 
-  transform: translateY(-3px); 
-  box-shadow: 0 20px 35px -5px rgba(30, 58, 138, 0.5); 
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 20px 38px -6px rgba(59, 130, 246, 0.55);
 }
 
 .btn-primary:disabled {
-  background: #cbd5e1;
+  background: var(--border-color, #cbd5e1);
+  color: var(--text-secondary, #94a3b8);
   box-shadow: none;
   cursor: not-allowed;
 }
 
-.btn-text { 
-  background: none; 
-  border: none; 
-  color: #64748b; 
-  cursor: pointer; 
-  font-size: 0.95rem; 
+.btn-text {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  font-size: 0.95rem;
   padding: 10px;
   font-weight: 600;
   transition: color 0.2s;
 }
 
 .btn-text:hover {
-  color: #0f172a;
+  color: var(--text-primary, #0f172a);
 }
 
-.disclaimer { 
-  font-size: 0.8rem; 
-  text-align: center; 
-  color: #94a3b8; 
+.disclaimer {
+  font-size: 0.8rem;
+  text-align: center;
+  color: var(--text-tertiary, #94a3b8);
   margin: 0;
   line-height: 1.5;
 }
@@ -604,28 +726,35 @@ const volver = () => {
   animation: spin 1s linear infinite;
 }
 
-.animate-in { 
-  animation: scaleUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; 
+.animate-in {
+  animation: scaleUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes scaleUp { 
-  0% { opacity: 0; transform: scale(0.95) translateY(20px); } 
-  100% { opacity: 1; transform: scale(1) translateY(0); } 
+@keyframes scaleUp {
+  0% { opacity: 0; transform: scale(0.95) translateY(20px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@media (max-width: 920px) {
+  .offer-card { max-width: 620px; }
+  .offer-layout { grid-template-columns: minmax(0, 1fr); gap: 24px; }
 }
 
 @media (max-width: 640px) {
-  .card-body { padding: 30px 20px; }
-  .card-header { padding: 35px 20px; }
-  .card-header h1 { font-size: 1.8rem; }
-  .result-amount { font-size: 2.5rem; }
-  .p-new strong { font-size: 1.8rem; }
+  .page-container { padding: 24px 12px; }
+  .card-body { padding: 28px 20px; }
+  .card-header { padding: 16px 20px; }
+  .offer-title { font-size: 1.8rem; }
+  .result-amount { font-size: 2.6rem; }
+  .p-new strong { font-size: 2rem; }
+  .tp-val { font-size: 0.98rem; }
 }
 
-/* 🔥 CORRECCIÓN PARA ESTADOS: CARGA, ERROR Y ÉXITO 🔥 */
-
-.state-box { 
-  text-align: center; 
-  padding: 40px 20px; 
+/* ESTADOS: CARGA, ERROR Y ÉXITO (adaptados al tema) */
+.state-box {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-primary, #0f172a);
 }
 
 .state-box h3 {
@@ -634,29 +763,25 @@ const volver = () => {
   margin-bottom: 10px;
 }
 
-/* Color para el texto de Error (Pena) */
-.state-box.error h3 { color: #b91c1c; }
-.state-box.error p { color: #475569; font-weight: 500; }
+.state-box.error h3 { color: #ef4444; }
+.state-box.error p { color: var(--text-secondary, #475569); font-weight: 500; }
 
-/* Color para el texto de Éxito */
-.state-box.success h3 { color: #1e3a8a; }
-.state-box.success .msg-text { color: #334155; font-weight: 600; }
-.state-box.success .sub-msg { color: #64748b; }
+.state-box.success h3 { color: var(--success-color, #1e3a8a); }
+.state-box.success .msg-text { color: var(--text-primary, #334155); font-weight: 600; }
+.state-box.success .sub-msg { color: var(--text-secondary, #64748b); }
 
-/* Color para el texto de Carga */
-.state-box p { color: #1e3a8a; font-weight: 600; }
+.state-box p { color: var(--accent-color, #1e3a8a); font-weight: 600; }
 
-.emoji-icon { 
-  font-size: 4rem; 
-  margin-bottom: 15px; 
+.emoji-icon {
+  font-size: 4rem;
+  margin-bottom: 15px;
   display: block;
 }
 
-/* Botón de "Volver al inicio" en el error */
 .btn-outline {
   background: transparent;
-  border: 2px solid #1e3a8a;
-  color: #1e3a8a;
+  border: 2px solid var(--accent-color, #1e3a8a);
+  color: var(--accent-color, #1e3a8a);
   padding: 12px 24px;
   border-radius: 12px;
   font-weight: 700;
@@ -666,22 +791,22 @@ const volver = () => {
 }
 
 .btn-outline:hover {
-  background: #1e3a8a;
+  background: var(--accent-color, #1e3a8a);
   color: #ffffff;
 }
 
-.spinner { 
-  border: 4px solid #f1f5f9; 
-  border-top: 4px solid #1e3a8a; 
-  border-radius: 50%; 
-  width: 45px; 
-  height: 45px; 
-  animation: spin 1s linear infinite; 
-  margin: 0 auto 20px; 
+.spinner {
+  border: 4px solid var(--border-color, #f1f5f9);
+  border-top: 4px solid var(--accent-color, #1e3a8a);
+  border-radius: 50%;
+  width: 45px;
+  height: 45px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
 }
 
-@keyframes spin { 
-  0% { transform: rotate(0deg); } 
-  100% { transform: rotate(360deg); } 
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 </style>

@@ -298,10 +298,10 @@
                 class="hora-card"
                 :class="{
                   'hora-selected': form.hora === hora,
-                  'hora-actual': esHorarioDelTurnoActual(hora),
-                  'hora-ocupada':
-                    !esHorarioDisponibleCompleto(hora) &&
-                    !esHorarioDelTurnoActual(hora),
+                  'hora-actual': obtenerEstadoHorario(hora) === 'ACTUAL',
+                  'hora-disponible': obtenerEstadoHorario(hora) === 'DISPONIBLE',
+                  'hora-ocupada': obtenerEstadoHorario(hora) === 'OCUPADO',
+                  'hora-expirado': obtenerEstadoHorario(hora) === 'EXPIRADO',
                 }"
                 @click="
                   esHorarioDisponibleCompleto(hora)
@@ -311,14 +311,24 @@
               >
                 <span class="hora-texto">{{ hora }}</span>
                 <span
-                  v-if="esHorarioDelTurnoActual(hora)"
+                  v-if="obtenerEstadoHorario(hora) === 'ACTUAL'"
                   class="etiqueta-actual"
                   >ACTUAL</span
                 >
                 <span
-                  v-else-if="!esHorarioDisponibleCompleto(hora)"
+                  v-else-if="obtenerEstadoHorario(hora) === 'DISPONIBLE'"
+                  class="etiqueta-disponible"
+                  >DISPONIBLE</span
+                >
+                <span
+                  v-else-if="obtenerEstadoHorario(hora) === 'OCUPADO'"
                   class="etiqueta-ocupado"
                   >OCUPADO</span
+                >
+                <span
+                  v-else-if="obtenerEstadoHorario(hora) === 'EXPIRADO'"
+                  class="etiqueta-expirado"
+                  >EXPIRADO</span
                 >
               </div>
             </div>
@@ -335,14 +345,9 @@
               <div>
                 <strong class="pago-previo-title">Pago Conservado</strong>
                 <p class="pago-previo-text">
-                  Este turno ya cuenta con una seña o pago registrado
-                  <strong v-if="form.codigo_transaccion"
-                    >(Ref: {{ form.codigo_transaccion }})</strong
-                  >
-                  <strong v-else-if="form.medio_pago === 'EFECTIVO'"
-                    >(En Efectivo)</strong
-                  >. La reprogramación mantendrá el comprobante original sin
-                  pedir un nuevo abono.
+                  Este turno ya cuenta con una seña o pago registrado.
+                  La reprogramación mantiene el comprobante original. Si el
+                  nuevo total es mayor, podés cobrar la diferencia más abajo.
                 </p>
               </div>
             </div>
@@ -386,7 +391,7 @@
                 </div>
 
                 <div class="boleta-row diferencia-row">
-                  <span>Diferencia a cobrar en el local:</span>
+                  <span>Diferencia:</span>
                   <strong
                     :class="
                       saldoACobrar() > 0 ? 'text-warning' : 'text-success'
@@ -439,55 +444,226 @@
             </div>
 
             <div
-              class="pago-detalles"
-              :class="{ 'section-disabled': tienePagoPrevio }"
+              v-if="!tienePagoPrevio || saldoACobrar() > 0"
+              class="card-diferencia slide-in"
             >
-              <div class="input-group">
-                <label class="label-modern">Método de Pago</label>
-                <select
-                  v-model="form.medio_pago"
-                  class="select-modern"
-                  @change="onCambioMedioPagoModif"
+              <div class="card-header">
+                <div class="card-icon">
+                  <Banknote :size="20" />
+                </div>
+                <h3>
+                  {{
+                    tienePagoPrevio
+                      ? "¿Cuándo cobrar la diferencia?"
+                      : "¿Cuándo cobrar este turno?"
+                  }}
+                </h3>
+              </div>
+
+              <p
+                v-if="tienePagoPrevio"
+                class="diferencia-helper"
+              >
+                Nuevo total:
+                <strong>${{ calcularTotal() }}</strong> · Ya abonado:
+                <strong
+                  >${{
+                    parseFloat(turnoOriginal.monto_seña || 0).toFixed(2)
+                  }}</strong
                 >
-                  <option value="EFECTIVO">💵 Efectivo</option>
-                  <option value="MERCADO_PAGO">🔵 Mercado Pago</option>
-                  <option v-if="form.medio_pago === 'MIXTO'" value="MIXTO">🔀 Mixto</option>
-                </select>
+                · Diferencia:
+                <strong class="text-warning">${{ saldoACobrar() }}</strong>
+              </p>
+              <p v-else class="diferencia-helper">
+                Monto a cobrar ahora:
+                <strong class="text-warning">${{ montoACobrar() }}</strong>
+              </p>
+
+              <div class="pago-options">
+                <label
+                  class="radio-box"
+                  :class="{ 'radio-active': cobrarDiferencia === 'ahora' }"
+                >
+                  <input
+                    type="radio"
+                    v-model="cobrarDiferencia"
+                    value="ahora"
+                    class="hidden-radio"
+                  />
+                  <div class="radio-content">
+                    <span>Abonar ahora</span>
+                    <strong>${{ montoACobrar() }}</strong>
+                  </div>
+                </label>
+                <label
+                  class="radio-box"
+                  :class="{
+                    'radio-active': cobrarDiferencia === 'finalizar',
+                  }"
+                >
+                  <input
+                    type="radio"
+                    v-model="cobrarDiferencia"
+                    value="finalizar"
+                    class="hidden-radio"
+                  />
+                  <div class="radio-content">
+                    <span>Abonar al finalizar</span>
+                    <strong>Saldo pendiente</strong>
+                  </div>
+                </label>
               </div>
 
               <div
-                v-if="form.medio_pago !== 'EFECTIVO'"
-                class="datos-transferencia-container slide-in"
+                v-if="cobrarDiferencia === 'ahora'"
+                class="metodo-diferencia-opciones slide-in"
               >
-                <div class="input-group">
-                  <label class="label-modern">
-                    ID Transacción Mercado Pago *
-                  </label>
-
-                  <input
-                    type="text"
-                    v-model="form.codigo_transaccion"
-                    class="input-modern"
-                    :placeholder="
-                      form.medio_pago === 'MERCADO_PAGO'
-                        ? 'Ej: #145025893768'
-                        : 'Ej: A123B456789'
-                    "
-                    :maxlength="maxCodigoLength"
+                <p class="selector-label">¿Cómo cobrar ahora?</p>
+                <div class="metodo-diferencia-grid">
+                  <label
+                    class="metodo-diferencia-box"
                     :class="{
-                      'input-error':
-                        errorValidacion && !form.codigo_transaccion,
+                      'metodo-active': metodoDiferencia === 'EFECTIVO',
                     }"
-                    :disabled="tienePagoPrevio"
-                  />
+                  >
+                    <input
+                      type="radio"
+                      v-model="metodoDiferencia"
+                      value="EFECTIVO"
+                      class="hidden-radio"
+                    />
+                    <span class="metodo-icono metodo-icono-efectivo">
+                      <Banknote :size="20" />
+                    </span>
+                    <span class="metodo-texto">
+                      <strong>Efectivo</strong>
+                      <small>Confirmación inmediata</small>
+                    </span>
+                  </label>
+                  <label
+                    class="metodo-diferencia-box"
+                    :class="{
+                      'metodo-active': metodoDiferencia === 'MERCADO_PAGO',
+                    }"
+                  >
+                    <input
+                      type="radio"
+                      v-model="metodoDiferencia"
+                      value="MERCADO_PAGO"
+                      class="hidden-radio"
+                    />
+                    <span class="metodo-icono metodo-icono-qr">
+                      <QrCode :size="20" />
+                    </span>
+                    <span class="metodo-texto">
+                      <strong>Mercado Pago QR</strong>
+                      <small>Se confirma solo al escanear</small>
+                    </span>
+                  </label>
+                  <label
+                    class="metodo-diferencia-box"
+                    :class="{
+                      'metodo-active':
+                        metodoDiferencia === 'MERCADO_PAGO_ALIAS',
+                    }"
+                  >
+                    <input
+                      type="radio"
+                      v-model="metodoDiferencia"
+                      value="MERCADO_PAGO_ALIAS"
+                      class="hidden-radio"
+                    />
+                    <span class="metodo-icono metodo-icono-alias">
+                      <Smartphone :size="20" />
+                    </span>
+                    <span class="metodo-texto">
+                      <strong>Mercado Pago Alias</strong>
+                      <small>Confirmación manual del cajero</small>
+                    </span>
+                  </label>
+                </div>
 
-                  <small class="helper-text">
-                    <Info :size="12" class="inline-icon" />
+                <div
+                  v-if="metodoDiferencia === 'MERCADO_PAGO'"
+                  class="diferencia-mp-panel"
+                >
+                  <button
+                    @click="generarQRDiferencia"
+                    class="btn-generar-qr"
+                    :disabled="qrGenerandoDif || pagoDiferenciaConfirmado"
+                  >
                     {{
-                      form.medio_pago === "MERCADO_PAGO"
-                        ? "ID de operación MP (Ej: #123...). Máx 14."
-                        : "Código del comprobante bancario. Máx 25."
+                      qrGenerandoDif
+                        ? "Generando QR..."
+                        : pagoDiferenciaConfirmado
+                          ? "✅ Pago QR aprobado"
+                          : `🧾 Generar QR por $${montoACobrar()}`
                     }}
+                  </button>
+                  <small
+                    v-if="!pagoDiferenciaConfirmado"
+                    class="helper-text"
+                  >
+                    Se genera un QR por
+                    <strong>${{ montoACobrar() }}</strong>. Cuando el cliente
+                    lo pague, la modificación se confirma automáticamente.
+                  </small>
+                  <small
+                    v-else
+                    class="helper-text text-success"
+                  >
+                    Pago detectado. Guardá la modificación para registrar el
+                    cobro de la diferencia.
+                  </small>
+                </div>
+
+                <div
+                  v-if="metodoDiferencia === 'MERCADO_PAGO_ALIAS'"
+                  class="diferencia-mp-panel"
+                >
+                  <div
+                    v-if="aliasCargando"
+                    class="helper-text"
+                    style="margin-bottom: 8px"
+                  >
+                    <Loader2 :size="12" class="spinner-icon" />
+                    Cargando alias...
+                  </div>
+                  <div
+                    v-else-if="aliasValor"
+                    class="mp-alias-display"
+                  >
+                    <span class="mp-alias-label">Alias de Mercado Pago:</span>
+                    <span class="mp-alias-value">{{ aliasValor }}</span>
+                    <button
+                      @click="copiarAlias"
+                      class="btn-copy-alias"
+                      title="Copiar alias"
+                    >
+                      <Copy :size="14" />
+                    </button>
+                  </div>
+                  <div v-else class="helper-text alias-warning">
+                    <AlertTriangle :size="14" class="inline-icon" />
+                    No hay alias configurado — ve a
+                    <strong>Ajustes del Local</strong> para registrarlo.
+                  </div>
+                  <small class="helper-text" style="display: block">
+                    Pedile al cliente que transfiera
+                    <strong>${{ montoACobrar() }}</strong
+                    > a ese alias. Al guardar, registrás el cobro
+                    manualmente.
+                  </small>
+                </div>
+
+                <div
+                  v-if="metodoDiferencia === 'EFECTIVO'"
+                  class="diferencia-mp-panel"
+                >
+                  <small class="helper-text">
+                    Se registra el cobro en efectivo por
+                    <strong>${{ montoACobrar() }}</strong>. Requiere caja
+                    abierta.
                   </small>
                 </div>
               </div>
@@ -594,8 +770,14 @@ import {
   Inbox,
   Armchair,
   ChevronDown,
+  Banknote,
+  QrCode,
+  Smartphone,
+  Copy,
+  AlertTriangle,
 } from "lucide-vue-next";
 import Swal from "sweetalert2";
+import QRCode from "qrcode";
 
 const route = useRoute();
 const router = useRouter();
@@ -649,10 +831,37 @@ const form = ref({
   tipo_pago: "SENA_50",
   medio_pago: "EFECTIVO",
   entidad_pago: "",
-  codigo_transaccion: "",
   fecha: "",
   hora: "",
 });
+
+// 🔥 Cobro de la diferencia (o del monto inicial si no había pago)
+const cobrarDiferencia = ref("finalizar");
+const metodoDiferencia = ref("EFECTIVO");
+const pagoUuidDif = ref(null);
+const pagoDiferenciaConfirmado = ref(false);
+const qrGenerandoDif = ref(false);
+let pollIdDif = null;
+
+// 🔥 Alias de Mercado Pago configurado en Ajustes del Local (para cobro por alias)
+const aliasValor = ref("");
+const aliasCargando = ref(false);
+
+const copiarAlias = async () => {
+  if (!aliasValor.value) return;
+  try {
+    await navigator.clipboard.writeText(aliasValor.value);
+    Swal.fire({
+      icon: "success",
+      title: "Alias copiado",
+      text: aliasValor.value,
+      timer: 1200,
+      showConfirmButton: false,
+    });
+  } catch {
+    /* clipboard no disponible */
+  }
+};
 
 // Detección de pago previo
 const tienePagoPrevio = computed(() => {
@@ -690,19 +899,20 @@ const serviciosNuevos = computed(() => {
 });
 
 // Observadores
+// 🔥 Al cambiar el "cuándo" o el método de cobro se resetea cualquier QR previo.
+// En turnos sin pago previo, el método elegido define el medio de pago del turno.
 watch(
-  () => form.value.medio_pago,
-  (newVal) => {
-    if (cargando.value) return;
-    // Con pago previo el medio es irrompible: el guard revierte y no se tocan campos.
-    if (tienePagoPrevio.value) return;
-    if (newVal === "EFECTIVO") {
-      form.value.entidad_pago = "";
-      form.value.codigo_transaccion = "";
-      errorValidacion.value = false;
-    } else if (newVal === "MERCADO_PAGO") {
-      form.value.entidad_pago = "";
-      errorValidacion.value = false;
+  () => ({ c: cobrarDiferencia.value, m: metodoDiferencia.value }),
+  () => {
+    pagoUuidDif.value = null;
+    pagoDiferenciaConfirmado.value = false;
+    if (!tienePagoPrevio.value) {
+      form.value.medio_pago =
+        cobrarDiferencia.value === "ahora"
+          ? metodoDiferencia.value === "EFECTIVO"
+            ? "EFECTIVO"
+            : "MERCADO_PAGO"
+          : "PENDIENTE";
     }
   },
 );
@@ -713,15 +923,6 @@ const onCambioTipoPagoModif = () => {
   if (!tienePagoPrevio.value) return;
   const intentado = form.value.tipo_pago;
   form.value.tipo_pago = turnoOriginal.value.tipo_pago || "SENA_50";
-  mostrarBloqueoPagoModif(intentado);
-};
-
-const onCambioMedioPagoModif = () => {
-  if (!tienePagoPrevio.value) return;
-  const intentado = form.value.medio_pago;
-  form.value.medio_pago = turnoOriginal.value.medio_pago || "EFECTIVO";
-  form.value.entidad_pago = turnoOriginal.value.entidad_pago || "";
-  form.value.codigo_transaccion = turnoOriginal.value.codigo_transaccion || "";
   mostrarBloqueoPagoModif(intentado);
 };
 
@@ -758,10 +959,6 @@ watch(
 );
 
 // Propiedades computadas
-const maxCodigoLength = computed(() =>
-  form.value.medio_pago === "MERCADO_PAGO" ? 14 : 25,
-);
-
 const serviciosFiltrados = computed(() => {
   if (categoriasSeleccionadas.value.length === 0) return [];
   return servicios.value.filter((s) => {
@@ -976,6 +1173,28 @@ const esHorarioDelTurnoActual = (hora) => {
   return slotsTurnoActual.value.has(horaString);
 };
 
+const obtenerEstadoHorario = (hora) => {
+  if (!form.value.fecha || !form.value.peluquero) return null;
+  if (esHorarioDelTurnoActual(hora)) return 'ACTUAL';
+
+  const [hS, mS] = hora.substring(0, 5).split(':').map(Number);
+  const inicioMinutos = hS * 60 + mS;
+
+  const hoy = new Date();
+  const hoyF = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+
+  if (form.value.fecha === hoyF) {
+    const minutosActuales = hoy.getHours() * 60 + hoy.getMinutes();
+    if (inicioMinutos <= minutosActuales) return 'EXPIRADO';
+  } else if (form.value.fecha < hoyF) {
+    return 'EXPIRADO';
+  }
+
+  if (!esHorarioDisponibleCompleto(hora)) return 'OCUPADO';
+
+  return 'DISPONIBLE';
+};
+
 const esHorarioDisponibleCompleto = (horaSeleccionada) => {
   if (!form.value.fecha || !form.value.peluquero) return false;
   if (esHorarioDelTurnoActual(horaSeleccionada)) return true;
@@ -1056,12 +1275,22 @@ const calcularSena = () => (calcularTotal() / 2).toFixed(2);
 
 const saldoACobrar = () => {
   const totalNuevo = parseFloat(calcularTotal() || 0);
+  // Un turno TOTAL (ya saldado) conserva el total como importe abonado.
   const pagadoPrevio = tienePagoPrevio.value
-    ? parseFloat(turnoOriginal.value.monto_seña || 0)
+    ? turnoOriginal.value.tipo_pago === "TOTAL"
+      ? parseFloat(turnoOriginal.value.monto_total || turnoOriginal.value.monto_seña || 0)
+      : parseFloat(turnoOriginal.value.monto_seña || 0)
     : 0;
   const diferencia = totalNuevo - pagadoPrevio;
 
   return diferencia > 0 ? diferencia.toFixed(2) : "0.00";
+};
+
+// 🔥 Monto efectivo a cobrar: diferencia (si hay pago previo) o seña/total inicial
+const montoACobrar = () => {
+  if (tienePagoPrevio.value) return parseFloat(saldoACobrar());
+  if (form.value.tipo_pago === "TOTAL") return parseFloat(calcularTotal());
+  return parseFloat(calcularSena());
 };
 
 const volverAlListado = () => router.push("/turnos");
@@ -1071,7 +1300,7 @@ const cargarDatosTurno = async () => {
     cargando.value = true;
     const headers = getAuthHeaders();
 
-    const [catRes, servRes, pelRes, sillasRes, horariosRes, configRes] =
+    const [catRes, servRes, pelRes, sillasRes, horariosRes, configRes, localRes] =
       await Promise.all([
         fetch(`${API_URL}/categorias/servicios/`, { headers }),
         fetch(`${API_URL}/servicios/`, { headers }),
@@ -1079,6 +1308,7 @@ const cargarDatosTurno = async () => {
         fetch(`${API_URL}/sillas/`, { headers }),
         fetch(`${API_URL}/horarios/`, { headers }),
         fetch(`${API_URL}/configuracion/`, { headers }),
+        fetch(`${API_URL}/configuracion-local/`, { headers }),
       ]);
 
     categorias.value = await catRes.json();
@@ -1090,6 +1320,11 @@ const cargarDatosTurno = async () => {
       const configData = await configRes.json();
       if (configData.dias_maximos_reserva)
         configSist.value.dias_maximos_reserva = configData.dias_maximos_reserva;
+    }
+    // Alias MP configurado en Ajustes del Local (se muestra en el cobro por alias)
+    if (localRes.ok) {
+      const localData = await localRes.json();
+      aliasValor.value = localData.mp_alias || "";
     }
 
     const turnoRes = await fetch(`${API_URL}/turnos/${turnoId}/`, { headers });
@@ -1114,6 +1349,7 @@ const cargarDatosTurno = async () => {
         turno.servicios?.reduce((acc, s) => acc + (s.duracion || 20), 0) ||
         20,
       monto_seña: parseFloat(turno.monto_seña || 0),
+      monto_total: parseFloat(turno.monto_total || 0),
       tipo_pago: turno.tipo_pago,
       medio_pago: turno.medio_pago,
       entidad_pago: turno.entidad_pago,
@@ -1164,8 +1400,6 @@ const cargarDatosTurno = async () => {
     form.value.tipo_pago = turno.tipo_pago || "SENA_50";
     form.value.medio_pago = turno.medio_pago || "EFECTIVO";
     form.value.entidad_pago = turno.entidad_pago || "";
-    form.value.codigo_transaccion =
-      turno.codigo_transaccion || turno.mp_payment_id || "";
 
     // 🔥 BLOQUEO DE TURNOS PASADOS (Seguridad)
     const turnoDateTime = new Date(`${turno.fecha}T${turno.hora}`);
@@ -1211,10 +1445,26 @@ const modificarTurno = async () => {
     return;
   }
 
+  // 🔒 Si se eligió cobrar la diferencia por QR, debe estar aprobado antes de guardar
+  if (
+    cobrarDiferencia.value === "ahora" &&
+    metodoDiferencia.value === "MERCADO_PAGO" &&
+    !pagoDiferenciaConfirmado.value
+  ) {
+    Swal.fire({
+      icon: "warning",
+      title: "Falta generar el QR",
+      text: "Para cobrar con Mercado Pago QR, generá el código y esperá a que el pago se confirme automáticamente.",
+      confirmButtonText: "Entendido",
+    });
+    return;
+  }
+
   procesando.value = true;
 
   let entidadFinal = null;
-  if (form.value.medio_pago === "MERCADO_PAGO") entidadFinal = "MERCADO_PAGO";
+  if (!tienePagoPrevio.value && form.value.medio_pago === "MERCADO_PAGO")
+    entidadFinal = "MERCADO_PAGO";
 
   const duracion = form.value.servicios_ids.reduce((acc, id) => {
     const s = servicios.value.find((x) => Number(x.id) === Number(id));
@@ -1223,6 +1473,7 @@ const modificarTurno = async () => {
 
   const totalCalculado = parseFloat(calcularTotal());
   const esPagoSena = form.value.tipo_pago.includes("SENA");
+  const cobrarAhora = cobrarDiferencia.value === "ahora";
 
   const payload = {
     peluquero_id: Number(form.value.peluquero),
@@ -1240,7 +1491,11 @@ const modificarTurno = async () => {
         : "TOTAL",
     medio_pago: tienePagoPrevio.value
       ? turnoOriginal.value.medio_pago
-      : form.value.medio_pago,
+      : cobrarAhora
+        ? metodoDiferencia.value === "EFECTIVO"
+          ? "EFECTIVO"
+          : "MERCADO_PAGO"
+        : "PENDIENTE",
     monto_seña: tienePagoPrevio.value
       ? turnoOriginal.value.monto_seña
       : esPagoSena
@@ -1251,12 +1506,16 @@ const modificarTurno = async () => {
       : entidadFinal,
     mp_payment_id: tienePagoPrevio.value
       ? turnoOriginal.value.mp_payment_id
-      : form.value.medio_pago === "MERCADO_PAGO"
-        ? form.value.codigo_transaccion
-        : null,
-    codigo_transaccion: tienePagoPrevio.value
-      ? turnoOriginal.value.codigo_transaccion
       : null,
+
+    // 🔥 Cobro de la diferencia (abonar ahora con cobro registrado, o saldo pendiente)
+    cobrar_diferencia: cobrarAhora ? "ahora" : "finalizar",
+    monto_diferencia: cobrarAhora ? montoACobrar() : null,
+    metodo_diferencia: cobrarAhora ? metodoDiferencia.value : null,
+    pago_uuid:
+      cobrarAhora && metodoDiferencia.value === "MERCADO_PAGO"
+        ? pagoUuidDif.value
+        : null,
   };
 
   try {
@@ -1268,10 +1527,16 @@ const modificarTurno = async () => {
     const data = await res.json();
 
     if (res.ok && data.status === "ok") {
+      const saldoPendiente = data.saldo_pendiente
+        ? parseFloat(data.saldo_pendiente)
+        : 0;
       await Swal.fire({
         icon: "success",
         title: "Turno Actualizado",
-        text: "Los cambios se guardaron correctamente",
+        html:
+          saldoPendiente > 0
+            ? `Los cambios se guardaron correctamente.<br/><strong style="color:#d97706;">Saldo pendiente: $${saldoPendiente.toFixed(2)}</strong>`
+            : "Los cambios se guardaron correctamente",
         confirmButtonText: "Aceptar",
       });
       router.push("/turnos");
@@ -1297,6 +1562,132 @@ const modificarTurno = async () => {
   } finally {
     procesando.value = false;
   }
+};
+
+// 🔥 QR de la diferencia: genera el código y espera la confirmación automática
+const generarQRDiferencia = async () => {
+  const monto = montoACobrar();
+  if (!monto || monto <= 0) {
+    Swal.fire({
+      icon: "warning",
+      title: "Atención",
+      text: "El monto a cobrar debe ser mayor a cero.",
+    });
+    return;
+  }
+  qrGenerandoDif.value = true;
+  try {
+    const res = await fetch(`${API_URL}/generar-qr-temporal/`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        monto,
+        title: `Diferencia Turno #${turnoId}`,
+      }),
+    });
+    const data = await res.json();
+    if (data.status !== "ok")
+      throw new Error(data.error || "No se pudo generar el QR");
+
+    pagoUuidDif.value = data.uid;
+    mostrarQRDiferencia(data);
+  } catch (e) {
+    Swal.fire({
+      icon: "error",
+      title: "Error",
+      text: e.message || "No se pudo generar el QR",
+      confirmButtonText: "Entendido",
+    });
+  } finally {
+    qrGenerandoDif.value = false;
+  }
+};
+
+const mostrarQRDiferencia = (mpData) => {
+  const initPoint = mpData.init_point;
+  let aprobado = false;
+
+  Swal.fire({
+    title: "Cobrar diferencia con Mercado Pago",
+    html: `
+      <div style="text-align: center;">
+        <div style="background: white; padding: 16px; border-radius: 16px; display: inline-block; box-shadow: 0 4px 24px rgba(0,0,0,0.12); margin-bottom: 16px;">
+          <canvas id="qr-dif-canvas"></canvas>
+        </div>
+        <p style="color: #334155; font-size: 1rem; font-weight: 500; margin: 8px 0;">Escaneá el código QR con el celular</p>
+        <p style="color: #10b981; font-size: 1.5rem; font-weight: 800; margin: 4px 0;">$${mpData.monto}</p>
+        <p id="qr-dif-status" style="color: #64748b; font-size: 0.85rem; margin-top: 12px;">
+          <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+          Esperando pago...
+        </p>
+      </div>
+    `,
+    showConfirmButton: false,
+    showCancelButton: true,
+    cancelButtonText: "Cancelar",
+    cancelButtonColor: "#94a3b8",
+    backdrop: "rgba(0,0,0,0.92)",
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    didOpen: async () => {
+      const canvas = document.getElementById("qr-dif-canvas");
+      if (canvas) {
+        try {
+          await QRCode.toCanvas(canvas, initPoint, {
+            width: 220,
+            margin: 2,
+            color: { dark: "#1e293b", light: "#ffffff" },
+          });
+        } catch (e) {
+          console.error("Error generando QR:", e);
+        }
+      }
+
+      pollIdDif = setInterval(async () => {
+        try {
+          const check = await fetch(
+            `${API_URL}/check-pago-temporal/${pagoUuidDif.value}/`,
+            { headers: getAuthHeaders() },
+          );
+          const dato = await check.json();
+          if (dato.pagado) {
+            aprobado = true;
+            clearInterval(pollIdDif);
+            pollIdDif = null;
+            pagoDiferenciaConfirmado.value = true;
+            const statusEl = document.getElementById("qr-dif-status");
+            if (statusEl) {
+              statusEl.innerHTML =
+                '<span style="color: #10b981; font-size: 1.1rem; font-weight: 600;">Pago aprobado</span>';
+            }
+            setTimeout(() => {
+              if (Swal.isVisible()) Swal.close();
+              modificarTurno();
+            }, 1200);
+          }
+        } catch (e) {
+          /* polling errors se ignoran */
+        }
+      }, 1500);
+
+      setTimeout(() => {
+        if (!aprobado) {
+          clearInterval(pollIdDif);
+          pollIdDif = null;
+          const statusEl = document.getElementById("qr-dif-status");
+          if (statusEl)
+            statusEl.innerHTML =
+              '<span style="color: #ef4444;">Tiempo de espera agotado</span>';
+        }
+      }, 600000);
+    },
+    willClose: () => {
+      if (pollIdDif) {
+        clearInterval(pollIdDif);
+        pollIdDif = null;
+      }
+    },
+  });
 };
 
 // Modal Cliente
@@ -1634,7 +2025,7 @@ onMounted(() => {
   gap: 6px;
 }
 
-.hora-card:hover:not(.hora-ocupada):not(.hora-actual) {
+.hora-card:hover:not(.hora-ocupada):not(.hora-actual):not(.hora-expirado) {
   border-color: #3b82f6;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
@@ -1645,6 +2036,11 @@ onMounted(() => {
   color: #1f2937;
   font-size: 1.1em;
   display: block;
+}
+
+.hora-disponible {
+  border-color: #86efac;
+  background: #f0fdf4;
 }
 
 .hora-selected {
@@ -1708,6 +2104,43 @@ onMounted(() => {
   padding: 3px 8px;
   border-radius: 4px;
   text-transform: uppercase;
+}
+
+.etiqueta-disponible {
+  display: block;
+  font-size: 0.65em;
+  color: white;
+  font-weight: 800;
+  background: #16a34a;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.hora-expirado {
+  background: #f1f5f9;
+  border: 2px solid #cbd5e1;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.hora-expirado .hora-texto {
+  text-decoration: line-through;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.etiqueta-expirado {
+  display: block;
+  font-size: 0.65em;
+  color: white;
+  font-weight: 800;
+  background: #6b7280;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* Inputs y Selects */
@@ -2191,6 +2624,215 @@ onMounted(() => {
   margin-right: 4px;
 }
 
+/* CARD DE COBRO DE LA DIFERENCIA */
+.card-diferencia {
+  background: #fff8ee;
+  border: 1px solid #fcd34d;
+  border-radius: 16px;
+  padding: 25px;
+  margin-bottom: 25px;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.12);
+}
+
+.card-diferencia .card-header {
+  border-bottom-color: #fde68a;
+}
+
+.card-diferencia .card-icon {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  box-shadow: 0 6px 12px rgba(245, 158, 11, 0.3);
+}
+
+.diferencia-helper {
+  color: #4b5563;
+  font-size: 0.95rem;
+  margin: 0 0 16px;
+}
+
+.selector-label {
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+}
+
+.metodo-diferencia-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.metodo-diferencia-box {
+  border: 2px solid #e5e7eb;
+  background: white;
+  border-radius: 12px;
+  padding: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.3s ease;
+}
+
+.metodo-diferencia-box:hover {
+  border-color: #f59e0b;
+  transform: translateY(-2px);
+}
+
+.metodo-diferencia-box.metodo-active {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  box-shadow: 0 4px 10px rgba(245, 158, 11, 0.2);
+}
+
+.metodo-icono {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.metodo-icono-efectivo {
+  background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+
+.metodo-icono-qr {
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+}
+
+.metodo-icono-alias {
+  background: linear-gradient(135deg, #fff7ed, #ffedd5);
+  color: #d97706;
+  border: 1px solid #fed7aa;
+}
+
+.metodo-diferencia-box.metodo-active .metodo-icono-efectivo,
+.metodo-diferencia-box.metodo-active .metodo-icono-qr,
+.metodo-diferencia-box.metodo-active .metodo-icono-alias {
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+}
+
+.metodo-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metodo-texto strong {
+  font-size: 0.9rem;
+  color: #1f2937;
+}
+
+.metodo-texto small {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.diferencia-mp-panel {
+  background: white;
+  border: 1px dashed #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 4px;
+}
+
+.btn-generar-qr {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+}
+
+.btn-generar-qr:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.35);
+}
+
+.btn-generar-qr:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.alias-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.mp-alias-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid rgba(0, 158, 227, 0.35);
+  padding: 8px 8px 8px 12px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+.mp-alias-label {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.mp-alias-value {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: 0.3px;
+  font-family: 'Courier New', monospace;
+}
+
+.btn-copy-alias {
+  background: rgba(0, 158, 227, 0.12);
+  border: 1px solid rgba(0, 158, 227, 0.35);
+  color: #38bdf8;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.btn-copy-alias:hover {
+  background: #009ee3;
+  color: white;
+  border-color: #009ee3;
+}
+
+.text-success {
+  color: var(--color-success) !important;
+}
+
 /* Pago */
 .pago-section {
   margin-bottom: 25px;
@@ -2506,6 +3148,10 @@ onMounted(() => {
 @media (max-width: 768px) {
   .page-background {
     padding: 20px 15px;
+  }
+
+  .metodo-diferencia-grid {
+    grid-template-columns: 1fr;
   }
 
   .main-card-container {

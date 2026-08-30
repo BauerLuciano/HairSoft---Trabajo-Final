@@ -170,6 +170,7 @@
                   <div style="font-size: 0.85rem; color: #94a3b8; opacity: 0.8;">
                     Total Turno: ${{ formatPrecio(turno.monto_total || 0) }}
                   </div>
+                  <span v-if="turno.estado === 'CANCELADO' && turno.reembolso_estado === 'PENDIENTE' && turno.reembolso_alias" class="badge-alias-informado">@ Alias informado</span>
                 </div>
               </td>
               <td>
@@ -575,8 +576,9 @@ const cancelarTurno = async (turno) => {
     let margenConfig = 3; 
     try {
         const resConfig = await axios.get('/api/configuracion/');
-        if (resConfig.data && resConfig.data.margen_horas_cancelacion) {
-            margenConfig = resConfig.data.margen_horas_cancelacion;
+        const raw = resConfig.data && resConfig.data.margen_horas_cancelacion;
+        if (typeof raw === 'number') {
+            margenConfig = raw;
         }
     } catch (e) { console.error("Error al obtener margen de cancelación:", e) }
 
@@ -593,6 +595,15 @@ const cancelarTurno = async (turno) => {
       montoTotal = parseFloat(turno.monto_seña) || parseFloat(turno.monto_total) || 0;
     }
 
+    // Clientes interesados (Avisame) para este horario: aviso visual informativo
+    let cantidadInteresados = 0;
+    try {
+      const resInt = await axios.get(`/api/turnos/${turno.id}/interesados/`);
+      cantidadInteresados = parseInt(resInt.data?.cantidad, 10) || 0;
+    } catch (err) {
+      console.error('Error al consultar clientes interesados del turno', err);
+    }
+
     const { value: formValues } = await Swal.fire({
       title: '',
       width: '480px',
@@ -606,6 +617,15 @@ const cancelarTurno = async (turno) => {
             <h2 style="margin: 0; font-size: 1.4rem; font-weight: 800; color: #1e293b;">Cancelar Turno</h2>
             <p style="margin: 5px 0 0 0; color: #64748b; font-size: 0.95rem;">Estás a punto de anular la reserva de <b>${turno.cliente_nombre}</b>.</p>
           </div>
+
+          ${cantidadInteresados > 0 ? `
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 14px 15px; margin-bottom: 18px; display: flex; gap: 12px; align-items: flex-start; text-align: left;">
+              <span style="font-size: 1.3rem; line-height: 1; margin-top: 1px;">ℹ️</span>
+              <span style="color: #1e3a8a; font-size: 0.88rem; line-height: 1.45; font-weight: 500;">
+                Este turno está vinculado a <b>${cantidadInteresados}</b> ${cantidadInteresados === 1 ? 'cliente interesado' : 'clientes interesados'}. Al cancelarlo, se notificará a los clientes interesados sobre la disponibilidad del horario.
+              </span>
+            </div>
+          ` : ''}
 
           ${hayReembolso ? `
             <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 15px; margin-bottom: 20px; display: flex; gap: 15px; align-items: flex-start; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
@@ -1048,15 +1068,6 @@ const gestionarReembolsoManual = async (turno) => {
     </div>`;
   }
 
-  if (esAliasOrigen && !partesMixto) {
-    panelAyudaHTML = `
-    <div style="background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 14px 15px;">
-      <div style="display: flex; align-items: center; gap: 9px;">
-        <span style="width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #dbeafe; color: #1d4ed8;"><span style="display: flex;">${icAt}</span></span>
-        <span style="font-size: 0.8rem; font-weight: 700; color: #1e3a8a; line-height: 1.4;">La transferencia se identifica con el Alias del cliente.</span>
-      </div>
-    </div>`;
-  }
   await Swal.fire({
     title: '',
     width: '720px',
@@ -1135,13 +1146,14 @@ const gestionarReembolsoManual = async (turno) => {
         <div id="mp_manual_fields" style="display: none; margin-top: 12px; border: 1px solid #bfdbfe; background: #f0f7ff; border-radius: 12px; padding: 13px 14px;">
           <div style="display: flex; align-items: center; gap: 9px;">
             <span style="width: 28px; height: 28px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #dbeafe; color: #1d4ed8;"><span style="display: flex;">${icAt}</span></span>
-            <span style="font-size: 0.8rem; font-weight: 800; color: #1e3a8a;">Alias del cliente</span>
+            <span style="font-size: 0.8rem; font-weight: 800; color: #1e3a8a;">Alias para devolución</span>
             <span style="font-size: 0.62rem; color: #dc2626; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-left: auto;">Requerido</span>
           </div>
           <input id="reembolso_alias" type="text" class="swal2-input"
                  style="width: 100%; margin: 9px 0 0; height: 44px; border-radius: 11px; font-size: 0.95rem; padding: 0 12px; border: 1px solid #dbeafe; background: #ffffff; box-sizing: border-box; transition: border-color 0.2s;"
-                 placeholder="ej: peluqueria.alias">
-          <div style="font-size: 0.7rem; color: #64748b; margin-top: 6px;">Alias CBU al que se transferirá el reembolso.</div>
+                 placeholder="ej: peluqueria.alias"
+                 value="${String(turno.reembolso_alias || '').trim()}">
+          <div style="font-size: 0.7rem; color: #64748b; margin-top: 6px;">Alias del cliente al que se transferirá el reembolso. Si fue informado al cancelar, ya está precargado y podés editarlo.</div>
         </div>
 
         <div style="display: grid; grid-template-columns: ${panelAyudaHTML ? '1fr 1fr' : '1fr'}; gap: 12px; margin-top: 14px;">
@@ -1454,10 +1466,6 @@ const verDetalleTurno = async (turno) => {
               <div style="font-size: 1.65rem; font-weight: 800; color: #0f172a; letter-spacing: -0.6px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${turnoDetalle.cliente_nombre || 'Cliente'} ${turnoDetalle.cliente_apellido || ''}</div>
               <div style="font-size: 0.82rem; color: #64748b; margin-top: 3px;">Turno #${turnoDetalle.id} · ${turnoDetalle.canal || 'PRESENCIAL'}</div>
             </div>
-            <div style="text-align: right; flex-shrink: 0; padding-top: 2px;">
-              <div style="font-size: 2.1rem; font-weight: 800; color: #0f172a; letter-spacing: -1px; line-height: 1; font-family: 'JetBrains Mono', monospace;">$${formatPrecio(totalTurno)}</div>
-              <div style="font-size: 0.66rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.9px; margin-top: 4px;">Valor del turno</div>
-            </div>
           </div>
 
           <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px;">
@@ -1591,7 +1599,7 @@ const verDetalleTurno = async (turno) => {
                   <div style="font-size: 1rem; font-weight: 800; color: #7f1d1d; line-height: 1.3;">${turnoDetalle.motivo_cancelacion || 'No especificado'}</div>
                   ${turnoDetalle.obs_cancelacion ? `
                     <div style="background: #ffffff; border: 1px dashed #fca5a5; border-radius: 10px; padding: 9px 12px; margin-top: 10px; color: #991b1b; font-size: 0.84rem; font-style: italic;">
-                      ${turnoDetalle.obs_cancelacion}
+                      ${String(turnoDetalle.obs_cancelacion || '').replace('Mercado Pago / Transferencia', 'Mercado Pago')}
                     </div>
                   ` : ''}
                 </div>
@@ -1955,7 +1963,7 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* BADGE AZUL PARA SALDO A FAVOR */
+/* BADGE AZUL PARA REEMBOLSO PENDIENTE (saldo a favor) */
 .badge-saldo-favor {
   display: inline-flex;
   align-items: center;
@@ -1967,6 +1975,24 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
   font-weight: 600;
   border: 1px solid #0ea5e9;
   margin-top: 4px;
+}
+
+/* BADGE AZUL PARA ALIAS INFORMADO EN REINTEGRO PENDIENTE.
+   Usa fondo traslúcido que funciona en modo claro y oscuro. */
+.badge-alias-informado {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  margin-top: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: #0284c7;
+  background: rgba(14, 165, 233, 0.10);
+  border: 1px solid rgba(14, 165, 233, 0.35);
 }
 
 @keyframes pulse {

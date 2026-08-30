@@ -215,7 +215,8 @@
                 :class="{
                   'hora-selected': form.hora === hora,
                   'hora-disponible': esHorarioDisponibleCompleto(hora),
-                  'hora-ocupada': !esHorarioDisponibleCompleto(hora),
+                  'hora-ocupada': !esHorarioDisponibleCompleto(hora) && obtenerDetalleOcupacion(hora) !== 'PASADO',
+                  'hora-expirado': obtenerDetalleOcupacion(hora) === 'PASADO',
                   'ocupada-silla': obtenerDetalleOcupacion(hora) === 'SILLA',
                   'ocupada-peluquero': obtenerDetalleOcupacion(hora) === 'PELUQUERO'
                 }"
@@ -1707,7 +1708,7 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 
-.hora-card:hover:not(.hora-ocupada) {
+.hora-card:hover:not(.hora-ocupada):not(.hora-expirado) {
   border-color: #3b82f6;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
@@ -1785,6 +1786,19 @@ onBeforeUnmount(() => {
 .hora-ocupada:hover {
   transform: none;
   box-shadow: none;
+}
+
+.hora-expirado {
+  background: #f1f5f9;
+  border: 2px solid #cbd5e1;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.hora-expirado .hora-texto {
+  text-decoration: line-through;
+  color: #64748b;
+  font-weight: 700;
 }
 
 .input-modern, .select-modern {

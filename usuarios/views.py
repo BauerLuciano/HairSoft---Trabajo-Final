@@ -1641,6 +1641,8 @@ def listado_turnos(request):
             except ValueError: pass
 
         # 4. LÓGICA DE PERMISOS PARA BOTONES EN EL FRONT
+        from .models import ConfiguracionSistema
+        margen_horas = ConfiguracionSistema.get_solo().margen_horas_cancelacion
         data = []
         ahora = timezone.now()
 
@@ -1660,7 +1662,7 @@ def listado_turnos(request):
             try:
                 fecha_turno_naive = datetime.combine(t.fecha, t.hora)
                 fecha_turno = timezone.make_aware(fecha_turno_naive)
-                cumple_tiempo = timezone.now() < (fecha_turno - timedelta(hours=3))
+                cumple_tiempo = timezone.now() < (fecha_turno - timedelta(hours=margen_horas))
                 
                 es_jefe = rol_nombre in ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC']
                 es_su_peluquero = (not es_jefe and t.peluquero == user_autenticado)
@@ -2386,6 +2388,119 @@ def modificar_turno(request, turno_id):
                     turno.servicios.set(servicios_obj)
                     
                 turno.save()
+
+                # 🔥 COBRO OPCIONAL DE LA DIFERENCIA (solo Administración):
+                # El admin elige "Abonar ahora" (Efectivo / Mercado Pago QR / Mercado Pago Alias)
+                # o "Abonar al finalizar" (queda como saldo pendiente del turno).
+                from .models import MovimientoCaja, SesionCaja
+                from usuarios.middleware import _thread_locals
+
+                monto_total_ahora = Decimal(str(turno.monto_total or 0))
+                # Lo "ya abonado" es lo realmente registrado en BD (monto_seña).
+                # Los turnos TOTAL saldados ya tienen monto_seña = monto_total
+                # (lo normalizan el webhook MP y el registro presencial), así que
+                # si el total sube, la diferencia = total nuevo - lo efectivamente pagado.
+                seña_base = Decimal(str(turno.monto_seña or 0))
+                if seña_base > monto_total_ahora:
+                    seña_base = monto_total_ahora
+                    turno.monto_seña = monto_total_ahora
+
+                cobrar_diferencia = data.get('cobrar_diferencia', 'finalizar')
+                try:
+                    monto_diferencia = Decimal(str(data.get('monto_diferencia') or 0))
+                except (TypeError, ValueError, InvalidOperation):
+                    monto_diferencia = Decimal('0')
+
+                if cobrar_diferencia == 'ahora' and monto_diferencia > 0:
+                    # El monto a cobrar no puede superar el saldo real pendiente del turno.
+                    saldo_real = max(Decimal('0'), monto_total_ahora - seña_base)
+                    if monto_diferencia > saldo_real + Decimal('0.01'):
+                        transaction.set_rollback(True)
+                        return JsonResponse({'error': 'El monto de la diferencia no puede superar el saldo pendiente del turno.'}, status=400)
+
+                    metodo_dif = str(data.get('metodo_diferencia') or '').upper()
+                    pago_uuid = data.get('pago_uuid')
+                    sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+
+                    if metodo_dif == 'MERCADO_PAGO' and pago_uuid:
+                        # ✅ QR aprobado (pago detectado automáticamente): confirmación sin clic extra
+                        from .models import PagoTemporal
+                        pago_temp = PagoTemporal.objects.filter(uid=pago_uuid, pagado=True, usado=False).first()
+                        if not pago_temp:
+                            transaction.set_rollback(True)
+                            return JsonResponse({'error': 'Pago por QR no encontrado o ya utilizado'}, status=400)
+                        monto_aprobado = Decimal(str(pago_temp.monto or 0))
+                        if monto_aprobado < monto_diferencia - Decimal('0.01'):
+                            transaction.set_rollback(True)
+                            return JsonResponse({'error': f'El monto del pago (${pago_temp.monto}) no cubre la diferencia a cobrar (${monto_diferencia}).'}, status=400)
+                        monto_diferencia = min(monto_diferencia, monto_aprobado)
+                        turno.monto_seña = (turno.monto_seña or 0) + monto_diferencia
+                        turno.mp_payment_id_saldo = pago_temp.mp_payment_id or ''
+                        if (turno.monto_seña or 0) >= (turno.monto_total or 0):
+                            turno.tipo_pago = 'TOTAL'
+                            turno.medio_pago_restante = 'MERCADO_PAGO'
+                        pago_temp.usado = True
+                        pago_temp.save()
+                        descripcion_mov = f"Cobro diferencia QR Turno #{turno.id} (MP: {pago_temp.mp_payment_id})"
+                        _thread_locals._suspender_auditoria = True
+                        try:
+                            if not MovimientoCaja.objects.filter(descripcion=descripcion_mov).exists():
+                                MovimientoCaja.objects.create(
+                                    sesion_caja=sesion_abierta,
+                                    tipo='INGRESO',
+                                    metodo_pago='MERCADO_PAGO',
+                                    concepto='COBRO_RESTANTE',
+                                    monto=monto_diferencia,
+                                    descripcion=descripcion_mov,
+                                    turno_relacionado=turno
+                                )
+                        finally:
+                            _thread_locals._suspender_auditoria = False
+                    elif metodo_dif == 'MERCADO_PAGO_ALIAS':
+                        # ✅ Transferencia por alias confirmada manualmente por el cajero
+                        turno.monto_seña = (turno.monto_seña or 0) + monto_diferencia
+                        if (turno.monto_seña or 0) >= (turno.monto_total or 0):
+                            turno.tipo_pago = 'TOTAL'
+                            turno.medio_pago_restante = 'MERCADO_PAGO'
+                        descripcion_mov = f"Cobro diferencia Alias Turno #{turno.id}"
+                        _thread_locals._suspender_auditoria = True
+                        try:
+                            MovimientoCaja.objects.create(
+                                sesion_caja=sesion_abierta,
+                                tipo='INGRESO',
+                                metodo_pago='MERCADO_PAGO',
+                                concepto='COBRO_RESTANTE',
+                                monto=monto_diferencia,
+                                descripcion=descripcion_mov,
+                                turno_relacionado=turno
+                            )
+                        finally:
+                            _thread_locals._suspender_auditoria = False
+                    elif metodo_dif == 'EFECTIVO':
+                        # ✅ Efectivo confirmado manualmente (requiere caja abierta)
+                        if not sesion_abierta:
+                            transaction.set_rollback(True)
+                            return JsonResponse({'error': 'Debe abrir una caja antes de cobrar la diferencia.'}, status=400)
+                        turno.monto_seña = (turno.monto_seña or 0) + monto_diferencia
+                        if (turno.monto_seña or 0) >= (turno.monto_total or 0):
+                            turno.tipo_pago = 'TOTAL'
+                            turno.medio_pago_restante = 'EFECTIVO'
+                        descripcion_mov = f"Cobro diferencia Turno #{turno.id} - Efectivo"
+                        _thread_locals._suspender_auditoria = True
+                        try:
+                            MovimientoCaja.objects.create(
+                                sesion_caja=sesion_abierta,
+                                tipo='INGRESO',
+                                metodo_pago='EFECTIVO',
+                                concepto='COBRO_RESTANTE',
+                                monto=monto_diferencia,
+                                descripcion=descripcion_mov,
+                                turno_relacionado=turno
+                            )
+                        finally:
+                            _thread_locals._suspender_auditoria = False
+
+                turno.save()
                 nuevo_turno = turno
                 mensaje_service = "Turno actualizado exitosamente por Administración."
                 mp_data = None
@@ -2457,6 +2572,65 @@ def modificar_turno(request, turno_id):
                         transaction.set_rollback(True) 
                         return JsonResponse({'error': f"Error generando MercadoPago: {str(mp_error)}"}, status=400)
 
+                elif not es_modificacion_tarde:
+                    # ✅ MODIFICACIÓN DENTRO DEL PLAZO (cliente web):
+                    # La seña/pago ya abonado se conserva en el nuevo turno (lo maneja TurnoService).
+                    # Si el nuevo total sube, el cliente elige:
+                    #   - 'pendiente' -> la diferencia queda como saldo pendiente (pagar en el local)
+                    #   - 'mp_link'   -> link de pago Mercado Pago por la diferencia (webhook TURNO_SALDO_)
+                    #   - QR aprobado (pago_uuid) -> la diferencia se paga con QR y ya fue detectada
+                    pago_diferencia = data.get('pago_diferencia', 'pendiente')
+                    total_nuevo = Decimal(str(nuevo_turno.monto_total or 0))
+                    abonado = Decimal(str(nuevo_turno.monto_seña or 0))
+                    # El importe ya abonado es el monto_seña transferido por TurnoService
+                    # (en los turnos TOTAL saldados ya está normalizado al total pagado original).
+                    # NO se recalcula contra el nuevo total: si el cliente agrega servicios,
+                    # solo debe cobrarse la diferencia (total_nuevo - abonado).
+                    diferencia = max(Decimal('0'), total_nuevo - abonado)
+                    pago_uuid_cliente = data.get('pago_uuid')
+
+                    if pago_uuid_cliente:
+                        from .models import PagoTemporal, MovimientoCaja, SesionCaja
+                        pago_temp = PagoTemporal.objects.filter(uid=pago_uuid_cliente, pagado=True, usado=False).first()
+                        if not pago_temp:
+                            transaction.set_rollback(True)
+                            return JsonResponse({'error': 'Pago por QR no encontrado o ya utilizado'}, status=400)
+                        monto_aprobado = Decimal(str(pago_temp.monto or 0))
+                        if monto_aprobado < diferencia - Decimal('0.01'):
+                            transaction.set_rollback(True)
+                            return JsonResponse({'error': f'El monto del pago (${pago_temp.monto}) no cubre la diferencia a abonar (${diferencia}).'}, status=400)
+                        nuevo_turno.monto_seña = (nuevo_turno.monto_seña or 0) + monto_aprobado
+                        nuevo_turno.mp_payment_id_saldo = pago_temp.mp_payment_id or ''
+                        if (nuevo_turno.monto_seña or 0) >= (nuevo_turno.monto_total or 0):
+                            nuevo_turno.tipo_pago = 'TOTAL'
+                            nuevo_turno.medio_pago_restante = 'MERCADO_PAGO'
+                        nuevo_turno.save()
+                        pago_temp.usado = True
+                        pago_temp.save()
+                        descripcion_mov = f"Cobro diferencia QR Turno #{nuevo_turno.id} (MP: {pago_temp.mp_payment_id})"
+                        if not MovimientoCaja.objects.filter(descripcion=descripcion_mov).exists():
+                            sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+                            MovimientoCaja.objects.create(
+                                sesion_caja=sesion_abierta,
+                                tipo='INGRESO',
+                                metodo_pago='MERCADO_PAGO',
+                                concepto='COBRO_RESTANTE',
+                                monto=monto_aprobado,
+                                descripcion=descripcion_mov,
+                                turno_relacionado=nuevo_turno
+                            )
+                        mp_data = None
+                    elif pago_diferencia == 'mp_link' and diferencia > 0:
+                        from .mercadopago_service import MercadoPagoService
+                        mp_service = MercadoPagoService()
+                        result = mp_service.crear_preferencia_saldo(nuevo_turno, float(diferencia))
+                        if result.get('success'):
+                            mp_data = {'init_point': result['init_point']}
+                        else:
+                            transaction.set_rollback(True)
+                            return JsonResponse({'error': f"Falla en MP: {result.get('error')}"}, status=400)
+                    # 'pendiente' (o diferencia <= 0): no se cobra nada, queda como saldo pendiente.
+
             return JsonResponse({
                 'status': 'ok',
                 'message': mensaje_service,
@@ -2464,6 +2638,7 @@ def modificar_turno(request, turno_id):
                 'nueva_fecha': str(nuevo_turno.fecha),
                 'nueva_hora': str(nuevo_turno.hora),
                 'nuevo_monto_total': float(nuevo_turno.monto_total or 0),
+                'saldo_pendiente': float(nuevo_turno.calcular_saldo_pendiente()),
                 'mp_data': mp_data
             })
 
@@ -5947,6 +6122,13 @@ def cancelar_turno_unificado(request, turno_id):
         if not success:
             return Response({'error': message}, status=400)
         
+        # 🏦 Alias para devolución informado por el cliente web: se persiste en
+        # Turno.reembolso_alias (campo existente) y Gestión de Reintegro lo precarga.
+        reembolso_alias = str(request.data.get('reembolso_alias') or '').strip()[:100] or None
+        if reembolso_alias:
+            from usuarios.models import Turno
+            Turno.objects.filter(id=turno_id).update(reembolso_alias=reembolso_alias)
+        
         # Auditoría
         from usuarios.models import Auditoria, Turno, Notificacion
         try:
@@ -6621,6 +6803,8 @@ def mis_turnos(request):
         
         data = []
         ahora = timezone.now()
+        from usuarios.models import ConfiguracionSistema
+        margen_horas = ConfiguracionSistema.get_solo().margen_horas_cancelacion
         
         for t in turnos:
             # Calcular duración y nombre de servicios
@@ -6628,12 +6812,12 @@ def mis_turnos(request):
             duracion = sum(s.duracion for s in servicios_list)
             servicios_str = ", ".join([s.nombre for s in servicios_list])
             
-            # Lógica de cancelación (Regla de 3 horas para el cliente)
+            # Lógica de cancelación (usa el margen configurado en Ajustes del Local)
             fecha_turno = timezone.make_aware(datetime.combine(t.fecha, t.hora))
             tiempo_restante = fecha_turno - ahora
             puede_cancelar = (
                 t.estado in ['RESERVADO', 'CONFIRMADO'] and 
-                tiempo_restante > timedelta(hours=3)
+                tiempo_restante > timedelta(hours=margen_horas)
             )
 
             data.append({

@@ -128,7 +128,7 @@ const routes = [
   { path: '/turnos', name: 'ListadoTurnos', component: ListadoTurnos, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/turnos/crear-presencial', name: 'RegistrarTurnoPresencial', component: RegistrarTurnoPresencial, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/turnos/modificar/:id', name: 'ModificarTurno', component: ModificarTurno, meta: { requiresAuth: true, role: 'ADMIN' } },
-  { path: '/aceptar-oferta/:turno_id/:token', name: 'AceptarOferta', component: AceptarOferta, meta: { public: true} },
+  { path: '/aceptar-oferta/:turno_id/:token', name: 'AceptarOferta', component: AceptarOferta, meta: { public: true, hideNavbar: true } },
   { path: '/servicios', name: 'ListadoServicios', component: ListadoServicios, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/servicios/crear', name: 'RegistrarServicio', component: RegistrarServicio, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/servicios/modificar/:id', name: 'ModificarServicio', component: ModificarServicio, props: true, meta: { requiresAuth: true, role: 'ADMIN' } },

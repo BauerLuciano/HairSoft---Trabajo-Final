@@ -435,7 +435,7 @@ class Turno(models.Model):
         
         from usuarios.models import ConfiguracionSistema
         config = ConfiguracionSistema.get_solo()
-        margen = config.margen_horas_cancelacion or 3
+        margen = config.margen_horas_cancelacion
         
         hay_reembolso = horas_restantes >= margen
         if hay_reembolso:
@@ -466,7 +466,7 @@ class Turno(models.Model):
         
         from usuarios.models import ConfiguracionSistema
         config = ConfiguracionSistema.get_solo()
-        margen = config.margen_horas_cancelacion or 3
+        margen = config.margen_horas_cancelacion
         
         tiene_penalidad = horas_restantes < margen
         

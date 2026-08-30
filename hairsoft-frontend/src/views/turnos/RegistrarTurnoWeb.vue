@@ -313,6 +313,23 @@
             </div>
             
             <div v-else class="grid-horarios-mejorado">
+              <!-- TU TURNO ACTUAL (solo en modo modificación) -->
+              <div
+                v-for="hora in horariosTurnoActual"
+                :key="'actual-'+hora"
+                class="hora-card-mejorada hora-actual-mejorada"
+                :class="{ 'hora-selected-mejorada': form.hora === hora }"
+                @click="seleccionarHora(hora)"
+              >
+                <div class="hora-content-mejorada">
+                  <div class="hora-info-mejorada">
+                    <Clock :size="16" class="hora-icon-mejorada" />
+                    <span class="hora-texto-mejorada">{{ hora }}</span>
+                    <span class="hora-duracion-badge-actual">Tu turno actual</span>
+                  </div>
+                </div>
+              </div>
+
               <!-- HORARIOS DISPONIBLES -->
               <div
                 v-for="hora in horariosDisponibles"
@@ -409,8 +426,8 @@
             </div>
           </div>
 
-          <!-- OPCIONES DE PAGO -->
-          <div v-if="form.hora" class="card-modern slide-in">
+          <!-- OPCIONES DE PAGO (solo turnos nuevos; en modificación la modalidad ya fue elegida) -->
+          <div v-if="form.hora && !modoModificacion" class="card-modern slide-in">
             <div class="card-header">
               <div class="card-icon">
                 <CreditCard :size="20" />
@@ -492,12 +509,85 @@
                 <span class="descuento-positivo">- {{ descuentoAplicado }}%</span>
               </div>
               
+              <!-- 🔥 DETALLE EN MODIFICACIÓN GRATIS: total nuevo / ya abonado / diferencia -->
+              <template
+                v-if="modoModificacion && tipoModificacion === 'gratis'"
+              >
+                <div class="resumen-item">
+                  <span>Total del turno (nuevo):</span>
+                  <span>${{ calcularTotalConDescuento() }}</span>
+                </div>
+                <div class="resumen-item resumen-abonado">
+                  <span>Seña / pago ya abonado (se conserva):</span>
+                  <span class="monto-abonado"
+                    >- ${{ montoSeñaTurnoViejo.toFixed(2) }}</span
+                  >
+                </div>
+              </template>
+
               <div class="resumen-item total">
-                <span><Wallet :size="16" /> Total a pagar ahora:</span>
+                <span
+                  ><Wallet :size="16" />
+                  {{
+                    modoModificacion && tipoModificacion === "gratis"
+                      ? "Diferencia a abonar:"
+                      : "Total a pagar ahora:"
+                  }}</span
+                >
                 <span class="monto-final-pago">${{ montoAPagarAhora() }}</span>
               </div>
+
+              <!-- 🔥 Selector de diferencia en modificación gratis -->
+              <div
+                v-if="modoModificacion && tipoModificacion === 'gratis'"
+                class="metodo-pago-selector"
+              >
+                <p class="selector-label">¿Cómo abonás la diferencia?</p>
+                <div class="selector-opciones">
+                  <label
+                    class="selector-option"
+                    :class="{
+                      active: metodoDiferenciaWeb === 'LINK',
+                      disabled: !!pagoUuid,
+                    }"
+                  >
+                    <input
+                      type="radio"
+                      v-model="metodoDiferenciaWeb"
+                      value="LINK"
+                      class="hidden-radio"
+                      :disabled="!!pagoUuid"
+                    />
+                    <span class="option-icon"><Smartphone :size="20" /></span>
+                    <span class="option-texto">
+                      <strong>Link de pago</strong>
+                      <small>Te redirige a Mercado Pago</small>
+                    </span>
+                  </label>
+                  <label
+                    class="selector-option"
+                    :class="{
+                      active: metodoDiferenciaWeb === 'QR',
+                      disabled: !!pagoUuid,
+                    }"
+                  >
+                    <input
+                      type="radio"
+                      v-model="metodoDiferenciaWeb"
+                      value="QR"
+                      class="hidden-radio"
+                      :disabled="!!pagoUuid"
+                    />
+                    <span class="option-icon"><QrCode :size="20" /></span>
+                    <span class="option-texto">
+                      <strong>Código QR</strong>
+                      <small>Escaneá con tu celular</small>
+                    </span>
+                  </label>
+                </div>
+              </div>
             </div>
-            
+
             <!-- Selector de método de pago (solo turnos nuevos) -->
             <div v-if="!modoModificacion" class="metodo-pago-selector">
               <p class="selector-label">Elegí cómo pagar:</p>
@@ -523,26 +613,71 @@
 
             <button
               type="button"
-              @click="metodoPagoWeb === 'LINK' ? crearPagoMercadoPago() : pagarConQR()" 
+              @click="onConfirmarReserva()"
               class="btn-confirmar-premium"
               :disabled="cargandoMercadoPago || cargandoQR"
               data-cy="btn-confirmar"
             >
               <span class="btn-content">
-                <CreditCard v-if="metodoPagoWeb === 'LINK'" :size="20" />
-                <QrCode v-else :size="20" />
-                <template v-if="metodoPagoWeb === 'LINK'">
-                  {{ cargandoMercadoPago ? '🔄 Creando pago...' : `Pagar $${montoAPagarAhora()} con Mercado Pago` }}
+                <template
+                  v-if="!modoModificacion && metodoPagoWeb === 'LINK'"
+                >
+                  <CreditCard :size="20" />
+                  {{
+                    cargandoMercadoPago
+                      ? "🔄 Creando pago..."
+                      : `Pagar $${montoAPagarAhora()} con Mercado Pago`
+                  }}
+                </template>
+                <template
+                  v-else-if="
+                    modoModificacion &&
+                    tipoModificacion === 'gratis' &&
+                    montoAPagarAhora() <= 0
+                  "
+                >
+                  <CheckCircle2 :size="20" />
+                  Confirmar modificación
+                </template>
+                <template
+                  v-else-if="
+                    modoModificacion &&
+                    tipoModificacion === 'gratis' &&
+                    metodoDiferenciaWeb === 'LINK'
+                  "
+                >
+                  <CreditCard :size="20" />
+                  {{
+                    cargandoMercadoPago
+                      ? "🔄 Creando pago..."
+                      : `Pagar $${montoAPagarAhora()} con Mercado Pago`
+                  }}
                 </template>
                 <template v-else>
-                  {{ cargandoQR ? '🔄 Generando QR...' : `Pagar $${montoAPagarAhora()} con QR` }}
+                  <QrCode :size="20" />
+                  {{
+                    cargandoQR
+                      ? "🔄 Generando QR..."
+                      : `Pagar $${montoAPagarAhora()} con QR`
+                  }}
                 </template>
               </span>
             </button>
-            
+
             <p class="info-pago-final">
               <CheckCircle2 :size="14" />
-              <template v-if="metodoPagoWeb === 'LINK'">
+              <template
+                v-if="modoModificacion && tipoModificacion === 'gratis'"
+              >
+                {{
+                  montoAPagarAhora() <= 0
+                    ? "No hay diferencia a abonar."
+                    : metodoDiferenciaWeb === "LINK"
+                      ? "Serás redirigido a Mercado Pago para completar el pago de la diferencia."
+                      : "Escaneá el código QR con la app de Mercado Pago para abonar la diferencia."
+                }}
+              </template>
+              <template v-else-if="metodoPagoWeb === 'LINK'">
                 Serás redirigido a Mercado Pago para completar el pago.
               </template>
               <template v-else>
@@ -557,14 +692,29 @@
         <div v-if="mostrarModalInteres" class="modal-overlay">
           <div class="modal-content">
             <div class="modal-header">
-              <h3>🔔 Confirmar Interés</h3>
+              <div class="interes-titulo">
+                <span class="interes-icono"><Bell :size="20" /></span>
+                <h3>Confirmar Interés</h3>
+              </div>
               <button class="modal-close-btn" @click="cancelarRegistroInteres"><X :size="20" /></button>
             </div>
             <div class="modal-body">
               <div class="info-interes-card">
-                <p><strong>📅 Fecha:</strong> {{ formatoFechaLegible(form.fecha) }}</p>
-                <p><strong>⏰ Horario:</strong> {{ horarioSeleccionadoInteres }}</p>
-                <p><strong>👨‍💼 Peluquero:</strong> {{ getPeluqueroNombre() }}</p>
+                <div class="info-row">
+                  <span class="info-icono"><CalendarDays :size="16" /></span>
+                  <span class="info-label">Fecha:</span>
+                  <span class="info-valor">{{ formatoFechaLegible(form.fecha) }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-icono"><Clock :size="16" /></span>
+                  <span class="info-label">Horario:</span>
+                  <span class="info-valor">{{ horarioSeleccionadoInteres }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-icono"><User :size="16" /></span>
+                  <span class="info-label">Peluquero:</span>
+                  <span class="info-valor">{{ getPeluqueroNombre() }}</span>
+                </div>
               </div>
               <div class="modal-actions">
                 <button @click="confirmarRegistroInteres" class="btn-confirmar-interes" :disabled="registrandoInteres">
@@ -616,6 +766,7 @@ const mensajeErrorCupon = ref("")
 const modoModificacion = ref(false)
 const tipoModificacion = ref(null) // 'gratis' o 'tarde'
 const turnoViejoId = ref(null)
+const infoTurnoActual = ref(null)
 const bloqueandoWatchers = ref(false) // 👈 FRENO DE MANO PARA VUE
 
 const mostrarDescuento = computed(() => {
@@ -681,6 +832,9 @@ const cargandoDatos = ref(true)
 const mostrarModalInteres = ref(false)
 const horarioSeleccionadoInteres = ref(null)
 const registrandoInteres = ref(false)
+// 🔥 Diferencia en modificación gratis
+const montoSeñaTurnoViejo = ref(0)
+const metodoDiferenciaWeb = ref('LINK') // 'LINK' | 'QR'
 const currentDate = ref(new Date())
 const horariosAtencion = ref([])
 const horariosInteres = ref([])
@@ -720,8 +874,25 @@ const cambiarMes = (delta) => {
   currentDate.value = n
 }
 
+const esHorarioDelTurnoActual = (hora) => {
+  if (!modoModificacion.value || !infoTurnoActual.value) return false
+  const info = infoTurnoActual.value
+  if (form.value.fecha !== info.fecha) return false
+  if (Number(form.value.peluquero) !== Number(info.peluquero)) return false
+  if (!info.hora) return false
+
+  const [hS, mS] = hora.split(':').map(Number)
+  const inicioMin = hS * 60 + mS
+  const [hO, mO] = info.hora.split(':').map(Number)
+  const inicioViejo = hO * 60 + mO
+  const finViejo = inicioViejo + info.duracion
+  return inicioMin >= inicioViejo && inicioMin < finViejo
+}
+
 const obtenerEstadoHorario = (h) => {
   if (!form.value.fecha || !form.value.peluquero) return null
+
+  if (esHorarioDelTurnoActual(h)) return 'ACTUAL'
 
   const [hS, mS] = h.substring(0, 5).split(':').map(Number)
   const inicioMinutos = hS * 60 + mS
@@ -748,6 +919,8 @@ const esHorarioDisponibleUI = (h) => {
 
 const esHorarioDisponibleCompleto = (horaSeleccionada) => {
   if (!form.value.fecha || !form.value.peluquero) return false
+  
+  if (esHorarioDelTurnoActual(horaSeleccionada)) return true
   
   const duracionTotal = calcularDuracionTotalServicios()
   
@@ -809,7 +982,7 @@ const generarHorariosBase = () => {
 }
 
 const horariosDisponibles = computed(() => 
-  generarHorariosBase().filter(h => esHorarioDisponibleCompleto(h))
+  generarHorariosBase().filter(h => esHorarioDisponibleCompleto(h) && obtenerEstadoHorario(h) !== 'ACTUAL')
 )
 
 const horariosOcupadosParaMostrar = computed(() => 
@@ -818,6 +991,10 @@ const horariosOcupadosParaMostrar = computed(() =>
 
 const horariosPasados = computed(() => 
   generarHorariosBase().filter(h => obtenerEstadoHorario(h) === 'PASADO')
+)
+
+const horariosTurnoActual = computed(() => 
+  generarHorariosBase().filter(h => obtenerEstadoHorario(h) === 'ACTUAL')
 )
 
 const seleccionarPeluquero = (id) => { 
@@ -945,8 +1122,19 @@ const cargarTurnosOcupados = async (f) => {
   }
 }
 
+const onConfirmarReserva = () => {
+  if (modoModificacion.value && tipoModificacion.value === 'gratis') {
+    const diff = parseFloat(diferenciaWeb() || 0)
+    if (diff <= 0) return crearPagoMercadoPago('pendiente')
+    if (metodoDiferenciaWeb.value === 'QR') return pagarConQR()
+    return crearPagoMercadoPago('mp_link')
+  }
+  if (metodoPagoWeb.value === 'LINK') return crearPagoMercadoPago()
+  return pagarConQR()
+}
+
 // 🔥 LÓGICA PRINCIPAL (Crea o Modifica)
-const crearPagoMercadoPago = async () => {
+const crearPagoMercadoPago = async (pagoDiferencia = null) => {
   if (!formularioValido.value) {
     Swal.fire('Formulario Incompleto', 'Por favor completa todos los campos.', 'warning')
     return
@@ -966,7 +1154,12 @@ const crearPagoMercadoPago = async () => {
       medio_pago: 'MERCADO_PAGO',
       monto_total: parseFloat(calcularTotalConDescuento()),
       cup_codigo: form.value.cup_codigo,  
-      duracion_total: calcularDuracionTotalServicios()
+      duracion_total: calcularDuracionTotalServicios(),
+      // 🔥 En la modificación gratis el cliente elige cómo abonar la diferencia:
+      // 'pendiente' (pagar en el local) o 'mp_link' (link de Mercado Pago).
+      ...(modoModificacion.value && tipoModificacion.value === 'gratis'
+        ? { pago_diferencia: pagoDiferencia || 'pendiente' }
+        : {})
     }
     
     // 🔀 BIFURCACIÓN: CREAR VS MODIFICAR
@@ -977,8 +1170,16 @@ const crearPagoMercadoPago = async () => {
         // 🔥 CORRECCIÓN CLAVE DE URL AQUÍ:
         const res = await api.post(`/api/turnos/${turnoViejoId.value}/modificar/`, payload);
         if (res.data && res.data.status === 'ok') {
-          Swal.fire({ title: 'Turno Modificado', text: 'Tu turno fue reprogramado exitosamente.', icon: 'success' })
-            .then(() => router.push('/cliente/historial'));
+          const mpUrl = res.data?.mp_data?.init_point;
+          if (mpUrl) {
+            window.location.href = mpUrl;
+          } else {
+            Swal.fire({
+              title: 'Turno Modificado',
+              text: 'Tu turno fue reprogramado exitosamente.',
+              icon: 'success'
+            }).then(() => router.push('/cliente/historial'));
+          }
         } else {
           console.error("DATA DEL BACKEND:", res.data);
           throw new Error(res.data?.error || res.data?.message || JSON.stringify(res.data) || 'Error desconocido al modificar');
@@ -1135,8 +1336,7 @@ const mostrarQRWeb = async (qrUrl, uid, monto) => {
 }
 
 const confirmarTurnoConPagoQR = async (uid) => {
-  if (uidQRConfirmado.value === uid || confirmandoTurnoQR.value) return
-  uidQRConfirmado.value = uid
+  if (confirmandoTurnoQR.value) return
   confirmandoTurnoQR.value = true
   cargandoMercadoPago.value = true
   try {
@@ -1156,7 +1356,7 @@ const confirmarTurnoConPagoQR = async (uid) => {
     }
     let res
     if (modoModificacion.value) {
-      res = await api.put(`/api/turnos/${turnoEditado.value.id}/modificar/`, payload)
+      res = await api.post(`/api/turnos/${turnoViejoId.value}/modificar/`, payload)
     } else {
       res = await api.post('/api/turnos/crear/', payload)
     }
@@ -1284,6 +1484,18 @@ const cargarDatosTurnoViejo = async (id) => {
 
     const response = await api.get(`/api/turnos/${id}/`);
     const t = response.data;
+
+    let durViejo = parseFloat(t.duracion_total) || 0
+    if (!durViejo && Array.isArray(t.servicios) && t.servicios.length > 0) {
+      durViejo = t.servicios.reduce((acc, s) => acc + (parseFloat(s.duracion) || 20), 0)
+    }
+    if (!durViejo) durViejo = 20
+    infoTurnoActual.value = {
+      fecha: t.fecha,
+      peluquero: t.peluquero?.id || t.peluquero,
+      hora: t.hora ? t.hora.substring(0, 5) : null,
+      duracion: durViejo
+    }
     
     if (t.servicios && t.servicios.length > 0) {
       const idsServicios = [];
@@ -1328,6 +1540,13 @@ const cargarDatosTurnoViejo = async (id) => {
 
     if (t.tipo_pago) form.value.tipo_pago = t.tipo_pago;
     if (t.medio_pago) form.value.medio_pago = t.medio_pago;
+
+    // 🔥 Seña/pago que se conserva en la reprogramación (para calcular la diferencia).
+    // Si el turno viejo está saldado (TOTAL), lo conservado es el total, no la seña.
+    montoSeñaTurnoViejo.value = t.tipo_pago === 'TOTAL'
+      ? parseFloat(t.monto_total || 0)
+      : parseFloat(t.monto_seña || 0);
+    metodoDiferenciaWeb.value = 'LINK';
 
     Swal.fire({
       title: 'Modo Edición',
@@ -1428,14 +1647,14 @@ const toggleServicio = (servicio) => {
   const index = form.value.servicios_ids.indexOf(id)
   if (index > -1) form.value.servicios_ids.splice(index, 1)
   else form.value.servicios_ids.push(id)
-  if (form.value.hora) form.value.hora = ""
+  if (!modoModificacion.value && form.value.hora) form.value.hora = ""
 }
 
 const estaServicioSeleccionado = (servicio) => servicio?.id && form.value.servicios_ids.includes(String(servicio.id))
 
 const eliminarServicio = (servicioId) => {
   form.value.servicios_ids = form.value.servicios_ids.filter(id => id !== String(servicioId))
-  if (form.value.hora) form.value.hora = ""
+  if (!modoModificacion.value && form.value.hora) form.value.hora = ""
 }
 
 const formularioValido = computed(() => 
@@ -1475,8 +1694,17 @@ const calcularSena = () => {
   return (totalConDescuento * 0.5).toFixed(2)
 }
 const montoAPagarAhora = () => {
-  if (modoModificacion.value && tipoModificacion.value === 'gratis') return "0.00";
+  if (modoModificacion.value && tipoModificacion.value === 'gratis') {
+    return diferenciaWeb()
+  }
   return (form.value.tipo_pago === 'SENA_50' ? calcularSena() : calcularTotalConDescuento())
+}
+
+// 🔥 Diferencia a abonar en la modificación gratis (total nuevo - seña conservada)
+const diferenciaWeb = () => {
+  const totalNuevo = parseFloat(calcularTotalConDescuento() || 0)
+  const abonado = parseFloat(montoSeñaTurnoViejo.value || 0)
+  return Math.max(0, totalNuevo - abonado).toFixed(2)
 }
 
 const getServicioNombre = (id) => getListaServicios().find(s => String(s.id) === String(id))?.nombre || 'Servicio'
@@ -2351,6 +2579,26 @@ defineExpose({
   color: #9ca3af;
 }
 
+.hora-actual-mejorada {
+  border: 3px solid #2563eb;
+  background: #bfdbfe;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+}
+
+.hora-actual-mejorada .hora-texto-mejorada {
+  color: #1e3a8a;
+  font-weight: 800;
+}
+
+.hora-duracion-badge-actual {
+  background: #2563eb;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
 .hora-duracion-badge-expirado {
   background: #6b7280;
   color: white;
@@ -2939,8 +3187,8 @@ defineExpose({
 }
 
 .modal-content {
-  background: white;
-  color: rgb(49, 49, 49);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
   border-radius: 24px;
   padding: 32px;
   max-width: 550px;
@@ -2948,7 +3196,7 @@ defineExpose({
   max-height: 85vh;
   overflow-y: auto;
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
-  border: 2px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-color);
   animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
@@ -3021,39 +3269,105 @@ defineExpose({
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.interes-titulo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.interes-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+  box-shadow: 0 8px 18px rgba(245, 158, 11, 0.35);
 }
 
 .modal-header h3 {
   margin: 0;
-  color: #1f2937;
-  font-size: 1.3rem;
+  color: var(--text-primary);
+  font-size: 1.35rem;
+  font-weight: 800;
 }
 
 .modal-close-btn {
-  background: #f3f4f6;
-  border: 1px solid #d1d5db;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.3s ease;
+  color: var(--text-secondary);
+  flex-shrink: 0;
 }
 
 .modal-close-btn:hover {
-  background: #e5e7eb;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .info-interes-card {
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 20px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 6px 18px;
   margin-bottom: 24px;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 2px;
+}
+
+.info-row + .info-row {
+  border-top: 1px dashed var(--border-color);
+}
+
+.info-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.info-label {
+  min-width: 78px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.info-valor {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .info-details {
@@ -3085,36 +3399,50 @@ defineExpose({
   background: linear-gradient(135deg, #059669, #047857);
   color: white;
   border: none;
-  border-radius: 8px;
-  font-weight: 600;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.3s ease;
+  box-shadow: 0 8px 18px rgba(5, 150, 105, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .btn-confirmar-interes:hover:not(:disabled) {
   background: linear-gradient(135deg, #047857, #065f46);
   transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(5, 150, 105, 0.4);
 }
 
 .btn-confirmar-interes:disabled {
-  background: #9ca3af;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .btn-cancelar-interes {
-  flex: 1;
-  padding: 14px;
-  background: #f3f4f6;
-  color: #6b7280;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-weight: 600;
+  padding: 14px 22px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .btn-cancelar-interes:hover {
-  background: #e5e7eb;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .toast-message {

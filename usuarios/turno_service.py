@@ -109,7 +109,10 @@ class TurnoService:
                 monto_total=datos.get('monto_total', 0),
                 monto_seña=datos.get('monto_seña', 0),
                 tipo_pago=datos.get('tipo_pago', 'TOTAL'),
-                medio_pago=datos.get('medio_pago', 'EFECTIVO')
+                medio_pago=datos.get('medio_pago', 'EFECTIVO'),
+                mp_payment_id=datos.get('mp_payment_id'),
+                codigo_transaccion=datos.get('codigo_transaccion'),
+                entidad_pago=datos.get('entidad_pago')
             )
             
             if 'servicios' in datos and datos['servicios']:
@@ -159,14 +162,29 @@ class TurnoService:
             return True, "Fuera de término: Se retiene el pago anterior. Deberás abonar el nuevo turno.", nuevo_turno
         
         else:
+            # Dentro del plazo: la seña/pago ya abonado se conserva y se traslada al nuevo turno.
+            # El nuevo total se recalcula según los servicios elegidos (no se congela el anterior).
             nuevos_datos['monto_seña'] = turno_viejo.monto_seña
-            nuevos_datos['monto_total'] = turno_viejo.monto_total
             nuevos_datos['tipo_pago'] = turno_viejo.tipo_pago
             nuevos_datos['medio_pago'] = turno_viejo.medio_pago
             nuevos_datos['mp_payment_id'] = turno_viejo.mp_payment_id
-            
+            nuevos_datos['codigo_transaccion'] = turno_viejo.codigo_transaccion
+            nuevos_datos['entidad_pago'] = turno_viejo.entidad_pago
+
+            if nuevos_datos.get('monto_total') is None:
+                nuevos_datos['monto_total'] = turno_viejo.monto_total
+
             nuevo_turno = TurnoService.registrar_turno(nuevos_datos)
-            
+
+            # Si el cliente quitó servicios y el total quedó menor a lo ya abonado,
+            # el saldo pendiente es 0: nunca dejar una seña mayor que el total.
+            from decimal import Decimal
+            monto_total_nuevo = Decimal(str(nuevo_turno.monto_total or 0))
+            monto_seña_transferida = Decimal(str(nuevo_turno.monto_seña or 0))
+            if monto_seña_transferida > monto_total_nuevo:
+                nuevo_turno.monto_seña = monto_total_nuevo
+                nuevo_turno.save(update_fields=['monto_seña'])
+
             # Matamos el turno viejo pasando es_modificacion_gratis para NO generar reembolsos locos
             TurnoService.procesar_cancelacion_automatica(
                 turno_id=turno_viejo.id,
@@ -431,8 +449,10 @@ class TurnoService:
             )
             tiempo_restante = fecha_turno - ahora
             
+            config = ConfiguracionSistema.get_solo()
+            margen = config.margen_horas_cancelacion
             puede_cancelar = tiempo_restante.total_seconds() > 0
-            hay_reembolso = tiempo_restante >= timedelta(hours=3)
+            hay_reembolso = tiempo_restante >= timedelta(hours=margen)
             
             return puede_cancelar, hay_reembolso, tiempo_restante
         except Exception as e:
@@ -485,6 +505,21 @@ class TurnoService:
 
 class ReofertaAutomaticaService:
     print("Clase ReofertaAutomaticaService cargada correctamente")
+
+    @staticmethod
+    def _calcular_precio_oferta(total_bruto):
+        """
+        FUENTE ÚNICA DE VERDAD del precio (y descuento) de la reoferta.
+        Usa ConfiguracionSistema.porcentaje_descuento_reoferta (igual que el resto
+        del flujo de notificación y que la pantalla de oferta) y redondea a 2
+        decimales para que el Turno creado coincida con lo que muestra la UI.
+        """
+        from decimal import Decimal, ROUND_HALF_UP
+        from .models import ConfiguracionSistema
+        config = ConfiguracionSistema.get_solo()
+        descuento = config.porcentaje_descuento_reoferta
+        precio = total_bruto * (Decimal('100') - Decimal(descuento)) / Decimal('100')
+        return precio.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     @staticmethod
     def procesar_reoferta(turno_cancelado):
@@ -557,8 +592,8 @@ class ReofertaAutomaticaService:
             
             config = ConfiguracionSistema.get_solo()
             descuento = config.porcentaje_descuento_reoferta
-            
-            precio_oferta = total_bruto * (Decimal('100') - Decimal(descuento)) / Decimal('100')
+
+            precio_oferta = ReofertaAutomaticaService._calcular_precio_oferta(total_bruto)
             
             turno_anterior = Turno.objects.filter(
                 cliente=interes_principal.cliente, 
@@ -583,6 +618,7 @@ class ReofertaAutomaticaService:
                 "fecha": turno_liberado.fecha.strftime("%d/%m/%Y"),
                 "hora": turno_liberado.hora.strftime("%H:%M"),
                 "cliente_id": interes_principal.cliente.id,
+                "cliente_nombre": f"{interes_principal.cliente.nombre or ''} {interes_principal.cliente.apellido or ''}".strip(),
                 "turno_liberado_id": turno_liberado_id,
                 "token": token,
                 "descuento_porcentaje": descuento, 
@@ -644,14 +680,11 @@ class ReofertaAutomaticaService:
                     turno_anterior.save()
 
                 total_bruto = sum(Decimal(str(i.servicio.precio)) for i in lista_intereses)
-                precio_con_desc = total_bruto * Decimal('0.85')
+                precio_con_desc = ReofertaAutomaticaService._calcular_precio_oferta(total_bruto)
 
-                if pagado_previo < precio_con_desc:
-                    tipo_pago = 'SENA_50'
-                else:
-                    tipo_pago = 'TOTAL'
-
-                monto_seña = pagado_previo
+                importe_aplicado = min(pagado_previo, precio_con_desc)
+                tipo_pago = 'TOTAL' if pagado_previo >= precio_con_desc else 'SENA_50'
+                monto_seña = importe_aplicado
 
                 nuevo = Turno.objects.create(
                     fecha=turno_target.fecha,
