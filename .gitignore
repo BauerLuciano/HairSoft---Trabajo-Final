@@ -16,3 +16,7 @@ dist/
 *.DS_Store
 *.rdb
 .coverage
+
+# Copias de seguridad generadas
+backups/**/*.backup
+backups/backup.log
