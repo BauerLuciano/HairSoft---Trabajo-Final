@@ -11,8 +11,17 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import action, api_view, permission_classes
 from django.db.models import Sum, Count, F, Value, DecimalField, ExpressionWrapper, FloatField, Q, Avg
 from django.db import transaction
-from django.http import HttpResponse
+from django.http import HttpResponse, FileResponse
 from django.db.models.functions import TruncDate, Coalesce
+from .backup_service import (
+    listar_backups,
+    resumen_backups,
+    generar_backup,
+    verificar_backup,
+    leer_log,
+    resolver_ruta_backup,
+    TIPOS_VALIDOS,
+)
 from django.utils.dateparse import parse_date
 from django.utils import timezone
 from .models import Auditoria, Servicio, Turno, Usuario, Producto, Liquidacion, PedidoWeb, ConfiguracionSistema, ConfiguracionLocal, Envio, Silla, SesionCaja, Venta, DetalleVenta, Pedido, HorarioAtencion
@@ -1015,3 +1024,68 @@ class EnvioViewSet(viewsets.ModelViewSet):
         envio.estado = nuevo_estado
         envio.save()
         return Response(EnvioSerializer(envio).data)
+
+
+# ============================================
+# Copias de seguridad (solo ADMINISTRADOR)
+# ============================================
+def _es_administrador(user):
+    return getattr(user, 'rol', None) and user.rol.nombre.upper() == 'ADMINISTRADOR'
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listado_backups(request):
+    if not _es_administrador(request.user):
+        return Response({'error': 'No autorizado'}, status=403)
+    backups = listar_backups()
+    return Response({'backups': backups, **resumen_backups(backups)})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generar_un_backup(request):
+    if not _es_administrador(request.user):
+        return Response({'error': 'No autorizado'}, status=403)
+    tipo = request.data.get('tipo')
+    if tipo not in TIPOS_VALIDOS:
+        return Response({'error': 'Tipo inválido. Use Diario, Semanal o Mensual.'}, status=400)
+    try:
+        resultado = generar_backup(tipo)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+    return Response(resultado, status=200 if resultado.get('ok') else 500)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def verificar_un_backup(request, ruta):
+    if not _es_administrador(request.user):
+        return Response({'error': 'No autorizado'}, status=403)
+    try:
+        resultado = verificar_backup(ruta)
+    except ValueError as e:
+        return Response({'error': str(e)}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+    return Response(resultado, status=200 if resultado.get('ok') else 500)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def descargar_un_backup(request, ruta):
+    if not _es_administrador(request.user):
+        return Response({'error': 'No autorizado'}, status=403)
+    try:
+        archivo = resolver_ruta_backup(ruta)
+    except ValueError as e:
+        return Response({'error': str(e)}, status=404)
+    return FileResponse(open(str(archivo), 'rb'), as_attachment=True, filename=archivo.name)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def ultimos_registros_backup(request):
+    if not _es_administrador(request.user):
+        return Response({'error': 'No autorizado'}, status=403)
+    return Response({'registros': leer_log()})

@@ -92,6 +92,7 @@ const PanelCaja = () => import('@/views/caja/PanelCaja.vue')
 // Configuración del Sistema
 const ConfiguracionEmpresa = () => import('@/views/admin/ConfiguracionEmpresa.vue')
 const ConfigurarHorarios = () => import('@/views/admin/ConfigurarHorarios.vue')
+const CopiasSeguridad = () => import('@/views/admin/CopiasSeguridad.vue')
 
 const routes = [
   { path: '/', redirect: '/web/home' },
@@ -173,6 +174,7 @@ const routes = [
   // Configuración
   { path: '/configuracion', name: 'ConfiguracionEmpresa', component: ConfiguracionEmpresa, meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/admin/horarios', name: 'ConfigurarHorarios', component: ConfigurarHorarios, meta: { requiresAuth: true, role: 'ADMIN' } },
+  { path: '/copias-de-seguridad', name: 'CopiasSeguridad', component: CopiasSeguridad, meta: { requiresAuth: true, role: 'ADMIN' } },
 ]
 
 const router = createRouter({

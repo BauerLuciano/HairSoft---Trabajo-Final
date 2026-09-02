@@ -330,6 +330,15 @@ urlpatterns = [
 
     #Notificaciones (Campanita)
     path('api/notificaciones/', func_views.api_notificaciones, name='api_notificaciones'),
+
+    # ================================
+    # 💾 COPIA DE SEGURIDAD (Solo ADMINISTRADOR)
+    # ================================
+    path('api/backups/', api_views.listado_backups, name='listado_backups'),
+    path('api/backups/generar/', api_views.generar_un_backup, name='generar_backup'),
+    path('api/backups/log/', api_views.ultimos_registros_backup, name='logs_backup'),
+    path('api/backups/<path:ruta>/verificar/', api_views.verificar_un_backup, name='verificar_backup'),
+    path('api/backups/<path:ruta>/descargar/', api_views.descargar_un_backup, name='descargar_backup'),
     ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
