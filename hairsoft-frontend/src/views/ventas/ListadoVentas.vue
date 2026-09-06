@@ -181,10 +181,6 @@
           </p>
           
           <div class="alertas-container">
-            <span v-if="ventasAnuladas > 0" class="alerta-bad">
-              <AlertTriangle :size="14" />
-              {{ ventasAnuladas }} anuladas
-            </span>
             <span v-if="ventaRecienCreada" class="alerta-good">
               <CheckCircle :size="14" />
               Nueva venta (#{{ ventaRecienCreada }})

@@ -209,14 +209,13 @@
             
             <div v-else class="grid-horarios">
               <div
-                v-for="hora in horariosGenerados"
-                :key="hora"
+                v-for="hora in horariosVigentes"
+                :key="`vigente-${hora}`"
                 class="hora-card"
                 :class="{
                   'hora-selected': form.hora === hora,
                   'hora-disponible': esHorarioDisponibleCompleto(hora),
-                  'hora-ocupada': !esHorarioDisponibleCompleto(hora) && obtenerDetalleOcupacion(hora) !== 'PASADO',
-                  'hora-expirado': obtenerDetalleOcupacion(hora) === 'PASADO',
+                  'hora-ocupada': !esHorarioDisponibleCompleto(hora),
                   'ocupada-silla': obtenerDetalleOcupacion(hora) === 'SILLA',
                   'ocupada-peluquero': obtenerDetalleOcupacion(hora) === 'PELUQUERO'
                 }"
@@ -233,7 +232,22 @@
                 <span v-if="obtenerDetalleOcupacion(hora) === 'PELUQUERO'" class="etiqueta-ocupado peluquero">PELUQUERO</span>
                 <span v-else-if="obtenerDetalleOcupacion(hora) === 'SILLA'" class="etiqueta-ocupado silla">SILLA EN USO</span>
                 <span v-else-if="obtenerDetalleOcupacion(hora) === 'LOCAL_LLENO'" class="etiqueta-ocupado lleno">SIN SILLAS</span>
-                <span v-else-if="obtenerDetalleOcupacion(hora) === 'PASADO'" class="etiqueta-ocupado pasado">EXPIRÓ</span>
+              </div>
+
+              <div v-if="horariosExpirados.length" class="separador-expirados">
+                <span>Horarios expirados</span>
+              </div>
+
+              <div
+                v-for="hora in horariosExpirados"
+                :key="`expirado-${hora}`"
+                class="hora-card hora-expirado"
+              >
+                <div class="hora-icono">
+                  <X :size="18" />
+                </div>
+                <span class="hora-texto">{{ hora }}</span>
+                <span class="etiqueta-ocupado pasado">EXPIRÓ</span>
               </div>
             </div>
           </div>
@@ -537,6 +551,19 @@
         </div>
       </div>
     </div>
+
+    <PagoQrModal
+      v-if="qrModalAbierto"
+      :init-point="qrModalInit"
+      :monto="qrModalMonto"
+      monto-label="Total a pagar"
+      :estado="pagoConfirmado ? 'confirmed' : 'pending'"
+      boton-cancelar="Cancelar"
+      boton-continuar="Continuar"
+      status-ok-sub="El pago se confirmó. Registrando la reserva automáticamente..."
+      @cancelar="cerrarQrPresencial"
+      @continuar="cerrarQrPresencial"
+    />
   </div>
 </template>
 
@@ -549,7 +576,7 @@ import {
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 import axios from '@/utils/axiosConfig'
-import QRCode from 'qrcode'
+import PagoQrModal from '@/components/PagoQrModal.vue'
 import { obtenerErrorDisponibilidad } from '@/utils/disponibilidadErrores'
 
 const router = useRouter()
@@ -607,9 +634,14 @@ const aliasCargando = ref(false)
 const pagoUuid = ref(null)
 const pagoConfirmado = ref(false)
 const qrGenerando = ref(false)
+const confirmacionAutoPendiente = ref(false)
+const turnoAutoRegistrado = ref(false)
 const tipoPagoConfirmado = ref('')
 const medioPagoConfirmado = ref('')
-let pollId = null 
+let pollId = null
+const qrModalAbierto = ref(false)
+const qrModalInit = ref('')
+const qrModalMonto = ref(0) 
 
 const montoEfectivoMixto = ref(null)
 const efectivoMixtoRegistrado = ref(false)
@@ -756,6 +788,25 @@ const horariosGenerados = computed(() => {
   generarRango(dia.hora_apertura_tarde, dia.hora_cierre_tarde)
   return horariosBase
 })
+
+const aMinutosDeHora = (hora) => {
+  const [h, m] = hora.split(':').map(Number)
+  return (h || 0) * 60 + (m || 0)
+}
+
+const horariosVigentes = computed(() =>
+  horariosGenerados.value
+    .filter(hora => obtenerDetalleOcupacion(hora) !== 'PASADO')
+    .slice()
+    .sort((a, b) => aMinutosDeHora(a) - aMinutosDeHora(b))
+)
+
+const horariosExpirados = computed(() =>
+  horariosGenerados.value
+    .filter(hora => obtenerDetalleOcupacion(hora) === 'PASADO')
+    .slice()
+    .sort((a, b) => aMinutosDeHora(a) - aMinutosDeHora(b))
+)
 
 const cargarHorariosOcupados = async (fecha) => {
   if (!form.value.peluquero || form.value.peluquero === form.value.cliente) return
@@ -1227,72 +1278,53 @@ const mostrarQRPresencial = (mpData) => {
   const init_point = mpData.init_point
   let aprobado = false
 
-  Swal.fire({
-    title: 'Pago con Mercado Pago',
-    html: `
-      <div style="text-align: center;">
-        <div id="qr-container" style="background: white; padding: 16px; border-radius: 16px; display: inline-block; box-shadow: 0 4px 24px rgba(0,0,0,0.12); margin-bottom: 16px;">
-          <canvas id="qr-canvas"></canvas>
-        </div>
-        <p style="color: #334155; font-size: 1rem; font-weight: 500; margin: 8px 0;">Escanee el código QR con su celular</p>
-        <p style="color: #10b981; font-size: 1.5rem; font-weight: 800; margin: 4px 0;">$${mpData.monto}</p>
-        <p id="poll-status" style="color: #64748b; font-size: 0.85rem; margin-top: 12px;">
-          <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-          Esperando pago...
-        </p>
-      </div>
-    `,
-    showConfirmButton: false,
-    showCancelButton: true,
-    cancelButtonText: 'Cancelar',
-    cancelButtonColor: '#94a3b8',
-    backdrop: 'rgba(0,0,0,0.92)',
-    allowOutsideClick: false,
-    allowEscapeKey: false,
-    didOpen: async () => {
-      const canvas = document.getElementById('qr-canvas')
-      if (canvas) {
-        try {
-          await QRCode.toCanvas(canvas, init_point, {
-            width: 220, margin: 2,
-            color: { dark: '#1e293b', light: '#ffffff' }
-          })
-        } catch (e) { console.error('Error generando QR:', e) }
-      }
+  qrModalInit.value = init_point
+  qrModalMonto.value = Number(mpData.monto || 0)
+  qrModalAbierto.value = true
 
-      pollId = setInterval(async () => {
-        try {
-          const check = await axios.get(`/api/check-pago-temporal/${pagoUuid.value}/`)
-          if (check.data.pagado) {
-            aprobado = true
-            clearInterval(pollId)
-            pollId = null
-            pagoConfirmado.value = true
-            const statusEl = document.getElementById('poll-status')
-            if (statusEl) {
-              statusEl.innerHTML = '<span style="color: #10b981; font-size: 1.1rem; font-weight: 600;">Pago aprobado</span>'
-            }
-            setTimeout(() => Swal.close(), 1200)
+  if (pollId) {
+    clearInterval(pollId)
+    pollId = null
+  }
+
+  pollId = setInterval(async () => {
+    try {
+      const check = await axios.get(`/api/check-pago-temporal/${pagoUuid.value}/`)
+      if (check.data.pagado) {
+        aprobado = true
+        clearInterval(pollId)
+        pollId = null
+        pagoConfirmado.value = true
+        confirmacionAutoPendiente.value = true
+        setTimeout(() => {
+          qrModalAbierto.value = false
+          if (confirmacionAutoPendiente.value && !turnoAutoRegistrado.value) {
+            crearTurno()
           }
-        } catch (e) {}
-      }, 1500)
+        }, 1200)
+      }
+    } catch (e) {}
+  }, 1500)
 
-      setTimeout(() => {
-        if (!aprobado) {
-          clearInterval(pollId)
-          pollId = null
-          const statusEl = document.getElementById('poll-status')
-          if (statusEl) statusEl.innerHTML = '<span style="color: #ef4444;">Tiempo de espera agotado</span>'
-        }
-      }, 600000)
-    },
-    willClose: () => {
-      if (pollId) { clearInterval(pollId); pollId = null }
+  setTimeout(() => {
+    if (!aprobado) {
+      clearInterval(pollId)
+      pollId = null
+      qrModalAbierto.value = false
     }
-  })
+  }, 600000)
+}
+
+const cerrarQrPresencial = () => {
+  if (pollId) {
+    clearInterval(pollId)
+    pollId = null
+  }
+  qrModalAbierto.value = false
 }
 
 const crearTurno = async () => {
+  if (procesando.value || turnoAutoRegistrado.value) return
   const esMixto = form.value.medio_pago === 'MIXTO' && montoMixtoMP.value > 0
   const esMixtoQR = esMixto && subMetodoPago.value === 'QR'
   const esAliasPuro = form.value.medio_pago === 'MERCADO_PAGO' && subMetodoPago.value === 'ALIAS'
@@ -1363,6 +1395,7 @@ const crearTurno = async () => {
     const data = await res.json()
 
     if (res.ok && (data.status === 'ok' || res.status === 201)) {
+      turnoAutoRegistrado.value = true
       await Swal.fire({
         icon: 'success',
         title: 'Turno creado',
@@ -1391,6 +1424,7 @@ const crearTurno = async () => {
   } catch (e) {
     await Swal.fire({ icon: 'error', title: 'Error de conexión', text: 'No se pudo conectar con el servidor.', confirmButtonText: 'Entendido' })
   } finally {
+    confirmacionAutoPendiente.value = false
     procesando.value = false
   }
 }
@@ -1689,6 +1723,27 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   gap: 12px;
   margin-bottom: 20px;
+}
+
+.separador-expirados {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+
+.separador-expirados::before,
+.separador-expirados::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #cbd5e1;
 }
 
 .hora-card {

@@ -2279,7 +2279,20 @@ def modificar_turno(request, turno_id):
         
         with transaction.atomic():
             turno = Turno.objects.get(pk=turno_id)
-            
+
+            # 🛡️ REGLA DE NEGOCIO: Un turno cuya FECHA sea anterior a la fecha
+            # actual de Argentina NO puede modificarse, sin bypass por rol.
+            # Se compara SOLO la fecha (no la hora), ya que en una peluquería los
+            # horarios reales pueden atrasarse por la atención al cliente.
+            import pytz as _pytz
+            tz_arg = _pytz.timezone('America/Argentina/Buenos_Aires')
+            hoy_arg = timezone.now().astimezone(tz_arg).date()
+            if turno.fecha < hoy_arg:
+                return JsonResponse(
+                    {'error': 'No se puede modificar un turno cuya fecha ya pasó.'},
+                    status=400
+                )
+
             # 🔥 CORRECCIÓN BACKEND: Detectamos si el que modifica es el STAFF / ADMIN
             es_admin = user.is_staff or (user.rol and user.rol.nombre.upper() in ['ADMINISTRADOR', 'RECEPCIONISTA'])
 

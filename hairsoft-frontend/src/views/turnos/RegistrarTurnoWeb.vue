@@ -734,6 +734,19 @@
       </div>
     </div>
   </div>
+
+  <PagoQrModal
+    v-if="qrModalAbierto"
+    :init-point="qrModalInit"
+    :monto="qrModalMonto"
+    monto-label="Total a pagar"
+    :estado="pagoConfirmado ? 'confirmed' : 'pending'"
+    boton-cancelar="Cancelar"
+    boton-continuar="Continuar"
+    status-ok-sub="Confirmando el turno..."
+    @cancelar="cancelarQrWeb"
+    @continuar="cerrarQrWeb"
+  />
 </template>
 
 <script setup>
@@ -742,6 +755,7 @@ import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import axios from '../../utils/axiosConfig'
 import Swal from 'sweetalert2'
+import PagoQrModal from '@/components/PagoQrModal.vue'
 import { limpiarSesionLocal } from '@/utils/authPrompt'
 import { obtenerErrorDisponibilidad } from '@/utils/disponibilidadErrores'
 
@@ -825,6 +839,9 @@ const pagoUuid = ref(null)
 const pagoConfirmado = ref(false)
 const cargandoQR = ref(false)
 let pollingQR = null
+const qrModalAbierto = ref(false)
+const qrModalInit = ref('')
+const qrModalMonto = ref(0)
 const confirmandoTurnoQR = ref(false)
 const uidQRConfirmado = ref(null)
 const cargandoHorarios = ref(false)
@@ -1283,56 +1300,38 @@ onUnmounted(() => {
   pararPollingQR()
 })
 
-const mostrarQRWeb = async (qrUrl, uid, monto) => {
+const mostrarQRWeb = (qrUrl, uid, monto) => {
   pararPollingQR()
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrUrl)}`
+  qrModalInit.value = qrUrl
+  qrModalMonto.value = Number(monto || 0)
+  qrModalAbierto.value = true
 
-  const result = await Swal.fire({
-    title: 'Escaneá el código QR',
-    html: `
-      <div style="text-align:center;">
-        <img src="${qrSrc}" alt="QR Mercado Pago" style="width:260px;height:260px;border-radius:12px;margin-bottom:16px;border:1px solid #eee;" />
-        <p style="margin:0 0 4px;font-size:15px;color:#555;">Escaneá con la app de Mercado Pago</p>
-        <p style="margin:0;font-size:13px;color:#888;">Monto: <strong>$${Number(monto).toFixed(2)}</strong></p>
-        <div id="qr-estado" style="margin-top:14px;padding:10px 16px;border-radius:8px;background:#f5f5f5;font-size:14px;color:#888;">
-          ⏳ Esperando pago...
-        </div>
-      </div>
-    `,
-    showCancelButton: true,
-    showConfirmButton: false,
-    cancelButtonText: 'Cancelar',
-    cancelButtonColor: '#999',
-    allowOutsideClick: false,
-    didOpen: () => {
-      pollingQR = setInterval(async () => {
-        try {
-          const check = await api.get(`/api/check-pago-temporal/${uid}/`)
-          if (check.data.pagado && uidQRConfirmado.value !== uid) {
-            uidQRConfirmado.value = uid
-            pararPollingQR()
-            pagoConfirmado.value = true
-            const estadoEl = document.getElementById('qr-estado')
-            if (estadoEl) {
-              estadoEl.style.background = '#e8f5e9'
-              estadoEl.style.color = '#2e7d32'
-              estadoEl.innerHTML = '✅ <strong>Pago recibido</strong><br><small style="color:#666;">Confirmando turno...</small>'
-            }
-            setTimeout(() => {
-              Swal.close()
-              confirmarTurnoConPagoQR(uid)
-            }, 1200)
-          }
-        } catch { /* ignore polling errors */ }
-      }, 1500)
-    }
-  })
+  pollingQR = setInterval(async () => {
+    try {
+      const check = await api.get(`/api/check-pago-temporal/${uid}/`)
+      if (check.data.pagado && uidQRConfirmado.value !== uid) {
+        uidQRConfirmado.value = uid
+        pararPollingQR()
+        pagoConfirmado.value = true
+        setTimeout(() => {
+          qrModalAbierto.value = false
+          confirmarTurnoConPagoQR(uid)
+        }, 1200)
+      }
+    } catch { /* ignore polling errors */ }
+  }, 1500)
+}
 
-  if (result.dismiss === Swal.DismissReason.cancel) {
-    pararPollingQR()
-    pagoUuid.value = null
-    pagoConfirmado.value = false
-  }
+const cancelarQrWeb = () => {
+  pararPollingQR()
+  qrModalAbierto.value = false
+  pagoUuid.value = null
+  pagoConfirmado.value = false
+}
+
+const cerrarQrWeb = () => {
+  pararPollingQR()
+  qrModalAbierto.value = false
 }
 
 const confirmarTurnoConPagoQR = async (uid) => {

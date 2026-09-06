@@ -1,11 +1,17 @@
 import uuid
 import pytest
 from decimal import Decimal
+from datetime import timedelta
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework.authtoken.models import Token
 
 from usuarios.factories import UsuarioFactory, ServicioFactory
 from usuarios.models import Caja, SesionCaja, Turno, MovimientoCaja, PagoTemporal, Silla
+
+
+def _fecha_futura():
+    return (timezone.localdate() + timedelta(days=45)).isoformat()
 
 
 def _setup_base():
@@ -25,7 +31,7 @@ def _payload_base(base, **overrides):
         "cliente_id": base['cliente'].id,
         "peluquero_id": base['peluquero'].id,
         "servicios_ids": [base['servicio'].id],
-        "fecha": "2026-05-11",
+        "fecha": _fecha_futura(),
         "hora": "10:00",
         "tipo_pago": "SENA_50",
         "medio_pago": "EFECTIVO",
@@ -44,7 +50,7 @@ def _crear_turno_db(base, **campos):
     turno = Turno.objects.create(
         cliente=base['cliente'],
         peluquero=base['peluquero'],
-        fecha='2026-05-11',
+        fecha=_fecha_futura(),
         hora='10:00',
         canal='PRESENCIAL',
         estado='RESERVADO',

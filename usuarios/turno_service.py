@@ -221,13 +221,20 @@ class TurnoService:
                 if turno.estado == 'CANCELADO':
                     return False, "El turno ya está cancelado"
                 
-                # Verificar que no haya pasado
+                # Verificar que el turno no sea de una fecha pasada.
+                # Compara SOLO la FECHA (no la hora) contra la fecha actual de
+                # Argentina, de modo que un turno del mismo día no se bloquee
+                # aunque su hora ya haya pasado (los horarios reales pueden
+                # atrasarse por la atención al cliente).
+                import pytz as _pytz
+                tz_arg = _pytz.timezone('America/Argentina/Buenos_Aires')
                 ahora = timezone.now()
+                hoy_arg = ahora.astimezone(tz_arg).date()
                 fecha_turno = timezone.make_aware(datetime.combine(turno.fecha, turno.hora))
                 tiempo_restante = fecha_turno - ahora
                 
-                if tiempo_restante.total_seconds() <= 0:
-                    return False, "No se puede cancelar un turno que ya pasó"
+                if turno.fecha < hoy_arg:
+                    return False, "No se puede cancelar un turno cuya fecha ya pasó"
                 
                 # 2. DETERMINAR SI ES CANCELACIÓN DEL CLIENTE (no reoferta)
                 es_cancelacion_cliente = True  # Asumir que es el cliente

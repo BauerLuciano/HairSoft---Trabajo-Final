@@ -243,6 +243,19 @@
       </div>
     </div>
   </div>
+
+  <PagoQrModal
+    v-if="qrSaldoAbierto"
+    :init-point="qrSaldoInit"
+    :monto="qrSaldoMonto"
+    monto-label="Saldo pendiente a cobrar"
+    :estado="qrSaldoEstado"
+    boton-cancelar="Cancelar"
+    boton-continuar="Listo"
+    status-ok-sub="Cobro registrado"
+    @cancelar="cerrarQrSaldo"
+    @continuar="cerrarQrSaldo"
+  />
 </template>
 
 <script setup>
@@ -254,9 +267,65 @@ import {
   ArrowLeft, ArrowRight, Edit
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
-import QRCode from 'qrcode'
+import PagoQrModal from '@/components/PagoQrModal.vue'
 
 const router = useRouter()
+
+const qrSaldoAbierto = ref(false)
+const qrSaldoInit = ref('')
+const qrSaldoMonto = ref(0)
+const qrSaldoEstado = ref('pending')
+let pollIdSaldo = null
+
+const abrirQrSaldo = async (turno, falta) => {
+  try {
+    const resp = await axios.post(`/api/turnos/${turno.id}/pagar-saldo/`, { metodo: 'MERCADO_PAGO' });
+    const { init_point } = resp.data;
+    let aprobado = false;
+
+    qrSaldoInit.value = init_point;
+    qrSaldoMonto.value = falta;
+    qrSaldoEstado.value = 'pending';
+    qrSaldoAbierto.value = true;
+
+    if (pollIdSaldo) clearInterval(pollIdSaldo);
+    pollIdSaldo = setInterval(async () => {
+      try {
+        const check = await axios.get(`/api/turnos/${turno.id}/`);
+        if (check.data.medio_pago_restante === 'MERCADO_PAGO' || check.data.mp_payment_id_saldo) {
+          aprobado = true;
+          clearInterval(pollIdSaldo);
+          pollIdSaldo = null;
+          qrSaldoEstado.value = 'confirmed';
+          setTimeout(() => {
+            qrSaldoAbierto.value = false;
+            Swal.fire('Pago registrado', `Cobro de $${formatPrecio(falta)} por QR Mercado Pago aprobado.`, 'success');
+            cargarTurnos();
+          }, 1200);
+        }
+      } catch (e) {}
+    }, 1500);
+
+    setTimeout(() => {
+      if (!aprobado) {
+        clearInterval(pollIdSaldo);
+        pollIdSaldo = null;
+        qrSaldoAbierto.value = false;
+      }
+    }, 900000);
+  } catch (error) {
+    Swal.fire('Error', error.response?.data?.error || 'No se pudo generar el pago.', 'error');
+  }
+};
+
+const cerrarQrSaldo = () => {
+  if (pollIdSaldo) {
+    clearInterval(pollIdSaldo);
+    pollIdSaldo = null;
+  }
+  qrSaldoAbierto.value = false;
+};
+
 const turnos = ref([])
 const listaPeluqueros = ref([]) 
 const pagina = ref(1)
@@ -288,8 +357,25 @@ const editarTurno = (turno) => {
   router.push(`/turnos/modificar/${turno.id}`)
 }
 
+const fechaHoyArgentina = () => {
+  const hoy = new Date()
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(hoy)
+  const mapa = {}
+  for (const p of partes) mapa[p.type] = p.value
+  return `${mapa.year}-${mapa.month}-${mapa.day}`
+}
+
+const esTurnoPasado = (fecha) => {
+  if (!fecha) return false
+  return String(fecha) < fechaHoyArgentina()
+}
+
 const puedeEditarTurno = (turno) => {
   if (turno.estado !== 'RESERVADO') return false;
+  if (esTurnoPasado(turno.fecha)) return false;
   return ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'PELUQUERO', 'PEL'].includes(userRol.value);
 };
 
@@ -809,92 +895,14 @@ const confirmarPagoTotal = async (turno) => {
   if (!subConfirmed || !subMetodo) return;
 
   if (subMetodo === 'QR') {
-    try {
-      const resp = await axios.post(`/api/turnos/${turno.id}/pagar-saldo/`, { metodo: 'MERCADO_PAGO' });
-      const { init_point } = resp.data;
-
-      let pollId = null;
-      let aprobado = false;
-
-      Swal.fire({
-        title: 'Cobrar con Mercado Pago',
-        html: `
-          <div style="text-align: center;">
-            <div id="qr-container" style="background: white; padding: 16px; border-radius: 16px; display: inline-block; box-shadow: 0 4px 24px rgba(0,0,0,0.12); margin-bottom: 16px;">
-              <canvas id="qr-canvas"></canvas>
-            </div>
-            <p style="color: #334155; font-size: 1rem; font-weight: 500; margin: 8px 0;">Escaneá el código QR con tu celular</p>
-            <p style="color: #10b981; font-size: 1.5rem; font-weight: 800; margin: 4px 0;">$${formatPrecio(falta)}</p>
-            <p id="poll-status" style="color: #64748b; font-size: 0.85rem; margin-top: 12px;">
-              <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-              Esperando pago...
-            </p>
-          </div>
-        `,
-        showConfirmButton: false,
-        showCancelButton: true,
-        cancelButtonText: 'Cancelar',
-        cancelButtonColor: '#94a3b8',
-        backdrop: 'rgba(0,0,0,0.92)',
-        allowOutsideClick: false,
-        allowEscapeKey: false,
-        didOpen: async () => {
-          const canvas = document.getElementById('qr-canvas');
-          if (canvas) {
-            try {
-              await QRCode.toCanvas(canvas, init_point, {
-                width: 220,
-                margin: 2,
-                color: { dark: '#1e293b', light: '#ffffff' }
-              });
-            } catch (e) {
-              console.error('Error generando QR:', e);
-            }
-          }
-
-          pollId = setInterval(async () => {
-            try {
-              const check = await axios.get(`/api/turnos/${turno.id}/`);
-              if (check.data.medio_pago_restante === 'MERCADO_PAGO' || check.data.mp_payment_id_saldo) {
-                aprobado = true;
-                clearInterval(pollId);
-                const statusEl = document.getElementById('poll-status');
-                if (statusEl) {
-                  statusEl.innerHTML = '<span style="color: #10b981; font-size: 1.1rem; font-weight: 600;">Pago aprobado</span>';
-                }
-                setTimeout(() => {
-                  Swal.close();
-                  Swal.fire('Pago registrado', `Cobro de $${formatPrecio(falta)} por QR Mercado Pago aprobado.`, 'success');
-                  cargarTurnos();
-                }, 1200);
-              }
-            } catch (e) {}
-          }, 1500);
-
-          setTimeout(() => {
-            if (!aprobado) {
-              clearInterval(pollId);
-              const statusEl = document.getElementById('poll-status');
-              if (statusEl) {
-                statusEl.innerHTML = '<span style="color: #ef4444;">Tiempo de espera agotado</span>';
-              }
-            }
-          }, 900000);
-        },
-        willClose: () => {
-          if (pollId) clearInterval(pollId);
-        }
-      });
-    } catch (error) {
-      Swal.fire('Error', error.response?.data?.error || 'No se pudo generar el pago.', 'error');
-    }
+    await abrirQrSaldo(turno, falta);
   } else {
     // Alias: mostrar alias y botón para marcar como pagado
     try {
       const aliasResp = await axios.get('/api/configuracion-local/');
       const alias = aliasResp.data?.mp_alias || 'No configurado';
 
-      const { value: nroComprobante, isConfirmed: aliasConfirmed } = await Swal.fire({
+      const { isConfirmed: aliasConfirmed } = await Swal.fire({
         title: 'Transferencia por Alias',
         html: `
           <div style="text-align: center;">
@@ -906,8 +914,6 @@ const confirmarPagoTotal = async (turno) => {
             <div style="background: #0f172a; color: #a5f3fc; font-size: 1.3rem; font-weight: 800; padding: 12px 20px; border-radius: 10px; letter-spacing: 1px; font-family: monospace; display: inline-block; margin: 8px 0 16px;">
               ${alias}
             </div>
-            <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 12px;">Cuando el cliente haya transferido, ingresá el id de operación (opcional) y confirmá.</p>
-            <input id="nro_comprobante" class="swal2-input" placeholder="ID de operación (12 dígitos, opcional)" inputmode="numeric" maxlength="12" style="width: 100%; margin: 0; box-sizing: border-box; text-align: center; font-size: 0.95rem; letter-spacing: 2px;" />
           </div>
         `,
         showCancelButton: true,
@@ -915,23 +921,11 @@ const confirmarPagoTotal = async (turno) => {
         confirmButtonText: 'Ya me transfirió',
         cancelButtonText: 'Cancelar',
         cancelButtonColor: '#94a3b8',
-        allowOutsideClick: false,
-        didOpen: () => {
-          const inp = document.getElementById('nro_comprobante');
-          if (inp) inp.addEventListener('input', () => { inp.value = inp.value.replace(/\D/g, ''); });
-        },
-        preConfirm: () => {
-          const val = document.getElementById('nro_comprobante').value.trim();
-          if (val && !/^\d{12}$/.test(val)) {
-            Swal.showValidationMessage('Deben ser exactamente 12 dígitos numéricos');
-            return false;
-          }
-          return val;
-        }
+        allowOutsideClick: false
       });
 
       if (aliasConfirmed) {
-        await axios.post(`/api/turnos/${turno.id}/pagar-saldo/`, { metodo: 'ALIAS', nro_comprobante: nroComprobante || '' });
+        await axios.post(`/api/turnos/${turno.id}/pagar-saldo/`, { metodo: 'ALIAS' });
         await cargarTurnos();
         Swal.fire('Pago registrado', `Cobro de $${formatPrecio(falta)} por alias MP registrado.`, 'success');
       }
@@ -962,6 +956,8 @@ const gestionarReembolsoManual = async (turno) => {
   const icCheck = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
   const icAlert = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
   const icX = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>`;
+  const icTrash = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>`;
+  
 
   // 2. Lógica de Preferencia e Inteligencia de sugerencia (SOLO sugiere/precarga, no restringe)
   let valorEfe = 0;
@@ -1104,7 +1100,7 @@ const gestionarReembolsoManual = async (turno) => {
           <span style="width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #e0f2fe; color: #0284c7;">${icDesglose}</span>
           <span style="font-size: 0.76rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.8px;">Método de devolución</span>
           <span style="flex: 1; height: 1px; background: #eef2f7;"></span>
-          <span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8;">Podés dividir el total</span>
+          <span id="mixto_hint" style="font-size: 0.7rem; font-weight: 600; color: #94a3b8;">Podés dividir el total</span>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
@@ -1113,9 +1109,10 @@ const gestionarReembolsoManual = async (turno) => {
               <span style="width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #d1fae5; color: #15803d;">${icEfectivo}</span>
               <div style="flex: 1; min-width: 0;">
                 <div style="font-size: 0.92rem; font-weight: 800; color: #0f172a;">Efectivo</div>
-                <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 1px;">Devolución en el local</div>
+                <div id="sub_efe" style="font-size: 0.7rem; color: #94a3b8; margin-top: 1px;">Devolución en el local</div>
               </div>
               <span id="dot_efe" style="width: 22px; height: 22px; border-radius: 50%; border: 2px solid #e2e8f0; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: #ffffff; transition: all 0.2s;"></span>
+              <button id="del_efe" type="button" title="Limpiar importe de Efectivo" style="width: 26px; height: 26px; border-radius: 8px; border: 1px solid #fecaca; background: #fef2f2; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; padding: 0; margin-left: 1px; box-shadow: none;">${icTrash}</button>
             </div>
             <div id="wrap_efe" style="display: flex; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 11px; margin-top: 12px; transition: border-color 0.2s;">
               <span style="font-size: 1rem; font-weight: 700; color: #94a3b8; padding-left: 11px; line-height: 1;">$</span>
@@ -1130,9 +1127,10 @@ const gestionarReembolsoManual = async (turno) => {
               <span style="width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #dbeafe; color: #1d4ed8;">${icMP}</span>
               <div style="flex: 1; min-width: 0;">
                 <div style="font-size: 0.92rem; font-weight: 800; color: #0f172a;">Mercado Pago</div>
-                <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 1px;">Transferencia manual</div>
+                <div id="sub_mp" style="font-size: 0.7rem; color: #94a3b8; margin-top: 1px;">Transferencia manual</div>
               </div>
               <span id="dot_mp" style="width: 22px; height: 22px; border-radius: 50%; border: 2px solid #e2e8f0; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: #ffffff; transition: all 0.2s;"></span>
+              <button id="del_mp" type="button" title="Limpiar importe de Mercado Pago" style="width: 26px; height: 26px; border-radius: 8px; border: 1px solid #fecaca; background: #fef2f2; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; padding: 0; margin-left: 1px; box-shadow: none;">${icTrash}</button>
             </div>
             <div id="wrap_mp" style="display: flex; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 11px; margin-top: 12px; transition: border-color 0.2s;">
               <span style="font-size: 1rem; font-weight: 700; color: #94a3b8; padding-left: 11px; line-height: 1;">$</span>
@@ -1140,6 +1138,21 @@ const gestionarReembolsoManual = async (turno) => {
                      style="flex: 1; min-width: 0; margin: 0; height: 44px; border: 0; background: transparent; font-size: 1.05rem; font-weight: 800; text-align: right; padding: 0 12px; color: #0f172a; box-sizing: border-box;"
                      value="${valorMP > 0 ? formatear(valorMP) : '0'}">
             </div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px;">
+          <div style="background: #f8fafc; border: 1px solid #eef2f7; border-radius: 14px; padding: 12px 14px;">
+            <div style="font-size: 0.62rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.9px;">Total a devolver</div>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 1.05rem; font-weight: 800; color: #0f172a; margin-top: 4px;">$${formatear(montoTotal)}</div>
+          </div>
+          <div style="background: #f8fafc; border: 1px solid #eef2f7; border-radius: 14px; padding: 12px 14px;">
+            <div style="font-size: 0.62rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.9px;">Asignado</div>
+            <div id="res_asignado" style="font-family: 'JetBrains Mono', monospace; font-size: 1.05rem; font-weight: 800; color: #0ea5e9; margin-top: 4px;">$${formatear(Math.round((valorEfe + valorMP) * 100) / 100)}</div>
+          </div>
+          <div id="res_falta_card" style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 14px; padding: 12px 14px; transition: background 0.2s, border-color 0.2s;">
+            <div id="res_falta_lbl" style="font-size: 0.62rem; font-weight: 800; color: #b45309; text-transform: uppercase; letter-spacing: 0.9px;">Falta por asignar</div>
+            <div id="res_falta" style="font-family: 'JetBrains Mono', monospace; font-size: 1.05rem; font-weight: 800; color: #b45309; margin-top: 4px;">$${formatear(Math.max(0, Math.round((montoTotal - valorEfe - valorMP) * 100) / 100))}</div>
           </div>
         </div>
 
@@ -1242,13 +1255,53 @@ didOpen: () => {
         }
       };
 
+      const pintarResumen = () => {
+        const asignado = parse(inEfe.value) + parse(inMP.value);
+        const diff = Math.round((asignado - montoTotal) * 100) / 100;
+        const resAsignado = document.getElementById('res_asignado');
+        const resFalta = document.getElementById('res_falta');
+        const resFaltaCard = document.getElementById('res_falta_card');
+        const resFaltaLbl = document.getElementById('res_falta_lbl');
+        if (resAsignado) resAsignado.textContent = `$${formatear(asignado)}`;
+        if (resFalta && resFaltaCard && resFaltaLbl) {
+          let estado, valor, colorTexto, fondo, borde;
+          if (Math.abs(diff) <= 0.01) {
+            estado = 'Importe correcto';
+            valor = formatear(0);
+            colorTexto = '#047857'; fondo = '#ecfdf5'; borde = '#a7f3d0';
+          } else if (diff > 0) {
+            estado = 'Excedente';
+            valor = formatear(diff);
+            colorTexto = '#dc2626'; fondo = '#fef2f2'; borde = '#fecaca';
+          } else {
+            estado = 'Falta por asignar';
+            valor = formatear(Math.abs(diff));
+            colorTexto = '#b45309'; fondo = '#fffbeb'; borde = '#fde68a';
+          }
+          resFaltaLbl.textContent = estado;
+          resFaltaLbl.style.color = colorTexto;
+          resFalta.textContent = `$${valor}`;
+          resFalta.style.color = colorTexto;
+          resFaltaCard.style.background = fondo;
+          resFaltaCard.style.borderColor = borde;
+        }
+      };
+
       const validate = () => {
         pintarSeleccion();
+        pintarResumen();
         const vMP = parse(inMP.value);
         const total = parse(inEfe.value) + vMP;
         const diff = total - montoTotal;
         const alias = document.getElementById('reembolso_alias')?.value.trim() || '';
         const faltaAlias = vMP > 0 && !hasIdReal && !alias;
+        const mixtoHint = document.getElementById('mixto_hint');
+        const esMixto = parse(inEfe.value) > 0 && vMP > 0;
+        if (mixtoHint) {
+          mixtoHint.textContent = esMixto ? 'Devolución mixta: Efectivo + Mercado Pago' : 'Podés dividir el total';
+          mixtoHint.style.color = esMixto ? '#7c3aed' : '#94a3b8';
+          mixtoHint.style.fontWeight = esMixto ? '700' : '600';
+        }
         if (Math.abs(diff) <= 0.01 && !faltaAlias) {
           status.style.background = '#ecfdf5'; status.style.color = '#047857'; status.style.border = '1px solid #a7f3d0';
           status.innerHTML = `<span style="display: flex;">${icCheck}</span> Los montos coinciden con el total a devolver`;
@@ -1294,6 +1347,23 @@ didOpen: () => {
         inAlias.addEventListener('focus', () => { inAlias.style.borderColor = '#38bdf8'; });
         inAlias.addEventListener('blur', () => { inAlias.style.borderColor = '#dbeafe'; });
       }
+
+      const delEfe = document.getElementById('del_efe');
+      const delMP = document.getElementById('del_mp');
+
+      if (delEfe) delEfe.addEventListener('click', () => {
+        if (parse(inEfe.value) <= 0) return;
+        inEfe.value = '0';
+        pintar();
+        validate();
+      });
+
+      if (delMP) delMP.addEventListener('click', () => {
+        if (parse(inMP.value) <= 0) return;
+        inMP.value = '0';
+        pintar();
+        validate();
+      });
 
       pintar();
       validate();
@@ -1734,6 +1804,7 @@ const mostrarBotonCompletar = (turno) => {
 
 const puedeCancelarTurno = (turno) => {
   if (['COMPLETADO', 'CANCELADO'].includes(turno.estado)) return false
+  if (esTurnoPasado(turno.fecha)) return false
   return ['ADMINISTRADOR', 'ADMIN', 'RECEPCIONISTA', 'REC', 'PELUQUERO', 'PEL'].includes(userRol.value)
 }
 

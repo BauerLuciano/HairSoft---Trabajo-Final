@@ -357,10 +357,34 @@
               </div>
             </div>
 
+            <div class="mp-method-selector">
+              <button
+                type="button"
+                class="mp-method-option"
+                :class="{ active: metodoPago === 'LINK' }"
+                :disabled="procesando"
+                @click="metodoPago = 'LINK'"
+              >
+                <Link2 :size="17" />
+                <span>Link</span>
+              </button>
+              <button
+                type="button"
+                class="mp-method-option"
+                :class="{ active: metodoPago === 'QR' }"
+                :disabled="procesando"
+                @click="metodoPago = 'QR'"
+              >
+                <QrCode :size="17" />
+                <span>QR</span>
+              </button>
+            </div>
+
             <button class="btn-checkout-action" @click="procesarPedido" :disabled="procesando || cartStore.items.length === 0 || (tipoEntrega === 'MOTO' && !deliveryLatLng) || (tipoEntrega === 'MOTO' && calculandoCosto)">
               <span v-if="!procesando">
-                <Lock :size="17" />
-                Pagar con Mercado Pago
+                <Lock v-if="metodoPago === 'LINK'" :size="17" />
+                <QrCode v-else :size="17" />
+                {{ metodoPago === 'LINK' ? 'Pagar con Mercado Pago' : 'Pagar con código QR' }}
               </span>
               <span v-else class="btn-processing">
                 <svg class="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
@@ -368,7 +392,8 @@
               </span>
             </button>
 
-            <p class="mp-note">Serás redirigido a Mercado Pago para completar el pago.</p>
+            <p class="mp-note" v-if="metodoPago === 'LINK'">Serás redirigido a Mercado Pago para completar el pago.</p>
+            <p class="mp-note" v-else>Escaneá el QR con la cámara de tu billetera virtual.</p>
 
           </div>
         </div>
@@ -376,10 +401,23 @@
       </div>
     </div>
   </div>
+
+  <PagoQrModal
+    v-if="qrModalAbierto"
+    :init-point="qrModalInit"
+    :monto="qrModalMonto"
+    monto-label="Total a pagar"
+    :estado="qrConfirmado ? 'confirmed' : 'pending'"
+    boton-cancelar="Cancelar"
+    boton-continuar="Continuar"
+    status-ok-sub="Pedido confirmado. Te vamos a redirigir..."
+    @cancelar="cancelarQrPedido"
+    @continuar="finalizarPedidoQr"
+  />
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCartStore } from '@/stores/cart'
 import api from '@/services/api'
@@ -387,7 +425,8 @@ import { envioService } from '@/services/envioService'
 import Swal from 'sweetalert2'
 import { limpiarSesionLocal } from '@/utils/authPrompt'
 import { LMap, LTileLayer, LMarker, LTooltip, LPolyline, LControlLayers } from '@vue-leaflet/vue-leaflet'
-import { Store, Bike, ShoppingBag, Lock, ShieldCheck } from 'lucide-vue-next'
+import { Store, Bike, ShoppingBag, Lock, Link2, QrCode, ShieldCheck } from 'lucide-vue-next'
+import PagoQrModal from '@/components/PagoQrModal.vue'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 
@@ -425,6 +464,13 @@ const router = useRouter()
 const tipoEntrega = ref('RETIRO')
 const observaciones = ref('')
 const procesando = ref(false)
+const metodoPago = ref('LINK')
+const qrModalAbierto = ref(false)
+const qrModalInit = ref('')
+const qrModalMonto = ref(0)
+const qrConfirmado = ref(false)
+let pollQr = null
+let pollQrTimeout = null
 
 const usuarioNombre = [localStorage.getItem('user_nombre'), localStorage.getItem('user_apellido')].filter(Boolean).join(' ').trim() || null
 
@@ -1039,12 +1085,19 @@ const procesarPedido = async () => {
     }
 
     const response = await api.post('/web/pedidos/', payload)
+    const urlPago = response.data.url_pago
+    const pedidoId = response.data.pedido_id
 
-    if (response.data.url_pago) {
-      cartStore.limpiarCarrito()
-      window.location.href = response.data.url_pago
-    } else {
+    if (!urlPago) {
       throw new Error('No se recibió el link de pago.')
+    }
+
+    if (metodoPago.value === 'QR') {
+      procesando.value = false
+      abrirQrPedido(urlPago, pedidoId)
+    } else {
+      cartStore.limpiarCarrito()
+      window.location.href = urlPago
     }
 
   } catch (error) {
@@ -1063,6 +1116,61 @@ const procesarPedido = async () => {
     procesando.value = false
   }
 }
+
+const pararPollingQr = () => {
+  if (pollQr) {
+    clearInterval(pollQr)
+    pollQr = null
+  }
+  if (pollQrTimeout) {
+    clearTimeout(pollQrTimeout)
+    pollQrTimeout = null
+  }
+}
+
+const abrirQrPedido = (urlPago, pedidoId) => {
+  qrModalInit.value = urlPago
+  qrModalMonto.value = totalFinal.value
+  qrConfirmado.value = false
+  qrModalAbierto.value = true
+
+  pararPollingQr()
+  pollQr = setInterval(async () => {
+    try {
+      const res = await api.get(`/web/pedidos/${pedidoId}/`)
+      if (res.data?.estado === 'PAGADO') {
+        pararPollingQr()
+        qrConfirmado.value = true
+        setTimeout(() => {
+          finalizarPedidoQr(pedidoId)
+        }, 1200)
+      }
+    } catch (e) {
+      // errores de red temporales: se ignoran y se sigue sondeando
+    }
+  }, 1500)
+
+  pollQrTimeout = setTimeout(() => {
+    pararPollingQr()
+    qrModalAbierto.value = false
+  }, 900000)
+}
+
+const finalizarPedidoQr = (pedidoId) => {
+  qrModalAbierto.value = false
+  cartStore.limpiarCarrito()
+  router.push({
+    name: 'MisPedidos',
+    query: { pago_exitoso: 'true', pedido_id: String(pedidoId) }
+  })
+}
+
+const cancelarQrPedido = () => {
+  pararPollingQr()
+  qrModalAbierto.value = false
+}
+
+onUnmounted(pararPollingQr)
 </script>
 
 <style scoped>
@@ -1344,6 +1452,42 @@ const procesarPedido = async () => {
 }
 .total-final-label { font-size: 0.9rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.92; }
 .total-final-amount { font-size: 1.55rem; font-weight: 800; letter-spacing: -0.02em; }
+
+.mp-method-selector {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  background: #f1f5f9;
+  padding: 5px;
+  border-radius: 12px;
+}
+
+.mp-method-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mp-method-option:hover:not(:disabled) { color: #0f172a; }
+
+.mp-method-option.active {
+  background: white;
+  color: #0ea5e9;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.mp-method-option:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .btn-checkout-action {
   width: 100%; margin-top: 22px; padding: 16px 20px; min-height: 54px;

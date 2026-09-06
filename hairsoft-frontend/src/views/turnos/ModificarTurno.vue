@@ -660,11 +660,6 @@
                   v-if="metodoDiferencia === 'EFECTIVO'"
                   class="diferencia-mp-panel"
                 >
-                  <small class="helper-text">
-                    Se registra el cobro en efectivo por
-                    <strong>${{ montoACobrar() }}</strong>. Requiere caja
-                    abierta.
-                  </small>
                 </div>
               </div>
             </div>
@@ -741,6 +736,19 @@
       </div>
     </div>
   </div>
+
+  <PagoQrModal
+    v-if="qrDifAbierto"
+    :init-point="qrDifInit"
+    :monto="qrDifMonto"
+    monto-label="Diferencia a cobrar"
+    :estado="qrDifEstado"
+    boton-cancelar="Cancelar"
+    boton-continuar="Continuar"
+    status-ok-sub="Diferencia cobrada"
+    @cancelar="cerrarQrDiferencia"
+    @continuar="cerrarQrDiferencia"
+  />
 </template>
 
 <script setup>
@@ -777,7 +785,7 @@ import {
   AlertTriangle,
 } from "lucide-vue-next";
 import Swal from "sweetalert2";
-import QRCode from "qrcode";
+import PagoQrModal from "@/components/PagoQrModal.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -842,6 +850,10 @@ const pagoUuidDif = ref(null);
 const pagoDiferenciaConfirmado = ref(false);
 const qrGenerandoDif = ref(false);
 let pollIdDif = null;
+const qrDifAbierto = ref(false);
+const qrDifInit = ref("");
+const qrDifMonto = ref(0);
+const qrDifEstado = ref("pending");
 
 // 🔥 Alias de Mercado Pago configurado en Ajustes del Local (para cobro por alias)
 const aliasValor = ref("");
@@ -1402,9 +1414,19 @@ const cargarDatosTurno = async () => {
     form.value.entidad_pago = turno.entidad_pago || "";
 
     // 🔥 BLOQUEO DE TURNOS PASADOS (Seguridad)
-    const turnoDateTime = new Date(`${turno.fecha}T${turno.hora}`);
-    const ahora = new Date();
-    if (turnoDateTime < ahora) {
+    // Compara SOLO la fecha (no la hora) contra la fecha actual de Argentina,
+    // para no bloquear turnos del mismo día cuya hora ya haya pasado.
+    const fechaHoyArg = (() => {
+      const hoy = new Date();
+      const partes = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        year: 'numeric', month: '2-digit', day: '2-digit'
+      }).formatToParts(hoy);
+      const mapa = {};
+      for (const p of partes) mapa[p.type] = p.value;
+      return `${mapa.year}-${mapa.month}-${mapa.day}`;
+    })();
+    if ((turno.fecha || '') < fechaHoyArg) {
       cargando.value = false;
       await Swal.fire({
         icon: "error",
@@ -1607,87 +1629,54 @@ const mostrarQRDiferencia = (mpData) => {
   const initPoint = mpData.init_point;
   let aprobado = false;
 
-  Swal.fire({
-    title: "Cobrar diferencia con Mercado Pago",
-    html: `
-      <div style="text-align: center;">
-        <div style="background: white; padding: 16px; border-radius: 16px; display: inline-block; box-shadow: 0 4px 24px rgba(0,0,0,0.12); margin-bottom: 16px;">
-          <canvas id="qr-dif-canvas"></canvas>
-        </div>
-        <p style="color: #334155; font-size: 1rem; font-weight: 500; margin: 8px 0;">Escaneá el código QR con el celular</p>
-        <p style="color: #10b981; font-size: 1.5rem; font-weight: 800; margin: 4px 0;">$${mpData.monto}</p>
-        <p id="qr-dif-status" style="color: #64748b; font-size: 0.85rem; margin-top: 12px;">
-          <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-          Esperando pago...
-        </p>
-      </div>
-    `,
-    showConfirmButton: false,
-    showCancelButton: true,
-    cancelButtonText: "Cancelar",
-    cancelButtonColor: "#94a3b8",
-    backdrop: "rgba(0,0,0,0.92)",
-    allowOutsideClick: false,
-    allowEscapeKey: false,
-    didOpen: async () => {
-      const canvas = document.getElementById("qr-dif-canvas");
-      if (canvas) {
-        try {
-          await QRCode.toCanvas(canvas, initPoint, {
-            width: 220,
-            margin: 2,
-            color: { dark: "#1e293b", light: "#ffffff" },
-          });
-        } catch (e) {
-          console.error("Error generando QR:", e);
-        }
-      }
+  qrDifInit.value = initPoint;
+  qrDifMonto.value = Number(mpData.monto || 0);
+  qrDifEstado.value = "pending";
+  qrDifAbierto.value = true;
 
-      pollIdDif = setInterval(async () => {
-        try {
-          const check = await fetch(
-            `${API_URL}/check-pago-temporal/${pagoUuidDif.value}/`,
-            { headers: getAuthHeaders() },
-          );
-          const dato = await check.json();
-          if (dato.pagado) {
-            aprobado = true;
-            clearInterval(pollIdDif);
-            pollIdDif = null;
-            pagoDiferenciaConfirmado.value = true;
-            const statusEl = document.getElementById("qr-dif-status");
-            if (statusEl) {
-              statusEl.innerHTML =
-                '<span style="color: #10b981; font-size: 1.1rem; font-weight: 600;">Pago aprobado</span>';
-            }
-            setTimeout(() => {
-              if (Swal.isVisible()) Swal.close();
-              modificarTurno();
-            }, 1200);
-          }
-        } catch (e) {
-          /* polling errors se ignoran */
-        }
-      }, 1500);
+  if (pollIdDif) {
+    clearInterval(pollIdDif);
+    pollIdDif = null;
+  }
 
-      setTimeout(() => {
-        if (!aprobado) {
-          clearInterval(pollIdDif);
-          pollIdDif = null;
-          const statusEl = document.getElementById("qr-dif-status");
-          if (statusEl)
-            statusEl.innerHTML =
-              '<span style="color: #ef4444;">Tiempo de espera agotado</span>';
-        }
-      }, 600000);
-    },
-    willClose: () => {
-      if (pollIdDif) {
+  pollIdDif = setInterval(async () => {
+    try {
+      const check = await fetch(
+        `${API_URL}/check-pago-temporal/${pagoUuidDif.value}/`,
+        { headers: getAuthHeaders() },
+      );
+      const dato = await check.json();
+      if (dato.pagado) {
+        aprobado = true;
         clearInterval(pollIdDif);
         pollIdDif = null;
+        pagoDiferenciaConfirmado.value = true;
+        qrDifEstado.value = "confirmed";
+        setTimeout(() => {
+          qrDifAbierto.value = false;
+          modificarTurno();
+        }, 1200);
       }
-    },
-  });
+    } catch (e) {
+      /* polling errors se ignoran */
+    }
+  }, 1500);
+
+  setTimeout(() => {
+    if (!aprobado) {
+      clearInterval(pollIdDif);
+      pollIdDif = null;
+      qrDifAbierto.value = false;
+    }
+  }, 600000);
+};
+
+const cerrarQrDiferencia = () => {
+  if (pollIdDif) {
+    clearInterval(pollIdDif);
+    pollIdDif = null;
+  }
+  qrDifAbierto.value = false;
 };
 
 // Modal Cliente

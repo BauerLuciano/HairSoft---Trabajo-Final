@@ -79,30 +79,30 @@
           </div>
 
           <div class="auditoria-pago-container">
-            <h3><Info :size="18" style="margin-right: 8px; display: inline-block; vertical-align: text-bottom;"/>Detalles de Transacción</h3>
+            <h3 class="seccion-titulo"><Info :size="18" />Detalles de la transacción</h3>
             <div class="grid-auditoria">
-                
+
                 <div class="dato-auditoria">
-                    <span class="label-auditoria">Medio de Pago:</span>
+                    <span class="label-auditoria">Medio de pago</span>
                     <span class="badge-pago" :class="getClaseTipoPago(venta)">
                         {{ getNombrePago(venta) }}
                     </span>
                 </div>
 
                 <div class="dato-auditoria" v-if="venta.entidad_pago">
-                    <span class="label-auditoria">Entidad / Billetera:</span>
-                    <strong class="valor-auditoria">{{ venta.entidad_pago }}</strong>
+                    <span class="label-auditoria">Forma de pago</span>
+                    <strong class="valor-auditoria">{{ getNombreFormaPago(venta.entidad_pago) }}</strong>
                 </div>
 
                 <div class="dato-auditoria full-width" v-if="venta.codigo_transaccion">
-                    <span class="label-auditoria">Ref. / ID Transacción:</span>
+                    <span class="label-auditoria">Ref. / ID Transacción</span>
                     <div class="code-wrapper">
                         <code class="codigo-referencia">{{ venta.codigo_transaccion }}</code>
                     </div>
                 </div>
 
                 <div class="dato-auditoria full-width" v-if="venta.mp_payment_id">
-                    <span class="label-auditoria">MercadoPago ID:</span>
+                    <span class="label-auditoria">MercadoPago ID</span>
                     <div class="code-wrapper">
                         <code class="codigo-referencia mp">
                             <img src="https://logotipoz.com/wp-content/uploads/2021/10/versiones-logo-mercadopago.png" alt="MP" class="mp-mini-logo" style="height: 12px; margin-right: 5px;">
@@ -114,16 +114,16 @@
           </div>
 
           <div class="tabla-detalle-container">
-            <h3>Productos/Servicios</h3>
+            <h3 class="seccion-titulo"><Package :size="18" />Productos/Servicios</h3>
             <div class="table-container">
               <table class="users-table">
                 <thead>
                   <tr>
                     <th>Ítem</th>
                     <th>Tipo</th>
-                    <th>Cantidad</th>
-                    <th>P. Unitario</th>
-                    <th>Subtotal</th>
+                    <th class="num">Cantidad</th>
+                    <th class="num">P. Unitario</th>
+                    <th class="num">Subtotal</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -138,13 +138,13 @@
                       <span v-if="detalle.producto_nombre" class="badge-tipo producto">Producto</span>
                       <span v-else class="badge-tipo turno">Servicio</span>
                     </td>
-                    <td>{{ detalle.cantidad }}</td>
-                    <td>${{ formatPrecio(detalle.precio_unitario) }}</td>
-                    <td><strong>${{ formatPrecio(detalle.subtotal) }}</strong></td>
+                    <td class="num">{{ detalle.cantidad }}</td>
+                    <td class="num">${{ formatPrecio(detalle.precio_unitario) }}</td>
+                    <td class="num"><strong>${{ formatPrecio(detalle.subtotal) }}</strong></td>
                   </tr>
                 </tbody>
                 <tfoot>
-                  <tr>
+                  <tr class="fila-total">
                     <td colspan="4" class="total-label">
                       <strong>TOTAL FINAL</strong>
                     </td>
@@ -191,7 +191,7 @@ import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2'
 import { 
   FileText, Loader, ChevronLeft, RefreshCw, AlertTriangle,
-  Calendar, User, UserCheck, DollarSign, MessageSquare, Trash2, Info
+  Calendar, User, UserCheck, DollarSign, MessageSquare, Trash2, Info, Package
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -261,6 +261,20 @@ const getNombrePago = (v) => {
         'MIXTO': 'Mixto'
     };
     return map[tipo] || 'Otro';
+}
+
+// 🔤 PRESENTACIÓN DE LA FORMA DE PAGO: traduce el valor técnico almacenado
+const getNombreFormaPago = (entidad) => {
+  const e = String(entidad || '').toUpperCase()
+  const map = {
+    'MERCADOPAGO_ALIAS': 'Pago por Alias',
+    'MERCADOPAGO_QR': 'Pago por QR',
+    'MERCADOPAGO_LINK': 'Pago por Link',
+    'MERCADOPAGO': 'Pago por Alias',
+    'EFECTIVO': 'Efectivo',
+    'MIXTO': 'Mixto'
+  }
+  return map[e] || (entidad || '')
 }
 
 // 🔥 COLOR DEL BADGE CORREGIDO: También mira la venta completa
@@ -484,9 +498,11 @@ onMounted(() => { obtenerVenta() })
     margin-bottom: 30px;
 }
 
-.auditoria-pago-container h3 {
-    margin-top: 0;
-    margin-bottom: 15px;
+.seccion-titulo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 15px;
     font-size: 14px;
     color: var(--text-secondary);
     text-transform: uppercase;
@@ -499,13 +515,18 @@ onMounted(() => { obtenerVenta() })
 .grid-auditoria {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 20px;
+    gap: 16px;
 }
 
 .dato-auditoria {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    justify-content: center;
+    gap: 8px;
+    background: var(--hover-bg);
+    padding: 16px 18px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
 }
 
 .dato-auditoria.full-width {
@@ -578,10 +599,36 @@ onMounted(() => { obtenerVenta() })
   border-bottom: 1px solid var(--border-color);
 }
 
+.users-table th.num,
+.users-table td.num {
+  text-align: right;
+}
+
+.users-table tbody tr {
+  transition: background 0.2s ease;
+}
+
+.users-table tbody tr:hover {
+  background: var(--hover-bg);
+}
+
+.total-label {
+  text-align: right;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.fila-total td {
+  background: var(--bg-tertiary);
+  border-top: 2px solid var(--border-color);
+}
+
 .total-final {
   font-size: 1.4rem;
   color: #10b981;
   padding: 20px !important;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .badge-pago {
