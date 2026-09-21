@@ -802,12 +802,7 @@ class PedidoWebSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(f"Stock insuficiente para {producto_db.nombre}.")
 
                 producto_db.stock_actual -= cantidad
-                from usuarios.middleware import _thread_locals
-                _thread_locals._suspender_auditoria = True
-                try:
-                    producto_db.save()
-                finally:
-                    _thread_locals._suspender_auditoria = False
+                producto_db.save()
 
                 total_acumulado += (producto_db.precio * cantidad)
                 productos_actualizados.append((producto_db, cantidad))
@@ -975,92 +970,123 @@ class SolicitudPresupuestoSerializer(serializers.ModelSerializer):
         return mejor.id
 
 class AuditoriaSerializer(serializers.ModelSerializer):
-    usuario_nombre = serializers.CharField(source='usuario.nombre', read_only=True, default='Sistema')
-    usuario_apellido = serializers.CharField(source='usuario.apellido', read_only=True, default='')
-    
+    usuario_nombre = serializers.SerializerMethodField()
+    usuario_apellido = serializers.SerializerMethodField()
+
     # 🔥 FIX: Usamos un Method Field para hacer la magia de detectar al Super Admin
     usuario_rol = serializers.SerializerMethodField()
     
-    usuario_email = serializers.CharField(source='usuario.correo', read_only=True, default='')
+    usuario_email = serializers.SerializerMethodField()
     
     # ✅ NUEVO: Campos extraídos de 'detalles'
     navegador_info = serializers.SerializerMethodField()
     sistema_operativo = serializers.SerializerMethodField()
     dispositivo_info = serializers.SerializerMethodField()
+
+    # ✅ NUEVOS: Datos v2 de auditoría (módulo, resultado, snapshot, log legible)
+    modulo_efectivo = serializers.SerializerMethodField()
+    quien = serializers.SerializerMethodField()
+    descripcion = serializers.SerializerMethodField()
+    antes = serializers.SerializerMethodField()
+    despues = serializers.SerializerMethodField()
+    campos_modificados = serializers.SerializerMethodField()
+    objeto_nombre = serializers.SerializerMethodField()
     
     class Meta:
         model = Auditoria
         fields = '__all__'
-        
+
+    def _parse_detalles(self, obj):
+        detalles = obj.detalles
+        if isinstance(detalles, str):
+            try:
+                detalles = json.loads(detalles)
+            except Exception:
+                return {}
+        return detalles if isinstance(detalles, dict) else {}
+
+    def get_usuario_nombre(self, obj):
+        if obj.usuario_nombre:
+            return obj.usuario_nombre
+        if obj.usuario:
+            nombre = f"{obj.usuario.nombre} {obj.usuario.apellido}".strip()
+            return nombre or obj.usuario.correo
+        return 'Sistema'
+
+    def get_usuario_apellido(self, obj):
+        return ''
+
+    def get_usuario_email(self, obj):
+        if obj.usuario_email:
+            return obj.usuario_email
+        if obj.usuario:
+            return obj.usuario.correo
+        return ''
+
     def get_usuario_rol(self, obj):
         if not obj.usuario:
-            return '-'
+            return 'SISTEMA' if obj.resultado == 'SISTEMA' else 'Anónimo'
         if obj.usuario.rol:
             return obj.usuario.rol.nombre.upper()
         if obj.usuario.is_superuser:
             return 'SUPER ADMIN'
         return 'SIN ROL'
-    
-    def get_navegador_info(self, obj):
-        if not obj.detalles: return 'Desconocido'
-        
-        detalles = obj.detalles
-        if isinstance(detalles, str):
-            try: detalles = json.loads(detalles)
-            except: return 'Desconocido'
 
-        ua = detalles.get('__meta__', {}).get('navegador', '')
+    def get_modulo_efectivo(self, obj):
+        if obj.modulo:
+            return obj.modulo
+        from .auditoria_service import modulo_de
+        return modulo_de(obj.modelo_afectado, obj.accion)
+
+    def get_quien(self, obj):
+        nombre = self.get_usuario_nombre(obj)
+        rol = self.get_usuario_rol(obj)
+        if obj.usuario is None and obj.resultado == 'SISTEMA':
+            return 'SISTEMA'
+        if rol and rol not in ('Anónimo', 'SISTEMA'):
+            return f"{nombre} ({rol})"
+        return nombre
+
+    def _user_agent_de(self, obj):
+        ua = obj.user_agent
         if not ua:
-            for key in ['user_agent', 'browser', 'navegador', 'ua']:
-                if key in detalles:
-                    ua = detalles[key]
-                    break
+            detalles = self._parse_detalles(obj)
+            ua = (detalles.get('__meta__') or {}).get('navegador', '')
+        return ua
 
-        if not ua: return 'Sistema'
-
+    def get_navegador_info(self, obj):
+        ua = self._user_agent_de(obj)
+        if not ua:
+            return 'Sistema'
         ua_low = str(ua).lower()
-        
-        if 'edg/' in ua_low or 'edge' in ua_low: 
-            return 'Edge'
-        
-        if 'brave' in ua_low: 
-            return 'Brave'
-        
-        if 'firefox' in ua_low: 
-            return 'Firefox'
-        
-        if 'chrome' in ua_low: 
-            return 'Chrome'
-        
-        if 'safari' in ua_low: 
-            return 'Safari'
-
+        if 'edg/' in ua_low or 'edge' in ua_low: return 'Edge'
+        if 'brave' in ua_low: return 'Brave'
+        if 'firefox' in ua_low: return 'Firefox'
+        if 'chrome' in ua_low: return 'Chrome'
+        if 'safari' in ua_low: return 'Safari'
         return str(ua)[:20]
 
     def get_sistema_operativo(self, obj):
-        """Extrae información del sistema operativo"""
-        if not obj.detalles:
+        """Extrae información del sistema operativo desde el User-Agent."""
+        ua = self._user_agent_de(obj)
+        if not ua:
             return ''
-        
-        detalles = obj.detalles
-        if isinstance(detalles, str):
-            try:
-                detalles = json.loads(detalles)
-            except:
-                return ''
-        
-        if not isinstance(detalles, dict):
-            return ''
-        
-        if '__meta__' in detalles and 'so' in detalles['__meta__']:
-            return detalles['__meta__']['so']
-        
-        for key in ['os', 'platform', 'sistema_operativo']:
-            if key in detalles:
-                return detalles[key]
-        
-        return ''
-    
+        ua_low = str(ua).lower()
+        so = ''
+        if 'windows' in ua_low:
+            so = 'Windows'
+        elif 'mac os' in ua_low or 'macintosh' in ua_low:
+            so = 'macOS'
+        elif 'android' in ua_low:
+            so = 'Android'
+        elif 'iphone' in ua_low or 'ipad' in ua_low or 'ios' in ua_low:
+            so = 'iOS'
+        elif 'linux' in ua_low:
+            so = 'Linux'
+        if so and 'mobile' in ua_low:
+            so += ' (Móvil)'
+        return so
+
     def get_dispositivo_info(self, obj):
         """Información completa del dispositivo"""
         navegador = self.get_navegador_info(obj)
@@ -1076,6 +1102,95 @@ class AuditoriaSerializer(serializers.ModelSerializer):
             return f"{navegador} (IP: {obj.ip_address or 'N/A'})"
         
         return f"{sistema} (IP: {obj.ip_address or 'N/A'})"
+
+    def get_antes(self, obj):
+        """Dict campo -> valor anterior (solo para campos modificados)."""
+        result = {}
+        for clave, info in self._parse_detalles(obj).items():
+            if clave == '__meta__' or clave == 'cambios':
+                continue
+            if isinstance(info, dict) and info.get('tipo') == 'CAMBIO':
+                result[clave] = info.get('anterior')
+        return result
+
+    def get_despues(self, obj):
+        """Dict campo -> valor nuevo (CAMBIO -> nuevo, VALOR -> valor)."""
+        result = {}
+        for clave, info in self._parse_detalles(obj).items():
+            if clave == '__meta__' or clave == 'cambios':
+                continue
+            if isinstance(info, dict) and info.get('tipo') == 'CAMBIO':
+                result[clave] = info.get('nuevo')
+            elif isinstance(info, dict) and info.get('tipo') == 'VALOR':
+                result[clave] = info.get('valor')
+        return result
+
+    def get_campos_modificados(self, obj):
+        """Lista de campos que cambiaron en una edición."""
+        campos = []
+        for clave, info in self._parse_detalles(obj).items():
+            if clave == '__meta__' or clave == 'cambios':
+                continue
+            if isinstance(info, dict) and info.get('tipo') == 'CAMBIO':
+                campos.append(clave)
+        return campos
+
+    def get_objeto_nombre(self, obj):
+        """Nombre/identificador legible del registro afectado cuando puede obtenerse."""
+        if not obj.modelo_afectado or not obj.objeto_id:
+            return ''
+        resolver = {
+            'Producto': 'nombre', 'Servicio': 'nombre', 'Proveedor': 'nombre',
+            'Marca': 'nombre', 'Rol': 'nombre', 'MetodoPago': 'nombre',
+            'CategoriaProducto': 'nombre', 'CategoriaServicio': 'nombre', 'Silla': 'nombre',
+            'Usuario': 'str', 'Turno': 'str', 'Venta': 'str', 'Pedido': 'str',
+            'PedidoWeb': 'str', 'MovimientoCaja': 'str', 'SesionCaja': 'str',
+            'Envio': 'str', 'NotaCredito': 'str', 'Liquidacion': 'str',
+            'SolicitudPresupuesto': 'str', 'Cotizacion': 'str', 'Caja': 'nombre',
+        }
+        campo = resolver.get(obj.modelo_afectado)
+        if not campo:
+            return ''
+        try:
+            from django.apps import apps
+            modelo = apps.get_model('usuarios', obj.modelo_afectado)
+            instancia = modelo.objects.filter(pk=obj.objeto_id).first()
+            if instancia is None:
+                return 'Registro eliminado'
+            if campo == 'str':
+                return str(instancia)
+            valor = getattr(instancia, campo, None)
+            return str(valor) if valor else str(instancia)
+        except Exception:
+            return ''
+
+    DESCRIPCION_ACCION = {
+        'CREAR': 'creó', 'EDITAR': 'modificó', 'ELIMINAR': 'eliminó',
+        'LOGIN': 'inició sesión', 'LOGOUT': 'cerró sesión',
+        'LOGIN_GOOGLE': 'inició sesión con Google',
+        'LOGIN_FALLIDO': 'intentó iniciar sesión (credenciales inválidas)',
+        'CAMBIO_PASSWORD': 'cambió la contraseña de',
+        'ANULAR_VENTA': 'anuló la venta', 'CANCELAR': 'canceló el turno',
+        'AJUSTE_STOCK': 'ajustó el stock de', 'APERTURA_CAJA': 'abrió la caja',
+        'CIERRE_CAJA': 'cerró la caja', 'INGRESO_VENTA': 'registró un ingreso por venta',
+        'INGRESO_TURNO': 'registró un ingreso por turno',
+        'INGRESO_MANUAL': 'registró un ingreso manual',
+        'EGRESO_MANUAL': 'registró un egreso',
+        'COBRO_RESTANTE': 'cobró el saldo restante del turno',
+        'CONSULTAR': 'consultó', 'EXPORTAR': 'exportó',
+    }
+
+    def get_descripcion(self, obj):
+        nombre = self.get_usuario_nombre(obj)
+        verbo = self.DESCRIPCION_ACCION.get(obj.accion, obj.accion or 'realizó una acción sobre')
+        if obj.accion in ('LOGIN', 'LOGOUT', 'LOGIN_GOOGLE') or obj.accion == 'LOGIN_FALLIDO':
+            return f"{nombre} {verbo}."
+        base = f"{nombre} {verbo} {obj.modelo_afectado or 'el sistema'}"
+        if obj.objeto_id:
+            base += f" #{obj.objeto_id}"
+        if obj.mensaje:
+            base += f" — {obj.mensaje}"
+        return base + '.'
 
 # ================================
 # Recuperar contra desde el login

@@ -367,33 +367,24 @@ def login_auth(request):
         
         # 🔥 REGISTRO BLINDADO DE AUDITORÍA (LOGIN) 🔥
         try:
-            from .models import Auditoria
-            from .middleware import get_current_request_data
-            
-            print("--- INICIANDO AUDITORÍA DE LOGIN ---")
-            req_data = get_current_request_data() or {}
-            ip = req_data.get('ip', '127.0.0.1')
-            navegador = req_data.get('navegador', 'Desconocido')
-            
-            # 🔥 FIX: Usamos getattr para evitar que explote si no existe el campo
+            from .auditoria_service import AuditoriaService
+
             nombre_completo = f"{getattr(user, 'nombre', '')} {getattr(user, 'apellido', '')}".strip()
             if not nombre_completo:
                 nombre_completo = getattr(user, 'correo', str(user))
-                
+
             detalles_login = {
-                '__meta__': {'navegador': navegador, 'ip': ip},
                 'Mensaje del Sistema': {'tipo': 'VALOR', 'valor': f'El usuario {nombre_completo} inició sesión exitosamente.'}
             }
-            
-            auditoria = Auditoria.objects.create(
-                usuario=user,
-                modelo_afectado='SesionDeUsuario', 
-                objeto_id=str(user.pk),
+
+            auditoria = AuditoriaService.registrar(
                 accion='LOGIN',
+                modelo_afectado='SesionDeUsuario',
+                objeto_id=user.pk,
                 detalles=detalles_login,
-                ip_address=ip
+                usuario=user,
             )
-            print(f"✅ Auditoría LOGIN guardada perfecto! ID: {auditoria.id}")
+            print(f"✅ Auditoría LOGIN guardada perfecto! ID: {getattr(auditoria, 'id', 'N/A')}")
         except Exception as e:
             print("❌ ERROR EN AUDITORIA DE LOGIN:")
             import traceback
@@ -409,6 +400,22 @@ def login_auth(request):
             'rol': user.rol.nombre.upper() if getattr(user, 'rol', None) else 'SIN_ROL',
         })
     else:
+        # 🔥 AUDITAR INTENTO DE LOGIN FALLIDO 🔥
+        try:
+            from .auditoria_service import AuditoriaService
+            AuditoriaService.registrar(
+                accion='LOGIN_FALLIDO',
+                modelo_afectado='SesionDeUsuario',
+                objeto_id=None,
+                mensaje='Intento de inicio de sesión con credenciales inválidas',
+                resultado='ERROR',
+                contexto={'correo_intentado': correo},
+                usuario=None,
+            )
+        except Exception as e:
+            print("❌ ERROR EN AUDITORIA LOGIN FALLIDO:")
+            import traceback
+            traceback.print_exc()
         return Response({'error': 'Credenciales inválidas'}, status=401)
 
 
@@ -434,32 +441,25 @@ def logout_view(request):
 
         # 🔥 REGISTRO BLINDADO DE AUDITORÍA (LOGOUT) 🔥
         try:
-            from .models import Auditoria
-            from .middleware import get_current_request_data
-            
-            req_data = get_current_request_data() or {}
-            ip = req_data.get('ip', '127.0.0.1')
-            navegador = req_data.get('navegador', 'Desconocido')
-            
+            from .auditoria_service import AuditoriaService
+
             user = request.user
             nombre_completo = f"{getattr(user, 'nombre', '')} {getattr(user, 'apellido', '')}".strip()
             if not nombre_completo:
                 nombre_completo = identificador
-                
+
             detalles_logout = {
-                '__meta__': {'navegador': navegador, 'ip': ip},
                 'Mensaje del Sistema': {'tipo': 'VALOR', 'valor': f'El usuario {nombre_completo} cerró sesión.'}
             }
-            
-            auditoria = Auditoria.objects.create(
-                usuario=user,
-                modelo_afectado='SesionDeUsuario', 
-                objeto_id=str(user.pk),
+
+            auditoria = AuditoriaService.registrar(
                 accion='LOGOUT',
+                modelo_afectado='SesionDeUsuario',
+                objeto_id=user.pk,
                 detalles=detalles_logout,
-                ip_address=ip
+                usuario=user,
             )
-            print(f"✅ Auditoría LOGOUT guardada perfecto! ID: {auditoria.id}")
+            print(f"✅ Auditoría LOGOUT guardada perfecto! ID: {getattr(auditoria, 'id', 'N/A')}")
         except Exception as e:
             print("❌ ERROR EN AUDITORIA DE LOGOUT:")
             import traceback
@@ -903,6 +903,9 @@ def ajustar_stock_manual(request, producto_id):
 
         stock_anterior = producto.stock_actual
         
+        # El ajuste manual se audita con su propia acción AJUSTE_STOCK (más rica
+        # que el EDITAR automático). Deshabilitamos el signal para esta instancia.
+        producto._disable_audit = True
         producto.stock_actual = int(nuevo_stock)
         producto.save(update_fields=['stock_actual'])
 
@@ -916,21 +919,20 @@ def ajustar_stock_manual(request, producto_id):
             tipo_ajuste='AJUSTE_MANUAL'  # <-- Guardamos el tipo
         )
 
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
+        from .auditoria_service import AuditoriaService
 
-        Auditoria.objects.create(
-            usuario=request.user,
-            modelo_afectado='Producto',
-            objeto_id=str(producto.id),
+        AuditoriaService.registrar(
             accion='AJUSTE_STOCK',
+            modelo_afectado='Producto',
+            objeto_id=producto.id,
             detalles={
                 'cambios': {
                     'stock_fisico': {'anterior': stock_anterior, 'nuevo': int(nuevo_stock)}
                 },
                 'motivo_ajuste': motivo
             },
-            ip_address=ip
+            usuario=request.user,
+            contexto={'motivo': motivo, 'stock_anterior': stock_anterior, 'nuevo_stock': int(nuevo_stock)},
         )
 
         return Response({'message': 'Stock actualizado.', 'nuevo_stock': int(nuevo_stock)}, status=200)
@@ -2455,29 +2457,7 @@ def modificar_turno(request, turno_id):
                         pago_temp.usado = True
                         pago_temp.save()
                         descripcion_mov = f"Cobro diferencia QR Turno #{turno.id} (MP: {pago_temp.mp_payment_id})"
-                        _thread_locals._suspender_auditoria = True
-                        try:
-                            if not MovimientoCaja.objects.filter(descripcion=descripcion_mov).exists():
-                                MovimientoCaja.objects.create(
-                                    sesion_caja=sesion_abierta,
-                                    tipo='INGRESO',
-                                    metodo_pago='MERCADO_PAGO',
-                                    concepto='COBRO_RESTANTE',
-                                    monto=monto_diferencia,
-                                    descripcion=descripcion_mov,
-                                    turno_relacionado=turno
-                                )
-                        finally:
-                            _thread_locals._suspender_auditoria = False
-                    elif metodo_dif == 'MERCADO_PAGO_ALIAS':
-                        # ✅ Transferencia por alias confirmada manualmente por el cajero
-                        turno.monto_seña = (turno.monto_seña or 0) + monto_diferencia
-                        if (turno.monto_seña or 0) >= (turno.monto_total or 0):
-                            turno.tipo_pago = 'TOTAL'
-                            turno.medio_pago_restante = 'MERCADO_PAGO'
-                        descripcion_mov = f"Cobro diferencia Alias Turno #{turno.id}"
-                        _thread_locals._suspender_auditoria = True
-                        try:
+                        if not MovimientoCaja.objects.filter(descripcion=descripcion_mov).exists():
                             MovimientoCaja.objects.create(
                                 sesion_caja=sesion_abierta,
                                 tipo='INGRESO',
@@ -2487,8 +2467,22 @@ def modificar_turno(request, turno_id):
                                 descripcion=descripcion_mov,
                                 turno_relacionado=turno
                             )
-                        finally:
-                            _thread_locals._suspender_auditoria = False
+                    elif metodo_dif == 'MERCADO_PAGO_ALIAS':
+                        # ✅ Transferencia por alias confirmada manualmente por el cajero
+                        turno.monto_seña = (turno.monto_seña or 0) + monto_diferencia
+                        if (turno.monto_seña or 0) >= (turno.monto_total or 0):
+                            turno.tipo_pago = 'TOTAL'
+                            turno.medio_pago_restante = 'MERCADO_PAGO'
+                        descripcion_mov = f"Cobro diferencia Alias Turno #{turno.id}"
+                        MovimientoCaja.objects.create(
+                            sesion_caja=sesion_abierta,
+                            tipo='INGRESO',
+                            metodo_pago='MERCADO_PAGO',
+                            concepto='COBRO_RESTANTE',
+                            monto=monto_diferencia,
+                            descripcion=descripcion_mov,
+                            turno_relacionado=turno
+                        )
                     elif metodo_dif == 'EFECTIVO':
                         # ✅ Efectivo confirmado manualmente (requiere caja abierta)
                         if not sesion_abierta:
@@ -2499,19 +2493,15 @@ def modificar_turno(request, turno_id):
                             turno.tipo_pago = 'TOTAL'
                             turno.medio_pago_restante = 'EFECTIVO'
                         descripcion_mov = f"Cobro diferencia Turno #{turno.id} - Efectivo"
-                        _thread_locals._suspender_auditoria = True
-                        try:
-                            MovimientoCaja.objects.create(
-                                sesion_caja=sesion_abierta,
-                                tipo='INGRESO',
-                                metodo_pago='EFECTIVO',
-                                concepto='COBRO_RESTANTE',
-                                monto=monto_diferencia,
-                                descripcion=descripcion_mov,
-                                turno_relacionado=turno
-                            )
-                        finally:
-                            _thread_locals._suspender_auditoria = False
+                        MovimientoCaja.objects.create(
+                            sesion_caja=sesion_abierta,
+                            tipo='INGRESO',
+                            metodo_pago='EFECTIVO',
+                            concepto='COBRO_RESTANTE',
+                            monto=monto_diferencia,
+                            descripcion=descripcion_mov,
+                            turno_relacionado=turno
+                        )
 
                 turno.save()
                 nuevo_turno = turno
@@ -2999,15 +2989,10 @@ def pagar_saldo_turno(request, turno_id):
     metodo = request.data.get('metodo', '')
 
     if metodo == 'EFECTIVO':
-        from usuarios.middleware import _thread_locals
-        _thread_locals._suspender_auditoria = True
-        try:
-            turno.medio_pago_restante = 'EFECTIVO'
-            turno.tipo_pago = 'TOTAL'
-            turno.monto_seña = turno.monto_total
-            turno.save()
-        finally:
-            _thread_locals._suspender_auditoria = False
+        turno.medio_pago_restante = 'EFECTIVO'
+        turno.tipo_pago = 'TOTAL'
+        turno.monto_seña = turno.monto_total
+        turno.save()
 
         MovimientoCaja.objects.create(
             sesion_caja=sesion_abierta,
@@ -3017,19 +3002,6 @@ def pagar_saldo_turno(request, turno_id):
             monto=saldo,
             descripcion=f"Cobro restante Turno #{turno.id} - Efectivo",
             turno_relacionado=turno
-        )
-
-        ip = request.META.get('REMOTE_ADDR')
-        Auditoria.objects.create(
-            usuario=request.user,
-            modelo_afectado='Turno',
-            objeto_id=str(turno.id),
-            accion='COBRO_RESTANTE',
-            detalles={
-                'metodo': 'EFECTIVO', 'monto': saldo,
-                '__meta__': {'navegador': _thread_locals.request_data.get('navegador', 'Desconocido')}
-            },
-            ip_address=ip
         )
 
         return Response({'status': 'ok', 'metodo': 'EFECTIVO', 'saldo': saldo})
@@ -3051,17 +3023,12 @@ def pagar_saldo_turno(request, turno_id):
 
     elif metodo == 'ALIAS':
         nro_comprobante = str(request.data.get('nro_comprobante', '') or '').strip()
-        from usuarios.middleware import _thread_locals
-        _thread_locals._suspender_auditoria = True
-        try:
-            turno.medio_pago_restante = 'MERCADO_PAGO'
-            turno.tipo_pago = 'TOTAL'
-            turno.monto_seña = turno.monto_total
-            if nro_comprobante:
-                turno.codigo_transaccion_restante = nro_comprobante
-            turno.save()
-        finally:
-            _thread_locals._suspender_auditoria = False
+        turno.medio_pago_restante = 'MERCADO_PAGO'
+        turno.tipo_pago = 'TOTAL'
+        turno.monto_seña = turno.monto_total
+        if nro_comprobante:
+            turno.codigo_transaccion_restante = nro_comprobante
+        turno.save()
 
         MovimientoCaja.objects.create(
             sesion_caja=sesion_abierta,
@@ -3071,19 +3038,6 @@ def pagar_saldo_turno(request, turno_id):
             monto=saldo,
             descripcion=f"Cobro restante Turno #{turno.id} - Alias MP" + (f" (Comp: {nro_comprobante})" if nro_comprobante else ""),
             turno_relacionado=turno
-        )
-
-        ip = request.META.get('REMOTE_ADDR')
-        Auditoria.objects.create(
-            usuario=request.user,
-            modelo_afectado='Turno',
-            objeto_id=str(turno.id),
-            accion='COBRO_RESTANTE',
-            detalles={
-                'metodo': 'ALIAS', 'monto': saldo, 'comprobante': nro_comprobante or '',
-                '__meta__': {'navegador': _thread_locals.request_data.get('navegador', 'Desconocido')}
-            },
-            ip_address=ip
         )
 
         return Response({'status': 'ok', 'metodo': 'ALIAS', 'saldo': saldo})
@@ -3855,12 +3809,7 @@ def registrar_venta(request):
                     venta_relacionada=venta
                 )
 
-            # 6. 🔥 CREAR EL REGISTRO ÚNICO MAESTRO DE AUDITORÍA
-            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-            ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
-            
-            # ✅ ESTA LÍNEA ES LA QUE FALTABA
-            user_agent = request.META.get('HTTP_USER_AGENT', 'Desconocido')
+            from .auditoria_service import AuditoriaService
 
             detalles_venta = {
                 'total_venta': f"${total_acumulado}",
@@ -3871,18 +3820,22 @@ def registrar_venta(request):
                 detalles_venta['tipo_pago'] = 'Pago Mixto (Mercado Pago + Efectivo)'
                 detalles_venta['monto_mercado_pago'] = f"${monto_mp_f:.2f}"
                 detalles_venta['monto_efectivo'] = f"${monto_efectivo_f:.2f}"
-            detalles_venta['__meta__'] = {
-                'navegador': user_agent,
-                'ip': ip
-            }
 
-            Auditoria.objects.create(
-                usuario=usuario_vendedor,
-                modelo_afectado='Venta',
-                objeto_id=str(venta.id),
+            # Registro maestro de la venta. La venta se creó con 'venta._disable_audit'
+            # para no generar un CREAR duplicado; los MovimientoCaja asociados se
+            # auditan vía signal y quedan agrupados por el mismo id_operacion.
+            AuditoriaService.registrar(
                 accion='CREAR',
+                modelo_afectado='Venta',
+                objeto_id=venta.id,
                 detalles=detalles_venta,
-                ip_address=ip
+                usuario=usuario_vendedor,
+                contexto={
+                    'operacion': 'registrar_venta',
+                    'total': float(total_acumulado),
+                    'metodo_pago': medio_pago.nombre,
+                    'pago_mixto': pago_mixto,
+                },
             )
 
             print(f"✅ Venta #{venta.id} registrada con éxito. Total: ${total_acumulado} {'(Incluye envío)' if tiene_envio else ''}")
@@ -4225,9 +4178,7 @@ def anular_venta(request, venta_id):
                     egreso_caja.save()
             
             # 5. 🔥 CREAR EL REGISTRO ÚNICO MAESTRO DE AUDITORÍA
-            from .models import Auditoria
-            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-            ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
+            from .auditoria_service import AuditoriaService
 
             detalles_anulacion = {
                 'cambios': {
@@ -4242,13 +4193,19 @@ def anular_venta(request, venta_id):
                 detalles_anulacion['monto_mercado_pago'] = f"${desglose[0]}"
                 detalles_anulacion['monto_efectivo'] = f"${desglose[1]}"
 
-            Auditoria.objects.create(
-                usuario=request.user,
-                modelo_afectado='Venta',
-                objeto_id=str(venta.id),
+            AuditoriaService.registrar(
                 accion='ANULAR_VENTA',
+                modelo_afectado='Venta',
+                objeto_id=venta.id,
                 detalles=detalles_anulacion,
-                ip_address=ip
+                mensaje=motivo or '',
+                usuario=request.user,
+                contexto={
+                    'operacion': 'anular_venta',
+                    'motivo': motivo,
+                    'monto_reintegrado': float(venta.total) if venta.total else 0,
+                    'detalles_egreso': [float(e.monto) for e in egresos] if egresos else [],
+                },
             )
             
             return Response({'success': True, 'message': 'Venta anulada, stock y caja restaurados correctamente.'}, status=status.HTTP_200_OK)
@@ -6121,6 +6078,13 @@ def cancelar_turno_unificado(request, turno_id):
         # Obtener datos del request
         motivo = request.data.get('motivo_cancelacion', 'Cancelado por el cliente')
         observacion = request.data.get('obs_cancelacion', '')
+
+        # Estado anterior (para ANTES -> DESPUÉS reales en la auditoría)
+        try:
+            from usuarios.models import Turno as TurnoModel
+            estado_anterior = TurnoModel.objects.filter(id=turno_id).values_list('estado', flat=True).first() or 'DESCONOCIDO'
+        except Exception:
+            estado_anterior = 'DESCONOCIDO'
         
         # Llamar al NUEVO TurnoService
         from usuarios.turno_service import TurnoService
@@ -6143,19 +6107,23 @@ def cancelar_turno_unificado(request, turno_id):
             Turno.objects.filter(id=turno_id).update(reembolso_alias=reembolso_alias)
         
         # Auditoría
-        from usuarios.models import Auditoria, Turno, Notificacion
+        from usuarios.models import Notificacion
         try:
-            turno = Turno.objects.get(id=turno_id)
-            Auditoria.objects.create(
-                usuario=request.user,
+            from .auditoria_service import AuditoriaService
+            AuditoriaService.registrar(
+                accion='CANCELAR',
                 modelo_afectado='Turno',
-                objeto_id=turno.id,
-                accion='EDITAR',
+                objeto_id=turno_id,
                 detalles={
-                    'antes': {'estado': 'ACTIVO'},
-                    'despues': {'estado': 'CANCELADO'}
+                    'estado': {'tipo': 'CAMBIO', 'anterior': estado_anterior, 'nuevo': 'CANCELADO'}
                 },
-                ip_address=request.META.get('REMOTE_ADDR')
+                mensaje=motivo,
+                usuario=request.user,
+                contexto={
+                    'operacion': 'cancelar_turno_unificado',
+                    'motivo': motivo,
+                    'observacion': observacion,
+                },
             )
             
             # 🔥 DISPARADOR DE NOTIFICACIÓN AGREGADO AQUÍ 🔥
@@ -6366,12 +6334,27 @@ def completar_reembolso_manual(request, turno_id):
             else:
                 tipo_reembolso = 'DEVOLUCION_MIXTA'
 
-            detalles_auditoria = {'reembolso': tipo_reembolso}
+            detalles_auditoria = {
+                'reembolso': {'tipo': 'VALOR', 'valor': tipo_reembolso},
+                'monto_efectivo': {'tipo': 'VALOR', 'valor': monto_efectivo},
+                'monto_mp': {'tipo': 'VALOR', 'valor': monto_mp},
+            }
 
-            Auditoria.objects.create(
-                usuario=request.user, modelo_afectado='Turno', objeto_id=turno.id, accion='EDITAR',
+            from .auditoria_service import AuditoriaService
+            AuditoriaService.registrar(
+                accion='EDITAR',
+                modelo_afectado='Turno',
+                objeto_id=turno.id,
                 detalles=detalles_auditoria,
-                ip_address=request.META.get('REMOTE_ADDR')
+                mensaje=f'Reembolso manual procesado ({tipo_reembolso})',
+                usuario=request.user,
+                contexto={
+                    'operacion': 'completar_reembolso_manual',
+                    'tipo_reembolso': tipo_reembolso,
+                    'monto_efectivo': monto_efectivo,
+                    'monto_mp': monto_mp,
+                    'reembolso_alias': getattr(turno, 'reembolso_alias', '') or '',
+                },
             )
 
             return Response({'status': 'ok', 'message': 'Reembolso procesado correctamente.'})
@@ -7025,6 +7008,17 @@ def confirmar_reset_password(request):
 
 def procesar_pago_aprobado_mp(payment_id):
     """
+    Punto de entrada para procesar un payment_id de Mercado Pago.
+    Ejecuta el procesamiento dentro de un contexto de SISTEMA: todos los eventos
+    generados quedan auditados como procesos automáticos (usuario SISTEMA).
+    """
+    from .auditoria_service import AuditoriaService
+    with AuditoriaService.contexto_sistema('mercadopago_pago_aprobado'):
+        return _procesar_pago_aprobado_mp(payment_id)
+
+
+def _procesar_pago_aprobado_mp(payment_id):
+    """
     Procesa un payment_id de Mercado Pago de forma 100% idempotente.
     Actualiza PedidoWeb, Turno o PagoTemporal y registra el movimiento en Caja
     si aún no fue registrado.
@@ -7085,30 +7079,27 @@ def procesar_pago_aprobado_mp(payment_id):
             turno_id = referencia.split('_')[2]
             concepto_caja = 'COBRO_RESTANTE'
             descripcion_mov = f"Pago saldo Turno #{turno_id} (MP: {payment_id})"
-            from usuarios.models import Turno, Auditoria as Aud
+            from usuarios.models import Turno
             turno_rel = Turno.objects.filter(id=turno_id).first()
             if turno_rel:
                 if str(turno_rel.mp_payment_id_saldo) != str(payment_id):
-                    _thread_locals._suspender_auditoria = True
-                    try:
-                        turno_rel.medio_pago_restante = 'MERCADO_PAGO'
-                        turno_rel.mp_payment_id_saldo = str(payment_id)
-                        turno_rel.tipo_pago = 'TOTAL'
-                        turno_rel.monto_seña = (turno_rel.monto_seña or 0) + Decimal(str(monto))
-                        turno_rel.save()
-                    finally:
-                        _thread_locals._suspender_auditoria = False
+                    # El COBRO_RESTANTE se registra por servicio abajo; evitamos un EDITAR genérico
+                    turno_rel._disable_audit = True
+                    turno_rel.medio_pago_restante = 'MERCADO_PAGO'
+                    turno_rel.mp_payment_id_saldo = str(payment_id)
+                    turno_rel.tipo_pago = 'TOTAL'
+                    turno_rel.monto_seña = (turno_rel.monto_seña or 0) + Decimal(str(monto))
+                    turno_rel.save()
 
-                    Aud.objects.create(
-                        usuario=getattr(turno_rel, 'cliente', None),
-                        modelo_afectado='Turno',
-                        objeto_id=str(turno_id),
+                    from .auditoria_service import AuditoriaService
+                    AuditoriaService.registrar(
                         accion='COBRO_RESTANTE',
-                        detalles={
-                            'metodo': 'MERCADO_PAGO', 'monto': float(monto),
-                            '__meta__': {'navegador': _thread_locals.request_data.get('navegador', 'Desconocido')}
-                        },
-                        ip_address='127.0.0.1'
+                        modelo_afectado='Turno',
+                        objeto_id=turno_id,
+                        detalles={'metodo': {'tipo': 'VALOR', 'valor': 'MERCADO_PAGO'},
+                                  'monto': {'tipo': 'VALOR', 'valor': float(monto)}},
+                        usuario=turno_rel.cliente,
+                        contexto={'operacion': 'pago_saldo_mp_web', 'payment_id': str(payment_id)},
                     )
                 print(f"✅ Saldo Turno {turno_id} actualizado en BD.")
 
@@ -7125,30 +7116,25 @@ def procesar_pago_aprobado_mp(payment_id):
             caja_ya_registrada = MovimientoCaja.objects.filter(descripcion=descripcion_mov).exists()
             if turno_rel:
                 _thread_locals.request_data['user'] = getattr(turno_rel, 'cliente', None)
-                _thread_locals._suspender_auditoria = True
-                try:
-                    # Si el turno YA tiene un mp_payment_id aprobado distinto, no reescribimos (idempotencia MP)
-                    if turno_rel.mp_payment_id and str(turno_rel.mp_payment_id) != str(payment_id):
-                        print(f"⚠️ Turno {turno_id} ya tenía mp_payment_id={turno_rel.mp_payment_id}. El pago aprobado es irrompible; no se sobre-escribe.")
-                        _thread_locals._suspender_auditoria = False
-                        return True
-                    turno_rel.mp_payment_id = str(payment_id)
-                    turno_rel.medio_pago = 'MERCADO_PAGO'
-                    if turno_rel.estado == 'PENDIENTE':
-                        turno_rel.estado = 'RESERVADO'
-                    # Marcamos el estado de pago consistente: si el monto aprobado == monto_total => TOTAL; si < total => SENA_50
-                    monto_aprobado = Decimal(str(monto or 0))
-                    if monto_aprobado >= (turno_rel.monto_total or 0):
-                        turno_rel.tipo_pago = 'TOTAL'
-                        turno_rel.monto_seña = turno_rel.monto_total
-                    else:
-                        # seña parcial: conserva cualquier monto_seña previo y registra el cobrado parcialmente
-                        if not turno_rel.tipo_pago or turno_rel.tipo_pago == 'PENDIENTE':
-                            turno_rel.tipo_pago = 'SENA_50'
-                        turno_rel.monto_seña = (turno_rel.monto_seña or Decimal('0')) + monto_aprobado
-                    turno_rel.save()
-                finally:
-                    _thread_locals._suspender_auditoria = False
+                # Si el turno YA tiene un mp_payment_id aprobado distinto, no reescribimos (idempotencia MP)
+                if turno_rel.mp_payment_id and str(turno_rel.mp_payment_id) != str(payment_id):
+                    print(f"⚠️ Turno {turno_id} ya tenía mp_payment_id={turno_rel.mp_payment_id}. El pago aprobado es irrompible; no se sobre-escribe.")
+                    return True
+                turno_rel.mp_payment_id = str(payment_id)
+                turno_rel.medio_pago = 'MERCADO_PAGO'
+                if turno_rel.estado == 'PENDIENTE':
+                    turno_rel.estado = 'RESERVADO'
+                # Marcamos el estado de pago consistente: si el monto aprobado == monto_total => TOTAL; si < total => SENA_50
+                monto_aprobado = Decimal(str(monto or 0))
+                if monto_aprobado >= (turno_rel.monto_total or 0):
+                    turno_rel.tipo_pago = 'TOTAL'
+                    turno_rel.monto_seña = turno_rel.monto_total
+                else:
+                    # seña parcial: conserva cualquier monto_seña previo y registra el cobrado parcialmente
+                    if not turno_rel.tipo_pago or turno_rel.tipo_pago == 'PENDIENTE':
+                        turno_rel.tipo_pago = 'SENA_50'
+                    turno_rel.monto_seña = (turno_rel.monto_seña or Decimal('0')) + monto_aprobado
+                turno_rel.save()
                 print(f"✅ Turno {turno_id} actualizado en BD (mp_payment_id={payment_id}, medio={turno_rel.medio_pago}, tipo={turno_rel.tipo_pago}).")
 
         # 4. Actualizar Pedido Web
@@ -7159,13 +7145,9 @@ def procesar_pago_aprobado_mp(payment_id):
             pedido_rel = PedidoWeb.objects.filter(id=id_obj).first()
             if pedido_rel:
                 _thread_locals.request_data['user'] = pedido_rel.cliente
-                _thread_locals._suspender_auditoria = True
-                try:
-                    pedido_rel.estado = 'PAGADO'
-                    pedido_rel.mp_payment_id = str(payment_id)
-                    pedido_rel.save()
-                finally:
-                    _thread_locals._suspender_auditoria = False
+                pedido_rel.estado = 'PAGADO'
+                pedido_rel.mp_payment_id = str(payment_id)
+                pedido_rel.save()
                 print(f"✅ Pedido {id_obj} actualizado en BD a PAGADO.")
 
                 if not Notificacion.objects.filter(tipo='PEDIDO', mensaje__contains=f'#{id_obj}').exists():
@@ -7182,19 +7164,15 @@ def procesar_pago_aprobado_mp(payment_id):
                 print(f"⚠️ El pago MP {payment_id} ya está registrado en caja. Ignorando duplicado.")
             else:
                 sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
-                _thread_locals._suspender_auditoria = True
-                try:
-                    MovimientoCaja.objects.create(
-                        sesion_caja=sesion_abierta,
-                        tipo='INGRESO',
-                        metodo_pago='MERCADO_PAGO',
-                        concepto=concepto_caja,
-                        monto=monto,
-                        descripcion=descripcion_mov,
-                        turno_relacionado=turno_rel,
-                    )
-                finally:
-                    _thread_locals._suspender_auditoria = False
+                MovimientoCaja.objects.create(
+                    sesion_caja=sesion_abierta,
+                    tipo='INGRESO',
+                    metodo_pago='MERCADO_PAGO',
+                    concepto=concepto_caja,
+                    monto=monto,
+                    descripcion=descripcion_mov,
+                    turno_relacionado=turno_rel,
+                )
 
                 estado_caja = f"en Caja #{sesion_abierta.id}" if sesion_abierta else "como HUÉRFANO (caja cerrada)"
                 print(f"💰 ¡PAGO APROBADO! ${monto} guardado {estado_caja}")
@@ -7293,10 +7271,7 @@ def mercadopago_webhook(request):
         print(f"❌ Error webhook crítico: {e}")
         import traceback
         print(traceback.format_exc())
-    finally:
-        from usuarios.middleware import _thread_locals
-        _thread_locals._suspender_auditoria = False
-        
+
     return HttpResponse(status=200)
 
 class PaginacionReportesHairSoft(PageNumberPagination):
@@ -7334,9 +7309,14 @@ class PaginacionReportesHairSoft(PageNumberPagination):
 # ✅ DEBUG PARA AUDITORÍA - VERSIÓN CORREGIDA
 # ================================
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def debug_auditoria(request):
     from .models import Auditoria
+
+    # Solo personal autorizado puede inspeccionar el historial
+    from .api_views import EsAuditorPermiso
+    if not EsAuditorPermiso().has_permission(request, None):
+        return Response({'error': 'No tenés permiso para ver la auditoría'}, status=403)
     
     total = Auditoria.objects.count()
     
@@ -7903,27 +7883,8 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
                 })
 
         movimiento = serializer.save(sesion_caja=sesion_abierta)
-        
-        from .models import Auditoria
-        from .middleware import get_current_request_data
-        
-        req_data = get_current_request_data()
-        
-        accion_auditoria = 'INGRESO_MANUAL' if movimiento.tipo == 'INGRESO' else 'EGRESO_MANUAL'
-        
-        Auditoria.objects.create(
-            usuario=self.request.user,
-            modelo_afectado='MovimientoCaja',
-            objeto_id=str(movimiento.id),
-            accion=accion_auditoria,
-            detalles={
-                'monto': float(movimiento.monto),
-                'concepto': movimiento.concepto,
-                'descripcion': movimiento.descripcion,
-                'metodo_pago': movimiento.metodo_pago,
-            },
-            ip_address=req_data.get('ip', '127.0.0.1')
-        )
+        # El registro de auditoría lo genera automáticamente la señal post_save
+        # de MovimientoCaja (INGRESO_MANUAL / EGRESO_MANUAL), evitando duplicados.
 
 #reportes de turnos y pedidos web
 @api_view(['GET'])

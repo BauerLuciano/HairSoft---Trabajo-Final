@@ -1284,22 +1284,51 @@ class Auditoria(models.Model):
         ('ELIMINAR', 'Eliminación'),
         ('LOGIN', 'Inicio de Sesión'),
         ('LOGOUT', 'Cierre de Sesión'),
+        ('LOGIN_GOOGLE', 'Inicio de Sesión con Google'),
+        ('LOGIN_FALLIDO', 'Intento de Inicio de Sesión Fallido'),
+        ('CAMBIO_PASSWORD', 'Cambio de Contraseña'),
         ('ANULAR_VENTA', 'Anulación de Venta'),
+        ('CANCELAR', 'Cancelación de Turno'),
         ('AJUSTE_STOCK', 'Ajuste de Stock'),
         ('APERTURA_CAJA', 'Apertura de Caja'),
         ('CIERRE_CAJA', 'Cierre de Caja'),
+        ('INGRESO_VENTA', 'Ingreso por Venta'),
+        ('INGRESO_TURNO', 'Ingreso por Turno'),
         ('INGRESO_MANUAL', 'Ingreso a Caja'),
         ('EGRESO_MANUAL', 'Egreso de Caja'),
         ('COBRO_RESTANTE', 'Cobro de Saldo Restante de Turno'),
+        ('CONSULTAR', 'Consulta / Lectura'),
+        ('EXPORTAR', 'Exportación de Historial'),
+    )
+
+    RESULTADOS = (
+        ('EXITO', 'Éxito'),
+        ('ERROR', 'Error'),
+        ('SISTEMA', 'Sistema'),
     )
 
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    # Snapshot del usuario en el momento de la acción (no depende del estado actual)
+    usuario_nombre = models.CharField(max_length=255, blank=True, default='',
+        help_text="Nombre y apellido del usuario en el momento de la acción")
+    usuario_email = models.CharField(max_length=255, blank=True, default='')
     modelo_afectado = models.CharField(max_length=100) # Ej: Turno, Producto
     objeto_id = models.CharField(max_length=100, null=True, blank=True)
-    accion = models.CharField(max_length=20, choices=ACCIONES)
+    accion = models.CharField(max_length=50, choices=ACCIONES)
     detalles = models.JSONField(default=dict) # Aquí guardamos el {antes: x, despues: y}
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     fecha = models.DateTimeField(auto_now_add=True)
+    modulo = models.CharField(max_length=40, blank=True, default='',
+        help_text="Módulo del sistema: AUTENTICACION, VENTAS, CAJA, TURNOS, ...")
+    resultado = models.CharField(max_length=10, choices=RESULTADOS, default='EXITO')
+    mensaje = models.TextField(blank=True, default='', help_text="Mensaje o motivo de la acción")
+    endpoint = models.CharField(max_length=255, blank=True, default='')
+    metodo_http = models.CharField(max_length=10, blank=True, default='')
+    user_agent = models.CharField(max_length=500, blank=True, default='')
+    id_operacion = models.UUIDField(null=True, blank=True, db_index=True,
+        help_text="Identificador que agrupa todos los eventos de una misma operación (multi-modelo)")
+    contexto = models.JSONField(default=dict, blank=True,
+        help_text="Contexto adicional de la operación (proceso automático, filtros, etc.)")
 
     class Meta:
         ordering = ['-fecha']

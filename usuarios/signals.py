@@ -13,9 +13,14 @@ from .models import (
     Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago,
     InteresTurnoLiberado, PromocionReactivacion, SesionCaja, MovimientoCaja,
     Liquidacion, PedidoWeb, DetallePedidoWeb, ConfiguracionLocal,
-    ConfiguracionSistema, Envio, HorarioAtencion
+    ConfiguracionSistema, Envio, HorarioAtencion,
+    Permiso, Silla, DetalleVenta, DetallePedido, NotaCredito,
+    SolicitudReabastecimiento, SolicitudPresupuesto, CotizacionProveedor,
+    Cotizacion, ConfiguracionReoferta,
+    PasswordResetToken, Caja, PagoTemporal, ListaPrecioProveedor,
 )
 from .middleware import get_current_request_data
+from .auditoria_service import AuditoriaService
 from .tasks import procesar_reactivacion_clientes_inactivos
 
 logger = logging.getLogger(__name__)
@@ -45,12 +50,19 @@ def disparar_analisis_fidelizacion(sender, instance, **kwargs):
 # =========================================================
 
 # 🔥 FIX: Agregamos Liquidacion a la lista de vigilancia
+# Modelos cuya creación / edición / borrado se audita automáticamente.
 MODELOS_A_AUDITAR = [
-    Usuario, Producto, Turno, Venta, Pedido, Rol,
-    Servicio, Marca, Proveedor, CategoriaProducto, CategoriaServicio, MetodoPago,
-    SesionCaja, MovimientoCaja, Liquidacion,
-    PedidoWeb, ConfiguracionLocal, ConfiguracionSistema, Envio,
-    HorarioAtencion
+    Usuario, Permiso, Rol, PasswordResetToken,
+    Producto, Marca, Proveedor, CategoriaProducto, ListaPrecioProveedor,
+    Servicio, CategoriaServicio,
+    Turno, Silla, InteresTurnoLiberado, PromocionReactivacion, ConfiguracionReoferta,
+    Venta, DetalleVenta, NotaCredito,
+    Pedido, DetallePedido,
+    PedidoWeb, DetallePedidoWeb, Envio,
+    MetodoPago, PagoTemporal,
+    SesionCaja, MovimientoCaja, Caja, Liquidacion,
+    ConfiguracionLocal, ConfiguracionSistema, HorarioAtencion,
+    SolicitudReabastecimiento, SolicitudPresupuesto, CotizacionProveedor, Cotizacion,
 ]
 
 def serializar(valor):
@@ -99,18 +111,8 @@ def auditar_cambios(sender, instance, created, **kwargs):
     if getattr(instance, '_disable_audit', False): 
         return
 
-    # Suspender auditoría durante procesamiento automático (ej. webhook MP)
-    from usuarios.middleware import _thread_locals
-    if getattr(_thread_locals, '_suspender_auditoria', False):
-        return
-
     if sender in MODELOS_A_AUDITAR and sender != Auditoria:
         try:
-            req_data = get_current_request_data()
-            usuario_db = req_data.get('user')
-            if usuario_db and not getattr(usuario_db, 'is_authenticated', False): 
-                usuario_db = None
-            
             nombre_modelo = sender.__name__
             datos_nuevos = obtener_datos(instance)
             
@@ -136,6 +138,8 @@ def auditar_cambios(sender, instance, created, **kwargs):
 
                 if tipo_mov == 'EGRESO':
                     accion = 'EGRESO_MANUAL'
+                elif concepto == 'COBRO_RESTANTE':
+                    accion = 'COBRO_RESTANTE'
                 elif es_venta or concepto == 'VENTA':
                     accion = 'INGRESO_VENTA'
                 elif es_turno or concepto == 'TURNO':
@@ -170,43 +174,25 @@ def auditar_cambios(sender, instance, created, **kwargs):
                     reporte['dia_semana'] = {'tipo': 'VALOR', 'valor': dia_ref}
 
             if hay_cambios:
-                # Agregamos la información técnica para el frontend
-                reporte['__meta__'] = {
-                    'navegador': req_data.get('navegador', 'Desconocido'),
-                    'ip': req_data.get('ip', '127.0.0.1')
-                }
-
-                Auditoria.objects.create(
-                    usuario=usuario_db, 
-                    modelo_afectado=nombre_modelo, 
-                    objeto_id=str(instance.pk),
-                    accion=accion, 
-                    detalles=reporte, 
-                    ip_address=req_data.get('ip')
+                AuditoriaService.registrar(
+                    accion=accion,
+                    modelo_afectado=nombre_modelo,
+                    objeto_id=instance.pk,
+                    detalles=reporte,
                 )
         except Exception as e:
             logger.error(f"❌ Error Auditoría: {e}")
 
 @receiver(post_delete)
 def auditar_borrado(sender, instance, **kwargs):
-    from usuarios.middleware import _thread_locals
-    if getattr(_thread_locals, '_suspender_auditoria', False):
-        return
-
     if sender in MODELOS_A_AUDITAR:
         try:
-            req_data = get_current_request_data()
-            usuario_db = req_data.get('user')
-            if usuario_db and not getattr(usuario_db, 'is_authenticated', False): 
-                usuario_db = None
             datos = obtener_datos(instance)
-            Auditoria.objects.create(
-                usuario=usuario_db, 
-                modelo_afectado=sender.__name__, 
-                objeto_id=str(instance.pk),
-                accion='ELIMINAR', 
+            AuditoriaService.registrar(
+                accion='ELIMINAR',
+                modelo_afectado=sender.__name__,
+                objeto_id=instance.pk,
                 detalles={k: {'tipo': 'VALOR', 'valor': v} for k, v in datos.items()},
-                ip_address=req_data.get('ip')
             )
         except Exception as e:
             logger.error(f"Error en auditoría de borrado: {e}")
@@ -222,25 +208,19 @@ def auditar_inicio_sesion(sender, request, user, **kwargs):
         ip = req_data.get('ip', 'Desconocida')
         navegador = req_data.get('navegador', 'Desconocido')
         
-        # Formateamos los detalles para que tu parser de Vue los entienda perfecto
         detalles = {
-            '__meta__': {
-                'navegador': navegador,
-                'ip': ip
-            },
             'Mensaje del Sistema': {
                 'tipo': 'VALOR', 
                 'valor': f'El usuario {getattr(user, "username", getattr(user, "correo", "Desconocido"))} inició sesión exitosamente.'
             }
         }
         
-        Auditoria.objects.create(
-            usuario=user,
-            modelo_afectado='SesionDeUsuario',  # Tu vue lo clasificará como AUTENTICACION
-            objeto_id=str(user.pk),
+        AuditoriaService.registrar(
             accion='LOGIN',
+            modelo_afectado='SesionDeUsuario',
+            objeto_id=user.pk,
             detalles=detalles,
-            ip_address=ip
+            usuario=user,
         )
     except Exception as e:
         logger.error(f"❌ Error al auditar LOGIN: {e}")
@@ -248,32 +228,23 @@ def auditar_inicio_sesion(sender, request, user, **kwargs):
 @receiver(user_logged_out)
 def auditar_cierre_sesion(sender, request, user, **kwargs):
     try:
-        req_data = get_current_request_data()
-        ip = req_data.get('ip', 'Desconocida')
-        navegador = req_data.get('navegador', 'Desconocido')
-        
         identificador = "Desconocido"
         if user:
             identificador = getattr(user, "username", getattr(user, "correo", "Desconocido"))
 
         detalles = {
-            '__meta__': {
-                'navegador': navegador,
-                'ip': ip
-            },
             'Mensaje del Sistema': {
                 'tipo': 'VALOR', 
                 'valor': f'El usuario {identificador} cerró sesión.'
             }
         }
         
-        Auditoria.objects.create(
-            usuario=user,
-            modelo_afectado='SesionDeUsuario', 
-            objeto_id=str(user.pk) if user else '0',
+        AuditoriaService.registrar(
             accion='LOGOUT',
+            modelo_afectado='SesionDeUsuario',
+            objeto_id=user.pk if user else None,
             detalles=detalles,
-            ip_address=ip
+            usuario=user,
         )
     except Exception as e:
         logger.error(f"❌ Error al auditar LOGOUT: {e}")

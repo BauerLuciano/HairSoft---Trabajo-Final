@@ -24,6 +24,20 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
+# ------------------------------------------------------------------------------
+# Contexto de SISTEMA para tareas automáticas: todo evento de auditoría generado
+# dentro de una tarea queda identificado como usuario SISTEMA + proceso celery.
+# ------------------------------------------------------------------------------
+def _tarea_sistema(func):
+    from functools import wraps
+    from .auditoria_service import AuditoriaService
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        with AuditoriaService.contexto_sistema(f'celery:{func.__name__}'):
+            return func(*args, **kwargs)
+    return wrapper
+
 # ==============================================================================
 # 1. TAREAS DE ENVÍO (Auxiliares)
 # ==============================================================================
@@ -186,6 +200,7 @@ Ingrese su oferta aquí: {link}
 # 2. TAREAS DE NEGOCIO
 # ==============================================================================
 @shared_task
+@_tarea_sistema
 def procesar_reoferta_masiva(turno_id):
     """
     🔥 VERSIÓN CORREGIDA: Agrupa notificaciones por cliente
@@ -298,6 +313,7 @@ import secrets
 import time
 
 @shared_task
+@_tarea_sistema
 def procesar_reactivacion_clientes_inactivos():
     try:
         config = ConfiguracionSistema.get_solo()
@@ -382,6 +398,7 @@ def procesar_reactivacion_clientes_inactivos():
         return str(e)
     
 @shared_task
+@_tarea_sistema
 def simular_reactivacion_clientes_inactivos():
     logger.info("🎭 [SIMULACIÓN] Iniciando proceso SIN envíos reales")
     try:
@@ -448,6 +465,7 @@ def simular_reactivacion_clientes_inactivos():
 # 4. MÓDULO DE INVENTARIO: REPOSICIÓN AUTOMÁTICA (DINÁMICO)
 # ==============================================================================
 @shared_task
+@_tarea_sistema
 def chequear_stock_y_generar_solicitudes():
     logger.info("📦 [INVENTARIO] Iniciando chequeo dinámico...")
     
@@ -493,6 +511,7 @@ def chequear_stock_y_generar_solicitudes():
 # 5. TAREAS PERIÓDICAS DE MANTENIMIENTO
 # ==============================================================================
 @shared_task
+@_tarea_sistema
 def limpiar_tokens_expirados():
     """Limpia tokens de reoferta con más de 48 horas"""
     try:
@@ -517,6 +536,7 @@ def limpiar_tokens_expirados():
         return "Error"
 
 @shared_task
+@_tarea_sistema
 def procesar_alertas_stock_proveedores(producto_id):
     from .models import Producto, SolicitudPresupuesto, Cotizacion, ListaPrecioProveedor
     from django.core.mail import send_mail
@@ -654,6 +674,7 @@ def procesar_alertas_stock_proveedores(producto_id):
 
 
 @shared_task
+@_tarea_sistema
 def reposicion_automatica_stock():
     """
     Tarea periódica UNIFICADA de reposición. Recorre los productos ACTIVOS cuyo stock

@@ -1,4 +1,5 @@
 import threading
+import uuid
 from rest_framework.authtoken.models import Token
 from django.contrib.auth.models import AnonymousUser
 from django.utils.functional import SimpleLazyObject
@@ -59,11 +60,26 @@ class AuditoriaMiddleware:
         _thread_locals.request_data = {
             'user': user,
             'ip': ip,
-            'navegador': navegador_real if navegador_real else user_agent
+            'navegador': navegador_real if navegador_real else user_agent,
+            'endpoint': request.path,
+            'metodo_http': request.method,
+            'id_operacion': uuid.uuid4(),
+            'es_sistema': getattr(_thread_locals, 'es_sistema', False),
+            'proceso_actual': getattr(_thread_locals, 'proceso_actual', None),
+            'auditoria_ids': [],
         }
         
         try:
             response = self.get_response(request)
             return response
         finally:
+            # Si la petición terminó en error HTTP, los eventos auditados en ella
+            # que figuraban como EXITO se marcan como ERROR (trazabilidad resultado).
+            try:
+                ids = _thread_locals.request_data.get('auditoria_ids') or []
+                if ids and getattr(response, 'status_code', 0) >= 400:
+                    from .models import Auditoria
+                    Auditoria.objects.filter(id__in=ids, resultado='EXITO').update(resultado='ERROR')
+            except Exception:
+                pass
             _thread_locals.request_data = {}

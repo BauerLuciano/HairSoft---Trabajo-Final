@@ -4,11 +4,13 @@ from django.conf import settings
 from django.core.cache import cache
 from rest_framework.authtoken.models import Token
 from django_filters.rest_framework import DjangoFilterBackend
+import django_filters
 # Lazy imports: google.oauth2 se importa dentro de google_login()
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.pagination import PageNumberPagination
 from django.db.models import Sum, Count, F, Value, DecimalField, ExpressionWrapper, FloatField, Q, Avg
 from django.db import transaction
 from django.http import HttpResponse, FileResponse
@@ -45,13 +47,107 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 # ============================================
 # 1. API DE AUDITORÍA
 # ============================================
+class AuditoriaPaginacion(PageNumberPagination):
+    page_size = 25
+    page_size_query_param = 'page_size'
+    max_page_size = 200
+
+
+class EsAuditorPermiso(BasePermission):
+    """
+    Solo personal autorizado puede leer el historial de auditoría.
+    Autorizados: superusuarios, staff, roles de gestión (Administrador,
+    Recepcionista) o roles con el permiso VER_AUDITORIA.
+    """
+    ROLES_AUTORIZADOS = ('ADMINISTRADOR', 'RECEPCIONISTA', 'ADMIN')
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not (user and user.is_authenticated):
+            return False
+        if user.is_superuser or user.is_staff:
+            return True
+        rol = getattr(user, 'rol', None)
+        if rol and rol.nombre.upper() in self.ROLES_AUTORIZADOS:
+            return True
+        try:
+            return rol is not None and rol.permisos.filter(codigo__iexact='VER_AUDITORIA').exists()
+        except Exception:
+            return False
+
+
+class AuditoriaFilter(django_filters.FilterSet):
+    fecha_desde = django_filters.DateTimeFilter(field_name='fecha', lookup_expr='gte')
+    fecha_hasta = django_filters.DateTimeFilter(field_name='fecha', lookup_expr='lte')
+    usuario_nombre = django_filters.CharFilter(method='filtrar_usuario')
+    objeto_id = django_filters.CharFilter(lookup_expr='icontains')
+    id_operacion = django_filters.UUIDFilter(field_name='id_operacion', lookup_expr='exact')
+
+    def filtrar_usuario(self, queryset, name, value):
+        return queryset.filter(
+            Q(usuario_nombre__icontains=value)
+            | Q(usuario__nombre__icontains=value)
+            | Q(usuario__apellido__icontains=value)
+            | Q(usuario__correo__icontains=value)
+        )
+
+    class Meta:
+        model = Auditoria
+        fields = ['accion', 'resultado', 'modelo_afectado', 'usuario']
+
+
 class AuditoriaViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Auditoria.objects.select_related('usuario', 'usuario__rol').all().order_by('-fecha')
+    queryset = Auditoria.objects.select_related('usuario', 'usuario__rol').all()
     serializer_class = AuditoriaSerializer
-    permission_classes = [AllowAny] 
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['accion', 'modelo_afectado']
-    search_fields = ['modelo_afectado', 'usuario__nombre', 'usuario__apellido', 'usuario__correo', 'objeto_id']
+    permission_classes = [EsAuditorPermiso]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = AuditoriaFilter
+    search_fields = [
+        'usuario__nombre', 'usuario__apellido', 'usuario__correo',
+        'usuario_nombre', 'usuario_email', 'modelo_afectado', 'objeto_id',
+        'accion', 'modulo', 'ip_address', 'endpoint', 'mensaje',
+    ]
+    ordering_fields = ['fecha', 'id']
+    ordering = ['-fecha']
+    pagination_class = AuditoriaPaginacion
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        modulo = self.request.query_params.get('modulo')
+        if modulo:
+            from .auditoria_service import MODULO_MODELO
+            modelos_del_modulo = [m for m, mod in MODULO_MODELO.items() if mod == modulo]
+            qs = qs.filter(Q(modulo=modulo) | (Q(modulo='') & Q(modelo_afectado__in=modelos_del_modulo)))
+        return qs
+
+    def _registrar_consulta(self, request, accion='CONSULTAR'):
+        """Audita quién consulta el historial (a pedido de seguridad)."""
+        try:
+            from .auditoria_service import AuditoriaService
+            params = {
+                k: v for k, v in request.query_params.items()
+                if k not in ('page', 'page_size', 'format')
+            }
+            AuditoriaService.registrar(
+                accion=accion,
+                modelo_afectado='Auditoria',
+                objeto_id=getattr(request, 'auditoria_id', None),
+                mensaje='Consulta al historial de auditoría',
+                contexto={'filtros': params} if params else {},
+                usuario=request.user,
+            )
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Error auditando consulta: {e}")
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        self._registrar_consulta(request)
+        return response
+
+    def retrieve(self, request, *args, **kwargs):
+        response = super().retrieve(request, *args, **kwargs)
+        self._registrar_consulta(request)
+        return response
 
 # ============================================
 # 2. APIs DE GESTIÓN DE SERVICIOS
@@ -913,30 +1009,22 @@ def google_login(request):
             
             # 🔥 REGISTRO BLINDADO DE AUDITORÍA (LOGIN GOOGLE) 🔥
             try:
-                from .models import Auditoria
-                from .middleware import get_current_request_data
-                
-                print("--- INICIANDO AUDITORÍA DE LOGIN CON GOOGLE ---")
-                req_data = get_current_request_data() or {}
-                ip = req_data.get('ip', '127.0.0.1')
-                navegador = req_data.get('navegador', 'Desconocido')
+                from .auditoria_service import AuditoriaService
                 
                 nombre_completo = f"{getattr(usuario, 'nombre', '')} {getattr(usuario, 'apellido', '')}".strip()
                 if not nombre_completo:
                     nombre_completo = getattr(usuario, 'correo', str(usuario))
                     
                 detalles_login = {
-                    '__meta__': {'navegador': navegador, 'ip': ip},
                     'Mensaje del Sistema': {'tipo': 'VALOR', 'valor': f'El usuario {nombre_completo} inició sesión mediante Google.'}
                 }
                 
-                Auditoria.objects.create(
-                    usuario=usuario,
-                    modelo_afectado='SesionDeUsuario', 
-                    objeto_id=str(usuario.pk),
+                AuditoriaService.registrar(
                     accion='LOGIN_GOOGLE',
+                    modelo_afectado='SesionDeUsuario',
+                    objeto_id=usuario.pk,
                     detalles=detalles_login,
-                    ip_address=ip
+                    usuario=usuario,
                 )
             except Exception as e:
                 print("❌ ERROR EN AUDITORIA DE LOGIN GOOGLE:")
