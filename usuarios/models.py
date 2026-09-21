@@ -1407,6 +1407,13 @@ class ConfiguracionSistema(models.Model):
     logo = models.ImageField(upload_to='config/', null=True, blank=True)
     imagen_portada = models.ImageField(upload_to='config/', null=True, blank=True, verbose_name="Imagen de Portada")
     
+    # 🔥 LOGIN: Imagen de la pantalla de ingreso
+    imagen_login = models.ImageField(upload_to='config/', null=True, blank=True, verbose_name="Imagen del Login")
+    mostrar_imagen_login = models.BooleanField(
+        default=True,
+        help_text="Si está activo, la pantalla de Login muestra la imagen configurada. Si no, se usa el fallback visual de marca."
+    )
+    
     margen_horas_cancelacion = models.PositiveIntegerField(default=3) 
     
     # 🔥 NUEVO CAMPO: Descuento para Lista de Espera (Reoferta)
@@ -1421,6 +1428,17 @@ class ConfiguracionSistema(models.Model):
     politica_senia = models.TextField(default="Política de señas: Reembolso total si cancelas con tiempo.")
     costo_envio_moto = models.DecimalField(max_digits=10, decimal_places=2, default=1500.00)
     dias_maximos_reserva = models.PositiveIntegerField(default=7, help_text="Máximo de días hacia adelante que un cliente puede reservar un turno")
+    
+    # 🔥 PUNTO DE VENTA (POS): Montos rápidos de efectivo
+    montos_rapidos_efectivo = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Lista de montos rápidos de efectivo disponibles en el POS (ej: [1000, 10000, 15000]). Lista vacía = el cajero escribe el importe manualmente."
+    )
+    montos_rapidos_activos = models.BooleanField(
+        default=True,
+        help_text="Si está activo, el POS muestra los botones de montos rápidos de efectivo."
+    )
     
     class Meta:
         verbose_name = "Configuración del Sistema"

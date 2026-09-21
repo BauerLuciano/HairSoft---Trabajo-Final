@@ -1,136 +1,127 @@
 <template>
-  <div class="auth-page">
-    <div class="auth-container">
-      
-      <div class="visual-panel">
-        <div class="image-wrapper">
-          <div class="gradient-overlay"></div>
-          <div class="content-block">
-            <h1>Los Últimos<br/>Serán Los Primeros</h1>
-            <p>Gestioná tus turnos y descubrí la mejor experiencia en gestión de peluquería.</p>
-          </div>
+  <div class="auth-page" :class="{ 'con-imagen': imagenLoginActiva }" :style="pageStyle">
+
+    <!-- ==================== PANEL VISUAL (identidad: imagen_login) ==================== -->
+    <aside class="visual-panel" :class="{ 'sin-imagen': !imagenLoginActiva }">
+      <template v-if="imagenLoginActiva">
+        <div class="visual-bg" :style="visualBgStyle" aria-hidden="true"></div>
+        <div class="visual-figure">
+          <img :src="configWeb.imagen_login" class="visual-img" alt="Imagen del local" />
+        </div>
+        <!-- Degradado inferior sutil: mejora el contraste del texto sobre zonas claras de la imagen -->
+        <div class="visual-scrim" aria-hidden="true"></div>
+      </template>
+      <div class="visual-overlay"></div>
+
+      <div class="visual-content">
+        <div class="visual-message">
+          <h1 class="visual-title">{{ razonSocial }}</h1>
+          <p class="visual-sub">Tu peluquería, todo en un solo lugar</p>
         </div>
       </div>
+    </aside>
 
-      <div class="auth-panel">
-        <div class="auth-wrapper">
-          
-          <div class="brand-header">
-            <div class="brand-icon">
-              <div class="icon-glow"></div>
-              <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="32" cy="28" r="14" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-                <path d="M 20 40 Q 20 42 22 42 L 42 42 Q 44 42 44 40" stroke="currentColor" stroke-width="3" stroke-linecap="round" fill="none"/>
-                <line x1="22" y1="42" x2="22" y2="50" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-                <line x1="42" y1="42" x2="42" y2="50" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-                <path d="M 32 18 L 33 21 L 36 21 L 34 23 L 35 26 L 32 24 L 29 26 L 30 23 L 28 21 L 31 21 Z" fill="currentColor"/>
-              </svg>
+    <!-- ==================== PANEL DEL FORMULARIO ==================== -->
+    <main class="auth-panel">
+      <div class="auth-wrapper">
+
+        <header class="auth-heading">
+          <h1 class="auth-title">Bienvenido!</h1>
+          <p class="auth-sub">Ingresá tu email y contraseña para continuar.</p>
+        </header>
+
+        <form @submit.prevent="handleLogin" class="auth-form">
+
+          <div class="input-field">
+            <label>Correo Electrónico</label>
+            <div class="input-wrap">
+              <div class="icon">
+                <Mail :size="20" />
+              </div>
+              <input
+                v-model="credentials.username"
+                type="email"
+                placeholder="nombre@ejemplo.com"
+                required
+                :disabled="loading"
+                autocomplete="email"
+              />
             </div>
-            <h1>HairSoft</h1>
-            <p>Bienvenido!</p>
           </div>
 
-          <!--div class="google-auth-wrapper">
-            <GoogleLogin :callback="handleGoogleLogin" prompt />
-          </div-->
-
-          <!--div class="divider">
-            <span>O continuá con tu email</span>
-          </div-->
-
-          <form @submit.prevent="handleLogin" class="auth-form">
-            
-            <div class="input-field">
-              <label>Correo Electrónico</label>
-              <div class="input-wrap">
-                <div class="icon">
-                  <Mail :size="20" />
-                </div>
-                <input
-                  v-model="credentials.username"
-                  type="email"
-                  placeholder="nombre@ejemplo.com"
-                  required
-                  :disabled="loading"
-                  autocomplete="email"
-                />
+          <div class="input-field">
+            <label>Contraseña</label>
+            <div class="input-wrap">
+              <div class="icon">
+                <Lock :size="20" />
               </div>
+              <input
+                v-model="credentials.password"
+                :type="showPassword ? 'text' : 'password'"
+                placeholder="Ingresá tu contraseña"
+                required
+                :disabled="loading"
+                autocomplete="current-password"
+              />
+              <button
+                type="button"
+                class="toggle-btn"
+                @click="showPassword = !showPassword"
+                :disabled="loading"
+                tabindex="-1"
+              >
+                <EyeOff v-if="showPassword" :size="20" />
+                <Eye v-else :size="20" />
+              </button>
             </div>
+          </div>
 
-            <div class="input-field">
-              <label>Contraseña</label>
-              <div class="input-wrap">
-                <div class="icon">
-                  <Lock :size="20" />
-                </div>
-                <input
-                  v-model="credentials.password"
-                  :type="showPassword ? 'text' : 'password'"
-                  placeholder="Ingresá tu contraseña"
-                  required
-                  :disabled="loading"
-                  autocomplete="current-password"
-                />
-                <button
-                  type="button"
-                  class="toggle-btn"
-                  @click="showPassword = !showPassword"
-                  :disabled="loading"
-                  tabindex="-1"
-                >
-                  <EyeOff v-if="showPassword" :size="20" />
-                  <Eye v-else :size="20" />
-                </button>
-              </div>
-            </div>
+          <div class="form-footer">
+            <a href="#" @click.prevent="handleForgotPassword" class="link-secondary">
+              ¿Olvidaste tu contraseña?
+            </a>
+          </div>
 
-            <div class="form-footer">
-              <a href="#" @click.prevent="handleForgotPassword" class="link-secondary">
-                ¿Olvidaste tu contraseña?
-              </a>
-            </div>
-
-            <button 
-              type="submit"
-              class="btn-primary"
-              :disabled="loading || !formValid"
-            >
-              <span class="btn-bg"></span>
-              <span class="btn-content">
-                <template v-if="!loading">
-                  <span>Iniciar Sesión</span>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <path d="M5 12h14M12 5l7 7-7 7"/>
-                  </svg>
-                </template>
-                <template v-else>
-                  <span class="spinner"></span>
-                  <span>Iniciando...</span>
-                </template>
-              </span>
-            </button>
-
-            <div class="divider">
-              <span></span>
-            </div>
-
-            <div class="alt-actions">
-              <p class="register-prompt">
-                ¿No tenés cuenta? 
-                <router-link :to="{ path: '/web/registro', query: route.query.redirect ? { redirect: route.query.redirect } : {} }">Crear cuenta</router-link>
-              </p>
-              <router-link to="/web/home" class="link-home">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M19 12H5M12 19l-7-7 7-7"/>
+          <button
+            type="submit"
+            class="btn-primary"
+            :disabled="loading || !formValid"
+          >
+            <span class="btn-bg"></span>
+            <span class="btn-content">
+              <template v-if="!loading">
+                <span>Iniciar Sesión</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M5 12h14M12 5l7 7-7 7"/>
                 </svg>
-                Volver al inicio
-              </router-link>
-            </div>
-          </form>
+              </template>
+              <template v-else>
+                <span class="spinner"></span>
+                <span>Iniciando...</span>
+              </template>
+            </span>
+          </button>
 
-        </div>
+          <div class="divider">
+            <span></span>
+          </div>
+
+          <div class="alt-actions">
+            <p class="register-prompt">
+              ¿No tenés cuenta?
+              <router-link :to="{ path: '/web/registro', query: route.query.redirect ? { redirect: route.query.redirect } : {} }">Crear cuenta</router-link>
+            </p>
+            <router-link to="/web/home" class="link-home">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 12H5M12 19l-7-7 7-7"/>
+              </svg>
+              Volver al inicio
+            </router-link>
+          </div>
+        </form>
+
       </div>
-    </div>
+    </main>
   </div>
 </template>
 
@@ -148,6 +139,8 @@ const route = useRoute();
 const isProduction = window.location.hostname.includes('vercel.app');
 const DOMAIN = isProduction ? 'https://web-production-ac47c.up.railway.app' : 'http://127.0.0.1:8000';
 const API_URL = `${DOMAIN}/api/auth/login/`;
+// Configuración pública (endpoint sin autenticación) — branding + imagen del Login
+const WEB_CONFIG_URL = `${DOMAIN}/api/web/configuracion/`;
 
 const credentials = ref({
   username: '',
@@ -157,9 +150,39 @@ const credentials = ref({
 const loading = ref(false);
 const showPassword = ref(false);
 
+// ---------------- Configuración pública (Ajustes del Local -> Logo y Marca Visual) ----------------
+const configWeb = ref({
+  razon_social: 'HairSoft',
+  imagen_login: null,
+  mostrar_imagen_login: true,
+});
+
+const mostrarLoginImagen = computed(() => configWeb.value.mostrar_imagen_login !== false);
+const imagenLoginActiva = computed(() => mostrarLoginImagen.value && !!configWeb.value.imagen_login);
+const razonSocial = computed(() => (configWeb.value.razon_social || '').trim() || 'HairSoft');
+
+const visualBgStyle = computed(() =>
+  imagenLoginActiva.value ? { backgroundImage: `url('${configWeb.value.imagen_login}')` } : {}
+);
+
+const pageStyle = computed(() =>
+  imagenLoginActiva.value ? { '--login-img': `url('${configWeb.value.imagen_login}')` } : {}
+);
+
+const cargarConfigWeb = async () => {
+  try {
+    const { data } = await axios.get(WEB_CONFIG_URL);
+    configWeb.value = { ...configWeb.value, ...data };
+  } catch (e) {
+    console.error('No se pudo cargar la configuración del Login', e);
+  }
+};
+
 const formValid = computed(() => credentials.value.username.trim() !== '' && credentials.value.password.trim() !== '');
 
 onMounted(() => {
+  cargarConfigWeb();
+
   const savedEmail = localStorage.getItem('saved_email');
   if (savedEmail) credentials.value.username = savedEmail;
   
@@ -323,123 +346,204 @@ const handleForgotPassword = async () => {
   box-sizing: border-box;
 }
 
+/* ==================== LAYOUT FULL-VIEWPORT ==================== */
 .auth-page {
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: 
-    radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.08) 0%, transparent 50%),
-    linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
   font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-  padding: 20px;
-  position: relative;
+  background: #0b1120;
+  color: #0f172a;
   overflow: hidden;
 }
 
-.auth-page::before {
-  content: '';
-  position: absolute;
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
-  top: -300px;
-  right: -300px;
-  border-radius: 50%;
-  animation: float 20s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  50% { transform: translate(-100px, 100px) rotate(180deg); }
-}
-
-.auth-container {
-  display: flex;
-  width: 100%;
-  max-width: 1300px;
-  min-height: 700px;
-  background: rgba(255, 255, 255, 0.98);
-  border-radius: 24px;
-  overflow: hidden;
-  box-shadow: 
-    0 0 0 1px rgba(255, 255, 255, 0.1),
-    0 50px 100px -20px rgba(0, 0, 0, 0.4),
-    0 30px 60px -30px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(20px);
-  position: relative;
-  z-index: 1;
-}
-
-/* ==================== VISUAL PANEL ==================== */
+/* ==================== PANEL VISUAL ==================== */
 .visual-panel {
-  flex: 1;
   position: relative;
   overflow: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: linear-gradient(150deg, #1e1b4b 0%, #1f42f0 52%, #129089 100%);
 }
 
-.image-wrapper {
-  width: 100%;
-  height: 100%;
-  background-image: url('/Pelu_Login.jpg');
-  background-size: cover;
-  background-position: center;
-  position: relative;
-}
-
-.gradient-overlay {
+.visual-bg {
   position: absolute;
   inset: 0;
-  background: 
-    linear-gradient(
-      180deg,
-      rgba(15, 23, 42, 0.2) 0%,
-      rgba(15, 23, 42, 0.6) 40%,
-      rgba(15, 23, 42, 0.95) 100%
-    );
-  z-index: 1;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(16px) saturate(1.1);
+  transform: scale(1.2);
 }
 
-.content-block {
+/* Overlay que equilibra legibilidad sin apagar la fotografía */
+.visual-overlay {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 48px;
-  color: white;
+  inset: 0;
   z-index: 2;
+  background:
+    linear-gradient(100deg, rgba(11, 17, 32, 0.38) 0%, rgba(11, 17, 32, 0.06) 45%, rgba(11, 17, 32, 0.42) 100%),
+    radial-gradient(130% 90% at 50% 110%, rgba(11, 17, 32, 0.36) 0%, transparent 58%);
 }
 
-.content-block h1 {
-  font-size: 3rem;
-  font-weight: 900;
-  line-height: 1.1;
-  margin-bottom: 20px;
-  letter-spacing: -0.05em;
-  background: linear-gradient(135deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.content-block p {
-  font-size: 1.125rem;
-  line-height: 1.6;
-  opacity: 0.9;
-  max-width: 500px;
-  font-weight: 400;
-}
-
-/* ==================== AUTH PANEL ==================== */
-.auth-panel {
-  flex: 1;
+/* Capa de la imagen original: respeta proporción y composición (contain) */
+.visual-figure {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 48px 40px;
-  background: #ffffff;
+  padding: clamp(14px, 2vw, 28px);
+}
+
+.visual-img {
+  max-width: 96%;
+  max-height: 92%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 32px 64px -22px rgba(0, 0, 0, 0.6), 0 14px 32px -12px rgba(0, 0, 0, 0.4);
+  animation: fadeUp 0.6s ease both;
+}
+
+/* Degradado inferior que integra el texto con la imagen sin taparla */
+.visual-scrim {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 60%;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(11, 17, 32, 0) 0%, rgba(11, 17, 32, 0.3) 55%, rgba(11, 17, 32, 0.55) 100%);
+}
+
+/* Fallback visual de marca cuando no hay imagen o está desactivada */
+.visual-panel.sin-imagen {
+  background:
+    radial-gradient(1100px 560px at 18% -4%, rgba(99, 102, 241, 0.38) 0%, transparent 60%),
+    radial-gradient(900px 520px at 100% 108%, rgba(18, 144, 137, 0.42) 0%, transparent 55%),
+    linear-gradient(150deg, #1e1b4b 0%, #1f42f0 52%, #129089 100%);
+}
+
+.visual-panel.sin-imagen .visual-overlay {
+  background: linear-gradient(180deg, rgba(11, 17, 32, 0.18) 0%, rgba(11, 17, 32, 0.5) 100%);
+}
+
+.visual-panel.sin-imagen::before,
+.visual-panel.sin-imagen::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.45;
+  z-index: 0;
+}
+
+.visual-panel.sin-imagen::before {
+  width: 460px;
+  height: 460px;
+  background: #6366f1;
+  top: -150px;
+  right: -130px;
+}
+
+.visual-panel.sin-imagen::after {
+  width: 400px;
+  height: 400px;
+  background: #14b8a6;
+  bottom: -140px;
+  left: -150px;
+}
+
+/* Contenido del panel visual */
+.visual-content {
   position: relative;
+  z-index: 3;
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(30px, 4.5vw, 60px);
+  color: #fff;
+}
+
+.visual-brand {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  animation: fadeUp 0.55s ease both;
+}
+
+.visual-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.4);
+}
+
+.visual-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.visual-message {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 560px;
+  animation: fadeUp 0.55s ease 0.08s both;
+}
+
+.visual-title {
+  font-size: clamp(2.5rem, 4.7vw, 4.3rem);
+  font-weight: 800;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  color: #fff;
+  text-shadow: 0 2px 30px rgba(11, 17, 32, 0.55), 0 1px 4px rgba(11, 17, 32, 0.5);
+}
+
+.visual-sub {
+  margin-top: 20px;
+  font-size: clamp(1rem, 1.35vw, 1.16rem);
+  line-height: 1.65;
+  opacity: 0.88;
+  max-width: 470px;
+  text-shadow: 0 1px 20px rgba(11, 17, 32, 0.6), 0 1px 2px rgba(11, 17, 32, 0.45);
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==================== PANEL DEL FORMULARIO ==================== */
+.auth-panel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(34px, 5vw, 76px);
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-y: auto;
+  background:
+    radial-gradient(900px 600px at 100% -5%, rgba(99, 102, 241, 0.09) 0%, transparent 55%),
+    linear-gradient(180deg, #fbfcfe 0%, #f1f4f9 100%);
 }
 
 .auth-panel::before {
@@ -447,81 +551,36 @@ const handleForgotPassword = async () => {
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 2px;
-  background: linear-gradient(90deg, 
-    transparent 0%,
-    rgba(99, 102, 241, 0.5) 50%,
-    transparent 100%
-  );
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #1f42f0, #129089, transparent);
+  z-index: 1;
 }
 
 .auth-wrapper {
   width: 100%;
   max-width: 440px;
+  animation: fadeUp 0.5s ease both;
 }
 
-/* BRAND HEADER */
-.brand-header {
-  text-align: center;
-  margin-bottom: 30px; /* Reducido para dar espacio a Google */
+/* Encabezado del formulario */
+.auth-heading {
+  margin-bottom: 34px;
 }
 
-.brand-icon {
-  width: 80px;
-  height: 80px;
-  background: linear-gradient(135deg, #1f42f0 0%, #129089 100%);
-  border-radius: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  margin-bottom: 24px;
-  position: relative;
-  box-shadow: 
-    0 20px 40px -12px rgba(99, 102, 241, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-}
-
-.icon-glow {
-  position: absolute;
-  inset: -8px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  border-radius: 24px;
-  opacity: 0.2;
-  filter: blur(20px);
-  z-index: -1;
-}
-
-.brand-icon svg {
-  width: 44px;
-  height: 44px;
-  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.2));
-}
-
-.brand-header h1 {
-  font-size: 2.5rem;
-  font-weight: 900;
+.auth-title {
+  font-size: clamp(1.65rem, 2.5vw, 2.05rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
   color: #0f172a;
-  margin-bottom: 10px;
-  letter-spacing: -0.04em;
-  background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  line-height: 1.15;
 }
 
-.brand-header p {
-  font-size: 1rem;
+.auth-sub {
+  margin-top: 10px;
+  font-size: 0.95rem;
+  line-height: 1.6;
   color: #64748b;
-  font-weight: 600;
-}
-
-/* GOOGLE AUTH WRAPPER */
-.google-auth-wrapper {
-  display: flex;
-  justify-content: center;
-  width: 100%;
 }
 
 /* FORM */
@@ -530,15 +589,15 @@ const handleForgotPassword = async () => {
 }
 
 .input-field {
-  margin-bottom: 22px;
+  margin-bottom: 20px;
 }
 
 .input-field label {
   display: block;
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: #0f172a;
-  margin-bottom: 10px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 8px;
   letter-spacing: -0.01em;
 }
 
@@ -546,45 +605,43 @@ const handleForgotPassword = async () => {
   position: relative;
   display: flex;
   align-items: center;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border: 2px solid #e2e8f0;
-  border-radius: 12px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
 }
 
 .input-wrap:hover {
-  background: #ffffff;
+  background: #fff;
   border-color: #cbd5e1;
-  box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.05);
 }
 
 .input-wrap:focus-within {
-  background: #ffffff;
-  border-color: #6366f1;
-  box-shadow: 
-    0 0 0 4px rgba(99, 102, 241, 0.1),
-    0 8px 20px -8px rgba(99, 102, 241, 0.2);
+  background: #fff;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.12), 0 8px 24px -12px rgba(79, 70, 229, 0.35);
 }
 
 .icon {
   position: absolute;
-  left: 16px;
+  left: 18px;
   color: #94a3b8;
   display: flex;
   align-items: center;
   pointer-events: none;
   z-index: 2;
-  transition: color 0.3s;
+  transition: color 0.25s ease, transform 0.25s ease;
 }
 
 .input-wrap:focus-within .icon {
-  color: #6366f1;
+  color: #4f46e5;
+  transform: scale(1.08);
 }
 
 .input-wrap input {
   width: 100%;
-  height: 52px;
-  padding: 0 16px 0 50px;
+  height: 56px;
+  padding: 0 18px 0 52px;
   border: none;
   background: transparent;
   font-size: 0.95rem;
@@ -595,7 +652,7 @@ const handleForgotPassword = async () => {
 }
 
 .input-wrap input::placeholder {
-  color: #cbd5e1;
+  color: #b6c0d0;
   font-weight: 400;
 }
 
@@ -609,54 +666,46 @@ const handleForgotPassword = async () => {
   padding: 8px;
   display: flex;
   align-items: center;
-  border-radius: 8px;
-  transition: all 0.2s;
+  border-radius: 9px;
+  transition: color 0.2s ease, background 0.2s ease, transform 0.15s ease;
 }
 
 .toggle-btn:hover {
-  color: #6366f1;
-  background: #f1f5f9;
+  color: #4f46e5;
+  background: #eef2ff;
+}
+
+.toggle-btn:active {
+  transform: scale(0.92);
 }
 
 /* FORM FOOTER */
 .form-footer {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 28px;
+  margin-bottom: 26px;
 }
 
 .link-secondary {
   font-size: 0.9rem;
-  color: #6366f1;
+  color: #4f46e5;
   text-decoration: none;
-  font-weight: 700;
-  transition: all 0.2s;
-  position: relative;
+  font-weight: 600;
+  transition: color 0.2s ease;
 }
 
-.link-secondary::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  width: 0;
-  height: 2px;
-  background: #6366f1;
-  transition: width 0.3s;
-}
-
-.link-secondary:hover::after {
-  width: 100%;
+.link-secondary:hover {
+  color: #4338ca;
 }
 
 /* PRIMARY BUTTON */
 .btn-primary {
   width: 100%;
-  height: 52px;
+  height: 56px;
   background: transparent;
-  color: white;
+  color: #fff;
   border: none;
-  border-radius: 12px;
+  border-radius: 14px;
   font-size: 1rem;
   font-weight: 800;
   cursor: pointer;
@@ -664,27 +713,36 @@ const handleForgotPassword = async () => {
   position: relative;
   overflow: hidden;
   letter-spacing: -0.01em;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s ease, filter 0.25s ease;
 }
 
 .btn-bg {
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, #2f4ff3 0%, #1d8cbb 100%);
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.btn-primary:hover:not(:disabled) .btn-bg {
-  background: linear-gradient(135deg, #4f46e5 0%, #2b83fe 100%);
-  box-shadow: 
-    0 16px 32px -8px rgba(99, 102, 241, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg, #4f46e5 0%, #1d8cbb 100%);
+  transition: opacity 0.3s ease;
 }
 
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 
-    0 20px 40px -12px rgba(99, 241, 210, 0.6);
+  box-shadow: 0 18px 36px -12px rgba(79, 70, 229, 0.5);
+  filter: brightness(1.04);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 10px 24px -12px rgba(79, 70, 229, 0.4);
+}
+
+.btn-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.28);
+}
+
+.btn-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .btn-content {
@@ -702,21 +760,11 @@ const handleForgotPassword = async () => {
   height: 18px;
 }
 
-.btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.btn-primary:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-  transform: none;
-}
-
 .spinner {
   width: 18px;
   height: 18px;
-  border: 3px solid rgba(255,255,255,0.3);
-  border-top-color: white;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
@@ -729,15 +777,15 @@ const handleForgotPassword = async () => {
 .divider {
   display: flex;
   align-items: center;
-  margin: 24px 0; /* Ajustado para equilibrar el botón de Google */
-  position: relative;
+  margin: 26px 0;
 }
 
-.divider::before, .divider::after {
+.divider::before,
+.divider::after {
   content: '';
   flex: 1;
   height: 1px;
-  background: #e2e8f0;
+  background: #e6eaf1;
 }
 
 .divider span {
@@ -753,22 +801,22 @@ const handleForgotPassword = async () => {
 }
 
 .register-prompt {
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   color: #64748b;
   margin-bottom: 16px;
   font-weight: 500;
 }
 
 .register-prompt a {
-  color: #6366f1;
-  font-weight: 800;
+  color: #4f46e5;
+  font-weight: 700;
   text-decoration: none;
   margin-left: 4px;
-  transition: color 0.2s;
+  transition: color 0.2s ease;
 }
 
 .register-prompt a:hover {
-  color: #4f46e5;
+  color: #4338ca;
   text-decoration: underline;
 }
 
@@ -779,10 +827,10 @@ const handleForgotPassword = async () => {
   color: #64748b;
   text-decoration: none;
   font-size: 0.9rem;
-  font-weight: 700;
-  padding: 10px 18px;
+  font-weight: 600;
+  padding: 9px 16px;
   border-radius: 10px;
-  transition: all 0.2s;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
   border: 1px solid transparent;
 }
 
@@ -792,70 +840,73 @@ const handleForgotPassword = async () => {
 }
 
 .link-home:hover {
-  color: #6366f1;
+  color: #4f46e5;
   background: #f8fafc;
-  border-color: #e2e8f0;
-}
-
-/* TAGLINE */
-.tagline {
-  text-align: center;
-  margin-top: 36px;
-  font-size: 0.8rem;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  font-weight: 800;
+  border-color: #e6eaf1;
 }
 
 /* ==================== RESPONSIVE ==================== */
 @media (max-width: 1100px) {
-  .auth-container { min-height: 650px; }
-  .content-block h1 { font-size: 2.5rem; }
-  .content-block { padding: 40px; }
+  .auth-page { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .visual-title { font-size: clamp(2.1rem, 3.9vw, 3.1rem); }
+  .auth-panel { padding: 40px 32px; }
 }
 
-@media (max-width: 900px) {
-  .auth-page { padding: 16px; }
-  .auth-container { flex-direction: column; min-height: auto; max-width: 600px; border-radius: 20px; }
-  .visual-panel { min-height: 300px; max-height: 300px; }
-  .content-block { padding: 32px; }
-  .content-block h1 { font-size: 2.25rem; }
-  .content-block p { font-size: 1rem; }
-  .auth-panel { padding: 40px 32px; }
-  .brand-header h1 { font-size: 2.25rem; }
+@media (max-width: 860px) {
+  .auth-page {
+    display: block;
+    overflow: auto;
+  }
+
+  .visual-panel { display: none; }
+
+  .auth-panel {
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 36px 20px;
+    background: linear-gradient(180deg, #fbfcfe 0%, #f1f4f9 100%);
+  }
+
+  /* Si hay imagen de Login, se usa como fondo secundario difuminado */
+  .auth-page.con-imagen .auth-panel {
+    background:
+      linear-gradient(rgba(11, 17, 32, 0.76), rgba(11, 17, 32, 0.86)),
+      var(--login-img, none) center/cover no-repeat;
+  }
+
+  .auth-wrapper {
+    max-width: 408px;
+    margin: 0 auto;
+  }
+
+  .auth-page.con-imagen .auth-wrapper {
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 22px;
+    padding: 32px 24px;
+    box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(14px);
+  }
 }
 
 @media (max-width: 600px) {
-  .auth-page { padding: 0; align-items: flex-start; }
-  .auth-container { border-radius: 0; min-height: 100vh; }
-  .visual-panel { display: none; }
-  .auth-panel { padding: 32px 24px; flex: 1; }
-  .brand-header { margin-bottom: 24px; }
-  .brand-icon { width: 70px; height: 70px; margin-bottom: 20px; }
-  .brand-icon svg { width: 38px; height: 38px; }
-  .brand-header h1 { font-size: 2rem; }
-  .brand-header p { font-size: 0.95rem; }
-  .input-field { margin-bottom: 20px; }
-  .input-field label { font-size: 0.875rem; margin-bottom: 8px; }
-  .input-wrap { border-radius: 10px; }
-  .input-wrap input { height: 50px; font-size: 0.9rem; }
-  .btn-primary { height: 50px; font-size: 0.95rem; }
+  .auth-panel { padding: 26px 16px; }
+  .auth-heading { margin-bottom: 30px; }
+  .auth-title { font-size: 1.7rem; }
+  .auth-sub { font-size: 0.9rem; }
+  .input-field { margin-bottom: 18px; }
+  .input-wrap input { height: 54px; font-size: 0.92rem; }
+  .btn-primary { height: 54px; font-size: 0.96rem; border-radius: 12px; }
   .form-footer { margin-bottom: 24px; }
-  .link-secondary { font-size: 0.875rem; }
   .divider { margin: 24px 0; }
-  .register-prompt { font-size: 0.875rem; margin-bottom: 14px; }
-  .link-home { font-size: 0.875rem; padding: 9px 16px; }
-  .tagline { margin-top: 28px; font-size: 0.75rem; }
+  .auth-page.con-imagen .auth-wrapper { padding: 28px 20px; }
 }
 
 @media (max-width: 380px) {
-  .auth-panel { padding: 28px 20px; }
-  .brand-icon { width: 64px; height: 64px; }
-  .brand-icon svg { width: 34px; height: 34px; }
-  .brand-header h1 { font-size: 1.75rem; }
-  .input-wrap input { height: 48px; font-size: 0.875rem; padding: 0 14px 0 46px; }
-  .icon { left: 14px; }
-  .btn-primary { height: 48px; }
+  .auth-panel { padding: 20px 14px; }
+  .auth-title { font-size: 1.55rem; }
+  .input-wrap input { height: 52px; font-size: 0.9rem; padding: 0 14px 0 48px; }
+  .icon { left: 15px; }
+  .btn-primary { height: 52px; font-size: 0.94rem; }
 }
 </style>

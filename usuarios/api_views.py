@@ -604,6 +604,8 @@ class ConfigWebView(APIView):
                 'email': config.email,
                 'logo': self._url_or_none(request, config.logo),
                 'imagen_portada': self._url_or_none(request, config.imagen_portada),
+                'imagen_login': self._url_or_none(request, config.imagen_login),
+                'mostrar_imagen_login': config.mostrar_imagen_login,
                 'horarios': horarios,
             })
         else:

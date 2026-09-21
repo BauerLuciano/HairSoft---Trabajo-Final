@@ -3,6 +3,7 @@ from rest_framework import serializers, viewsets
 from django.db import transaction
 from decimal import Decimal
 from django.shortcuts import get_object_or_404
+import json
 from .models import *
 
 # ----------------------------------------------------------------------
@@ -1101,14 +1102,62 @@ class LiquidacionSerializer(serializers.ModelSerializer):
         model = Liquidacion
         fields = '__all__'
 
+class ImagenBorrableField(serializers.ImageField):
+    """
+    ImageField que permite ELIMINAR la imagen enviando una cadena vacía
+    vía FormData (el frontend hace formData.append('imagen_login', '')).
+    Sin esto, DRF falla con 'The submitted data was not a file'.
+    """
+
+    def validate_empty_values(self, data):
+        # Cadena vacía (multipart) → valor None → borra la imagen
+        if data == '':
+            return (True, None)
+        return super().validate_empty_values(data)
+
+
 class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
     # ✅ Cambiado a ImageField para que permita RECIBIR y GUARDAR archivos
     logo = serializers.ImageField(required=False, allow_null=True)
     imagen_portada = serializers.ImageField(required=False, allow_null=True)
+    # Permite subir/reemplazar y también borrar (cadena vacía → None)
+    imagen_login = ImagenBorrableField(required=False, allow_null=True)
 
     class Meta:
         model = ConfiguracionSistema
         fields = '__all__'
+
+    def validate_montos_rapidos_efectivo(self, value):
+        """
+        Valida y normaliza los montos rápidos de efectivo del POS.
+        Acepta una lista JSON o un string JSON (como llega vía FormData desde el frontend).
+        """
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (TypeError, ValueError):
+                raise serializers.ValidationError("Formato inválido para los montos rápidos de efectivo.")
+
+        if value is None:
+            value = []
+
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Los montos rápidos deben ser una lista de montos.")
+
+        montos = []
+        for monto in value:
+            if isinstance(monto, bool) or not isinstance(monto, (int, float)):
+                try:
+                    monto = float(monto)
+                except (TypeError, ValueError):
+                    raise serializers.ValidationError(f"El monto '{monto}' no es un número válido.")
+            if monto <= 0:
+                raise serializers.ValidationError(f"El monto '{monto}' debe ser positivo.")
+            if monto in montos:
+                raise serializers.ValidationError(f"El monto '{monto}' está duplicado.")
+            # Se guarda como entero si no tiene decimales (ej: 1000 en vez de 1000.0)
+            montos.append(int(monto) if float(monto).is_integer() else monto)
+        return montos
 
     def to_representation(self, instance):
         """
@@ -1121,6 +1170,8 @@ class ConfiguracionSistemaSerializer(serializers.ModelSerializer):
             ret['logo'] = request.build_absolute_uri(instance.logo.url)
         if instance.imagen_portada and request:
             ret['imagen_portada'] = request.build_absolute_uri(instance.imagen_portada.url)
+        if instance.imagen_login and request:
+            ret['imagen_login'] = request.build_absolute_uri(instance.imagen_login.url)
         return ret
 
 #Silla

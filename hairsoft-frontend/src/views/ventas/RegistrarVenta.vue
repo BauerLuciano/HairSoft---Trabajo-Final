@@ -716,6 +716,8 @@ export default {
                 codigo_transaccion: '',
                 usuario: 1 
             },
+            montosRapidosActivos: true,
+            montosRapidos: [],
             envioData: null,
             mp_alias: '',
             mpSubOption: null,
@@ -758,7 +760,9 @@ export default {
             return Math.max(0, this.montoRecibido - this.objetivoEfectivo);
         },
         montosRapidosEfectivo() {
-            return [1000, 10000, 15000, 20000, 30000];
+            if (!this.montosRapidosActivos) return [];
+            const montos = Array.isArray(this.montosRapidos) ? this.montosRapidos : [];
+            return montos.filter(m => m && Number(m) > 0);
         },
         
         // 🔥 PAGO MIXTO (MP + EFECTIVO)
@@ -1783,6 +1787,18 @@ export default {
             }
         },
 
+        async cargarConfiguracionSistema() {
+            try {
+                const res = await axios.get(`${API_BASE_URL}/api/configuracion/`);
+                this.montosRapidosActivos = res.data.montos_rapidos_activos !== false;
+                this.montosRapidos = Array.isArray(res.data.montos_rapidos_efectivo)
+                    ? res.data.montos_rapidos_efectivo
+                    : [];
+            } catch (err) {
+                console.error("Error al cargar config del sistema:", err);
+            }
+        },
+
         async generarQR() {
             if (this.efectivoCubreTotal) {
                 this.mostrarMensaje('El total ya está cubierto con el efectivo. No hace falta generar QR', 'info');
@@ -1958,6 +1974,7 @@ export default {
         this.cargarCategorias();
         this.cargarMetodosPago();
         this.cargarConfiguracionLocal();
+        this.cargarConfiguracionSistema();
     }
 }
 </script>

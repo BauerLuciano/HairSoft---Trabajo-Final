@@ -42,6 +42,59 @@
               <p class="upload-hint">Inserte su logo con formato: (PNG/JPG)</p>
             </div>
           </div>
+
+          <hr class="divider" style="margin: 26px 0;">
+
+          <div class="login-img-section">
+            <div class="login-img-header">
+              <div>
+                <label class="label-info">Imagen del Login</label>
+                <p class="hint-text" style="margin-top: 4px;">
+                  Imagen de fondo de la pantalla de ingreso. Si está desactivada o no hay imagen, se usa el fallback visual de marca.
+                </p>
+              </div>
+              <div class="login-img-toggle">
+                <button
+                  type="button"
+                  class="pos-toggle"
+                  :class="{ 'pos-toggle-on': config.mostrar_imagen_login }"
+                  :aria-pressed="config.mostrar_imagen_login"
+                  @click="config.mostrar_imagen_login = !config.mostrar_imagen_login"
+                >
+                  <span class="pos-toggle-track"></span>
+                  <span class="pos-toggle-thumb"></span>
+                </button>
+                <span class="hint-text" style="margin: 0;">{{ config.mostrar_imagen_login ? 'Activada' : 'Desactivada' }}</span>
+              </div>
+            </div>
+
+            <div v-if="config.mostrar_imagen_login" class="login-img-controls">
+              <div class="login-img-preview-container">
+                <img v-if="previewLoginImg || config.imagen_login" :src="previewLoginImg || config.imagen_login" class="login-img-preview" alt="Vista previa de la imagen del Login" />
+                <div v-else class="portada-placeholder">
+                  <i class="ri-image-line" style="font-size: 1.6rem;"></i>
+                  <span>Sin imagen<br/>Se usará el fallback de marca</span>
+                </div>
+              </div>
+
+              <div class="upload-controls login-img-actions">
+                <label class="upload-btn">
+                  <i class="ri-image-add-line"></i>
+                  <span>{{ previewLoginImg || config.imagen_login ? 'Reemplazar imagen' : 'Seleccionar imagen' }}</span>
+                  <input type="file" @change="handleLoginImgUpload" accept="image/*" style="display: none;" />
+                </label>
+                <button
+                  v-if="previewLoginImg || config.imagen_login"
+                  type="button"
+                  class="login-img-delete"
+                  @click="eliminarImagenLogin"
+                >
+                  <i class="ri-delete-bin-line"></i> Eliminar imagen
+                </button>
+                <p class="upload-hint">JPG/PNG — recomendado apaisado (16:9 o similar).</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="usuarios-count">
@@ -223,6 +276,107 @@
         </div>
 
         <div class="usuarios-count">
+          <p><DollarSign :size="20" /> Punto de Venta (POS) — Montos rápidos de efectivo</p>
+        </div>
+
+        <div class="filters-container">
+          <div style="display: flex; flex-direction: column; gap: 25px;">
+
+            <div class="filter-group">
+              <label class="label-info">Montos rápidos de efectivo</label>
+              <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                <button
+                  type="button"
+                  class="pos-toggle"
+                  :class="{ 'pos-toggle-on': config.montos_rapidos_activos }"
+                  :aria-pressed="config.montos_rapidos_activos"
+                  @click="config.montos_rapidos_activos = !config.montos_rapidos_activos"
+                >
+                  <span class="pos-toggle-track"></span>
+                  <span class="pos-toggle-thumb"></span>
+                </button>
+                <span class="hint-text" style="margin: 0;">
+                  {{ config.montos_rapidos_activos
+                      ? 'Activados: el POS muestra los botones con los montos configurados.'
+                      : 'Desactivados: el cajero escribe el importe manualmente en el POS.' }}
+                </span>
+              </div>
+              <small v-if="config.montos_rapidos_activos" class="hint-text">
+                * Los botones aparecen al cobrar en el POS, tanto para el pago en efectivo como para el primer paso del pago mixto.
+              </small>
+            </div>
+
+            <template v-if="config.montos_rapidos_activos">
+              <hr class="divider">
+
+              <div class="filter-group">
+                <label class="label-info">Montos configurados</label>
+                <div v-if="config.montos_rapidos_efectivo.length === 0" class="pos-vacio">
+                  <p><i class="ri-information-line"></i> No hay montos configurados. En el POS no se mostrarán botones y el importe se ingresará manualmente.</p>
+                </div>
+                <div v-else class="pos-chips">
+                  <div
+                    v-for="(monto, idx) in config.montos_rapidos_efectivo"
+                    :key="idx"
+                    class="pos-chip"
+                  >
+                    <template v-if="montoEditandoIdx === idx">
+                      <span class="monto-symbol">$</span>
+                      <input
+                        v-model.number="montoEditandoValor"
+                        type="number"
+                        class="filter-input pos-chip-input"
+                        min="0"
+                        step="0.01"
+                        @keydown.enter="guardarEdicionMonto"
+                      />
+                      <button type="button" class="pos-chip-btn pos-chip-ok" title="Guardar monto" @click="guardarEdicionMonto">
+                        <i class="ri-check-line"></i>
+                      </button>
+                      <button type="button" class="pos-chip-btn" title="Cancelar edición" @click="cancelarEdicionMonto">
+                        <i class="ri-close-line"></i>
+                      </button>
+                    </template>
+                    <template v-else>
+                      <span class="pos-chip-monto">${{ monto.toLocaleString() }}</span>
+                      <button type="button" class="pos-chip-btn" title="Editar monto" @click="iniciarEdicionMonto(idx)">
+                        <i class="ri-pencil-line"></i>
+                      </button>
+                      <button type="button" class="pos-chip-btn" title="Eliminar monto" @click="eliminarMonto(idx)">
+                        <i class="ri-delete-bin-line"></i>
+                      </button>
+                    </template>
+                  </div>
+                </div>
+              </div>
+
+              <div class="filter-group">
+                <label class="label-info">Agregar monto</label>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                  <span class="monto-symbol" style="font-size: 1.2rem;">$</span>
+                  <input
+                    v-model.number="nuevoMonto"
+                    type="number"
+                    class="filter-input pos-add-input"
+                    min="0"
+                    step="0.01"
+                    placeholder="Ej: 10000"
+                    @keydown.enter="agregarMonto"
+                  />
+                  <button type="button" class="pos-btn-add" @click="agregarMonto">
+                    <i class="ri-add-line"></i> Agregar monto
+                  </button>
+                </div>
+                <div v-if="errorMonto" class="pos-error">
+                  <i class="ri-error-warning-line"></i> {{ errorMonto }}
+                </div>
+              </div>
+            </template>
+
+          </div>
+        </div>
+
+        <div class="usuarios-count">
           <p><Store :size="20" /> Infraestructura del Local</p>
         </div>
 
@@ -243,7 +397,7 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import axios from '../../utils/axiosConfig'
-import { Building2, Clock, Save, Loader2, Info, Store } from 'lucide-vue-next'
+import { Building2, Clock, Save, Loader2, Info, Store, DollarSign } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 import GestionSillas from '@/components/GestionSillas.vue'; 
 import GestionCajas from '@/components/GestionCajas.vue';
@@ -272,7 +426,11 @@ const config = ref({
   politica_senia: '',
   logo: null,
   imagen_portada: null,
+  imagen_login: null,
+  mostrar_imagen_login: true,
   costo_envio_moto: 1500,
+  montos_rapidos_activos: true,
+  montos_rapidos_efectivo: [],
 })
 
 const configEnvios = ref({
@@ -293,6 +451,15 @@ const previewLogo = ref(null)
 const logoFile = ref(null)
 const previewPortada = ref(null)
 const portadaFile = ref(null)
+const previewLoginImg = ref(null)
+const loginImgFile = ref(null)
+const eliminarLoginImg = ref(false)
+
+// Estado del editor de montos rápidos (POS)
+const nuevoMonto = ref(null)
+const montoEditandoIdx = ref(null)
+const montoEditandoValor = ref(null)
+const errorMonto = ref('')
 
 const tilesBase = [
   { name: 'Calle', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', visible: true, att: '&copy; <a href="https://osm.org">OpenStreetMap</a>' },
@@ -343,10 +510,18 @@ const obtenerConfig = async () => {
       data.logo = `${data.logo}?t=${new Date().getTime()}`;
     }
     
+    if (data.imagen_login) {
+      data.imagen_login = `${data.imagen_login}?t=${new Date().getTime()}`;
+    }
+    if(data.mostrar_imagen_login === undefined) data.mostrar_imagen_login = true;
+    if(data.imagen_login === undefined) data.imagen_login = null;
+    
     if(data.costo_envio_moto === undefined) data.costo_envio_moto = 1500;
     if(data.porcentaje_descuento_promo === undefined) data.porcentaje_descuento_promo = 15;
     if(data.porcentaje_descuento_reoferta === undefined) data.porcentaje_descuento_reoferta = 15;
     if(data.dias_validez_promo_reactivacion === undefined) data.dias_validez_promo_reactivacion = 7;
+    if(data.montos_rapidos_activos === undefined) data.montos_rapidos_activos = true;
+    if(!Array.isArray(data.montos_rapidos_efectivo)) data.montos_rapidos_efectivo = [];
 
     config.value = data
 
@@ -382,6 +557,94 @@ const handlePortadaUpload = (event) => {
     portadaFile.value = file
     previewPortada.value = URL.createObjectURL(file)
   }
+}
+
+// ============================================
+// IMAGEN DEL LOGIN
+// ============================================
+const handleLoginImgUpload = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    loginImgFile.value = file
+    previewLoginImg.value = URL.createObjectURL(file)
+    eliminarLoginImg.value = false
+  }
+}
+
+const eliminarImagenLogin = () => {
+  loginImgFile.value = null
+  previewLoginImg.value = null
+  config.value.imagen_login = null
+  eliminarLoginImg.value = true
+}
+
+// ============================================
+// MONTOS RÁPIDOS DE EFECTIVO (POS)
+// ============================================
+const normalizarMonto = (valor) => {
+  const num = Number(valor)
+  if (!Number.isFinite(num)) return null
+  return Number.isInteger(num) ? num : Math.round(num * 100) / 100
+}
+
+const validarMonto = (valor, excluirIdx = null) => {
+  if (valor === null || valor === undefined || valor === '') {
+    return 'Ingresá un monto válido.'
+  }
+  const num = normalizarMonto(valor)
+  if (num === null || num <= 0) {
+    return 'El monto debe ser un número positivo.'
+  }
+  const duplicado = config.value.montos_rapidos_efectivo.findIndex(
+    (m, i) => i !== excluirIdx && Number(m) === num
+  )
+  if (duplicado !== -1) {
+    return `El monto $${num.toLocaleString()} ya está configurado.`
+  }
+  return null
+}
+
+const agregarMonto = () => {
+  errorMonto.value = ''
+  const err = validarMonto(nuevoMonto.value)
+  if (err) {
+    errorMonto.value = err
+    return
+  }
+  const num = normalizarMonto(nuevoMonto.value)
+  config.value.montos_rapidos_efectivo.push(num)
+  nuevoMonto.value = null
+}
+
+const iniciarEdicionMonto = (idx) => {
+  errorMonto.value = ''
+  montoEditandoIdx.value = idx
+  montoEditandoValor.value = config.value.montos_rapidos_efectivo[idx]
+}
+
+const guardarEdicionMonto = () => {
+  if (montoEditandoIdx.value === null) return
+  errorMonto.value = ''
+  const err = validarMonto(montoEditandoValor.value, montoEditandoIdx.value)
+  if (err) {
+    errorMonto.value = err
+    return
+  }
+  const num = normalizarMonto(montoEditandoValor.value)
+  config.value.montos_rapidos_efectivo[montoEditandoIdx.value] = num
+  montoEditandoIdx.value = null
+  montoEditandoValor.value = null
+}
+
+const cancelarEdicionMonto = () => {
+  montoEditandoIdx.value = null
+  montoEditandoValor.value = null
+  errorMonto.value = ''
+}
+
+const eliminarMonto = (idx) => {
+  config.value.montos_rapidos_efectivo.splice(idx, 1)
+  if (montoEditandoIdx.value === idx) cancelarEdicionMonto()
 }
 
 const validarFormulario = () => {
@@ -427,6 +690,8 @@ const guardarCambios = async () => {
   formData.append('dias_validez_promo_reactivacion', config.value.dias_validez_promo_reactivacion);
   formData.append('politica_senia', config.value.politica_senia);
   formData.append('costo_envio_moto', config.value.costo_envio_moto);
+  formData.append('montos_rapidos_activos', config.value.montos_rapidos_activos ? 'true' : 'false');
+  formData.append('montos_rapidos_efectivo', JSON.stringify(config.value.montos_rapidos_efectivo || []));
   
   if (logoFile.value) {
     formData.append('logo', logoFile.value);
@@ -435,6 +700,14 @@ const guardarCambios = async () => {
   if (portadaFile.value) {
     formData.append('imagen_portada', portadaFile.value);
   }
+
+  if (loginImgFile.value) {
+    formData.append('imagen_login', loginImgFile.value);
+  } else if (eliminarLoginImg.value) {
+    // Cadena vacía → el backend borra la imagen (ImagenBorrableField)
+    formData.append('imagen_login', '');
+  }
+  formData.append('mostrar_imagen_login', config.value.mostrar_imagen_login ? 'true' : 'false');
 
   try {
     await Promise.all([
@@ -540,4 +813,38 @@ onMounted(obtenerConfig)
   .logo-upload-section { flex-direction: column; text-align: center; }
   .portada-preview-container { width: 100%; max-width: 320px; }
 }
+
+/* ===== PUNTO DE VENTA (POS): Montos rápidos de efectivo ===== */
+.pos-toggle { position: relative; width: 54px; height: 28px; border: none; background: var(--bg-tertiary); border-radius: 20px; cursor: pointer; padding: 0; transition: background 0.25s ease; flex-shrink: 0; }
+.pos-toggle-thumb { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; background: #fff; border-radius: 50%; transition: transform 0.25s ease; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+.pos-toggle-on { background: linear-gradient(135deg, #0ea5e9, #0284c7); }
+.pos-toggle-on .pos-toggle-thumb { transform: translateX(26px); }
+
+.pos-chips { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
+.pos-chip { display: flex; align-items: center; gap: 6px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 6px 8px 6px 14px; }
+.pos-chip-monto { font-weight: 800; font-size: 1rem; color: var(--text-primary); }
+.pos-chip-input { width: 130px !important; padding: 8px 10px; font-weight: 700; }
+.pos-chip-btn { width: 30px; height: 30px; border-radius: 8px; border: none; background: var(--bg-tertiary); color: var(--text-secondary); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all .2s; font-size: .95rem; }
+.pos-chip-btn:hover { background: var(--hover-bg); color: var(--text-primary); }
+.pos-chip-ok { color: #10b981; }
+.pos-chip-ok:hover { background: rgba(16,185,129,.12); color: #10b981; }
+
+.pos-add-input { width: 200px !important; }
+.pos-btn-add { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; border: none; padding: 12px 22px; border-radius: 10px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all .25s; }
+.pos-btn-add:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(14,165,233,.35); }
+
+.pos-vacio { background: var(--bg-primary); border: 1px dashed var(--border-color); border-radius: 12px; padding: 16px; margin-top: 6px; }
+.pos-vacio p { margin: 0; color: var(--text-secondary); font-size: .9rem; display: flex; align-items: center; gap: 8px; }
+.pos-error { margin-top: 10px; color: #f87171; font-size: .88rem; font-weight: 600; display: flex; align-items: center; gap: 6px; background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.3); border-radius: 10px; padding: 8px 12px; width: fit-content; }
+
+/* ===== IMAGEN DEL LOGIN (Ajustes del Local) ===== */
+.login-img-section { display: flex; flex-direction: column; gap: 18px; }
+.login-img-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; flex-wrap: wrap; }
+.login-img-toggle { display: flex; align-items: center; gap: 10px; padding-top: 4px; }
+.login-img-controls { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
+.login-img-preview-container { width: 340px; max-width: 100%; height: 150px; border: 2px dashed var(--border-color); border-radius: 18px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--bg-primary); }
+.login-img-preview { width: 100%; height: 100%; object-fit: cover; }
+.login-img-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.login-img-delete { background: transparent; color: #f87171; border: 1.5px solid rgba(248,113,113,.45); padding: 10px 18px; border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 0.88rem; display: flex; align-items: center; gap: 8px; transition: all .25s; font-family: inherit; }
+.login-img-delete:hover { background: rgba(248,113,113,.12); border-color: #f87171; transform: translateY(-1px); }
 </style>
