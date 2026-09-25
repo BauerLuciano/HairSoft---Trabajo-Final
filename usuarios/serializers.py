@@ -991,6 +991,11 @@ class AuditoriaSerializer(serializers.ModelSerializer):
     despues = serializers.SerializerMethodField()
     campos_modificados = serializers.SerializerMethodField()
     objeto_nombre = serializers.SerializerMethodField()
+
+    # Anotado en el queryset (api_views.AuditoriaViewSet.get_queryset): cantidad de
+    # eventos que comparten el mismo id_operacion. 1 = solo este evento → el frontend
+    # no ofrece "ver operación". Sin anotación (p. ej. exportación): default 0.
+    total_eventos_operacion = serializers.IntegerField(read_only=True, default=0)
     
     class Meta:
         model = Auditoria

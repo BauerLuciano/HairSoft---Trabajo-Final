@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
-from django.db.models import Sum, Count, F, Value, DecimalField, ExpressionWrapper, FloatField, Q, Avg
+from django.db.models import Sum, Count, F, Value, DecimalField, ExpressionWrapper, FloatField, Q, Avg, OuterRef, Subquery, IntegerField
 from django.db import transaction
 from django.http import HttpResponse, FileResponse
 from django.db.models.functions import TruncDate, Coalesce
@@ -96,6 +96,17 @@ class AuditoriaFilter(django_filters.FilterSet):
         fields = ['accion', 'resultado', 'modelo_afectado', 'usuario']
 
 
+# Procesos automáticos internos y repetitivos que se excluyen del historial visible
+# de Auditoría (siguen registrándose en la DB). Se identifican por su `contexto.proceso`
+# y NO por `resultado=SISTEMA`: otros procesos automáticos sí son relevantes para el
+# administrador (reposición de stock, reoferta, webhook de pagos) y permanecen visibles.
+# Caso: el barrido de fidelización crea N PromocionReactivacion por ejecución (una por
+# cliente inactivo) — ruido sin valor en el listado principal.
+PROCESOS_AUTOMATICOS_OCULTOS = [
+    'celery:procesar_reactivacion_clientes_inactivos',
+]
+
+
 class AuditoriaViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Auditoria.objects.select_related('usuario', 'usuario__rol').all()
     serializer_class = AuditoriaSerializer
@@ -118,36 +129,44 @@ class AuditoriaViewSet(viewsets.ReadOnlyModelViewSet):
             from .auditoria_service import MODULO_MODELO
             modelos_del_modulo = [m for m, mod in MODULO_MODELO.items() if mod == modulo]
             qs = qs.filter(Q(modulo=modulo) | (Q(modulo='') & Q(modelo_afectado__in=modelos_del_modulo)))
+        # Excluye los procesos automáticos internos y repetitivos (ver
+        # PROCESOS_AUTOMATICOS_OCULTOS): no ensucian el listado principal.
+        # Se filtra por pk con subquery (no `exclude(contexto__proceso__in=...)`
+        # directo: la mayoría de las filas no tiene clave `proceso` y el lookup
+        # devuelve NULL, que un NOT IN descartaría; la subquery las preserva).
+        qs = qs.exclude(
+            pk__in=Auditoria.objects
+            .filter(contexto__proceso__in=PROCESOS_AUTOMATICOS_OCULTOS)
+            .values('pk')
+        )
+        # Cantidad de eventos que comparten el mismo id_operacion. Se expone como
+        # `total_eventos_operacion` para que el frontend solo ofrezca "ver operación"
+        # cuando realmente existe un grupo (total > 1). Subquery correlacionado
+        # indexado por id_operacion: evita N+1 en listado y detalle.
+        qs = qs.annotate(
+            total_eventos_operacion=Coalesce(
+                Subquery(
+                    Auditoria.objects
+                    .filter(id_operacion=OuterRef('id_operacion'))
+                    .values('id_operacion')
+                    .annotate(total=Count('id'))
+                    .values('total'),
+                    output_field=IntegerField()
+                ),
+                0
+            )
+        )
         return qs
 
-    def _registrar_consulta(self, request, accion='CONSULTAR'):
-        """Audita quién consulta el historial (a pedido de seguridad)."""
-        try:
-            from .auditoria_service import AuditoriaService
-            params = {
-                k: v for k, v in request.query_params.items()
-                if k not in ('page', 'page_size', 'format')
-            }
-            AuditoriaService.registrar(
-                accion=accion,
-                modelo_afectado='Auditoria',
-                objeto_id=getattr(request, 'auditoria_id', None),
-                mensaje='Consulta al historial de auditoría',
-                contexto={'filtros': params} if params else {},
-                usuario=request.user,
-            )
-        except Exception as e:
-            logging.getLogger(__name__).error(f"Error auditando consulta: {e}")
-
-    def list(self, request, *args, **kwargs):
-        response = super().list(request, *args, **kwargs)
-        self._registrar_consulta(request)
-        return response
-
-    def retrieve(self, request, *args, **kwargs):
-        response = super().retrieve(request, *args, **kwargs)
-        self._registrar_consulta(request)
-        return response
+    # NOTA — CONSULTAR RECURSIVO ELIMINADO:
+    # list() y retrieve() de la propia Auditoría ya NO generan eventos CONSULTAR.
+    # Antes, cada apertura del listado o de un detalle creaba un registro CONSULTAR
+    # sobre el modelo Auditoria con un id_operacion propio (siempre singleton, se
+    # verificó: 0 de 35 comparten UUID con otro evento), contaminando el historial
+    # que se está leyendo y confundiendo la trazabilidad ("ver operación" generaba
+    # más ruido). La auditoría de consultas del resto del sistema no se ve afectada:
+    # el único lugar que producía CONSULTAR era este ViewSet y solo para Auditoria.
+    # (Este ViewSet hereda de ReadOnlyModelViewSet: list/retrieve siguen intactos.)
 
 # ============================================
 # 2. APIs DE GESTIÓN DE SERVICIOS

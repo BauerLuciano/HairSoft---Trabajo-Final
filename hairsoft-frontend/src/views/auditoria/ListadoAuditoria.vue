@@ -24,7 +24,7 @@
 
       <!-- Filtros -->
       <div class="filters-container">
-        <div class="filters-grid">
+        <div class="filters-grid filtros-visibles">
           <div class="filter-group" style="grid-column: span 2;">
             <label>Buscador</label>
             <div class="search-wrapper">
@@ -33,6 +33,23 @@
             </div>
           </div>
 
+          <div class="filter-group">
+            <label>Desde</label>
+            <input type="date" v-model="filtros.fechaDesde" class="filter-input" />
+          </div>
+          <div class="filter-group">
+            <label>Hasta</label>
+            <input type="date" v-model="filtros.fechaHasta" class="filter-input" />
+          </div>
+        </div>
+
+        <button class="mas-filtros-toggle" @click="mostrarMasFiltros = !mostrarMasFiltros" type="button">
+          <i :class="mostrarMasFiltros ? 'fas fa-chevron-up' : 'fas fa-sliders-h'"></i>
+          {{ mostrarMasFiltros ? 'Menos filtros' : 'Más filtros' }}
+          <span v-if="filtrosExtraActivos" class="filtros-extra-badge">{{ filtrosExtraActivos }}</span>
+        </button>
+
+        <div v-show="mostrarMasFiltros" class="filters-grid filtros-extra">
           <div class="filter-group">
             <label>Responsable</label>
             <input v-model="filtros.usuario" type="text" placeholder="Nombre o email..." class="filter-input"/>
@@ -56,28 +73,12 @@
             </select>
           </div>
 
-          <div class="filter-group">
-            <label>Desde</label>
-            <input type="date" v-model="filtros.fechaDesde" class="filter-input" />
-          </div>
-          <div class="filter-group">
-            <label>Hasta</label>
-            <input type="date" v-model="filtros.fechaHasta" class="filter-input" />
-          </div>
-
           <div class="filter-group" style="display: flex; align-items: flex-end;">
             <button @click="limpiarFiltros" class="clear-filters-btn" style="width: 100%; height: 42px;">
-              <i class="fas fa-eraser"></i> Limpiar
+              <i class="fas fa-eraser"></i> Limpiar filtros
             </button>
           </div>
         </div>
-      </div>
-
-      <div v-if="filtros.idOperacion" class="operacion-active">
-        <i class="fas fa-link"></i>
-        Mostrando todos los eventos de la operación
-        <code>#{{ filtros.idOperacion.slice(0, 8) }}</code>
-        <button @click="filtros.idOperacion = ''" class="quitar-operacion" title="Quitar filtro de operación">&times;</button>
       </div>
 
       <div v-if="errorMsg" class="error-banner">
@@ -99,7 +100,6 @@
               <th>Resultado</th>
               <th>Sobre qué</th>
               <th>Desde dónde</th>
-              <th style="text-align: center;">Operación</th>
               <th style="text-align: center;">Detalle</th>
             </tr>
           </thead>
@@ -129,7 +129,6 @@
                     <i :class="getIconoModulo(log.modulo_efectivo || log.modulo)"></i> {{ getNombreModulo(log.modulo_efectivo || log.modulo) }}
                   </span>
                   <span class="badge-estado" :class="getClaseAccion(log.accion)">{{ log.accion.replace(/_/g, ' ') }}</span>
-                  <span v-if="log.descripcion && log.descripcion !== '-'" class="desc-corta" :title="log.descripcion">{{ log.descripcion }}</span>
                 </div>
               </td>
               <td>
@@ -141,12 +140,12 @@
                 </div>
               </td>
               <td>
-                <strong style="color: var(--text-primary);">{{ log.modelo_afectado || 'Sistema General' }}</strong>
-                <span v-if="log.objeto_id" style="font-size:0.8em; margin-left:5px; color: var(--accent-color); font-family: monospace;">#{{ log.objeto_id }}</span>
-                <div v-if="log.objeto_nombre" style="font-size:0.78em; opacity:0.85;">{{ log.objeto_nombre }}</div>
-                <div v-if="log.campos_modificados && log.campos_modificados.length" class="campos-afectados">
-                  <span v-for="c in log.campos_modificados.slice(0, 5)" :key="c" class="campo-chip">{{ c }}</span>
-                  <span v-if="log.campos_modificados.length > 5" class="campo-chip">+{{ log.campos_modificados.length - 5 }}</span>
+                <div class="objeto-corto">
+                  <div class="objeto-linea">
+                    <strong class="objeto-modelo">{{ log.modelo_afectado || 'Sistema General' }}</strong>
+                    <span v-if="log.objeto_id" class="objeto-id">#{{ log.objeto_id }}</span>
+                  </div>
+                  <span v-if="nombreCortoUtil(log)" class="objeto-nombre" :title="log.objeto_nombre">{{ log.objeto_nombre }}</span>
                 </div>
               </td>
               <td>
@@ -162,24 +161,13 @@
                 </div>
               </td>
               <td style="text-align: center;">
-                <button
-                  v-if="log.id_operacion"
-                  @click="verOperacion(log.id_operacion)"
-                  class="operation-chip"
-                  :title="`Ver todos los eventos con id_operacion ${log.id_operacion}`"
-                >
-                  <i class="fas fa-link"></i>
-                </button>
-                <span v-else style="opacity:0.3;">—</span>
-              </td>
-              <td style="text-align: center;">
                 <button @click="abrirDetalles(log)" class="action-button edit" title="Ver Ficha Detallada">
                   <i class="fas fa-eye"></i> Ver
                 </button>
               </td>
             </tr>
             <tr v-if="!loading && logs.length === 0">
-              <td colspan="8" style="text-align:center; padding:60px;">
+              <td colspan="7" style="text-align:center; padding:60px;">
                 <i class="fas fa-search" style="font-size:3rem; opacity:0.2; margin-bottom:15px; display:block;"></i>
                 <h3 style="color: var(--text-secondary); margin: 0;">No se encontraron registros</h3>
                 <p style="color: var(--text-tertiary); font-size: 0.9rem;">Probá ajustando los filtros de búsqueda.</p>
@@ -202,18 +190,48 @@
       <div class="modal-content">
         <button class="modal-close" @click="cerrarModal">&times;</button>
 
-        <div class="modal-header-custom" :class="claseResultado(detalle?.resultado)">
-          <div class="modal-title-row">
-            <h2>{{ (detalle?.accion || '').replace(/_/g, ' ') }} <span class="muted">· {{ getNombreModulo(detalle?.modulo_efectivo || detalle?.modulo) }}</span></h2>
-            <span class="resultado-badge grande" :class="claseResultado(detalle?.resultado)">{{ detalle?.resultado || 'EXITO' }}</span>
-          </div>
-          <p class="modal-subtitle">Objeto: {{ detalle?.modelo_afectado || 'Sistema' }}
-            <span v-if="detalle?.objeto_id"> · #{{ detalle?.objeto_id }}</span>
-            <span v-if="detalle?.objeto_nombre"> · {{ detalle?.objeto_nombre }}</span>
-          </p>
+        <div class="modal-header-custom" :class="modoOperacion ? 'resultado-exito' : claseResultado(detalle?.resultado)">
+          <template v-if="modoOperacion">
+            <div class="modal-title-row">
+              <h2><i class="fas fa-link"></i> Operación <span class="muted">· {{ operacionTotal }} {{ operacionTotal === 1 ? 'evento' : 'eventos' }}</span></h2>
+            </div>
+            <p class="modal-subtitle">Eventos que componen esta operación</p>
+          </template>
+          <template v-else>
+            <div class="modal-title-row">
+              <h2>{{ (detalle?.accion || '').replace(/_/g, ' ') }} <span class="muted">· {{ getNombreModulo(detalle?.modulo_efectivo || detalle?.modulo) }}</span></h2>
+              <span class="resultado-badge grande" :class="claseResultado(detalle?.resultado)">{{ detalle?.resultado || 'EXITO' }}</span>
+            </div>
+            <p class="modal-subtitle">Objeto: {{ detalle?.modelo_afectado || 'Sistema' }}
+              <span v-if="detalle?.objeto_id"> · #{{ detalle?.objeto_id }}</span>
+              <span v-if="detalle?.objeto_nombre"> · {{ detalle?.objeto_nombre }}</span>
+            </p>
+          </template>
         </div>
 
         <div class="modal-body-custom">
+          <template v-if="modoOperacion">
+            <!-- Índice compacto de la operación (dentro del mismo modal) -->
+            <div v-if="operacionCargando" class="loading-overlay">
+              <div class="spinner"></div>
+              <p>Cargando eventos de la operación...</p>
+            </div>
+            <div v-else-if="operacionEventos.length === 0" class="no-data">
+              <i class="fas fa-info-circle"></i> No se encontraron eventos para esta operación.
+            </div>
+            <div v-else class="op-index">
+              <div v-for="(ev, i) in operacionEventos" :key="ev.id" class="op-index-row" @click="verDetalleOperacion(ev)" :title="'Ver detalle de ' + (ev.accion || '').replace(/_/g, ' ') + ' · ' + (ev.modelo_afectado || 'Sistema General') + (ev.objeto_id ? ' #' + ev.objeto_id : '')">
+                <span class="op-index-num">{{ i + 1 }}</span>
+                <span class="op-index-texto">
+                  <span class="op-index-accion" :class="getClaseAccion(ev.accion)">{{ (ev.accion || '').replace(/_/g, ' ') }}</span>
+                  <span class="op-index-modelo">{{ ev.modelo_afectado || 'Sistema General' }}<template v-if="ev.objeto_id"> #{{ ev.objeto_id }}</template></span>
+                  <span class="op-index-fecha">{{ formatFecha(ev.fecha) }} {{ formatHora(ev.fecha) }}</span>
+                </span>
+                <i class="fas fa-chevron-right op-index-icon"></i>
+              </div>
+            </div>
+          </template>
+          <template v-else>
           <div class="info-grid">
             <!-- Quién -->
             <div class="info-item">
@@ -232,7 +250,6 @@
             <div class="info-item">
               <span class="label">Cuándo</span>
               <span class="value">{{ formatFechaHora(detalle?.fecha) }}</span>
-              <span class="sub-value" v-if="detalle?.endpoint"><i class="fas fa-route"></i> {{ detalle.endpoint }} <span v-if="detalle?.metodo_http">({{ detalle.metodo_http }})</span></span>
             </div>
             <!-- Desde dónde -->
             <div class="info-item">
@@ -261,20 +278,11 @@
             <div class="objeto-item"><span class="label">Modelo</span><span class="value">{{ detalle?.modelo_afectado || 'Sistema' }}</span></div>
             <div class="objeto-item"><span class="label">ID</span><span class="value mono">{{ detalle?.objeto_id || '—' }}</span></div>
             <div class="objeto-item" v-if="detalle?.objeto_nombre"><span class="label">Nombre</span><span class="value">{{ detalle.objeto_nombre }}</span></div>
-            <div class="objeto-item" v-if="detalle?.id_operacion">
-              <span class="label">Operación</span>
-              <span class="value mono">
-                <code>{{ detalle.id_operacion.slice(0, 8) }}</code>
-                <button @click="verOperacion(detalle.id_operacion)" class="operation-chip inline" title="Ver todos los eventos de esta operación">
-                  <i class="fas fa-link"></i> ver operación
-                </button>
-              </span>
-            </div>
           </div>
 
-          <h3 class="section-title">Cambios (ANTES / DESPUÉS)</h3>
+          <h3 class="section-title">{{ tituloDetalles }}</h3>
           <div class="diff-wrapper">
-            <table class="detail-table">
+            <table v-if="hayDetallesVisibles" class="detail-table">
               <thead>
                 <tr>
                   <th width="35%">Campo</th>
@@ -282,7 +290,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(info, campo) in parseDetalles(detalle?.detalles)"
+                <tr v-for="(info, campo) in detallesVisibles"
                     :key="campo"
                     :class="{ 'row-changed': info.tipo === 'CAMBIO' }">
                   <td class="field-col">
@@ -301,31 +309,36 @@
                 </tr>
               </tbody>
             </table>
-            <div v-if="isEmpty(detalle?.detalles) && (!detalle.antes || Object.keys(detalle.antes).length === 0)" class="no-data">
-              <i class="fas fa-info-circle"></i> No hay cambios de campos registrados para este movimiento.
+            <div v-else class="no-data">
+              <i class="fas fa-info-circle"></i> No hay datos registrados para este evento.
             </div>
           </div>
 
-          <div v-if="detalle?.contexto && Object.keys(detalle.contexto).length" class="contexto-box">
+          <div v-if="Object.keys(contextoVisible).length" class="contexto-box">
             <h3 class="section-title">Contexto</h3>
             <div class="contexto-grid">
-              <div v-for="(valor, clave) in detalle.contexto" :key="clave" class="contexto-item">
+              <div v-for="(valor, clave) in contextoVisible" :key="clave" class="contexto-item">
                 <span class="label">{{ formatearClave(clave) }}</span>
                 <span class="value mono">{{ typeof valor === 'object' ? JSON.stringify(valor) : valor }}</span>
               </div>
             </div>
           </div>
+          </template>
         </div>
 
         <div class="modal-footer-custom">
-          <button v-if="detalle?.id_operacion" @click="verOperacion(detalle.id_operacion)" class="footer-operacion">
-            <i class="fas fa-link"></i> Ver toda la operación
+          <button v-if="!modoOperacion && !enOperacion && totalEventosOperacionDetalle > 1" @click="verOperacion(detalle.id_operacion, totalEventosOperacionDetalle)" class="footer-operacion">
+            <i class="fas fa-link"></i> Ver operación
+          </button>
+          <button v-if="enOperacion && !modoOperacion" @click="volverAOperacion" class="footer-operacion">
+            <i class="fas fa-chevron-left"></i> Volver a la operación
           </button>
           <button @click="cerrarModal" class="clear-filters-btn" style="width: auto; margin-left: auto;"><i class="fas fa-check"></i> Entendido</button>
         </div>
       </div>
     </div>
-  </div>
+
+    </div>
 </template>
 
 <script setup>
@@ -340,6 +353,14 @@ const loading = ref(false)
 const errorMsg = ref('')
 const mostrarModal = ref(false)
 const detalle = ref(null)
+const mostrarMasFiltros = ref(false)
+// Vista de operación dentro del mismo modal de detalle (sin segundos modales y
+// sin tocar filtros, URL, página ni listado principal).
+const modoOperacion = ref(false)
+const enOperacion = ref(false)
+const operacionEventos = ref([])
+const operacionTotal = ref(0)
+const operacionCargando = ref(false)
 
 const filtros = ref({
   busqueda: '',
@@ -379,6 +400,88 @@ const accionesDisponibles = [
 ]
 
 const totalPaginas = computed(() => Math.max(1, Math.ceil(count.value / pageSize)))
+
+// Cantidad de filtros "extra" activos (los de la sección colapsable)
+const filtrosExtraActivos = computed(() => {
+  const f = filtros.value
+  let n = 0
+  if (f.usuario.trim()) n++
+  if (f.resultado) n++
+  if (f.accion) n++
+  return n
+})
+
+// Total de eventos del grupo de la operación (anotado en backend). Se ofrece
+// "ver operación" solo cuando el grupo realmente tiene más de un evento (total > 1)
+// y se muestra la cantidad TOTAL de eventos, no "relacionados" (total - 1).
+const totalEventosOperacionDetalle = computed(() => Number(detalle.value?.total_eventos_operacion) || 0)
+
+// Título de la sección de datos según la acción y el contenido real:
+//  - hay campos CAMBIO            → "Cambios (ANTES / DESPUÉS)"
+//  - ELIMINAR sin CAMBIO          → "Datos eliminados" (snapshot estático)
+//  - resto (CREAR, INGRESO_*, …)  → "Datos registrados" (valores estáticos)
+// Nunca se inventa un "antes" que no exista en los datos.
+const tituloDetalles = computed(() => {
+  const d = detalle.value
+  if (!d) return 'Datos registrados'
+  const parsed = parseDetalles(d.detalles)
+  const tieneCambios = Object.values(parsed).some((info) => info && info.tipo === 'CAMBIO')
+  if (tieneCambios) return 'Cambios (ANTES / DESPUÉS)'
+  if ((d.accion || '').toUpperCase() === 'ELIMINAR') return 'Datos eliminados'
+  return 'Datos registrados'
+})
+
+// Valor "vacío" = ausencia de dato (no debe mostrarse). 0, false, "No" y
+// "No Aplica" son valores válidos del registro y se conservan.
+const esValorVacio = (val) => {
+  if (val === null || val === undefined) return true
+  if (typeof val === 'string') {
+    const t = val.trim()
+    return t === '' || t === '-'
+  }
+  return false
+}
+
+// Detalles filtrados para la presentación: se ocultan los campos cuyo valor es
+// un dato vacío (null, undefined, '', solo espacios, '-'). Los CAMBIO
+// (antes/después) nunca se filtran: son información real de una edición.
+const detallesVisibles = computed(() => {
+  const d = detalle.value
+  if (!d) return {}
+  const visibles = {}
+  for (const [clave, info] of Object.entries(parseDetalles(d.detalles))) {
+    if (info && info.tipo === 'CAMBIO') { visibles[clave] = info; continue }
+    const valor = info && info.tipo === 'VALOR' ? info.valor : info
+    if (!esValorVacio(valor)) visibles[clave] = info
+  }
+  return visibles
+})
+
+const hayDetallesVisibles = computed(() => Object.keys(detallesVisibles.value).length > 0)
+
+// Contexto visible: se oculta la clave técnica `id_operacion` (es un espejo redundante
+// del campo del evento y no debe mostrarse como una "operación de negocio"). Los
+// filtros con que se consultó (contexto.filtros, incluido un id_operacion buscado)
+// siguen visibles dentro de "Filtros".
+const contextoVisible = computed(() => {
+  const ctx = detalle.value?.contexto
+  if (!ctx || typeof ctx !== 'object') return {}
+  return Object.fromEntries(Object.entries(ctx).filter(([clave]) => clave !== 'id_operacion'))
+})
+
+// Devuelve el nombre corto útil para la tabla (o '' si es una descripción larga).
+// Las descripciones tipo str() de MovimientoCaja ("INGRESO | Venta de Productos | $26000.00 (Caja 220)")
+// deben verse solo en Detalles, no en la fila.
+const nombreCortoUtil = (log) => {
+  const nombre = log?.objeto_nombre
+  if (!nombre || nombre === '-') return ''
+  if (nombre.includes('$')) return ''          // importes
+  if (nombre.includes(' | ')) return ''        // descripciones separadas por pipe (movimiento/caja)
+  if (/\d{2}\/\d{2}\/\d{4}/.test(nombre)) return ''  // fechas embebidas (dd/mm/yyyy)
+  if (/\d{4}-\d{2}-\d{2}/.test(nombre)) return ''    // fechas embebidas (ISO)
+  if (nombre.length > 45) return ''            // textos excesivamente largos
+  return nombre
+}
 
 const esSistema = (log) => {
   if (!log) return false
@@ -481,8 +584,6 @@ const parseDetalles = (detalles) => {
   return adaptado
 }
 
-const isEmpty = (d) => Object.keys(parseDetalles(d)).length === 0
-
 const formatValue = (val) => {
   if (val === null || val === undefined || val === '') return '-'
   if (val === true) return 'Sí'
@@ -580,29 +681,65 @@ const abrirDetalles = async (log) => {
   }
 }
 
-const cerrarModal = () => { mostrarModal.value = false; detalle.value = null }
+const cerrarModal = () => {
+  mostrarModal.value = false
+  detalle.value = null
+  // Cierra la vista de operación y limpia el índice (la X / Cerrar vuelve al listado).
+  modoOperacion.value = false
+  enOperacion.value = false
+  operacionEventos.value = []
+}
 
-const verOperacion = (idOperacion) => {
+const verOperacion = async (idOperacion, total = 0) => {
   if (!idOperacion) return
-  filtros.value.idOperacion = idOperacion
-  filtros.value.modulo = ''
-  filtros.value.busqueda = ''
-  filtros.value.usuario = ''
-  filtros.value.resultado = ''
-  filtros.value.accion = ''
-  filtros.value.fechaDesde = ''
-  filtros.value.fechaHasta = ''
-  pagina.value = 1
-  cerrarModal()
-  cargarAuditoria()
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+  // El mismo modal pasa temporalmente a la vista compacta de la operación.
+  // No se abren modales anidados ni se tocan filtros, URL, página ni listado principal.
+  operacionTotal.value = total || 0
+  operacionEventos.value = []
+  operacionCargando.value = true
+  modoOperacion.value = true
+  enOperacion.value = true
+  try {
+    // Reutiliza el endpoint existente (filtro id_operacion ya soportado por la API,
+    // sin agregar filtros nuevos ni generar auditorías CONSULTAR).
+    const res = await api.get('/auditoria/', {
+      params: { id_operacion: idOperacion, page: 1, page_size: 200 }
+    })
+    operacionEventos.value = Array.isArray(res.data.results) ? res.data.results : []
+    // Count real del grupo para el encabezado "Operación · N eventos"
+    operacionTotal.value = res.data.count || operacionTotal.value
+  } catch (err) {
+    operacionEventos.value = []
+    console.error('❌ Error cargando eventos de la operación:', err)
+  } finally {
+    operacionCargando.value = false
+  }
+}
+
+// Muestra el detalle de un evento dentro del mismo modal (reemplaza la vista
+// de operación; usa el mismo mecanismo de detalle que el listado).
+const verDetalleOperacion = async (ev) => {
+  if (!ev) return
+  modoOperacion.value = false
+  detalle.value = ev
+  try {
+    const res = await api.get(`/auditoria/${ev.id}/`)
+    if (res.data) detalle.value = res.data
+  } catch (err) {
+    console.warn('No se pudo refrescar el detalle, se muestra el dato de la fila:', err)
+  }
+}
+
+// Vuelve al índice compacto de la operación (eventos ya en memoria, sin re-consultar).
+const volverAOperacion = () => {
+  modoOperacion.value = true
 }
 
 onMounted(cargarAuditoria)
 </script>
 
 <style scoped>
-.list-card { background: var(--bg-secondary); color: var(--text-primary); border-radius: 24px; padding: 40px; width: 100%; max-width: 1600px; box-shadow: var(--shadow-lg); border: 1px solid var(--border-color); position: relative; overflow: hidden; margin: 0 auto; }
+.list-card { background: var(--bg-secondary); color: var(--text-primary); border-radius: 24px; padding: 40px; width: 100%; max-width: 1280px; box-shadow: var(--shadow-lg); border: 1px solid var(--border-color); position: relative; overflow: hidden; margin: 0 auto; }
 .list-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #0ac2e7, #0ac2e7, #0ac2e7); }
 
 .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid var(--border-color); padding-bottom: 20px; }
@@ -683,27 +820,14 @@ onMounted(cargarAuditoria)
   font-size: 0.72rem; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;
 }
 
-.desc-corta {
-  font-size: 0.72rem; color: var(--text-tertiary);
-  max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.objeto-corto { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.objeto-linea { display: flex; align-items: baseline; flex-wrap: wrap; }
+.objeto-modelo { color: var(--text-primary); }
+.objeto-id { font-size: 0.8em; margin-left: 5px; color: var(--accent-color); font-family: monospace; }
+.objeto-nombre {
+  font-size: 0.78em; opacity: 0.85; max-width: 200px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-
-.campos-afectados { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
-.campo-chip {
-  font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
-  background: rgba(245, 158, 11, 0.1); color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  padding: 2px 6px; border-radius: 4px; letter-spacing: 0.3px;
-}
-
-.operation-chip {
-  background: var(--bg-tertiary); color: var(--text-secondary);
-  border: 1px solid var(--border-color); border-radius: 8px;
-  padding: 7px 10px; cursor: pointer; transition: 0.2s;
-  display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 0.75rem;
-}
-.operation-chip:hover { color: #8b5cf6; border-color: #8b5cf6; background: rgba(139, 92, 246, 0.08); transform: translateY(-1px); }
-.operation-chip.inline { padding: 4px 8px; }
 
 .operacion-active {
   display: flex; align-items: center; gap: 8px;
@@ -723,6 +847,21 @@ onMounted(cargarAuditoria)
 
 .filters-container { margin-bottom: 30px; background: var(--hover-bg); padding: 20px; border-radius: 16px; border: 1px solid var(--border-color); }
 .filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; align-items: end; }
+.filtros-extra { margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border-color); }
+.mas-filtros-toggle {
+  margin-top: 15px;
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--bg-tertiary); color: var(--text-secondary);
+  border: 1px solid var(--border-color); border-radius: 10px;
+  padding: 8px 14px; cursor: pointer; font-weight: 700; font-size: 0.78rem;
+  text-transform: uppercase; letter-spacing: 0.4px; transition: all 0.2s ease;
+}
+.mas-filtros-toggle:hover { color: var(--accent-color); border-color: var(--accent-color); background: var(--hover-bg); }
+.filtros-extra-badge {
+  background: var(--accent-color); color: #fff; border-radius: 50%;
+  min-width: 18px; height: 18px; font-size: 0.65rem; font-weight: 800;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0 4px;
+}
 .filter-group label { font-weight: 700; margin-bottom: 8px; display: block; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; }
 .filter-input { padding: 10px 14px; border-radius: 10px; border: 2px solid var(--border-color); background-color: var(--bg-primary); color: var(--text-primary); width: 100%; box-sizing: border-box; outline: none; transition: border-color 0.3s; font-size: 0.9rem; }
 .filter-input:focus { border-color: #8b5cf6; }
@@ -786,6 +925,17 @@ onMounted(cargarAuditoria)
 .modal-footer-custom { padding: 20px 30px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; align-items: center; background: var(--bg-primary); border-radius: 0 0 16px 16px; }
 .footer-operacion { background: rgba(139, 92, 246, 0.1); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.4); padding: 10px 16px; border-radius: 10px; cursor: pointer; font-weight: 700; transition: 0.2s; display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; }
 .footer-operacion:hover { background: rgba(139, 92, 246, 0.2); }
+
+/* Índice compacto de la operación (dentro del mismo modal de detalle) */
+.op-index { display: flex; flex-direction: column; gap: 10px; }
+.op-index-row { display: flex; align-items: center; gap: 14px; background: var(--bg-primary); border: 1px solid var(--border-color); padding: 14px 16px; border-radius: 12px; cursor: pointer; transition: border-color 0.2s, transform 0.2s; }
+.op-index-row:hover { border-color: #8b5cf6; transform: translateY(-1px); }
+.op-index-num { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: rgba(139, 92, 246, 0.12); color: #a78bfa; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.8rem; }
+.op-index-texto { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.op-index-accion { font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; font-size: 0.85rem; }
+.op-index-modelo { font-weight: 600; color: var(--text-primary); font-size: 0.92rem; }
+.op-index-fecha { color: var(--text-tertiary); font-size: 0.85rem; margin-left: auto; white-space: nowrap; }
+.op-index-icon { color: var(--text-tertiary); flex-shrink: 0; }
 
 .objeto-box {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px;
