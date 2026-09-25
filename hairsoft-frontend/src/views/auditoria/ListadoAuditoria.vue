@@ -348,7 +348,7 @@ import api from '@/services/api'
 const logs = ref([])
 const count = ref(0)
 const pagina = ref(1)
-const pageSize = 25
+const pageSize = 8
 const loading = ref(false)
 const errorMsg = ref('')
 const mostrarModal = ref(false)
