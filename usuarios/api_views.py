@@ -124,11 +124,30 @@ class AuditoriaViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        modulo = self.request.query_params.get('modulo')
-        if modulo:
-            from .auditoria_service import MODULO_MODELO
-            modelos_del_modulo = [m for m, mod in MODULO_MODELO.items() if mod == modulo]
-            qs = qs.filter(Q(modulo=modulo) | (Q(modulo='') & Q(modelo_afectado__in=modelos_del_modulo)))
+        # Módulos: multi-selección (OR). Acepta `modulo=VENTAS&modulo=PAGOS`
+        # (getlist) y mantiene compatibilidad con `modulo=VENTAS` (un solo valor).
+        # Sin param de módulo = Todos. Mantiene el fallback legacy: eventos con
+        # `modulo=''` pero cuyo modelo_afectado pertenece al módulo seleccionado.
+        from .auditoria_service import MODULO_MODELO
+        modulos = self.request.query_params.getlist('modulo')
+        if modulos:
+            q_modulos = Q()
+            for mod in modulos:
+                if not mod:
+                    continue
+                modelos_del_modulo = [m for m, _mod in MODULO_MODELO.items() if _mod == mod]
+                q_modulos |= Q(modulo=mod) | (Q(modulo='') & Q(modelo_afectado__in=modelos_del_modulo))
+            qs = qs.filter(q_modulos)
+        # Autor histórico sin FK (usuario eliminado / SET_NULL): se filtra por el
+        # snapshot exacto (nombre + email) y solo eventos sin usuario FK, para no
+        # mezclar cuentas que compartan nombre (p. ej. dos "Luciano Bauer").
+        nombre_snapshot = self.request.query_params.get('usuario_nombre_snapshot')
+        if nombre_snapshot:
+            _q_snapshot = Q(usuario__isnull=True) & Q(usuario_nombre__iexact=nombre_snapshot)
+            email_snapshot = self.request.query_params.get('usuario_email_snapshot', '')
+            if email_snapshot:
+                _q_snapshot &= Q(usuario_email__iexact=email_snapshot)
+            qs = qs.filter(_q_snapshot)
         # Excluye los procesos automáticos internos y repetitivos (ver
         # PROCESOS_AUTOMATICOS_OCULTOS): no ensucian el listado principal.
         # Se filtra por pk con subquery (no `exclude(contexto__proceso__in=...)`
@@ -157,6 +176,55 @@ class AuditoriaViewSet(viewsets.ReadOnlyModelViewSet):
             )
         )
         return qs
+
+    @action(detail=False, methods=['get'])
+    def autores(self, request):
+        """
+        Autores reales de eventos de auditoría, para el selector "Usuario".
+        Solo devuelve quienes realmente aparecen como autores de eventos
+        (NO Usuario.objects.all()): un cliente que nunca generó eventos no
+        figura. Cuando existe FK se identifica por el id del usuario (estable:
+        distingue cuentas con el mismo nombre); los autores históricos cuyo
+        usuario fue eliminado (SET_NULL) se identifican por su snapshot
+        histórico (usuario_nombre + usuario_email).
+        """
+        base = Auditoria.objects.exclude(usuario__isnull=True)
+        fk_rows = (base
+                   .values('usuario')
+                   .annotate(eventos=Count('id'))
+                   .order_by('-eventos'))
+        snap_rows = (Auditoria.objects
+                     .filter(usuario__isnull=True)
+                     .exclude(usuario_nombre__in=['', 'SISTEMA', 'Anónimo'])
+                     .values('usuario_nombre', 'usuario_email')
+                     .annotate(eventos=Count('id'))
+                     .order_by('-eventos'))
+
+        autores = []
+        for r in fk_rows:
+            u = Usuario.objects.filter(id=r['usuario']).first()
+            if u is None:
+                continue
+            rol = u.rol.nombre if u.rol else 'Sin rol'
+            nombre = f"{u.nombre} {u.apellido}".strip() or u.correo
+            autores.append({
+                'id': u.id,
+                'nombre': nombre,
+                'email': u.correo or '',
+                'rol': rol,
+                'eventos': r['eventos'],
+                'origen': 'usuario',
+            })
+        for r in snap_rows:
+            autores.append({
+                'id': None,
+                'nombre': r['usuario_nombre'],
+                'email': r['usuario_email'] or '',
+                'rol': 'Sin rol',
+                'eventos': r['eventos'],
+                'origen': 'snapshot',
+            })
+        return Response({'autores': autores})
 
     # NOTA — CONSULTAR RECURSIVO ELIMINADO:
     # list() y retrieve() de la propia Auditoría ya NO generan eventos CONSULTAR.
@@ -768,9 +836,14 @@ class EstadisticasDashboardAPIView(APIView):
             # =========================================================
             # 1. INGRESOS TOTALES
             # =========================================================
+            # 🔥 CORREGIDO (doble conteo): SOLO ventas de mostrador (PRODUCTO) no anuladas.
+            # Las ventas tipo 'TURNO' (automáticas duplicadas + legacy fantasma) son registros
+            # documentales que NO representan facturación real: quedan EXCLUIDAS de este módulo.
+            # No se modifican ni eliminan en BD, simplemente no participan del cálculo.
             ventas_qs = Venta.objects.filter(
                 fecha__range=[f_inicio_dt, f_fin_dt],
-                anulada=False
+                anulada=False,
+                tipo='PRODUCTO'
             )
             # Turno.fecha es DateField -> usamos __range con objetos date
             turnos_qs = Turno.objects.filter(fecha__range=[f_inicio, f_fin])
@@ -815,15 +888,22 @@ class EstadisticasDashboardAPIView(APIView):
             ingreso_pedidos_web = float(stats_pedidos['ingreso'] or 0)
             cantidad_pedidos_web = stats_pedidos['cantidad'] or 0
 
-            # Totales
-            ingreso_total_bruto = ingreso_ventas + ingreso_turnos_completados + ingreso_penalizaciones + ingreso_pedidos_web
-            total_operaciones = cantidad_ventas + cantidad_turnos_completados + len(ingresos_penalizaciones_lista) + cantidad_pedidos_web
+            # Totales: la facturación bruta NO incluye señas retenidas (indicador separado).
+            ingreso_total_bruto = ingreso_ventas + ingreso_turnos_completados + ingreso_pedidos_web
+            # 🔥 CORREGIDO: el denominador usa EXACTAMENTE las mismas operaciones del
+            # numerador (facturación). Las señas retenidas NO son operaciones de venta
+            # y las ventas tipo TURNO quedaron excluidas de `ventas_qs`.
+            total_operaciones = cantidad_ventas + cantidad_turnos_completados + cantidad_pedidos_web
             ticket_promedio = (ingreso_total_bruto / total_operaciones) if total_operaciones > 0 else 0
 
             # =========================================================
             # 2. MEDIOS DE PAGO UNIFICADOS
             # =========================================================
             medios_dict = {}
+            # 🔥 CORREGIDO: fuentes = facturación (ventas PRODUCTO + turnos COMPLETADOS + web).
+            # Las ventas tipo TURNO quedan excluidas (ventas_qs ya filtra PRODUCTO) y las
+            # señas retenidas NO se mezclan acá (son dinero retenido por cancelación, no una
+            # venta; viven en el bloque "Ingresos por Turnos").
             # Ventas
             for v in ventas_qs.values('medio_pago__nombre').annotate(total=Sum('total')):
                 mp = (v['medio_pago__nombre'] or 'OTRO').upper().replace('_', ' ')
@@ -832,41 +912,24 @@ class EstadisticasDashboardAPIView(APIView):
             for t in turnos_completados_qs.values('medio_pago').annotate(total=Sum('monto_total')):
                 mp = (t['medio_pago'] or 'OTRO').upper().replace('_', ' ')
                 medios_dict[mp] = medios_dict.get(mp, 0) + float(t['total'] or 0)
-            # Penalizaciones
-            for p in penalizaciones_qs:
-                mp = (p.medio_pago or 'OTRO').upper().replace('_', ' ')
-                monto = float(p.monto_total) if p.tipo_pago == 'TOTAL' else float(p.monto_seña)
-                medios_dict[mp] = medios_dict.get(mp, 0) + monto
-            # Pedidos Web
+            # Pedidos Web: el único flujo de pago es Mercado Pago
+            # (checkout crear_preferencia_compra_web + pago_exitoso/webhook con mp_payment_id)
             if ingreso_pedidos_web > 0:
                 medios_dict['MERCADO PAGO'] = medios_dict.get('MERCADO PAGO', 0) + ingreso_pedidos_web
 
             grafico_medios = [{'medio': k, 'total': v} for k, v in sorted(medios_dict.items(), key=lambda item: item[1], reverse=True)]
 
             # =========================================================
-            # 3. SERVICIO ESTRELLA (ventas mostrador + turnos completados)
+            # 3. SERVICIO ESTRELLA + RANKING (SOLO turnos completados)
+            #    🔥 CORREGIDO (doble conteo): se eliminó la fuente duplicada
+            #    DetalleVenta/ventas (las ventas tipo TURNO ya no se cuentan).
+            #    El POS no vende servicios, así que los turnos completados
+            #    son la única fuente legítima de servicios realizados.
             # =========================================================
             from decimal import Decimal
             servicio_stats = {}
 
-            # 3a. Ventas de mostrador
-            ventas_servicios = DetalleVenta.objects.filter(
-                venta__fecha__range=[f_inicio_dt, f_fin_dt],
-                venta__anulada=False,
-                servicio__isnull=False
-            ).values('servicio__id', 'servicio__nombre').annotate(
-                cantidad=Sum('cantidad'),
-                ingreso=Sum('subtotal')
-            )
-            for vs in ventas_servicios:
-                sid = vs['servicio__id']
-                nombre = vs['servicio__nombre']
-                if sid not in servicio_stats:
-                    servicio_stats[sid] = {'nombre': nombre, 'cantidad': 0, 'ingreso': Decimal('0.00')}
-                servicio_stats[sid]['cantidad'] += vs['cantidad']
-                servicio_stats[sid]['ingreso'] += Decimal(str(vs['ingreso'] or 0))
-
-            # 3b. Turnos completados
+            # Turnos completados
             turnos_con_servicios = turnos_completados_qs.prefetch_related('servicios')
             for turno in turnos_con_servicios:
                 servicios_turno = list(turno.servicios.all())
@@ -884,27 +947,48 @@ class EstadisticasDashboardAPIView(APIView):
                     servicio_stats[sid]['cantidad'] += 1
                     servicio_stats[sid]['ingreso'] += s.precio * factor
 
-            if servicio_stats:
-                mejor = max(servicio_stats.values(), key=lambda x: x['cantidad'])
+            servicios_mas_elegidos = sorted(
+                [
+                    {'nombre': v['nombre'], 'cantidad': v['cantidad'], 'ingreso': float(v['ingreso'])}
+                    for v in servicio_stats.values()
+                ],
+                key=lambda x: (x['cantidad'], x['ingreso']),
+                reverse=True
+            )[:5]
+
+            if servicios_mas_elegidos:
+                mejor = servicios_mas_elegidos[0]
                 servicio_top = {
                     'nombre': mejor['nombre'],
                     'cantidad': mejor['cantidad'],
-                    'ingreso': float(mejor['ingreso'])
+                    'ingreso': mejor['ingreso']
                 }
             else:
                 servicio_top = {'nombre': 'Ninguno', 'cantidad': 0, 'ingreso': 0.0}
 
             # =========================================================
-            # 4. PRODUCTO ESTRELLA
+            # 4. PRODUCTO ESTRELLA + RANKING (solo ventas PRODUCTO)
             # =========================================================
-            producto_top = DetalleVenta.objects.filter(
+            productos_vendidos_qs = DetalleVenta.objects.filter(
                 venta__fecha__range=[f_inicio_dt, f_fin_dt],
                 venta__anulada=False,
+                venta__tipo='PRODUCTO',
                 producto__isnull=False
             ).values('producto__nombre').annotate(
                 cantidad=Sum('cantidad'),
                 ingreso=Sum('subtotal')
-            ).order_by('-cantidad').first()
+            ).order_by('-cantidad')
+
+            productos_mas_vendidos = [
+                {
+                    'nombre': p['producto__nombre'],
+                    'cantidad': p['cantidad'],
+                    'ingreso': float(p['ingreso'] or 0)
+                }
+                for p in productos_vendidos_qs[:5]
+            ]
+
+            producto_top = productos_vendidos_qs.first()
 
             # =========================================================
             # 5. STOCK ESTANCADO
@@ -912,6 +996,7 @@ class EstadisticasDashboardAPIView(APIView):
             productos_vendidos_ids = DetalleVenta.objects.filter(
                 venta__fecha__range=[f_inicio_dt, f_fin_dt],
                 venta__anulada=False,
+                venta__tipo='PRODUCTO',
                 producto__isnull=False
             ).values_list('producto_id', flat=True)
 
@@ -930,23 +1015,17 @@ class EstadisticasDashboardAPIView(APIView):
             )
             recurrentes = 0
             nuevos = 0
-            print("=== DEBUG FIDELIDAD ===")
-            print(f"Período: {f_inicio} a {f_fin}")
-            print(f"Clientes únicos en período: {len(clientes_ids_unicos)}")
             for cid in clientes_ids_unicos:
                 # Contar total de turnos COMPLETADOS en TODA la historia para este cliente
                 total_turnos_historia = Turno.objects.filter(
                     cliente_id=cid,
                     estado='COMPLETADO'
                 ).count()
-                print(f"Cliente ID {cid} -> total histórico de turnos: {total_turnos_historia}")
                 if total_turnos_historia > 1:
                     recurrentes += 1
                 else:
                     nuevos += 1
-            print(f"Nuevos: {nuevos} | Recurrentes: {recurrentes}")
-            print("=========================")
-            
+
             total_clientes = nuevos + recurrentes
             tasa_fidelidad = (recurrentes / total_clientes * 100) if total_clientes > 0 else 0
             # =========================================================
@@ -980,7 +1059,9 @@ class EstadisticasDashboardAPIView(APIView):
                     'turnos_ingresos': [
                         {'label': 'Turnos Completados', 'total': ingreso_turnos_completados, 'color': '#10b981'},
                         {'label': 'Señas Retenidas', 'total': ingreso_penalizaciones, 'color': '#f59e0b'}
-                    ]
+                    ],
+                    'servicios_mas_elegidos': servicios_mas_elegidos,
+                    'productos_mas_vendidos': productos_mas_vendidos,
                 },
                 'tablas': {
                     'stock_estancado': [

@@ -157,7 +157,19 @@ def auditar_cambios(sender, instance, created, **kwargs):
                 hay_cambios = True
             elif hasattr(instance, '_estado_anterior'):
                 datos_viejos = instance._estado_anterior
+                # Los campos auto_now (fecha_actualizacion, fecha_modificacion, ...)
+                # cambian en CADA save() aunque no haya un cambio funcional real,
+                # generando eventos EDITAR "vacíos" (p. ej. PedidoWeb #167 donde el
+                # único cambio era fecha_actualizacion). Se excluyen del diff para
+                # que un save() sin cambios funcionales no cree auditoría de ruido.
+                # NO afecta eventos históricos ni el CREAR (que conserva sus VALOR).
+                campos_auto_now = {
+                    f.name for f in instance._meta.fields
+                    if getattr(f, 'auto_now', False)
+                }
                 for k, v_nuevo in datos_nuevos.items():
+                    if k in campos_auto_now:
+                        continue
                     v_viejo = datos_viejos.get(k)
                     if serializar(v_viejo) != serializar(v_nuevo):
                         hay_cambios = True

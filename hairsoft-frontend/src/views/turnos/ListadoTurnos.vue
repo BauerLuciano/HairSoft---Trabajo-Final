@@ -36,6 +36,14 @@
             </select>
           </div>
           <div class="filter-group">
+            <label for="filtroPago">Pago / Transacción</label>
+            <select v-model="filtros.filtroPago" id="filtroPago" class="filter-select" @change="cargarTurnos">
+              <option value="">Todos</option>
+              <option value="pagado">Pagados</option>
+              <option value="pendiente">Pendientes de pago</option>
+            </select>
+          </div>
+          <div class="filter-group">
             <label for="canal">Canal</label>
             <select v-model="filtros.canal" id="canal" class="filter-select" @change="cargarTurnos">
               <option value="">Todos</option>
@@ -78,7 +86,9 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="turno in turnosFiltradosPaginados" :key="turno.id">
+            <tr v-for="turno in turnosFiltradosPaginados" :key="turno.id"
+                :id="'turno-fila-' + turno.id"
+                :class="{ 'fila-seleccionada': turno.id === turnoSeleccionado }">
               <td>
                 <span class="badge-id">#{{ turno.id }}</span>
               </td>
@@ -259,8 +269,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import axios from '../../utils/axiosConfig'
 import { 
   Plus, Trash2, Eye, CreditCard, ArrowRightLeft, Check, 
@@ -270,6 +280,7 @@ import Swal from 'sweetalert2'
 import PagoQrModal from '@/components/PagoQrModal.vue'
 
 const router = useRouter()
+const route = useRoute()
 
 const qrSaldoAbierto = ref(false)
 const qrSaldoInit = ref('')
@@ -331,6 +342,8 @@ const listaPeluqueros = ref([])
 const pagina = ref(1)
 const itemsPorPagina = 7
 const loading = ref(false)
+// Turno destacado cuando se llega desde el Dashboard (?filtro_pago=pendiente&turno=<ID>)
+const turnoSeleccionado = ref(null)
 const filtros = ref({ 
   busqueda: '', 
   peluquero: '', 
@@ -338,7 +351,8 @@ const filtros = ref({
   canal: '', 
   fechaDesde: '', 
   fechaHasta: '' ,
-  medioPago: ''
+  medioPago: '',
+  filtroPago: ''
 })
 
 const userRol = computed(() => {
@@ -637,6 +651,7 @@ const cargarTurnos = async () => {
     if (filtros.value.fechaDesde) params.append('fecha_desde', filtros.value.fechaDesde)
     if (filtros.value.fechaHasta) params.append('fecha_hasta', filtros.value.fechaHasta)
     if (filtros.value.peluquero) params.append('peluquero_id', filtros.value.peluquero)
+    if (filtros.value.filtroPago) params.append('filtro_pago', filtros.value.filtroPago)
     
     params.append('incluir_cancelados', 'true')
     
@@ -1732,7 +1747,8 @@ const completarTurno = async (turno) => {
 };
 
 const limpiarFiltros = () => {
-  filtros.value = { busqueda: '', peluquero: '', estado: '', canal: '', fechaDesde: '', fechaHasta: '', medioPago: '' }
+  filtros.value = { busqueda: '', peluquero: '', estado: '', canal: '', fechaDesde: '', fechaHasta: '', medioPago: '', filtroPago: '' }
+  turnoSeleccionado.value = null
   pagina.value = 1
   cargarTurnos()
 }
@@ -1783,6 +1799,16 @@ const turnosFiltrados = computed(() => {
     })
   }
   
+  // Misma lógica que el backend (filtro_pago): espejo de Turno.calcular_saldo_pendiente()
+  if (filtros.value.filtroPago) {
+    filtrados = filtrados.filter(turno => {
+      if (filtros.value.filtroPago === 'pendiente') {
+        return turno.estado !== 'CANCELADO' && turno.reembolso_estado !== 'COMPLETADO' && Number(turno.saldo_pendiente) > 0
+      }
+      return Number(turno.saldo_pendiente) <= 0
+    })
+  }
+  
   return filtrados
 })
 
@@ -1809,16 +1835,43 @@ const puedeCancelarTurno = (turno) => {
 }
 
 onMounted(async () => { 
-  cargarTurnos() 
+  // Deep-link desde Dashboard: /turnos?filtro_pago=pendiente&turno=<ID>
+  const qPago = String(route.query.filtro_pago || '')
+  if (qPago === 'pendiente' || qPago === 'pagado') {
+    filtros.value.filtroPago = qPago
+  }
+  const qTurno = Number(String(route.query.turno || ''))
+  if (Number.isInteger(qTurno) && qTurno > 0) {
+    turnoSeleccionado.value = qTurno
+  }
+
+  await cargarTurnos() 
   if (esAdminORecep.value) {
     try {
       const res = await axios.get('/api/peluqueros/')
       listaPeluqueros.value = res.data || []
     } catch(e) { console.error('Error cargando peluqueros para el filtro', e) }
   }
+
+  // Si venimos con un turno específico: ubicarlo en su página, destacarlo y scrollear hasta él
+  if (turnoSeleccionado.value) {
+    const index = turnosFiltrados.value.findIndex(t => t.id === turnoSeleccionado.value)
+    if (index >= 0) {
+      pagina.value = Math.floor(index / itemsPorPagina) + 1
+      nextTick(() => {
+        const fila = document.getElementById('turno-fila-' + turnoSeleccionado.value)
+        if (fila) fila.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      })
+    }
+  }
 })
 
 watch(filtros, () => { pagina.value = 1 }, { deep: true })
+
+// Tras un cobro el listado puede achicarse: evitar quedar en una página vacía
+watch(totalPaginas, (total) => {
+  if (pagina.value > total) pagina.value = total > 0 ? total : 1
+})
 </script>
 
 <style scoped>
@@ -2403,6 +2456,14 @@ watch(filtros, () => { pagina.value = 1 }, { deep: true })
 
 .users-table tr:hover {
   background: var(--hover-bg);
+  transition: all 0.2s ease;
+}
+
+/* Fila del turno seleccionado desde el Dashboard (?filtro_pago=pendiente&turno=<ID>) */
+.users-table tr.fila-seleccionada,
+.users-table tr.fila-seleccionada:hover {
+  background: color-mix(in srgb, var(--accent-color) 12%, var(--bg-primary));
+  box-shadow: inset 4px 0 0 var(--accent-color);
   transition: all 0.2s ease;
 }
 

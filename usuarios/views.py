@@ -5594,7 +5594,10 @@ def dashboard_data(request):
         turnos_periodo = Turno.objects.filter(fecha__range=(start_date, end_date), estado='COMPLETADO')
         
         servicios_realizados = turnos_periodo.count()
-        productos_vendidos = DetalleVenta.objects.filter(venta__in=ventas_periodo, producto__isnull=False).aggregate(total=Sum('cantidad'))['total'] or 0
+        # Productos vendidos: SOLO ventas no anuladas de tipo PRODUCTO
+        # (excluye las ventas documentales tipo TURNO para evitar doble conteo)
+        ventas_producto_periodo = ventas_periodo.filter(tipo='PRODUCTO')
+        productos_vendidos = DetalleVenta.objects.filter(venta__in=ventas_producto_periodo, producto__isnull=False).aggregate(total=Sum('cantidad'))['total'] or 0
 
         # ==========================================
         # 2. MÉTRICAS FINANCIERAS (DESDE LA CAJA)
@@ -5604,6 +5607,34 @@ def dashboard_data(request):
 
         ingresos_totales = movimientos_ingreso.aggregate(total=Sum('monto'))['total'] or 0
         egresos_totales = movimientos_egreso.aggregate(total=Sum('monto'))['total'] or 0
+
+        # ==========================================
+        # 2b. RESULTADO NETO DE CAJA + PERÍODO ANTERIOR EQUIVALENTE
+        # ==========================================
+        resultado_neto = float(ingresos_totales) - float(egresos_totales)
+
+        # Período anterior con la misma duración, que finaliza el día previo al inicio del actual.
+        # Misma fuente (MovimientoCaja) y misma zona horaria (ARG_TZ) que los valores actuales.
+        delta_days = (end_date.date() - start_date.date()).days
+        prev_end_date = start_date.date() - timedelta(days=1)
+        prev_start_date = prev_end_date - timedelta(days=delta_days)
+        prev_start = datetime.combine(prev_start_date, time.min).replace(tzinfo=ARG_TZ)
+        prev_end = datetime.combine(prev_end_date, time.max).replace(tzinfo=ARG_TZ)
+
+        ingresos_anterior = float(MovimientoCaja.objects.filter(tipo='INGRESO', fecha__range=(prev_start, prev_end)).aggregate(total=Sum('monto'))['total'] or 0)
+        egresos_anterior = float(MovimientoCaja.objects.filter(tipo='EGRESO', fecha__range=(prev_start, prev_end)).aggregate(total=Sum('monto'))['total'] or 0)
+        resultado_neto_anterior = ingresos_anterior - egresos_anterior
+
+        # Variación porcentual: solo si el período anterior tiene base (evita Infinity/NaN)
+        if ingresos_anterior:
+            variacion_ingresos = round(((float(ingresos_totales) - ingresos_anterior) / ingresos_anterior) * 100, 1)
+        else:
+            variacion_ingresos = None
+
+        if resultado_neto_anterior:
+            variacion_resultado_neto = round(((resultado_neto - resultado_neto_anterior) / resultado_neto_anterior) * 100, 1)
+        else:
+            variacion_resultado_neto = None
 
         # Ingresos agrupados por Medio de Pago
         ingresos_por_medio_query = movimientos_ingreso.values('metodo_pago').annotate(total=Sum('monto')).order_by('-total')
@@ -5660,6 +5691,62 @@ def dashboard_data(request):
                 'dias_restantes': dias_restantes
             })
 
+        # ==========================================
+        # 6. COBROS PENDIENTES
+        # Fuente única de verdad: Turno.calcular_saldo_pendiente() (mismo método
+        # que usa el serializer y el listado de turnos para "FALTA COBRAR").
+        # Se incluyen turnos RESERVADO y COMPLETADO; se excluyen CANCELADO
+        # (no son cobranza futura) y reembolsos COMPLETADO (dinero ya devuelto).
+        # Orden cronológico (fecha + hora) para el detalle compacto.
+        # ==========================================
+        turnos_con_saldo = [
+            t for t in Turno.objects.filter(
+                estado__in=['RESERVADO', 'COMPLETADO'],
+                reembolso_estado__in=['NO_APLICA', 'PENDIENTE'],
+            ).select_related('cliente').order_by('fecha', 'hora')
+            if t.calcular_saldo_pendiente() > 0
+        ]
+        cobros_pendientes = {
+            'total': round(sum(float(t.calcular_saldo_pendiente()) for t in turnos_con_saldo), 2),
+            'turnos': len(turnos_con_saldo),
+            # Detalle compacto: primeros 5 pendientes en orden cronológico
+            'detalle': [
+                {
+                    'id': t.id,
+                    'fecha': t.fecha.strftime('%d/%m/%Y'),
+                    'hora': t.hora.strftime('%H:%M'),
+                    'cliente': f"{t.cliente.nombre} {t.cliente.apellido}".strip() if t.cliente else 'Sin asignar',
+                    'saldo': float(t.calcular_saldo_pendiente()),
+                }
+                for t in turnos_con_saldo[:5]
+            ],
+        }
+
+        # ==========================================
+        # 7. PRÓXIMOS TURNOS (agenda compacta)
+        # Los primeros 5 turnos futuros en orden cronológico (fecha + hora ASC).
+        # Solo RESERVADO (aún por ocurrir); quedan excluidos CANCELADO, COMPLETADO
+        # (ya atendidos) y las fechas pasadas.
+        # ==========================================
+        proximos_turnos_qs = Turno.objects.filter(
+            fecha__gte=hoy_date,
+            estado='RESERVADO',
+        ).select_related('cliente', 'peluquero').prefetch_related('servicios').order_by('fecha', 'hora')[:5]
+
+        proximos_turnos = []
+        for t in proximos_turnos_qs:
+            servicios_str = ', '.join(s.nombre for s in t.servicios.all())
+            cliente_nombre = f"{t.cliente.nombre} {t.cliente.apellido}".strip() if t.cliente else 'Sin asignar'
+            proximos_turnos.append({
+                'id': t.id,
+                'fecha': t.fecha.strftime('%d/%m/%Y'),
+                'fecha_iso': t.fecha.isoformat(),
+                'hora': t.hora.strftime('%H:%M'),
+                'cliente': cliente_nombre,
+                'servicios': servicios_str,
+                'estado': t.estado,
+            })
+
         # Info de la empresa
         config = ConfiguracionSistema.get_solo()
         if request.user.is_authenticated:
@@ -5670,6 +5757,13 @@ def dashboard_data(request):
         return Response({
             'ingresosTotales': float(ingresos_totales),
             'egresosTotales': float(egresos_totales), 
+            'resultadoNeto': resultado_neto,
+            'resultadoNetoAnterior': resultado_neto_anterior,
+            'ingresosAnteriores': ingresos_anterior,
+            'egresosAnteriores': egresos_anterior,
+            'variacionIngresos': variacion_ingresos,
+            'variacionResultadoNeto': variacion_resultado_neto,
+            'periodoAnterior': f"{prev_start_date.strftime('%d/%m/%Y')} al {prev_end_date.strftime('%d/%m/%Y')}",
             'serviciosRealizados': servicios_realizados,
             'productosVendidos': productos_vendidos,
             'ventasPorDia': ventas_por_dia,
@@ -5679,6 +5773,8 @@ def dashboard_data(request):
             'cajaAbierta': caja_abierta,       
             'pendientesInfo': pendientes_data, 
             'pedidosProximos': pedidos_proximos, 
+            'cobrosPendientes': cobros_pendientes,
+            'proximosTurnos': proximos_turnos,
             'empresa': {
                 'razon_social': config.razon_social,
                 'cuil_cuit': config.cuil_cuit,
@@ -6886,6 +6982,27 @@ def listar_turnos_general(request):
             
         if canal and canal != 'Todos':
             turnos = turnos.filter(canal=canal)
+
+        # =======================================================
+        # 💳 FILTRO DE PAGO / TRANSACCIÓN
+        # Misma fuente de verdad que el resto del sistema:
+        #   Turno.calcular_saldo_pendiente() (expuesto como "saldo_pendiente"
+        #   por TurnoSerializer) — NO se redefine la fórmula acá.
+        # Reglas espejo de "Cobros Pendientes" del Dashboard:
+        #   - "pendiente": saldo > 0, excluye CANCELADO y reembolso COMPLETADO
+        #   - "pagado":    saldo == 0
+        # =======================================================
+        filtro_pago = request.GET.get('filtro_pago')
+        if filtro_pago in ('pendiente', 'pagado'):
+            turnos_filtrados_pago = []
+            for t in turnos:
+                saldo = t.calcular_saldo_pendiente()
+                if filtro_pago == 'pendiente':
+                    if t.estado != 'CANCELADO' and t.reembolso_estado != 'COMPLETADO' and saldo > 0:
+                        turnos_filtrados_pago.append(t)
+                elif saldo == 0:
+                    turnos_filtrados_pago.append(t)
+            turnos = turnos_filtrados_pago
 
         # 4. Serialización y respuesta
         serializer = TurnoSerializer(turnos, many=True)

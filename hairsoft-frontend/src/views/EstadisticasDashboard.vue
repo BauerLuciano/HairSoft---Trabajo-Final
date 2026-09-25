@@ -56,43 +56,19 @@
         <div class="kpi-card turnos-card">
           <div class="kpi-icon"><i class="ri-user-heart-line"></i></div>
           <div class="kpi-info">
-            <span class="kpi-label">Retención de Clientes</span>
-            <span class="kpi-value">{{ stats.kpis.fidelidad.tasa }}% <small class="text-sm">Vuelven</small></span>
-            <span class="kpi-subtext">Nuevos: <strong>{{ stats.kpis.fidelidad.nuevos }}</strong> | Recurrentes: <strong>{{ stats.kpis.fidelidad.recurrentes }}</strong></span>
-          </div>
-        </div>
-
-        <div class="kpi-card stars-card">
-          <div class="kpi-icon"><i class="ri-star-smile-line"></i></div>
-          <div class="kpi-info" style="width: 100%;">
-            <span class="kpi-label">Los Más Elegidos</span>
-            
-            <div class="favorite-item">
-              <span class="favorite-title">
-                <span class="fav-label"><i class="ri-scissors-cut-line service-icon"></i> Servicio:</span> 
-                <strong class="fav-name">{{ stats.kpis.servicio_estrella.nombre }}</strong>
-              </span>
-              <span class="favorite-details" v-if="stats.kpis.servicio_estrella.nombre !== 'Ninguno'">
-                {{ stats.kpis.servicio_estrella.cantidad }} realizados &bull; <span class="income">{{ formatCurrency(stats.kpis.servicio_estrella.ingreso) }}</span>
-              </span>
-            </div>
-
-            <div class="favorite-item">
-              <span class="favorite-title">
-                <span class="fav-label"><i class="ri-shopping-bag-line product-icon"></i> Producto:</span> 
-                <strong class="fav-name">{{ stats.kpis.producto_estrella.nombre }}</strong>
-              </span>
-              <span class="favorite-details" v-if="stats.kpis.producto_estrella.nombre !== 'Ninguno'">
-                {{ stats.kpis.producto_estrella.cantidad }} vendidos &bull; <span class="income">{{ formatCurrency(stats.kpis.producto_estrella.ingreso) }}</span>
-              </span>
-            </div>
+            <span class="kpi-label">Clientes Recurrentes</span>
+            <span class="kpi-value">{{ stats.kpis.fidelidad.tasa }}%</span>
+            <span class="kpi-subtext"><strong>{{ stats.kpis.fidelidad.recurrentes }}</strong> recurrentes &middot; <strong>{{ stats.kpis.fidelidad.nuevos }}</strong> nuevos</span>
           </div>
         </div>
       </div>
 
       <div class="charts-grid">
         <div class="section-card chart-card">
-          <div class="section-header"><h3>💸 Origen de Ingresos (Reservas)</h3></div>
+          <div class="section-header">
+            <h3><CalendarCheck :size="18" :stroke-width="2" class="section-title-icon" /> Ingresos por Turnos</h3>
+            <p class="section-subtitle">Exclusivo del canal Turnos: no incluye mostrador ni pedidos web</p>
+          </div>
           <div class="chart-layout">
             <div class="chart-box">
               <canvas ref="turnosChartCanvas" :style="{ opacity: (ingresosTurnos > 0 || ingresosSenas > 0) ? 1 : 0 }"></canvas>
@@ -115,7 +91,7 @@
               </div>
               <div class="summary-item total mt-4">
                 <div class="summary-info">
-                  <span class="summary-label">TOTAL ORIGEN</span>
+                  <span class="summary-label">TOTAL INGRESOS POR TURNOS</span>
                   <span class="summary-value">{{ formatCurrency(ingresosTurnos + ingresosSenas) }}</span>
                 </div>
               </div>
@@ -124,7 +100,10 @@
         </div>
         
         <div class="section-card chart-card">
-          <div class="section-header"><h3>💳 Distribución por Medio de Pago</h3></div>
+          <div class="section-header">
+            <h3><CreditCard :size="18" :stroke-width="2" class="section-title-icon" /> Distribución por Medio de Pago</h3>
+            <p class="section-subtitle">Composición de la facturación total según medio utilizado</p>
+          </div>
           <div class="chart-layout">
             <div class="chart-box">
               <canvas ref="pagosChartCanvas" :style="{ opacity: stats.graficos.medios_pago.length > 0 ? 1 : 0 }"></canvas>
@@ -133,7 +112,7 @@
             
             <div class="chart-summary" v-if="stats.graficos.medios_pago.length > 0">
               <div class="summary-item" v-for="(item, idx) in stats.graficos.medios_pago" :key="idx" :class="{ 'mt-3': idx > 0 }">
-                <span class="summary-dot" style="background-color: #3b82f6;"></span>
+                <span class="summary-dot" :style="{ backgroundColor: colorAtIndex(idx) }"></span>
                 <div class="summary-info">
                   <span class="summary-label">{{ item.medio }}</span>
                   <span class="summary-value">{{ formatCurrency(item.total) }}</span>
@@ -152,9 +131,53 @@
         </div>
       </div>
 
+      <div class="rankings-grid">
+        <div class="section-card chart-card">
+          <div class="section-header">
+            <h3><Scissors :size="18" :stroke-width="2" class="section-title-icon" /> Servicios Más Elegidos</h3>
+            <p class="section-subtitle">Ranking de servicios realizados en turnos completados</p>
+          </div>
+          <div class="ranking-layout">
+            <div class="chart-box ranking-chart">
+              <canvas ref="serviciosChartCanvas" :style="{ opacity: stats.graficos.servicios_mas_elegidos.length > 0 ? 1 : 0 }"></canvas>
+              <div class="chart-empty-message" v-if="stats.graficos.servicios_mas_elegidos.length === 0">Sin servicios realizados en el período.</div>
+            </div>
+            <div class="ranking-list" v-if="stats.graficos.servicios_mas_elegidos.length > 0">
+              <div class="ranking-row" v-for="(item, idx) in stats.graficos.servicios_mas_elegidos" :key="idx">
+                <span class="rank-badge">{{ idx + 1 }}</span>
+                <span class="ranking-name">{{ item.nombre }}</span>
+                <span class="ranking-count">{{ item.cantidad }} {{ item.cantidad === 1 ? 'uso' : 'usos' }}</span>
+                <span class="ranking-income">{{ formatCurrency(item.ingreso) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card chart-card">
+          <div class="section-header">
+            <h3><ShoppingBag :size="18" :stroke-width="2" class="section-title-icon" /> Productos Más Vendidos</h3>
+            <p class="section-subtitle">Ranking de ventas de mostrador (sin turnos ni pedidos web)</p>
+          </div>
+          <div class="ranking-layout">
+            <div class="chart-box ranking-chart">
+              <canvas ref="productosChartCanvas" :style="{ opacity: stats.graficos.productos_mas_vendidos.length > 0 ? 1 : 0 }"></canvas>
+              <div class="chart-empty-message" v-if="stats.graficos.productos_mas_vendidos.length === 0">Sin ventas de productos en el período.</div>
+            </div>
+            <div class="ranking-list" v-if="stats.graficos.productos_mas_vendidos.length > 0">
+              <div class="ranking-row" v-for="(item, idx) in stats.graficos.productos_mas_vendidos" :key="idx">
+                <span class="rank-badge">{{ idx + 1 }}</span>
+                <span class="ranking-name">{{ item.nombre }}</span>
+                <span class="ranking-count">{{ item.cantidad }} {{ item.cantidad === 1 ? 'unidad' : 'unidades' }}</span>
+                <span class="ranking-income">{{ formatCurrency(item.ingreso) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="section-card">
         <div class="section-header">
-          <h3>🛡️ Ingresos por Cancelaciones (Señas Retenidas)</h3>
+          <h3><CircleDollarSign :size="18" :stroke-width="2" class="section-title-icon" /> Ingresos por Cancelaciones (Señas Retenidas)</h3>
         </div>
         <div class="table-container">
           <table class="data-table">
@@ -183,7 +206,7 @@
 
       <div class="section-card">
         <div class="section-header">
-          <h3>📦 Top 5: Stock Estancado (Capital Inmovilizado)</h3>
+          <h3><Boxes :size="18" :stroke-width="2" class="section-title-icon" /> Top 5: Stock Estancado (Capital Inmovilizado)</h3>
         </div>
         <div class="table-container">
           <table class="data-table">
@@ -238,37 +261,27 @@
       </div>
 
       <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #0ea5e9; padding-left: 10px; margin-bottom: 20px; color: #0f172a;">1. Indicadores Clave</h3>
-      <div v-if="stats" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 40px;">
+      <div v-if="stats" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 40px;">
         <div style="padding: 20px 15px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center; background: #f8fafc;">
           <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Facturación Bruta</span>
           <p style="margin: 10px 0 0; font-size: 18px; font-weight: 900; color: #10b981;">{{ formatCurrency(stats.kpis.ingreso_total) }}</p>
           <p style="margin: 5px 0 0; font-size: 10px; color: #64748b;">Ticket Prom: {{ formatCurrency(stats.kpis.ticket_promedio) }}</p>
         </div>
         <div style="padding: 20px 15px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center; background: #f8fafc;">
-          <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Retención Clientes</span>
+          <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Clientes Recurrentes</span>
           <p style="margin: 10px 0 0; font-size: 18px; font-weight: 900; color: #0ea5e9;">{{ stats.kpis.fidelidad.tasa }}%</p>
           <p style="margin: 5px 0 0; font-size: 10px; color: #64748b;">Recurrentes: {{ stats.kpis.fidelidad.recurrentes }} | Nuevos: {{ stats.kpis.fidelidad.nuevos }}</p>
-        </div>
-        <div style="padding: 20px 15px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center; background: #f8fafc;">
-          <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Servicio Estrella</span>
-          <p style="margin: 10px 0 0; font-size: 14px; font-weight: 900; color: #3b82f6;">{{ stats.kpis.servicio_estrella.nombre }}</p>
-          <p style="margin: 5px 0 0; font-size: 10px; color: #64748b;">{{ stats.kpis.servicio_estrella.cantidad }} usos | {{ formatCurrency(stats.kpis.servicio_estrella.ingreso) }}</p>
-        </div>
-        <div style="padding: 20px 15px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center; background: #f8fafc;">
-          <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Producto Estrella</span>
-          <p style="margin: 10px 0 0; font-size: 14px; font-weight: 900; color: #f97316;">{{ stats.kpis.producto_estrella.nombre }}</p>
-          <p style="margin: 5px 0 0; font-size: 10px; color: #64748b;">{{ stats.kpis.producto_estrella.cantidad }} vent. | {{ formatCurrency(stats.kpis.producto_estrella.ingreso) }}</p>
         </div>
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 40px;">
         <div>
-          <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #f59e0b; padding-left: 10px; margin-bottom: 15px; color: #0f172a;">2. Origen de Ingresos</h3>
+          <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #f59e0b; padding-left: 10px; margin-bottom: 15px; color: #0f172a;">2. Ingresos por Turnos</h3>
           <img id="pdf-chart-torta" style="width: 100%; max-height: 250px; object-fit: contain; margin-bottom: 10px;" />
           <div v-if="stats" style="font-size: 11px; color: #334155; line-height: 1.5;">
             <strong>Turnos Completados:</strong> {{ formatCurrency(ingresosTurnos) }}<br>
             <strong>Señas Retenidas:</strong> {{ formatCurrency(ingresosSenas) }}<br>
-            <strong style="color: #0f172a; display: block; margin-top: 5px; font-size: 12px;">TOTAL ORIGEN: {{ formatCurrency(ingresosTurnos + ingresosSenas) }}</strong>
+            <strong style="color: #0f172a; display: block; margin-top: 5px; font-size: 12px;">TOTAL INGRESOS POR TURNOS: {{ formatCurrency(ingresosTurnos + ingresosSenas) }}</strong>
           </div>
         </div>
         <div>
@@ -283,8 +296,29 @@
         </div>
       </div>
 
+      <div v-if="stats && (stats.graficos.servicios_mas_elegidos.length > 0 || stats.graficos.productos_mas_vendidos.length > 0)" style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 40px;">
+        <div>
+          <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #3b82f6; padding-left: 10px; margin-bottom: 15px; color: #0f172a;">4. Servicios Más Elegidos</h3>
+          <img id="pdf-chart-servicios" style="width: 100%; max-height: 250px; object-fit: contain; margin-bottom: 10px;" />
+          <div v-if="stats" style="font-size: 11px; color: #334155; line-height: 1.5;">
+            <span v-for="item in stats.graficos.servicios_mas_elegidos" :key="item.nombre">
+              <strong>{{ item.nombre }}:</strong> {{ item.cantidad }} {{ item.cantidad === 1 ? 'uso' : 'usos' }} · {{ formatCurrency(item.ingreso) }}<br>
+            </span>
+          </div>
+        </div>
+        <div>
+          <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #f97316; padding-left: 10px; margin-bottom: 15px; color: #0f172a;">5. Productos Más Vendidos</h3>
+          <img id="pdf-chart-productos" style="width: 100%; max-height: 250px; object-fit: contain; margin-bottom: 10px;" />
+          <div v-if="stats" style="font-size: 11px; color: #334155; line-height: 1.5;">
+            <span v-for="item in stats.graficos.productos_mas_vendidos" :key="item.nombre">
+              <strong>{{ item.nombre }}:</strong> {{ item.cantidad }} {{ item.cantidad === 1 ? 'unidad' : 'unidades' }} · {{ formatCurrency(item.ingreso) }}<br>
+            </span>
+          </div>
+        </div>
+      </div>
+
       <div v-if="stats">
-        <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #ef4444; padding-left: 10px; margin-bottom: 20px; color: #0f172a;">4. Stock Estancado (Top 5)</h3>
+        <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #ef4444; padding-left: 10px; margin-bottom: 20px; color: #0f172a;">6. Stock Estancado (Top 5)</h3>
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
           <thead>
             <tr style="background: #0f172a; color: white;">
@@ -309,7 +343,7 @@
       </div>
 
       <div v-if="stats">
-        <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #10b981; padding-left: 10px; margin-bottom: 20px; color: #0f172a;">5. Señas Retenidas (Cancelaciones)</h3>
+        <h3 style="font-size: 14px; text-transform: uppercase; border-left: 5px solid #10b981; padding-left: 10px; margin-bottom: 20px; color: #0f172a;">7. Señas Retenidas (Cancelaciones)</h3>
         <table style="width: 100%; border-collapse: collapse;">
           <thead>
             <tr style="background: #0f172a; color: white;">
@@ -343,6 +377,7 @@ import axios from '@/utils/axiosConfig';
 import Chart from 'chart.js/auto';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { Scissors, ShoppingBag, CircleDollarSign, Boxes, CalendarCheck, CreditCard } from 'lucide-vue-next';
 
 const filtros = ref({ fecha_inicio: '', fecha_fin: '', periodo: 'month' });
 const stats = ref(null);
@@ -352,8 +387,12 @@ const isGeneratingPDF = ref(false);
 
 const turnosChartCanvas = ref(null);
 const pagosChartCanvas = ref(null);
+const serviciosChartCanvas = ref(null);
+const productosChartCanvas = ref(null);
 let turnosChartInstance = null;
 let pagosChartInstance = null;
+let serviciosChartInstance = null;
+let productosChartInstance = null;
 
 const logoBase64 = ref(null);
 const empresaData = ref(null);
@@ -383,6 +422,46 @@ const formatCurrency = (v) => {
   if (!v || isNaN(v)) return '$ 0,00';
   return `$ ${parseFloat(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
+
+// Paleta consistente con el resto del módulo
+const palette = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899'];
+const colorAtIndex = (i) => palette[i % palette.length];
+
+// Versión compacta para el centro de las donas (sin decimales en montos grandes)
+const formatCurrencyCompact = (v) => {
+  if (!v || isNaN(v)) return '$ 0';
+  const n = parseFloat(v);
+  if (Math.abs(n) >= 1000) {
+    return `$ ${Math.round(n).toLocaleString('es-AR')}`;
+  }
+  return n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+// Plugin de Chart.js: total en el centro de una dona
+const totalCenterPlugin = (getTotal) => ({
+  id: 'totalCenter',
+  afterDraw(chart) {
+    const total = getTotal();
+    if (!total) return;
+    const meta = chart.getDatasetMeta(0);
+    if (!meta.data || meta.data.length === 0) return;
+    const { x, y } = meta.data[0];
+    const css = getComputedStyle(document.documentElement);
+    const main = css.getPropertyValue('--text-primary').trim() || '#1e293b';
+    const sub = css.getPropertyValue('--text-tertiary').trim() || '#94a3b8';
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = main;
+    ctx.font = "800 16px 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText(formatCurrencyCompact(total), x, y - 6);
+    ctx.fillStyle = sub;
+    ctx.font = "600 9px 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText('TOTAL', x, y + 12);
+    ctx.restore();
+  }
+});
 
 const getFechaEmision = () => {
   const d = new Date();
@@ -458,11 +537,23 @@ const renderCharts = async () => {
 
   if (turnosChartInstance) turnosChartInstance.destroy();
   if (pagosChartInstance) pagosChartInstance.destroy();
+  if (serviciosChartInstance) serviciosChartInstance.destroy();
+  if (productosChartInstance) productosChartInstance.destroy();
+  turnosChartInstance = pagosChartInstance = serviciosChartInstance = productosChartInstance = null;
 
   const style = getComputedStyle(document.documentElement);
   const textColor = style.getPropertyValue('--text-tertiary').trim() || '#94a3b8';
   const gridColor = style.getPropertyValue('--border-color').trim() || '#334155';
 
+  const doughnutTooltip = (label) => (context) => {
+    const total = context.dataset.data.reduce((a, b) => a + (Number(b) || 0), 0);
+    const pct = total > 0 ? ((context.parsed / total) * 100).toFixed(1) : '0.0';
+    const raw = context.raw || 0;
+    if (label) return `${label(context)} · ${pct}%`;
+    return ` ${context.label}: ${formatCurrency(raw)} (${pct}%)`;
+  };
+
+  // 1) Ingresos por Turnos (dona, solo canal Turnos)
   if (turnosChartCanvas.value && (ingresosTurnos.value > 0 || ingresosSenas.value > 0)) {
     turnosChartInstance = new Chart(turnosChartCanvas.value, {
       type: 'doughnut',
@@ -477,54 +568,109 @@ const renderCharts = async () => {
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        animation: { duration: 0 }, 
-        plugins: { 
-          legend: { display: false }, 
-          tooltip: { callbacks: { label: (context) => ' ' + formatCurrency(context.raw || 0) } }
-        },
-        cutout: '75%'
+        animation: { duration: 400 },
+        cutout: '70%',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: doughnutTooltip() } },
+          totalCenter: totalCenterPlugin(() => ingresosTurnos.value + ingresosSenas.value)
+        }
       }
     });
   }
 
+  // 2) Medios de Pago (dona de distribución = facturación)
   if (pagosChartCanvas.value && stats.value.graficos.medios_pago.length > 0) {
     const labels = stats.value.graficos.medios_pago.map(m => m.medio);
     const data = stats.value.graficos.medios_pago.map(m => m.total);
 
     pagosChartInstance = new Chart(pagosChartCanvas.value, {
-      type: 'bar',
+      type: 'doughnut',
       data: {
         labels: labels,
         datasets: [{
-          label: 'Monto Ingresado', data: data, backgroundColor: '#3b82f6', borderRadius: 4, barPercentage: 0.5
+          data: data,
+          backgroundColor: labels.map((_, i) => colorAtIndex(i)),
+          borderWidth: 0,
+          hoverOffset: 4
         }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        animation: { duration: 0 }, 
-        plugins: { 
+        animation: { duration: 400 },
+        cutout: '70%',
+        plugins: {
           legend: { display: false },
-          tooltip: { callbacks: { label: (context) => ' ' + formatCurrency(context.raw || 0) } }
-        },
-        scales: {
-          y: { 
-            beginAtZero: true, 
-            ticks: { 
-              color: textColor,
-              font: { size: 18, weight: '600' } 
-            }, 
-            grid: { color: gridColor, drawBorder: false } 
-          },
-          x: { 
-            ticks: { 
-              color: textColor,
-              font: { size: 18, weight: 'bold' } 
-            }, 
-            grid: { display: false } 
-          }
+          tooltip: { callbacks: { label: doughnutTooltip() } },
+          totalCenter: totalCenterPlugin(() => stats.value.graficos.medios_pago.reduce((a, c) => a + c.total, 0))
         }
       }
     });
+  }
+
+  // 3) Servicios Más Elegidos (ranking horizontal)
+  const rankingData = (items, unidadSing, unidadPlur, ingresosArr) => ({
+    type: 'bar',
+    data: {
+      labels: items.map(i => i.nombre.length > 42 ? i.nombre.slice(0, 40) + '…' : i.nombre),
+      datasets: [{
+        data: items.map(i => i.cantidad),
+        backgroundColor: items.map((_, i) => colorAtIndex(i)),
+        borderRadius: 4,
+        barPercentage: 0.55,
+        categoryPercentage: 0.75
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 400 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const cant = ctx.parsed.x || 0;
+              const unidad = cant === 1 ? unidadSing : unidadPlur;
+              const ingreso = ingresosArr[ctx.dataIndex] || 0;
+              return ` ${cant} ${unidad} · ${formatCurrency(ingreso)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: { color: textColor, font: { size: 11 } },
+          grid: { color: gridColor, drawBorder: false },
+          title: {
+            display: true, text: 'Cantidad', color: textColor,
+            font: { size: 10, weight: '600' }
+          }
+        },
+        y: {
+          ticks: { color: textColor, font: { size: 12, weight: '600' } },
+          grid: { display: false }
+        }
+      }
+    }
+  });
+
+  if (serviciosChartCanvas.value && stats.value.graficos.servicios_mas_elegidos.length > 0) {
+    const srv = stats.value.graficos.servicios_mas_elegidos;
+    serviciosChartInstance = new Chart(
+      serviciosChartCanvas.value,
+      rankingData(srv, 'uso', 'usos', srv.map(i => i.ingreso))
+    );
+  }
+
+  // 4) Productos Más Vendidos (ranking horizontal)
+  if (productosChartCanvas.value && stats.value.graficos.productos_mas_vendidos.length > 0) {
+    const prd = stats.value.graficos.productos_mas_vendidos;
+    productosChartInstance = new Chart(
+      productosChartCanvas.value,
+      rankingData(prd, 'unidad', 'unidades', prd.map(i => i.ingreso))
+    );
   }
 };
 
@@ -569,6 +715,14 @@ const generatePDF = async () => {
     }
     if (pagosChartInstance) {
       document.getElementById('pdf-chart-barras').src = pagosChartInstance.toBase64Image();
+    }
+    const imgServ = document.getElementById('pdf-chart-servicios');
+    if (serviciosChartInstance && imgServ) {
+      imgServ.src = serviciosChartInstance.toBase64Image();
+    }
+    const imgProd = document.getElementById('pdf-chart-productos');
+    if (productosChartInstance && imgProd) {
+      imgProd.src = productosChartInstance.toBase64Image();
     }
 
     const el = document.getElementById('print-template');
@@ -776,7 +930,6 @@ onMounted(() => aplicarPeriodoRapido());
 }
 .income-card .kpi-icon  { color: #10b981; }
 .turnos-card .kpi-icon  { color: #3b82f6; }
-.stars-card .kpi-icon   { color: #f59e0b; }
 
 .kpi-info {
   display: flex;
@@ -801,45 +954,9 @@ onMounted(() => aplicarPeriodoRapido());
   font-size: 0.85rem;
 }
 
-.favorite-item {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 8px;
-}
-.favorite-item:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-.favorite-title {
-  font-size: 0.95rem;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.fav-label {
-  color: var(--text-secondary) !important;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.fav-name {
-  color: #ffffff !important;
-  font-weight: 700;
-}
-.favorite-details {
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-  margin-left: 24px;
-}
-.service-icon { color: #3b82f6; font-size: 1.1rem; }
-.product-icon { color: #f97316; font-size: 1.1rem; }
-
 .charts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 1.5rem;
   margin-bottom: 1.5rem;
 }
@@ -847,6 +964,78 @@ onMounted(() => aplicarPeriodoRapido());
   display: flex;
   flex-direction: column;
   margin-bottom: 0 !important;
+}
+
+.rankings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Rankings: gráfico de barras a ancho completo + listado debajo */
+.ranking-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem 1.5rem;
+  flex: 1;
+}
+.ranking-layout .chart-box {
+  width: 100%;
+  height: 220px;
+  position: relative;
+  padding: 0;
+}
+.ranking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.ranking-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+}
+.rank-badge {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #fff;
+  background: var(--text-tertiary);
+}
+.ranking-row:nth-child(1) .rank-badge { background: #f59e0b; }
+.ranking-row:nth-child(2) .rank-badge { background: #94a3b8; }
+.ranking-row:nth-child(3) .rank-badge { background: #a16207; }
+.ranking-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.ranking-count {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.ranking-income {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #10b981;
 }
 
 .chart-layout {
@@ -943,6 +1132,20 @@ onMounted(() => aplicarPeriodoRapido());
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.section-title-icon {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.section-subtitle {
+  margin: 0.3rem 0 0;
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .table-container { overflow-x: auto; }
@@ -1022,6 +1225,10 @@ onMounted(() => aplicarPeriodoRapido());
 
 /* RESPONSIVE */
 @media (max-width: 900px) {
+  .charts-grid,
+  .rankings-grid {
+    grid-template-columns: 1fr;
+  }
   .chart-layout {
     flex-direction: column;
   }
@@ -1033,6 +1240,17 @@ onMounted(() => aplicarPeriodoRapido());
     width: 100%;
     border-top: 1px solid var(--border-color);
     padding-top: 1.5rem;
+  }
+  .ranking-layout {
+    padding: 1rem;
+  }
+  .ranking-row {
+    flex-wrap: wrap;
+    row-gap: 0.25rem;
+  }
+  .ranking-count,
+  .ranking-income {
+    margin-left: auto;
   }
 }
 </style>

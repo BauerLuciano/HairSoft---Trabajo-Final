@@ -71,53 +71,17 @@
 
     <main v-else class="dashboard-content fade-in" ref="dashboardContent">
       
-      <div v-if="!dashboardData.cajaAbierta && dashboardData.pendientesInfo && dashboardData.pendientesInfo.cantidad > 0" class="alerta-huerfanos" style="margin-bottom: 2rem;">
-        <i class="fas fa-exclamation-circle" style="font-size: 2rem;"></i>
-        <div class="alerta-content">
-          <strong>Caja Cerrada - Cobros Web Pendientes</strong>
-          <p>
-            {{ dashboardData.pendientesInfo.cantidad === 1 ? 'Ingresó 1 pago' : `Ingresaron ${dashboardData.pendientesInfo.cantidad} pagos` }} 
-            por Mercado Pago mientras la caja estaba inactiva.
-            <strong>(Total: ${{ formatNumber(dashboardData.pendientesInfo.total_dinero) }})</strong>
-            <span style="font-size: 0.85rem; opacity: 0.9;">Inicie un turno en "Caja Diaria" para asimilar estos ingresos al balance de hoy.</span>
-          </p>
-        </div>
-      </div>
-
-      <div v-if="!dashboardData.cajaAbierta && (!dashboardData.pendientesInfo || dashboardData.pendientesInfo.cantidad === 0)" class="alerta-huerfanos" style="margin-bottom: 2rem; border-color: #ef4444; background: rgba(239, 68, 68, 0.1);">
-        <i class="fas fa-lock" style="font-size: 2rem; color: #ef4444;"></i>
-        <div class="alerta-content">
-          <strong style="color: #b91c1c;">La Caja Diaria está Cerrada</strong>
-          <p style="color: #7f1d1d;">
-            Actualmente no hay ninguna sesión de caja activa. No olvides iniciar el turno de caja antes de comenzar a registrar cobros presenciales.
-          </p>
-        </div>
-      </div>
-
-      <div v-if="dashboardData.pedidosProximos && dashboardData.pedidosProximos.length > 0" class="alerta-pedidos fade-in" style="margin-bottom: 2rem;">
-        <i class="fas fa-truck-loading" style="font-size: 2.2rem;"></i>
-        <div class="alerta-content">
-          <strong>Mercadería en camino</strong>
-          <p>Tenés entregas programadas de proveedores en los próximos días:</p>
-          <ul class="pedidos-lista">
-            <li v-for="pedido in dashboardData.pedidosProximos" :key="pedido.id">
-              <i class="fas fa-box" style="font-size: 0.9rem; margin-right: 5px;"></i>
-              Pedido <strong>#{{ pedido.id }}</strong> a <strong>{{ pedido.proveedor }}</strong> - Llegada aprox: {{ pedido.fecha_llegada }}
-              <span class="badge-dias" :class="{'critico': pedido.dias_restantes <= 1}">
-                {{ pedido.dias_restantes === 0 ? '¡Llega HOY!' : (pedido.dias_restantes === 1 ? 'Llega mañana' : 'Faltan ' + pedido.dias_restantes + ' días') }}
-              </span>
-            </li>
-          </ul>
-        </div>
-      </div>
-
       <div class="kpi-grid">
         <div class="kpi-card income">
           <div class="kpi-header-card"><div class="kpi-icon"><i class="fas fa-dollar-sign"></i></div></div>
           <div class="kpi-data">
-            <span class="label">Ingresos Totales</span>
+            <span class="label">Ingresos de Caja</span>
             <span class="value">${{ formatNumber(dashboardData.ingresosTotales) }}</span>
-            <span class="subtitle">Facturación bruta</span>
+            <span class="subtitle">Cobros registrados en caja</span>
+            <span v-if="esComparacionValida(dashboardData.variacionIngresos)" class="kpi-variacion" :class="variacionCls(dashboardData.variacionIngresos)" :title="dashboardData.periodoAnterior ? 'Período anterior: ' + dashboardData.periodoAnterior : ''">
+              <i class="fas" :class="variacionIcon(dashboardData.variacionIngresos)"></i>
+              {{ variacionText(dashboardData.variacionIngresos) }}
+            </span>
           </div>
         </div>
         <div class="kpi-card expense">
@@ -126,6 +90,18 @@
             <span class="label">Egresos Totales</span>
             <span class="value">${{ formatNumber(dashboardData.egresosTotales) }}</span>
             <span class="subtitle">Gastos y pagos a proveedores</span>
+          </div>
+        </div>
+        <div class="kpi-card net">
+          <div class="kpi-header-card"><div class="kpi-icon"><i class="fas fa-coins"></i></div></div>
+          <div class="kpi-data">
+            <span class="label">Resultado Neto</span>
+            <span class="value">${{ formatNumber(dashboardData.resultadoNeto) }}</span>
+            <span class="subtitle">Ingresos de caja − egresos</span>
+            <span v-if="esComparacionValida(dashboardData.variacionResultadoNeto)" class="kpi-variacion" :class="variacionCls(dashboardData.variacionResultadoNeto)" :title="dashboardData.periodoAnterior ? 'Período anterior: ' + dashboardData.periodoAnterior : ''">
+              <i class="fas" :class="variacionIcon(dashboardData.variacionResultadoNeto)"></i>
+              {{ variacionText(dashboardData.variacionResultadoNeto) }}
+            </span>
           </div>
         </div>
         <div class="kpi-card service">
@@ -220,6 +196,102 @@
           </div>
         </div>
       </div>
+
+      <div class="top-grid" style="margin-top: 1.25rem; margin-bottom: 2rem;">
+        <div class="section-card">
+          <div class="section-header">
+            <h3><i class="fas fa-hand-holding-usd" style="color: #fbbf24;"></i> Cobros Pendientes</h3>
+            <router-link v-if="dashboardData.cobrosPendientes && dashboardData.cobrosPendientes.turnos > 0" :to="{ path: '/turnos', query: { filtro_pago: 'pendiente' } }" class="agenda-link"><i class="fas fa-arrow-right"></i> Ver pendientes</router-link>
+          </div>
+          <div style="padding: 1.75rem 2rem;">
+            <div class="pendientes-valor" :class="{ 'cero': dashboardData.cobrosPendientes && dashboardData.cobrosPendientes.total === 0 }">
+              ${{ formatNumber(dashboardData.cobrosPendientes?.total) }}
+            </div>
+            <div class="pendientes-detalle">
+              <template v-if="dashboardData.cobrosPendientes && dashboardData.cobrosPendientes.turnos > 0">
+                {{ dashboardData.cobrosPendientes.turnos === 1 ? '1 turno' : dashboardData.cobrosPendientes.turnos + ' turnos' }} con saldo pendiente de cobro
+              </template>
+              <template v-else>Sin saldos pendientes</template>
+            </div>
+
+            <template v-if="dashboardData.cobrosPendientes && dashboardData.cobrosPendientes.turnos > 0">
+              <button class="pendientes-toggle" @click="mostrarDetallePendientes = !mostrarDetallePendientes">
+                <i class="fas" :class="mostrarDetallePendientes ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                {{ mostrarDetallePendientes ? 'Ocultar detalle' : 'Ver detalle' }}
+              </button>
+              <div v-if="mostrarDetallePendientes" class="pendientes-detalle-lista">
+                <div v-for="p in dashboardData.cobrosPendientes.detalle" :key="p.id" class="pendiente-item" :title="'Ir al turno #' + p.id + ' para completar el cobro'" @click="router.push({ path: '/turnos', query: { filtro_pago: 'pendiente', turno: p.id } })">
+                  <span class="pendiente-id">#{{ p.id }}</span>
+                  <span class="pendiente-fecha">{{ p.fecha }} {{ p.hora }}</span>
+                  <span class="pendiente-cliente">{{ p.cliente }}</span>
+                  <span class="pendiente-saldo">${{ formatNumber(p.saldo) }}</span>
+                </div>
+                <div v-if="dashboardData.cobrosPendientes.turnos > (dashboardData.cobrosPendientes.detalle || []).length" class="pendientes-mas">
+                  + {{ dashboardData.cobrosPendientes.turnos - (dashboardData.cobrosPendientes.detalle || []).length }} más en el listado
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-header">
+            <h3><i class="fas fa-calendar-day" style="color: #60a5fa;"></i> Próximos Turnos</h3>
+            <router-link to="/turnos" class="agenda-link"><i class="fas fa-arrow-right"></i> Ver agenda</router-link>
+          </div>
+          <div v-if="dashboardData.proximosTurnos && dashboardData.proximosTurnos.length" class="turnos-lista">
+            <div v-for="t in dashboardData.proximosTurnos" :key="t.id" class="turno-item">
+              <div class="turno-hora">{{ t.hora }}</div>
+              <div class="turno-info">
+                <div class="turno-cliente">{{ t.cliente }}</div>
+                <div class="turno-servicios">{{ t.servicios || 'Sin servicios' }}</div>
+              </div>
+              <span class="turno-dia-badge" :class="turnoDiaExtraCls(t)">{{ turnoDiaExtra(t) }}</span>
+            </div>
+          </div>
+          <div v-else class="empty-state">No hay turnos próximos</div>
+        </div>
+      </div>
+
+      <div v-if="!dashboardData.cajaAbierta && dashboardData.pendientesInfo && dashboardData.pendientesInfo.cantidad > 0" class="alerta-huerfanos" style="margin-bottom: 2rem;">
+        <i class="fas fa-exclamation-circle" style="font-size: 2rem;"></i>
+        <div class="alerta-content">
+          <strong>Caja Cerrada - Cobros Web Pendientes</strong>
+          <p>
+            {{ dashboardData.pendientesInfo.cantidad === 1 ? 'Ingresó 1 pago' : `Ingresaron ${dashboardData.pendientesInfo.cantidad} pagos` }} 
+            por Mercado Pago mientras la caja estaba inactiva.
+            <strong>(Total: ${{ formatNumber(dashboardData.pendientesInfo.total_dinero) }})</strong>
+            <span style="font-size: 0.85rem; opacity: 0.9;">Inicie un turno en "Caja Diaria" para asimilar estos ingresos al balance de hoy.</span>
+          </p>
+        </div>
+      </div>
+
+      <div v-if="!dashboardData.cajaAbierta && (!dashboardData.pendientesInfo || dashboardData.pendientesInfo.cantidad === 0)" class="alerta-huerfanos" style="margin-bottom: 2rem; border-color: #ef4444; background: rgba(239, 68, 68, 0.1);">
+        <i class="fas fa-lock" style="font-size: 2rem; color: #ef4444;"></i>
+        <div class="alerta-content">
+          <strong style="color: #b91c1c;">La Caja Diaria está Cerrada</strong>
+          <p style="color: #7f1d1d;">
+            Actualmente no hay ninguna sesión de caja activa. No olvides iniciar el turno de caja antes de comenzar a registrar cobros presenciales.
+          </p>
+        </div>
+      </div>
+
+      <div v-if="dashboardData.pedidosProximos && dashboardData.pedidosProximos.length > 0" class="alerta-pedidos fade-in">
+        <i class="fas fa-truck-loading" style="font-size: 2.2rem;"></i>
+        <div class="alerta-content">
+          <strong>Mercadería en camino</strong>
+          <p>Tenés entregas programadas de proveedores en los próximos días:</p>
+          <ul class="pedidos-lista">
+            <li v-for="pedido in dashboardData.pedidosProximos" :key="pedido.id">
+              <i class="fas fa-box" style="font-size: 0.9rem; margin-right: 5px;"></i>
+              Pedido <strong>#{{ pedido.id }}</strong> a <strong>{{ pedido.proveedor }}</strong> - Llegada aprox: {{ pedido.fecha_llegada }}
+              <span class="badge-dias" :class="{'critico': pedido.dias_restantes <= 1}">
+                {{ pedido.dias_restantes === 0 ? '¡Llega HOY!' : (pedido.dias_restantes === 1 ? 'Llega mañana' : 'Faltan ' + pedido.dias_restantes + ' días') }}
+              </span>
+            </li>
+          </ul>
+        </div>
+      </div>
     </main>
 
     <div id="print-template" style="display: none; width: 850px; min-height: 1100px; background: white; color: #1e293b; padding: 60px; font-family: Arial, sans-serif; position: relative;">
@@ -291,10 +363,12 @@
 
 <script setup>
 import { ref, onMounted, computed, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from '@/utils/axiosConfig'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 
+const router = useRouter()
 const logoBase64 = ref(null) 
 const selectedPeriod = ref('semana')
 const loading = ref(true)
@@ -303,6 +377,7 @@ const customDateRange = ref(false)
 const dateFrom = ref('')
 const dateTo = ref('')
 const tooltip = ref({ visible: false, x: 0, y: 0, value: 0, date: '', index: 0 })
+const mostrarDetallePendientes = ref(false)
 
 // Agregado pedidosProximos al state inicial
 const dashboardData = ref({
@@ -310,7 +385,10 @@ const dashboardData = ref({
   ventasPorDia: [], labelsDias: [],
   ingresosPorMedio: [],
   usuario_emisor: '', empresa: null, cajaAbierta: true, pendientesInfo: { cantidad: 0, total_dinero: 0 },
-  pedidosProximos: []
+  pedidosProximos: [],
+  resultadoNeto: 0, resultadoNetoAnterior: 0, ingresosAnteriores: 0, egresosAnteriores: 0,
+  variacionIngresos: null, variacionResultadoNeto: null, periodoAnterior: '',
+  cobrosPendientes: { total: 0, turnos: 0, detalle: [] }, proximosTurnos: []
 })
 
 const ticketPromedio = computed(() => {
@@ -350,6 +428,34 @@ const getMedioColor = (index) => medioColors[index % medioColors.length];
 const getPorcentajeMedio = (monto) => {
   if (!dashboardData.value.ingresosTotales) return 0;
   return (monto / dashboardData.value.ingresosTotales) * 100;
+}
+
+// Helpers de variación vs período anterior (variacion === null => sin datos previos)
+// La comparación solo se muestra cuando es útil: base previa real y variación acotada.
+// Se oculta (sin línea en la tarjeta) si varía más de ±500%: cambios de esa magnitud
+// indican una base anterior no comparable (ej: $4 vs $63.324,50 -> 1.583.012%).
+const esComparacionValida = (v) => v !== null && v !== undefined && Math.abs(v) <= 500
+const variacionCls = (v) => v === null || v === undefined ? 'neutral' : (v > 0 ? 'positive' : (v < 0 ? 'negative' : 'neutral'))
+const variacionIcon = (v) => v === null || v === undefined ? 'fa-minus' : (v > 0 ? 'fa-arrow-up' : (v < 0 ? 'fa-arrow-down' : 'fa-minus'))
+const variacionText = (v) => {
+  if (v === null || v === undefined) return ''
+  const pct = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(Math.abs(v))
+  return `${pct}% vs. período anterior`
+}
+
+// Etiqueta de día para próximos turnos: Hoy / Mañana / fecha
+const turnoDiaExtra = (t) => {
+  if (!t || !t.fecha_iso) return ''
+  const base = new Date(getLocalToday() + 'T00:00:00').getTime()
+  const diff = Math.round((new Date(t.fecha_iso + 'T00:00:00').getTime() - base) / 86400000)
+  if (diff === 0) return 'Hoy'
+  if (diff === 1) return 'Mañana'
+  return t.fecha || ''
+}
+const turnoDiaExtraCls = (t) => {
+  if (!t || !t.fecha_iso) return ''
+  const base = new Date(getLocalToday() + 'T00:00:00').getTime()
+  return Math.round((new Date(t.fecha_iso + 'T00:00:00').getTime() - base) / 86400000) === 0 ? 'hoy' : ''
 }
 
 const convertToBase64 = async (url) => {
@@ -689,7 +795,10 @@ onMounted(() => fetchDashboardData())
 }
 
 /* KPI CARDS */
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+.kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+@media (max-width: 1600px) { .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1000px) { .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .kpi-grid { grid-template-columns: 1fr; } }
 .kpi-card {
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   border-radius: 18px;
@@ -702,8 +811,21 @@ onMounted(() => fetchDashboardData())
 .kpi-card:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5); border-color: currentColor; }
 .income { color: #10b981; }
 .expense { color: #ef4444; }
+.net { color: #8b5cf6; }
 .service { color: #3b82f6; }
 .product { color: #f97316; }
+
+.kpi-variacion {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-top: 8px;
+}
+.kpi-variacion.positive { color: #10b981; }
+.kpi-variacion.negative { color: #ef4444; }
+.kpi-variacion.neutral { color: #94a3b8; }
 
 .kpi-header-card { display: flex; justify-content: space-between; margin-bottom: 1.5rem; }
 .kpi-icon { width: 60px; height: 60px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; background: rgba(255,255,255,0.05); }
@@ -795,6 +917,37 @@ onMounted(() => fetchDashboardData())
 .medio-amount { text-align: right; font-weight: 800; font-size: 1.1rem; color: #f8fafc; margin-top: -20px; }
 .medio-progress-bg { width: 100%; height: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; overflow: hidden; }
 .medio-progress-fill { height: 100%; border-radius: 4px; transition: width 1s ease-in-out; }
+
+/* COBROS PENDIENTES */
+.pendientes-valor { font-size: 2.3rem; font-weight: 900; color: #fbbf24; line-height: 1.1; }
+.pendientes-valor.cero { color: #94a3b8; }
+.pendientes-detalle { font-size: 0.9rem; color: #64748b; margin-top: 8px; }
+
+.pendientes-toggle { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; background: none; border: 1px solid #334155; color: #94a3b8; font-size: 0.82rem; font-weight: 700; padding: 6px 12px; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+.pendientes-toggle:hover { color: #fbbf24; border-color: #fbbf24; background: rgba(251, 191, 36, 0.06); }
+
+.pendientes-detalle-lista { margin-top: 14px; border: 1px solid #334155; border-radius: 12px; overflow: hidden; }
+.pendiente-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; font-size: 0.82rem; border-bottom: 1px solid #334155; cursor: pointer; transition: background 0.15s; }
+.pendiente-item:last-child { border-bottom: none; }
+.pendiente-item:hover { background: rgba(251, 191, 36, 0.07); }
+.pendiente-id { font-weight: 800; color: #64748b; font-variant-numeric: tabular-nums; }
+.pendiente-fecha { color: #94a3b8; white-space: nowrap; }
+.pendiente-cliente { flex: 1; min-width: 0; font-weight: 600; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pendiente-saldo { font-weight: 800; color: #fbbf24; font-variant-numeric: tabular-nums; }
+.pendientes-mas { padding: 9px 12px; font-size: 0.78rem; color: #64748b; font-style: italic; }
+
+/* PRÓXIMOS TURNOS */
+.turnos-lista { padding: 1rem 1.5rem; display: flex; flex-direction: column; gap: 10px; }
+.turno-item { display: flex; align-items: center; gap: 14px; padding: 10px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid #334155; border-radius: 12px; transition: all 0.2s; }
+.turno-item:hover { background: rgba(30, 41, 59, 0.8); border-color: #475569; transform: translateX(3px); }
+.turno-hora { font-weight: 900; color: #60a5fa; font-size: 1.05rem; min-width: 52px; font-variant-numeric: tabular-nums; }
+.turno-info { flex: 1; min-width: 0; }
+.turno-cliente { font-weight: 700; color: #f1f5f9; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.turno-servicios { font-size: 0.8rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.turno-dia-badge { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid #3b82f6; padding: 3px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+.turno-dia-badge.hoy { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border-color: #10b981; }
+.agenda-link { display: inline-flex; align-items: center; gap: 6px; color: #60a5fa; font-size: 0.85rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.agenda-link:hover { color: #93c5fd; }
 
 /* DATE PICKER & LOADER */
 .custom-date-panel { margin-bottom: 2rem; }
@@ -888,6 +1041,25 @@ onMounted(() => fetchDashboardData())
 :root.light-theme .medio-name { color: #0f172a; }
 :root.light-theme .medio-amount { color: #0f172a; }
 :root.light-theme .medio-progress-bg { background: #e2e8f0; }
+:root.light-theme .pendientes-valor { color: #d97706; }
+:root.light-theme .pendientes-valor.cero { color: #94a3b8; }
+:root.light-theme .pendientes-toggle { border-color: #cbd5e1; color: #64748b; }
+:root.light-theme .pendientes-toggle:hover { color: #d97706; border-color: #d97706; background: rgba(217, 119, 6, 0.06); }
+:root.light-theme .pendientes-detalle-lista { border-color: #e2e8f0; }
+:root.light-theme .pendiente-item { border-bottom-color: #e2e8f0; }
+:root.light-theme .pendiente-item:hover { background: rgba(217, 119, 6, 0.07); }
+:root.light-theme .pendiente-id { color: #94a3b8; }
+:root.light-theme .pendiente-fecha { color: #64748b; }
+:root.light-theme .pendiente-cliente { color: #0f172a; }
+:root.light-theme .pendiente-saldo { color: #d97706; }
+:root.light-theme .pendientes-mas { color: #94a3b8; }
+:root.light-theme .turno-item { background: #f8fafc; border-color: #e2e8f0; }
+:root.light-theme .turno-cliente { color: #0f172a; }
+:root.light-theme .turno-servicios { color: #64748b; }
+:root.light-theme .turno-dia-badge { background: #eff6ff; color: #2563eb; border-color: #93c5fd; }
+:root.light-theme .turno-dia-badge.hoy { background: #ecfdf5; color: #059669; border-color: #6ee7b7; }
+:root.light-theme .agenda-link { color: #2563eb; }
+:root.light-theme .agenda-link:hover { color: #1d4ed8; }
 
 /* CLARO: ALERTA DE PEDIDOS */
 :root.light-theme .alerta-pedidos {

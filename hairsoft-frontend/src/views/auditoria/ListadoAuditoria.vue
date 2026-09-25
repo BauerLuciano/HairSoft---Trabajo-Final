@@ -9,75 +9,74 @@
         </div>
       </div>
 
-      <!-- Módulos (filtro server-side) -->
+      <!-- Módulos (filtro server-side, multi-selección) -->
       <div class="modules-chips-container">
         <button
           v-for="mod in modulosDisponibles"
           :key="mod.id"
-          @click="filtros.modulo = mod.id"
+          @click="toggleModulo(mod.id)"
           class="module-chip"
-          :class="{ active: mod.id === filtros.modulo }"
+          :class="{ active: (mod.id === '' ? filtros.modulo.length === 0 : filtros.modulo.includes(mod.id)) }"
         >
           <i :class="mod.icon"></i> {{ mod.label }}
         </button>
       </div>
 
-      <!-- Filtros -->
+      <!-- Filtros (todos visibles, barra compacta con controles de formulario) -->
       <div class="filters-container">
-        <div class="filters-grid filtros-visibles">
-          <div class="filter-group" style="grid-column: span 2;">
-            <label>Buscador</label>
-            <div class="search-wrapper">
-              <i class="fas fa-search search-icon"></i>
-              <input v-model="filtros.busqueda" placeholder="Usuario, email, modelo, #ID, IP, endpoint, mensaje..." class="filter-input search-input"/>
-            </div>
+        <div class="filters-row">
+
+          <div class="filter-field filter-buscador">
+            <i class="fas fa-search filter-field-icon"></i>
+            <input v-model="filtros.busqueda" placeholder="Buscar auditoría..." class="filter-select"/>
           </div>
 
-          <div class="filter-group">
-            <label>Desde</label>
-            <input type="date" v-model="filtros.fechaDesde" class="filter-input" />
-          </div>
-          <div class="filter-group">
-            <label>Hasta</label>
-            <input type="date" v-model="filtros.fechaHasta" class="filter-input" />
-          </div>
-        </div>
+          <label class="filter-field filter-user" title="Quién realizó la acción">
+            <span class="filter-field-label">Usuario</span>
+            <select v-model="filtros.usuario" class="filter-select">
+              <option value="">Todos</option>
+              <option v-for="autor in autores" :key="autorKey(autor)" :value="autor">
+                {{ autor.nombre }} — {{ autor.rol }}
+              </option>
+            </select>
+          </label>
 
-        <button class="mas-filtros-toggle" @click="mostrarMasFiltros = !mostrarMasFiltros" type="button">
-          <i :class="mostrarMasFiltros ? 'fas fa-chevron-up' : 'fas fa-sliders-h'"></i>
-          {{ mostrarMasFiltros ? 'Menos filtros' : 'Más filtros' }}
-          <span v-if="filtrosExtraActivos" class="filtros-extra-badge">{{ filtrosExtraActivos }}</span>
-        </button>
-
-        <div v-show="mostrarMasFiltros" class="filters-grid filtros-extra">
-          <div class="filter-group">
-            <label>Responsable</label>
-            <input v-model="filtros.usuario" type="text" placeholder="Nombre o email..." class="filter-input"/>
-          </div>
-
-          <div class="filter-group">
-            <label>Resultado</label>
-            <select v-model="filtros.resultado" class="filter-input">
+          <label class="filter-field filter-resultado" title="Resultado de la operación">
+            <span class="filter-field-label">Resultado</span>
+            <select v-model="filtros.resultado" class="filter-select">
               <option value="">Todos</option>
               <option value="EXITO">Éxito</option>
               <option value="ERROR">Error</option>
-              <option value="SISTEMA">Sistema (automático)</option>
             </select>
-          </div>
+          </label>
 
-          <div class="filter-group">
-            <label>Acción</label>
-            <select v-model="filtros.accion" class="filter-input">
+          <label class="filter-field filter-accion" title="Tipo de acción registrada">
+            <span class="filter-field-label">Acción</span>
+            <select v-model="filtros.accion" class="filter-select">
               <option value="">Cualquier acción</option>
               <option v-for="a in accionesDisponibles" :key="a" :value="a">{{ a.replace(/_/g, ' ') }}</option>
             </select>
-          </div>
+          </label>
 
-          <div class="filter-group" style="display: flex; align-items: flex-end;">
-            <button @click="limpiarFiltros" class="clear-filters-btn" style="width: 100%; height: 42px;">
+          <!-- El grupo Desde—Hasta es indivisible y hace wrap junto con Limpiar -->
+          <div class="fechas-limpiar">
+            <div class="fechas-group">
+              <label class="filter-field">
+                <span class="filter-field-label">Desde</span>
+                <input type="date" v-model="filtros.fechaDesde" class="filter-select" :max="filtros.fechaHasta || undefined" />
+              </label>
+              <span class="fechas-separador" aria-hidden="true">—</span>
+              <label class="filter-field">
+                <span class="filter-field-label">Hasta</span>
+                <input type="date" v-model="filtros.fechaHasta" class="filter-select" :min="filtros.fechaDesde || undefined" />
+              </label>
+            </div>
+
+            <button @click="limpiarFiltros" class="clear-filters-btn filters-clear">
               <i class="fas fa-eraser"></i> Limpiar filtros
             </button>
           </div>
+
         </div>
       </div>
 
@@ -242,7 +241,7 @@
               </template>
               <template v-else>
                 <span class="value">{{ detalle?.usuario_nombre || 'Anónimo' }}</span>
-                <span class="sub-value" v-if="detalle?.usuario_email"><i class="fas fa-envelope"></i> {{ detalle.usuario_email }}</span>
+                <span class="sub-value" v-if="detalle?.usuario_email"><a :href="'mailto:' + detalle.usuario_email" class="mailto-link"><i class="fas fa-envelope"></i> {{ detalle.usuario_email }}</a></span>
                 <span class="sub-value" v-if="detalle?.usuario_rol"><i class="fas fa-user-tag"></i> {{ detalle.usuario_rol }}</span>
               </template>
             </div>
@@ -260,13 +259,13 @@
               </span>
               <span class="sub-value" v-if="detalle?.sistema_operativo"><i class="fas fa-desktop"></i> {{ detalle.sistema_operativo }}</span>
               <span class="sub-value"><i class="fas fa-network-wired"></i> IP: {{ detalle?.ip_address || 'No registrada' }}</span>
-              <span v-if="detalle?.dispositivo_info" class="sub-value">{{ detalle.dispositivo_info }}</span>
+              <span v-if="origenCompleto(detalle)" class="sub-value origen-resumen"><i class="fas fa-location-arrow"></i> {{ origenCompleto(detalle) }}</span>
             </div>
             <!-- Qué hizo -->
             <div class="info-item">
               <span class="label">Qué hizo</span>
               <span class="value" style="font-size: 0.95rem;">{{ detalle?.accion.replace(/_/g, ' ') }}</span>
-              <span v-if="detalle?.descripcion && detalle.descripcion !== '-'" class="sub-value">{{ detalle.descripcion }}</span>
+              <span v-if="detalle?.descripcion && detalle.descripcion !== '-'" class="frase-hecho">{{ detalle.descripcion }}</span>
               <span v-if="detalle?.mensaje" class="sub-value motivo-error"><i class="fas fa-comment"></i> {{ detalle.mensaje }}</span>
             </div>
           </div>
@@ -282,7 +281,25 @@
 
           <h3 class="section-title">{{ tituloDetalles }}</h3>
           <div class="diff-wrapper">
-            <table v-if="hayDetallesVisibles" class="detail-table">
+            <!-- EDITAR / modificación: tabla de cambios reales (Campo | ANTES | DESPUÉS) -->
+            <table v-if="Object.keys(detallesCambios).length" class="detail-table cambio-table">
+              <thead>
+                <tr>
+                  <th width="30%">Campo</th>
+                  <th width="35%">Antes</th>
+                  <th width="35%">Después</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(info, campo) in detallesCambios" :key="campo" class="row-changed">
+                  <td class="field-col">{{ formatearClave(campo) }}</td>
+                  <td class="value-col val-old-cell">{{ formatValue(info.anterior) }}</td>
+                  <td class="value-col val-new-cell">{{ formatValue(info.nuevo) }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <!-- CREAR / ELIMINAR / INGRESO_*: valores registrados (Campo | Contenido) -->
+            <table v-if="Object.keys(detallesValores).length" class="detail-table">
               <thead>
                 <tr>
                   <th width="35%">Campo</th>
@@ -290,34 +307,30 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(info, campo) in detallesVisibles"
-                    :key="campo"
-                    :class="{ 'row-changed': info.tipo === 'CAMBIO' }">
-                  <td class="field-col">
-                    {{ formatearClave(campo) }}
-                    <span v-if="info.tipo === 'CAMBIO'" class="changed-flag">MODIFICADO</span>
-                  </td>
+                <tr v-for="(info, campo) in detallesValores" :key="campo">
+                  <td class="field-col">{{ formatearClave(campo) }}</td>
                   <td class="value-col">
-                    <div v-if="info.tipo === 'CAMBIO'" class="change-container">
-                      <div class="val-old"><small>Antes:</small> {{ formatValue(info.anterior) }}</div>
-                      <div class="arrow">➜</div>
-                      <div class="val-new"><small>Ahora:</small> {{ formatValue(info.nuevo) }}</div>
-                    </div>
-                    <div v-else-if="info.tipo === 'VALOR'" class="static-val">{{ formatValue(info.valor) }}</div>
+                    <div v-if="info.tipo === 'VALOR'" class="static-val">{{ formatValue(info.valor) }}</div>
                     <div v-else class="legacy-val">{{ formatValue(info) }}</div>
                   </td>
                 </tr>
               </tbody>
             </table>
-            <div v-else class="no-data">
+            <div v-if="!hayDetallesVisibles" class="no-data">
               <i class="fas fa-info-circle"></i> No hay datos registrados para este evento.
             </div>
           </div>
 
-          <div v-if="Object.keys(contextoVisible).length" class="contexto-box">
-            <h3 class="section-title">Contexto</h3>
-            <div class="contexto-grid">
-              <div v-for="(valor, clave) in contextoVisible" :key="clave" class="contexto-item">
+          <div v-if="Object.keys(contextoFuncional).length || Object.keys(contextoTecnico).length" class="contexto-box">
+            <h3 v-if="Object.keys(contextoFuncional).length" class="section-title">Contexto</h3>
+            <div v-if="Object.keys(contextoFuncional).length" class="contexto-grid">
+              <div v-for="(valor, clave) in contextoFuncional" :key="clave" class="contexto-item">
+                <span class="label">{{ formatearClave(clave) }}</span>
+                <span class="value mono">{{ typeof valor === 'object' ? JSON.stringify(valor) : valor }}</span>
+              </div>
+            </div>
+            <div v-if="mostrarContextoTecnico" class="contexto-grid">
+              <div v-for="(valor, clave) in contextoTecnico" :key="clave" class="contexto-item">
                 <span class="label">{{ formatearClave(clave) }}</span>
                 <span class="value mono">{{ typeof valor === 'object' ? JSON.stringify(valor) : valor }}</span>
               </div>
@@ -353,7 +366,11 @@ const loading = ref(false)
 const errorMsg = ref('')
 const mostrarModal = ref(false)
 const detalle = ref(null)
-const mostrarMasFiltros = ref(false)
+// Autores disponibles para el selector "Usuario" (vienen del backend: solo
+// quienes realmente aparecen como autores de eventos de auditoría).
+const autores = ref([])
+// Sección colapsable de "Datos técnicos" dentro del modal de detalle.
+const mostrarContextoTecnico = ref(false)
 // Vista de operación dentro del mismo modal de detalle (sin segundos modales y
 // sin tocar filtros, URL, página ni listado principal).
 const modoOperacion = ref(false)
@@ -364,8 +381,8 @@ const operacionCargando = ref(false)
 
 const filtros = ref({
   busqueda: '',
-  modulo: '',
-  usuario: '',
+  modulo: [],          // multi-selección: [] = "Todos" (sin filtro de módulo)
+  usuario: '',         // '' = Todos | objeto autor {id, nombre, rol, origen}
   resultado: '',
   accion: '',
   fechaDesde: '',
@@ -392,7 +409,7 @@ const modulosDisponibles = [
 ]
 
 const accionesDisponibles = [
-  'LOGIN', 'LOGIN_GOOGLE', 'LOGIN_FALLIDO', 'LOGOUT', 'CAMBIO_PASSWORD',
+  'LOGIN', 'LOGIN_FALLIDO', 'LOGOUT', 'CAMBIO_PASSWORD',
   'CREAR', 'EDITAR', 'ELIMINAR', 'ANULAR_VENTA', 'CANCELAR',
   'APERTURA_CAJA', 'CIERRE_CAJA', 'INGRESO_VENTA', 'INGRESO_TURNO',
   'INGRESO_MANUAL', 'EGRESO_MANUAL', 'COBRO_RESTANTE', 'AJUSTE_STOCK',
@@ -401,35 +418,10 @@ const accionesDisponibles = [
 
 const totalPaginas = computed(() => Math.max(1, Math.ceil(count.value / pageSize)))
 
-// Cantidad de filtros "extra" activos (los de la sección colapsable)
-const filtrosExtraActivos = computed(() => {
-  const f = filtros.value
-  let n = 0
-  if (f.usuario.trim()) n++
-  if (f.resultado) n++
-  if (f.accion) n++
-  return n
-})
-
 // Total de eventos del grupo de la operación (anotado en backend). Se ofrece
 // "ver operación" solo cuando el grupo realmente tiene más de un evento (total > 1)
 // y se muestra la cantidad TOTAL de eventos, no "relacionados" (total - 1).
 const totalEventosOperacionDetalle = computed(() => Number(detalle.value?.total_eventos_operacion) || 0)
-
-// Título de la sección de datos según la acción y el contenido real:
-//  - hay campos CAMBIO            → "Cambios (ANTES / DESPUÉS)"
-//  - ELIMINAR sin CAMBIO          → "Datos eliminados" (snapshot estático)
-//  - resto (CREAR, INGRESO_*, …)  → "Datos registrados" (valores estáticos)
-// Nunca se inventa un "antes" que no exista en los datos.
-const tituloDetalles = computed(() => {
-  const d = detalle.value
-  if (!d) return 'Datos registrados'
-  const parsed = parseDetalles(d.detalles)
-  const tieneCambios = Object.values(parsed).some((info) => info && info.tipo === 'CAMBIO')
-  if (tieneCambios) return 'Cambios (ANTES / DESPUÉS)'
-  if ((d.accion || '').toUpperCase() === 'ELIMINAR') return 'Datos eliminados'
-  return 'Datos registrados'
-})
 
 // Valor "vacío" = ausencia de dato (no debe mostrarse). 0, false, "No" y
 // "No Aplica" son valores válidos del registro y se conservan.
@@ -443,30 +435,78 @@ const esValorVacio = (val) => {
 }
 
 // Detalles filtrados para la presentación: se ocultan los campos cuyo valor es
-// un dato vacío (null, undefined, '', solo espacios, '-'). Los CAMBIO
-// (antes/después) nunca se filtran: son información real de una edición.
-const detallesVisibles = computed(() => {
+// un dato vacío (null, undefined, '', solo espacios, '-'). Además se ocultan
+// los campos técnicos auto_now (fecha_actualizacion, fecha_modificacion):
+// cambian en cada save() y generaban ruido tipo
+// "Antes: 25/9/2026 12:59 → Ahora: 25/9/2026 12:59". Es solo presentación;
+// los datos históricos quedan intactos en la DB.
+const CAMPOS_AUTO_NOW = new Set(['fecha_actualizacion', 'fecha_modificacion'])
+
+// Filas de cambio real (EDITAR): se muestran en la tabla de 3 columnas
+// "Campo | ANTES | DESPUÉS". Los cambios nunca se filtran: son información real
+// de una edición.
+const detallesCambios = computed(() => {
   const d = detalle.value
   if (!d) return {}
   const visibles = {}
   for (const [clave, info] of Object.entries(parseDetalles(d.detalles))) {
-    if (info && info.tipo === 'CAMBIO') { visibles[clave] = info; continue }
+    if (CAMPOS_AUTO_NOW.has(clave)) continue
+    if (info && info.tipo === 'CAMBIO') visibles[clave] = info
+  }
+  return visibles
+})
+
+// Valores estáticos (CREAR, ELIMINAR, INGRESO_*, …): tabla de 2 columnas
+// "Campo | Contenido". Se ocultan los vacíos, pero 0/false/"No" se conservan.
+const detallesValores = computed(() => {
+  const d = detalle.value
+  if (!d) return {}
+  const visibles = {}
+  for (const [clave, info] of Object.entries(parseDetalles(d.detalles))) {
+    if (CAMPOS_AUTO_NOW.has(clave)) continue
+    if (info && info.tipo === 'CAMBIO') continue
     const valor = info && info.tipo === 'VALOR' ? info.valor : info
     if (!esValorVacio(valor)) visibles[clave] = info
   }
   return visibles
 })
 
-const hayDetallesVisibles = computed(() => Object.keys(detallesVisibles.value).length > 0)
+const hayDetallesVisibles = computed(() => Object.keys(detallesCambios.value).length + Object.keys(detallesValores.value).length > 0)
 
-// Contexto visible: se oculta la clave técnica `id_operacion` (es un espejo redundante
-// del campo del evento y no debe mostrarse como una "operación de negocio"). Los
-// filtros con que se consultó (contexto.filtros, incluido un id_operacion buscado)
-// siguen visibles dentro de "Filtros".
-const contextoVisible = computed(() => {
+// Título de la sección de datos según la acción y el contenido real:
+//  - hay campos CAMBIO            → "Cambios" (tabla de 3 columnas ANTES/DESPUÉS)
+//  - ELIMINAR sin CAMBIO          → "Datos eliminados" (snapshot estático)
+//  - resto (CREAR, INGRESO_*, …)  → "Datos registrados" (valores estáticos)
+// Nunca se inventa un "antes" que no exista en los datos.
+const tituloDetalles = computed(() => {
+  const d = detalle.value
+  if (!d) return 'Datos registrados'
+  if (Object.keys(detallesCambios.value).length) return 'Cambios'
+  if ((d.accion || '').toUpperCase() === 'ELIMINAR') return 'Datos eliminados'
+  return 'Datos registrados'
+})
+
+// Claves de `contexto` internas/técnicas: no se muestran en la vista normal, se
+// agrupan bajo la sección colapsable "Datos técnicos". La información NO se borra
+// de la DB (solo cambia su presentación). La agrupación por id_operacion queda
+// intacta: el dato sigue existiendo y el backend lo usa internamente como antes.
+const CLAVES_CONTEXTO_TECNICAS = new Set([
+  'operacion', 'pago_mixto', 'id_operacion', 'proceso', 'es_sistema', 'prueba',
+])
+
+// Contexto funcional visible normalmente: total, método de pago, montos, cliente,
+// correo intentado, filtros, etc. — toda clave que no sea de las técnicas.
+const contextoFuncional = computed(() => {
   const ctx = detalle.value?.contexto
   if (!ctx || typeof ctx !== 'object') return {}
-  return Object.fromEntries(Object.entries(ctx).filter(([clave]) => clave !== 'id_operacion'))
+  return Object.fromEntries(Object.entries(ctx).filter(([clave]) => !CLAVES_CONTEXTO_TECNICAS.has(clave)))
+})
+
+// Contexto técnico/debug agrupado en la sección colapsable "Datos técnicos".
+const contextoTecnico = computed(() => {
+  const ctx = detalle.value?.contexto
+  if (!ctx || typeof ctx !== 'object') return {}
+  return Object.fromEntries(Object.entries(ctx).filter(([clave]) => CLAVES_CONTEXTO_TECNICAS.has(clave)))
 })
 
 // Devuelve el nombre corto útil para la tabla (o '' si es una descripción larga).
@@ -551,6 +591,20 @@ const getNombreNavegador = (navegadorInfo) => {
   return navegadorInfo
 }
 
+// Resumen legible del origen: "Edge en Windows (IP: 127.0.0.1)".
+const origenCompleto = (log) => {
+  if (!log) return ''
+  const nav = getNombreNavegador(log.navegador_info)
+  const so = log.sistema_operativo || ''
+  const ip = log.ip_address || ''
+  const base = []
+  if (nav && nav !== 'Sistema' && nav !== '-') base.push(nav)
+  if (so && so !== '-') base.push(so)
+  let texto = base.join(' en ')
+  if (ip && ip !== '-') texto = texto ? `${texto} (IP: ${ip})` : `IP: ${ip}`
+  return texto
+}
+
 const parseDetalles = (detalles) => {
   if (!detalles) return {}
   let d = detalles
@@ -605,25 +659,76 @@ const formatearClave = (clave) => {
 }
 
 const formatFecha = (f) => (f ? new Date(f).toLocaleDateString('es-AR') : '-')
-const formatHora = (f) => f ? new Date(f).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : ''
+// Hora con segundos en la lista principal (distingue 12:59:14 / 12:59:16 / 12:59:19).
+const formatHora = (f) => f ? new Date(f).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''
 const formatFechaHora = (f) => f ? new Date(f).toLocaleString('es-AR', { dateStyle: 'medium', timeStyle: 'short' }) : '-'
 
 const truncar = (texto, n) => (texto && texto.length > n ? texto.slice(0, n) + '…' : texto)
 
-const construirParams = () => {
-  const params = { page: pagina.value, page_size: pageSize }
+// ---- Módulos: multi-selección ----
+const toggleModulo = (modId) => {
   const f = filtros.value
-  if (f.modulo) params.modulo = f.modulo
-  if (f.busqueda.trim()) params.search = f.busqueda.trim()
-  if (f.usuario.trim()) params.usuario_nombre = f.usuario.trim()
-  if (f.resultado) params.resultado = f.resultado
-  if (f.accion) params.accion = f.accion
-  if (f.idOperacion) params.id_operacion = f.idOperacion
+  if (modId === '') {
+    f.modulo = [] // Todos: deselecciona el resto
+    return
+  }
+  const idx = f.modulo.indexOf(modId)
+  if (idx >= 0) {
+    f.modulo.splice(idx, 1) // click sobre un módulo seleccionado = quitarlo
+  } else {
+    f.modulo.push(modId) // seleccionar un módulo desactiva Todos
+  }
+}
+
+// Clave estable para el <option> del selector de usuario: distingue cuentas con
+// el mismo nombre (FK por id; snapshot por nombre+email).
+const autorKey = (autor) => {
+  if (!autor) return ''
+  return autor.origen === 'usuario'
+    ? `u${autor.id}`
+    : `s${autor.nombre}|${autor.email || ''}`
+}
+
+const cargarAutores = async () => {
+  try {
+    const res = await api.get('/auditoria/autores/')
+    autores.value = Array.isArray(res.data?.autores) ? res.data.autores : []
+  } catch (err) {
+    console.error('❌ Error cargando autores de auditoría:', err)
+    autores.value = []
+  }
+}
+
+const construirParams = () => {
+  // URLSearchParams: axios lo serializa tal cual, permitiendo repetir el param
+  // `modulo` (multi-selección) sin transformarlo en `modulo[]=...`.
+  const params = new URLSearchParams()
+  const f = filtros.value
+  params.set('page', pagina.value)
+  params.set('page_size', pageSize)
+  for (const m of f.modulo) {
+    params.append('modulo', m)
+  }
+  if (f.busqueda.trim()) params.set('search', f.busqueda.trim())
+  if (f.usuario && typeof f.usuario === 'object') {
+    if (f.usuario.origen === 'usuario') {
+      // Usuario con FK: identificador estable (no mezcla nombres repetidos).
+      params.set('usuario', f.usuario.id)
+    } else {
+      // Autor histórico sin FK (usuario eliminado): snapshot exacto.
+      params.set('usuario_nombre_snapshot', f.usuario.nombre)
+      params.set('usuario_email_snapshot', f.usuario.email || '')
+    }
+  }
+  if (f.resultado) params.set('resultado', f.resultado)
+  if (f.accion) params.set('accion', f.accion)
+  if (f.idOperacion) params.set('id_operacion', f.idOperacion)
   if (f.fechaDesde) {
-    params.fecha_desde = new Date(f.fechaDesde + 'T00:00:00').toISOString()
+    params.set('fecha_desde', new Date(f.fechaDesde + 'T00:00:00').toISOString())
   }
   if (f.fechaHasta) {
-    params.fecha_hasta = new Date(f.fechaHasta + 'T23:59:59').toISOString()
+    // Fin de día inclusive: 23:59:59.999 para no excluir eventos del último día.
+    params.set('fecha_hasta', new Date(f.fechaHasta + 'T23:59:59.999').toISOString())
   }
   return params
 }
@@ -661,9 +766,20 @@ watch(filtros, () => {
   timer = setTimeout(cargarAuditoria, 350)
 }, { deep: true })
 
+// Validación cruzada Desde/Hasta: si por alguna interacción el rango quedara
+// inválido (Hasta < Desde), se corrige de forma segura. Permitido: Desde = Hasta.
+watch(() => filtros.value.fechaDesde, (desde) => {
+  const hasta = filtros.value.fechaHasta
+  if (desde && hasta && hasta < desde) filtros.value.fechaHasta = desde
+})
+watch(() => filtros.value.fechaHasta, (hasta) => {
+  const desde = filtros.value.fechaDesde
+  if (hasta && desde && desde > hasta) filtros.value.fechaDesde = hasta
+})
+
 const limpiarFiltros = () => {
   filtros.value = {
-    busqueda: '', modulo: '', usuario: '', resultado: '', accion: '',
+    busqueda: '', modulo: [], usuario: '', resultado: '', accion: '',
     fechaDesde: '', fechaHasta: '', idOperacion: ''
   }
   pagina.value = 1
@@ -735,7 +851,10 @@ const volverAOperacion = () => {
   modoOperacion.value = true
 }
 
-onMounted(cargarAuditoria)
+onMounted(() => {
+  cargarAutores()
+  cargarAuditoria()
+})
 </script>
 
 <style scoped>
@@ -747,7 +866,7 @@ onMounted(cargarAuditoria)
 .header-content h1 i { color: #8b5cf6; }
 .header-content p { color: var(--text-secondary); margin-top: 5px; font-size: 0.95rem; }
 
-.modules-chips-container { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 25px; }
+.modules-chips-container { display: flex; gap: 10px 14px; flex-wrap: wrap; margin-bottom: 25px; }
 .module-chip {
   padding: 8px 16px;
   border-radius: 20px;
@@ -846,30 +965,92 @@ onMounted(cargarAuditoria)
 }
 
 .filters-container { margin-bottom: 30px; background: var(--hover-bg); padding: 20px; border-radius: 16px; border: 1px solid var(--border-color); }
-.filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; align-items: end; }
-.filtros-extra { margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border-color); }
-.mas-filtros-toggle {
-  margin-top: 15px;
+
+/* Fila de filtros: barra compacta. Cada filtro es un campo con etiqueta a la
+   izquierda ("Usuario [ Todos ▼ ]") y controles de formulario normales, todos
+   a la misma altura; wrap de grupos completos sin scroll horizontal. */
+.filters-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+/* min-width:0 en los controles evita que su tamaño intrínseco (p.ej. un
+   <option> largo) sesgue la decisión de wrap: el layout queda gobernado por
+   las flex-basis, no por el contenido. */
+.filters-row input, .filters-row select { min-width: 0; }
+
+/* Campo = etiqueta a la izquierda + control de formulario */
+.filter-field { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.filter-field-label {
+  font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);
+  white-space: nowrap; flex: 0 0 auto;
+}
+.filter-field-icon { font-size: 0.85rem; color: var(--text-tertiary); flex: 0 0 auto; }
+.filter-field .filter-select { flex: 1 1 auto; }
+
+/* Control de formulario normal (buscador, selects y fechas) */
+.filters-row .filter-select {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+}
+.filters-row .filter-select:hover { border-color: var(--text-secondary); }
+.filters-row .filter-select:focus { border-color: #8b5cf6; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15); }
+.filters-row .filter-select::placeholder { color: var(--text-tertiary); opacity: 0.85; }
+
+/* Selects: flecha discreta propia (se oculta la nativa) */
+.filters-row select.filter-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  cursor: pointer;
+}
+.filters-row select.filter-select option,
+.filters-row select.filter-select optgroup { background-color: #1e1e2e; color: #e0e0e0; }
+
+/* Buscador: icono de lupa dentro del control, crece para aprovechar el resto */
+.filter-buscador { flex: 3 1 210px; min-width: 145px; position: relative; }
+.filter-buscador .filter-field-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 1; }
+.filter-buscador .filter-select { padding-left: 38px; }
+
+/* Anchuras según contenido: Usuario y Acción más amplios (nombres+roles y
+   acciones largas), Resultado compacto. */
+.filter-user { flex: 1 1 185px; min-width: 158px; }
+.filter-resultado { flex: 0 1 158px; min-width: 150px; }
+.filter-accion { flex: 0 1 200px; min-width: 168px; }
+
+/* Grupo Desde—Hasta: indivisible (nowrap interno). El flex-wrap del padre
+   solo puede moverlos juntos a la línea siguiente, nunca separarlos.
+   En escritorio ocupa ~390px (380–400); en anchos intermedios baja a 340px
+   para que [Desde—Hasta][Limpiar] sigan en la misma línea. */
+.fechas-group { display: flex; align-items: center; gap: 8px; flex: 0 1 390px; min-width: 376px; flex-wrap: nowrap; }
+.fechas-group .filter-field { flex: 1 1 180px; min-width: 0; }
+.fechas-group .filter-field .filter-field-label { flex: 0 0 auto; }
+.fechas-group .filter-select { width: 100%; }
+.fechas-separador { color: var(--text-tertiary); font-weight: 700; font-size: 1rem; padding: 0 2px; flex: 0 0 auto; }
+
+/* Fechas + Limpiar son un bloque único que hace wrap junto: en desktop queda
+   [Buscar][Usuario][Resultado][Acción] / [Desde—Hasta][Limpiar]. */
+.fechas-limpiar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.fechas-limpiar > .clear-filters-btn { height: 38px; padding: 0 14px; white-space: nowrap; border-radius: 8px; flex: 0 0 auto; }
+
+/* Botón colapsable de "Datos técnicos" dentro del modal de detalle */
+.tecnicos-toggle {
   display: inline-flex; align-items: center; gap: 8px;
   background: var(--bg-tertiary); color: var(--text-secondary);
-  border: 1px solid var(--border-color); border-radius: 10px;
-  padding: 8px 14px; cursor: pointer; font-weight: 700; font-size: 0.78rem;
+  border: 1px dashed var(--border-color); border-radius: 10px;
+  padding: 8px 14px; cursor: pointer; font-weight: 700; font-size: 0.75rem;
   text-transform: uppercase; letter-spacing: 0.4px; transition: all 0.2s ease;
+  margin-bottom: 12px;
 }
-.mas-filtros-toggle:hover { color: var(--accent-color); border-color: var(--accent-color); background: var(--hover-bg); }
-.filtros-extra-badge {
-  background: var(--accent-color); color: #fff; border-radius: 50%;
-  min-width: 18px; height: 18px; font-size: 0.65rem; font-weight: 800;
-  display: inline-flex; align-items: center; justify-content: center; padding: 0 4px;
-}
-.filter-group label { font-weight: 700; margin-bottom: 8px; display: block; color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem; }
-.filter-input { padding: 10px 14px; border-radius: 10px; border: 2px solid var(--border-color); background-color: var(--bg-primary); color: var(--text-primary); width: 100%; box-sizing: border-box; outline: none; transition: border-color 0.3s; font-size: 0.9rem; }
-.filter-input:focus { border-color: #8b5cf6; }
-.filter-input option, .filter-input optgroup { background-color: #1e1e2e; color: #e0e0e0; }
-.search-wrapper { position: relative; }
-.search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); }
-.search-input { padding-left: 40px; }
-
+.tecnicos-toggle:hover { color: var(--accent-color); border-color: var(--accent-color); background: var(--hover-bg); }
 .clear-filters-btn { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 10px; border-radius: 10px; cursor: pointer; font-weight: 700; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 8px; text-transform: uppercase; font-size: 0.8rem; }
 .clear-filters-btn:hover { background: var(--hover-bg); border-color: var(--text-secondary); }
 
@@ -919,6 +1100,11 @@ onMounted(cargarAuditoria)
 .value { font-size: 1.1rem; color: var(--text-primary); font-weight: 700; }
 .value.mono { font-family: 'Courier New', Courier, monospace; }
 .sub-value { font-size: 0.85rem; color: var(--text-secondary); margin-top: 5px; display: flex; align-items: center; gap: 6px; }
+.sub-value.origen-resumen { font-style: italic; }
+.mailto-link { color: var(--accent-color); text-decoration: none; font-weight: 700; }
+.mailto-link:hover { text-decoration: underline; }
+/* Texto descriptivo de la acción ("Claudio Sanchez modificó PedidoWeb #173.") */
+.frase-hecho { font-size: 0.9rem; color: var(--text-primary); background: var(--bg-secondary); border-left: 3px solid var(--accent-color); padding: 8px 12px; border-radius: 6px; margin-top: 6px; font-weight: 600; line-height: 1.4; }
 
 .divider { border: 0; border-top: 2px dashed var(--border-color); margin: 30px 0; opacity: 0.5; }
 .section-title { color: var(--text-primary); font-size: 1.1rem; margin-bottom: 20px; font-weight: 800; border-left: 4px solid var(--accent-color); padding-left: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -936,7 +1122,6 @@ onMounted(cargarAuditoria)
 .op-index-modelo { font-weight: 600; color: var(--text-primary); font-size: 0.92rem; }
 .op-index-fecha { color: var(--text-tertiary); font-size: 0.85rem; margin-left: auto; white-space: nowrap; }
 .op-index-icon { color: var(--text-tertiary); flex-shrink: 0; }
-
 .objeto-box {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px;
   background: var(--bg-primary); border: 1px solid var(--border-color);
@@ -953,13 +1138,11 @@ onMounted(cargarAuditoria)
 .value-col { font-family: 'Courier New', Courier, monospace; font-size: 0.95rem; color: var(--text-secondary); font-weight: 600; }
 .row-changed { background: rgba(245, 158, 11, 0.05); }
 .row-changed .field-col { color: #f59e0b; }
-.changed-flag { background: #f59e0b; color: white; font-size: 0.6rem; padding: 3px 6px; border-radius: 4px; margin-left: 10px; vertical-align: middle; font-weight: 800; }
-
 .static-val { color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 6px 10px; border-radius: 6px; display: inline-block; border: 1px solid rgba(16, 185, 129, 0.2); }
-.change-container { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.val-old { color: #ef4444; background: rgba(239, 68, 68, 0.1); padding: 6px 10px; border-radius: 6px; text-decoration: line-through; opacity: 0.8; border: 1px solid rgba(239, 68, 68, 0.2);}
-.arrow { color: var(--text-tertiary); font-size: 1.2rem; }
-.val-new { color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 6px 10px; border-radius: 6px; font-weight: 800; border: 1px solid rgba(16, 185, 129, 0.4); }
+/* Tabla de cambios reales (EDITAR): columna ANTES / DESPUÉS */
+.cambio-table .field-col { width: 30%; }
+.cambio-table .val-old-cell { color: #ef4444; opacity: 0.85; }
+.cambio-table .val-new-cell { color: #10b981; font-weight: 800; }
 .no-data { padding: 30px; text-align: center; color: var(--text-tertiary); font-size: 0.95rem; }
 
 .contexto-box { margin-top: 30px; }
@@ -977,14 +1160,32 @@ onMounted(cargarAuditoria)
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
+/* Resoluciones medias: el grupo de fechas se compacta un poco para seguir
+   bajando completo a su propia fila junto con Limpiar (sin scroll horizontal
+   ni separación de Desde—Hasta). */
+@media (max-width: 1023.98px) {
+  .fechas-group { flex: 0 1 340px; min-width: 325px; }
+}
+
 @media (max-width: 768px) {
   .info-grid { grid-template-columns: 1fr; }
-  .filters-grid { grid-template-columns: 1fr; }
   .list-card { padding: 20px; }
-  .change-container { flex-direction: column; align-items: flex-start; gap: 5px; }
-  .arrow { transform: rotate(90deg); margin-left: 15px; }
-  .modules-chips-container { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 10px; }
+  /* Los chips hacen wrap natural, sin scroll horizontal */
+  .modules-chips-container { flex-wrap: wrap; }
   .module-chip { white-space: nowrap; }
+  .filters-row { gap: 10px; }
+  .filter-field { gap: 5px; }
+  .filter-field-label { font-size: 0.74rem; }
+  .filters-row .filter-select { font-size: 0.85rem; }
   .modal-title-row { flex-direction: column; }
+}
+
+/* Pantalla extremadamente pequeña: excepción permitida — el grupo de fechas
+   apila Desde y Hasta verticalmente (sigue siendo un bloque único, sin
+   separarlos en filas distintas de la barra). */
+@media (max-width: 420px) {
+  .fechas-group { flex-wrap: wrap; min-width: 0; gap: 8px; flex: 1 1 100%; }
+  .fechas-group .filter-field { flex: 1 1 100%; }
+  .fechas-separador { display: none; }
 }
 </style>
