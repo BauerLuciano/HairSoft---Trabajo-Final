@@ -7262,10 +7262,13 @@ def _procesar_pago_aprobado_mp(payment_id):
             pedido_rel = PedidoWeb.objects.filter(id=id_obj).first()
             if pedido_rel:
                 _thread_locals.request_data['user'] = pedido_rel.cliente
-                pedido_rel.estado = 'PAGADO'
-                pedido_rel.mp_payment_id = str(payment_id)
-                pedido_rel.save()
-                print(f"✅ Pedido {id_obj} actualizado en BD a PAGADO.")
+                if pedido_rel.estado == PedidoWeb.ESTADO_CANCELADO:
+                    print(f"⚠️ Pedido web {id_obj} está cancelado; no se reactiva por webhook MP.")
+                else:
+                    pedido_rel.estado = PedidoWeb.ESTADO_PAGADO
+                    pedido_rel.mp_payment_id = str(payment_id)
+                    pedido_rel.save()
+                    print(f"✅ Pedido {id_obj} actualizado en BD a PAGADO.")
 
                 if not Notificacion.objects.filter(tipo='PEDIDO', mensaje__contains=f'#{id_obj}').exists():
                     Notificacion.objects.create(

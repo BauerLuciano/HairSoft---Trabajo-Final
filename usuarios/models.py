@@ -1105,6 +1105,7 @@ class PedidoWeb(models.Model):
     ESTADO_EN_CAMINO = 'EN_CAMINO'
     ESTADO_ENTREGADO = 'ENTREGADO'
     ESTADO_SOLICITA_CANCELACION = 'SOLICITA_CANCELACION' # ✅ NUEVO ESTADO
+    ESTADO_INCIDENCIA = 'INCIDENCIA'
     ESTADO_CANCELADO = 'CANCELADO'
 
     ESTADOS_CHOICES = [
@@ -1115,7 +1116,21 @@ class PedidoWeb(models.Model):
         (ESTADO_EN_CAMINO, 'En camino (Moto/Correo)'),
         (ESTADO_ENTREGADO, 'Entregado / Finalizado'),
         (ESTADO_SOLICITA_CANCELACION, 'Cancelación Solicitada por Cliente'), # ✅ NUEVO
+        (ESTADO_INCIDENCIA, 'Incidencia reportada por Cliente'),
         (ESTADO_CANCELADO, 'Cancelado'),
+    ]
+
+    REEMBOLSO_NO_APLICA = 'NO_APLICA'
+    REEMBOLSO_PENDIENTE = 'PENDIENTE'
+    REEMBOLSO_EXITOSO = 'EXITOSO'
+    REEMBOLSO_FALLIDO = 'FALLIDO'
+    REEMBOLSO_MANUAL = 'MANUAL'
+    REEMBOLSO_CHOICES = [
+        (REEMBOLSO_NO_APLICA, 'No aplica'),
+        (REEMBOLSO_PENDIENTE, 'Pendiente'),
+        (REEMBOLSO_EXITOSO, 'Exitoso'),
+        (REEMBOLSO_FALLIDO, 'Fallido'),
+        (REEMBOLSO_MANUAL, 'Manual'),
     ]
 
     # Opciones de Entrega
@@ -1151,6 +1166,28 @@ class PedidoWeb(models.Model):
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Total productos + envío")
     motivo_cancelacion = models.CharField(max_length=100, blank=True, null=True)
     obs_cancelacion = models.TextField(blank=True, null=True)
+
+    solicitud_cancelacion_motivo = models.TextField(blank=True, default='')
+    solicitud_cancelacion_fecha = models.DateTimeField(null=True, blank=True)
+    solicitud_cancelacion_usuario = models.ForeignKey('Usuario', on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos_web_cancelacion_solicitada')
+    estado_antes_solicitud = models.CharField(max_length=30, blank=True, default='')
+    solicitud_resuelta_fecha = models.DateTimeField(null=True, blank=True)
+    solicitud_resuelta_por = models.ForeignKey('Usuario', on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos_web_cancelacion_resuelta')
+    solicitud_resuelta_estado = models.CharField(max_length=20, blank=True, default='')
+
+    incidencia_motivo = models.TextField(blank=True, default='')
+    incidencia_fecha = models.DateTimeField(null=True, blank=True)
+    incidencia_usuario = models.ForeignKey('Usuario', on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos_web_incidencias')
+
+    reembolso_estado = models.CharField(max_length=20, choices=REEMBOLSO_CHOICES, default=REEMBOLSO_NO_APLICA)
+    reembolso_mp_id = models.CharField(max_length=100, blank=True, default='')
+    reembolso_fecha = models.DateTimeField(null=True, blank=True)
+    reembolso_monto = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    reembolso_error = models.TextField(blank=True, default='')
+
+    stock_devuelto = models.BooleanField(default=False)
+    stock_devuelto_fecha = models.DateTimeField(null=True, blank=True)
+    stock_devuelto_por = models.ForeignKey('Usuario', on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos_web_stock_devuelto')
 
     datos_entrega_interna = models.CharField(max_length=255, null=True, blank=True, help_text="Nombre del cadete")
     tiempo_estimado_minutos = models.IntegerField(default=0, help_text="Tiempo estimado de entrega en minutos")

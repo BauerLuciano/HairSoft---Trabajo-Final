@@ -357,6 +357,16 @@
               </div>
             </div>
 
+            <div class="policy-notice" role="note" aria-label="Política de cancelaciones">
+              <div class="policy-notice__icon">
+                <AlertCircle :size="18" />
+              </div>
+              <div class="policy-notice__content">
+                <strong>Política de cancelaciones</strong>
+                <p>Podés solicitar la cancelación de tu pedido mientras se encuentre en estado de preparación. Una vez que el pedido sea despachado y esté en camino, no se aceptarán cancelaciones ni se realizarán reembolsos. Las solicitudes están sujetas a la aprobación del administrador.</p>
+              </div>
+            </div>
+
             <div class="mp-method-selector">
               <button
                 type="button"
@@ -425,7 +435,7 @@ import { envioService } from '@/services/envioService'
 import Swal from 'sweetalert2'
 import { limpiarSesionLocal } from '@/utils/authPrompt'
 import { LMap, LTileLayer, LMarker, LTooltip, LPolyline, LControlLayers } from '@vue-leaflet/vue-leaflet'
-import { Store, Bike, ShoppingBag, Lock, Link2, QrCode, ShieldCheck } from 'lucide-vue-next'
+import { Store, Bike, ShoppingBag, Lock, Link2, QrCode, ShieldCheck, AlertCircle } from 'lucide-vue-next'
 import PagoQrModal from '@/components/PagoQrModal.vue'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
@@ -1452,6 +1462,46 @@ onUnmounted(pararPollingQr)
 }
 .total-final-label { font-size: 0.9rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.92; }
 .total-final-amount { font-size: 1.55rem; font-weight: 800; letter-spacing: -0.02em; }
+
+.policy-notice {
+  margin-top: 18px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.policy-notice__icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #fef3c7;
+  color: #d97706;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.policy-notice__content strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #78350f;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.policy-notice__content p {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: #92400e;
+}
 
 .mp-method-selector {
   margin-top: 18px;

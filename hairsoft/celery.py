@@ -33,6 +33,10 @@ app.conf.beat_schedule = {
         'task': 'usuarios.tasks.limpiar_tokens_expirados',
         'schedule': 3600.0,  # Cada hora
     },
+    'expirar-pedidos-web-pendientes': {
+        'task': 'usuarios.tasks.expirar_pedidos_web_pendientes',
+        'schedule': 300.0,  # Cada 5 minutos
+    },
 }
 
 app.conf.timezone = 'America/Argentina/Buenos_Aires'

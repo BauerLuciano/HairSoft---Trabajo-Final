@@ -535,6 +535,58 @@ def limpiar_tokens_expirados():
         logger.error(f"❌ Error limpiando tokens: {e}")
         return "Error"
 
+
+@shared_task
+@_tarea_sistema
+def expirar_pedidos_web_pendientes():
+    """Cancela pedidos web impagos vencidos y libera stock reservado."""
+    try:
+        from django.db import transaction
+        from django.utils import timezone as dj_timezone
+        from .models import PedidoWeb, HistorialStock
+
+        minutos = int(getattr(settings, 'PEDIDO_WEB_PENDIENTE_EXPIRA_MINUTOS', 30))
+        limite = dj_timezone.now() - timedelta(minutes=minutos)
+        pedidos = PedidoWeb.objects.filter(
+            estado=PedidoWeb.ESTADO_PENDIENTE_PAGO,
+            fecha_creacion__lt=limite,
+        ).prefetch_related('detalles__producto')
+
+        cancelados = 0
+        for pedido in pedidos:
+            with transaction.atomic():
+                p = PedidoWeb.objects.select_for_update().get(pk=pedido.pk)
+                if p.estado != PedidoWeb.ESTADO_PENDIENTE_PAGO or p.mp_payment_id:
+                    continue
+                if not p.stock_devuelto:
+                    for det in p.detalles.select_related('producto').all():
+                        prod = det.producto
+                        if not prod:
+                            continue
+                        anterior = prod.stock_actual
+                        prod.stock_actual += det.cantidad
+                        prod.save(update_fields=['stock_actual'])
+                        HistorialStock.objects.create(
+                            producto=prod,
+                            cantidad_anterior=anterior,
+                            cantidad_nueva=prod.stock_actual,
+                            motivo=f"Liberación automática por pedido web impago vencido (#{p.id})",
+                            usuario=None,
+                            tipo_ajuste='DEVOLUCION'
+                        )
+                    p.stock_devuelto = True
+                    p.stock_devuelto_fecha = dj_timezone.now()
+                p.estado = PedidoWeb.ESTADO_CANCELADO
+                p.motivo_cancelacion = 'PAGO_NO_REALIZADO'
+                p.obs_cancelacion = f'Pedido cancelado automáticamente por falta de pago tras {minutos} minutos.'
+                p.reembolso_estado = PedidoWeb.REEMBOLSO_NO_APLICA
+                p.save()
+                cancelados += 1
+        return f"Pedidos web pendientes expirados: {cancelados}"
+    except Exception as e:
+        logger.error(f"❌ Error expirando pedidos web: {e}")
+        return f"Error: {str(e)}"
+
 @shared_task
 @_tarea_sistema
 def procesar_alertas_stock_proveedores(producto_id):

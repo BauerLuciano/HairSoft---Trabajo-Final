@@ -72,11 +72,11 @@
             
             <div class="action-buttons-group">
               <button 
-                v-if="puedeSolicitarCancelacion(pedido.estado)" 
-                class="btn-cancelar" 
+                v-if="puedeAccionCliente(pedido.estado).tipo" 
+                :class="puedeAccionCliente(pedido.estado).clase" 
                 @click="solicitarCancelacion(pedido)"
-                title="Solicitar cancelación de esta compra">
-                Cancelar
+                :title="puedeAccionCliente(pedido.estado).title">
+                {{ puedeAccionCliente(pedido.estado).label }}
               </button>
               <button class="btn-ver" @click="verDetalle(pedido)">
                 <span>Ver Detalle</span>
@@ -187,37 +187,108 @@ const cargarPedidos = async () => {
 };
 
 // LOGICA DE CANCELACIÓN
-const puedeSolicitarCancelacion = (estado) => {
-  return ['PENDIENTE_PAGO', 'PAGADO', 'EN_PREPARACION'].includes(estado);
+const MOTIVOS_CANCELACION_CLIENTE = [
+  'Ya no necesito el pedido.',
+  'Realicé la compra por error.',
+  'Seleccioné productos incorrectos.',
+  'El importe total no era el esperado.',
+  'Problemas con el medio de pago.',
+  'Encontré otra alternativa.',
+  'Otro motivo.'
+];
+
+const puedeAccionCliente = (estado) => {
+  if (estado === 'PENDIENTE_PAGO') return { tipo: 'CANCELAR_DIRECTO', label: 'Cancelar', clase: 'btn-cancelar', title: 'Cancelar pedido sin pagar' };
+  if (['PAGADO', 'EN_PREPARACION'].includes(estado)) return { tipo: 'SOLICITAR', label: 'Solicitar cancelación', clase: 'btn-cancelar', title: 'Solicitar cancelación' };
+  return { tipo: null };
 };
 
 const solicitarCancelacion = async (pedido) => {
-  const { value: motivo } = await Swal.fire({
-    title: 'Solicitar Cancelación',
-    text: 'Contanos brevemente por qué querés cancelar la compra:',
-    input: 'text',
-    inputPlaceholder: 'Ej: Me equivoqué de producto...',
+  const accion = puedeAccionCliente(pedido.estado);
+  if (!accion.tipo) return;
+
+  const esDirecto = accion.tipo === 'CANCELAR_DIRECTO';
+  const isLight = document.documentElement.classList.contains('light-theme');
+  const opcionesMotivo = `<option value="" disabled selected>Seleccioná un motivo</option>` +
+    MOTIVOS_CANCELACION_CLIENTE.map(m => `<option value="${m}">${m}</option>`).join('');
+
+  const { value: formValues } = await Swal.fire({
+    title: esDirecto ? 'Cancelar pedido' : 'Solicitar cancelación',
+    html: `
+      <div style="text-align:left; font-family:Inter,sans-serif;">
+        ${esDirecto
+          ? `<div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.35); border-radius:10px; padding:12px; margin-bottom:14px; color:${isLight ? '#7f1d1d' : '#fecaca'}; font-size:0.92rem; line-height:1.45;">
+              Este pedido no fue pagado. Si lo cancelás, se liberará el stock.
+            </div>`
+          : `<div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.35); border-radius:10px; padding:12px; margin-bottom:14px; color:${isLight ? '#78350f' : '#fde68a'}; font-size:0.9rem; line-height:1.5;">
+              <p style="margin:0 0 8px;">Podés solicitar la cancelación mientras el pedido esté en preparación. La solicitud queda sujeta a la aprobación del administrador.</p>
+              <p style="margin:0;"><strong>Importante:</strong> una vez que el pedido esté listo para retirar en la peluquería o haya sido despachado mediante motomandados, no se aceptan cancelaciones ni reembolsos.</p>
+            </div>`
+        }
+
+        <label for="swal-motivo-cancelacion" style="display:block; margin-bottom:6px; font-weight:700; color:${isLight ? '#334155' : '#f8fafc'}; font-size:0.9rem;">Motivo de cancelación <span style="color:#ef4444;">*</span></label>
+        <select id="swal-motivo-cancelacion" class="swal2-select" style="width:100%; margin:0 0 14px; padding:10px 12px; border-radius:8px; border:1px solid ${isLight ? '#cbd5e1' : '#334155'}; background:${isLight ? '#fff' : '#0f172a'}; color:${isLight ? '#0f172a' : '#f8fafc'}; font-size:0.92rem;">
+          ${opcionesMotivo}
+        </select>
+
+        <label for="swal-obs-cancelacion" style="display:block; margin-bottom:6px; font-weight:700; color:${isLight ? '#334155' : '#f8fafc'}; font-size:0.9rem;">Observación adicional <span id="swal-obs-opcional" style="font-weight:500; color:${isLight ? '#64748b' : '#94a3b8'};">(opcional)</span></label>
+        <textarea id="swal-obs-cancelacion" class="swal2-textarea" style="width:100%; margin:0; min-height:90px; padding:10px 12px; border-radius:8px; border:1px solid ${isLight ? '#cbd5e1' : '#334155'}; background:${isLight ? '#fff' : '#0f172a'}; color:${isLight ? '#0f172a' : '#f8fafc'}; font-size:0.92rem; resize:vertical;" placeholder="Podés agregar algún detalle sobre tu solicitud"></textarea>
+        <div id="swal-obs-ayuda" style="margin-top:6px; font-size:0.8rem; color:${isLight ? '#64748b' : '#94a3b8'};">Si seleccionás “Otro motivo”, la observación es obligatoria.</div>
+      </div>
+    `,
+    focusConfirm: false,
     showCancelButton: true,
     confirmButtonColor: '#ef4444',
     cancelButtonColor: '#64748b',
-    confirmButtonText: 'Enviar Solicitud',
+    confirmButtonText: esDirecto ? 'Cancelar pedido' : 'Enviar solicitud',
     cancelButtonText: 'Cerrar',
-    background: document.documentElement.classList.contains('light-theme') ? '#fff' : '#1e293b',
-    color: document.documentElement.classList.contains('light-theme') ? '#0f172a' : '#fff',
-    inputValidator: (value) => {
-      if (!value) return 'Por favor, dejanos un motivo para procesar tu solicitud.';
+    background: isLight ? '#fff' : '#1e293b',
+    color: isLight ? '#0f172a' : '#fff',
+    didOpen: () => {
+      const motivoEl = document.getElementById('swal-motivo-cancelacion');
+      const obsLabel = document.getElementById('swal-obs-opcional');
+      const obsEl = document.getElementById('swal-obs-cancelacion');
+      const actualizar = () => {
+        const esOtro = motivoEl?.value === 'Otro motivo.';
+        if (obsLabel) {
+          obsLabel.textContent = esOtro ? '(obligatoria)' : '(opcional)';
+          obsLabel.style.color = esOtro ? '#ef4444' : (isLight ? '#64748b' : '#94a3b8');
+          obsLabel.style.fontWeight = esOtro ? '700' : '500';
+        }
+        if (obsEl) {
+          obsEl.placeholder = esOtro ? 'Explicá el motivo de tu solicitud' : 'Podés agregar algún detalle sobre tu solicitud';
+        }
+      };
+      motivoEl?.addEventListener('change', actualizar);
+      actualizar();
+    },
+    preConfirm: () => {
+      const motivo = (document.getElementById('swal-motivo-cancelacion')?.value || '').trim();
+      const observacion = (document.getElementById('swal-obs-cancelacion')?.value || '').trim();
+      if (!motivo) {
+        Swal.showValidationMessage('Seleccioná un motivo de cancelación.');
+        return false;
+      }
+      if (motivo === 'Otro motivo.' && !observacion) {
+        Swal.showValidationMessage('Indicá una observación para explicar el motivo.');
+        return false;
+      }
+      return { motivo, observacion };
     }
   });
 
-  if (motivo) {
+  if (formValues) {
     try {
       Swal.fire({ title: 'Enviando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-      await api.post(`/web/pedidos/${pedido.id}/solicitar_cancelacion/`, { motivo: motivo });
-      Swal.fire('¡Enviado!', 'Tu solicitud fue enviada. Te notificaremos pronto.', 'success');
-      await cargarPedidos(); 
+      const res = await api.post(`/web/pedidos/${pedido.id}/solicitar_cancelacion/`, {
+        motivo: formValues.motivo,
+        observacion: formValues.observacion
+      });
+      Swal.fire('Listo', res.data?.message || res.data?.mensaje || 'Solicitud enviada correctamente.', 'success');
+      await cargarPedidos();
     } catch (error) {
       console.error(error);
-      Swal.fire('Error', 'No se pudo enviar la solicitud.', 'error');
+      Swal.fire('Error', error.response?.data?.error || 'No se pudo enviar la solicitud.', 'error');
     }
   }
 };
@@ -257,7 +328,8 @@ const getClaseEstado = (e) => {
     'EN_CAMINO': 'bg-teal',
     'ENTREGADO': 'bg-green',
     'CANCELADO': 'bg-red',
-    'SOLICITA_CANCELACION': 'bg-orange'
+    'SOLICITA_CANCELACION': 'bg-orange',
+    'INCIDENCIA': 'bg-incidencia'
   };
   return map[e] || 'bg-gray';
 };
@@ -287,16 +359,25 @@ const verDetalle = async (p) => {
     </div>
   ` : '';
 
-  // Alerta si el pedido está cancelado o solicitando cancelación
-  const isCanceledOrRequested = p.estado === 'CANCELADO' || p.estado === 'SOLICITA_CANCELACION';
+  const formatearEstado = (estado, display) => {
+    const map = { PENDIENTE_PAGO: 'Esperando pago', PAGADO: 'Pagado', EN_PREPARACION: 'En preparación', LISTO_RETIRO: 'Listo para retirar', EN_CAMINO: 'En camino', ENTREGADO: 'Entregado', CANCELADO: 'Cancelado', SOLICITA_CANCELACION: 'Solicitud de cancelación pendiente', INCIDENCIA: 'Incidencia' };
+    if (display && !/^[A-Z_]+$/.test(display)) return display;
+    return map[estado] || display || estado || '-';
+  };
+  const formatearReembolso = (estado) => ({ PENDIENTE: 'Devolución pendiente', MANUAL: 'Devolución confirmada manualmente', NO_APLICA: 'No corresponde devolución', EXITOSO: 'Devolución realizada', FALLIDO: 'Devolución no realizada' }[estado] || estado || '');
+
+  // Alerta si el pedido tiene cancelación/incidencia
+  const isCanceledOrRequested = ['CANCELADO', 'SOLICITA_CANCELACION', 'INCIDENCIA'].includes(p.estado);
   const cancelHTML = isCanceledOrRequested ? `
-    <div class="receipt-alert">
+    <div class="receipt-alert" style="${p.estado === 'INCIDENCIA' ? 'border-color:#eab308;background:rgba(234,179,8,0.08);' : ''}">
       <div class="alert-title">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-        ${p.estado === 'CANCELADO' ? 'Pedido Anulado' : 'Cancelación en Revisión'}
+        ${p.estado === 'CANCELADO' ? 'Pedido anulado' : p.estado === 'INCIDENCIA' ? 'Incidencia en evaluación' : 'Solicitud de cancelación pendiente'}
       </div>
-      <div class="alert-msg"><strong>Motivo:</strong> ${p.motivo_cancelacion || 'Solicitud de cliente'}</div>
+      <div class="alert-msg"><strong>Motivo:</strong> ${p.motivo_cancelacion || p.solicitud_cancelacion_motivo || p.incidencia_motivo || 'No especificado'}</div>
       <div class="alert-obs">${p.obs_cancelacion ? `"${p.obs_cancelacion}"` : ''}</div>
+      ${p.estado === 'CANCELADO' ? `<div class="alert-msg"><strong>Devolución:</strong> ${formatearReembolso(p.reembolso_estado) || 'No corresponde devolución'} ${p.reembolso_error ? `- ${p.reembolso_error}` : ''}</div>` : ''}
+      ${p.estado === 'ENTREGADO' ? `<div class="alert-msg">Para devoluciones o postventa, contactá al local.</div>` : ''}
     </div>
   ` : '';
 
@@ -307,10 +388,12 @@ const verDetalle = async (p) => {
           <div class="receipt-icon">🛍️</div>
           <h2>Pedido #${p.id}</h2>
           <p class="receipt-date">${formatearFecha(p.fecha_creacion)}</p>
-          <span class="estado-badge ${getClaseEstado(p.estado)}">${p.estado_display || p.estado}</span>
+          <span class="estado-badge ${getClaseEstado(p.estado)}">${formatearEstado(p.estado, p.estado_display)}</span>
         </div>
 
         ${cancelHTML}
+        ${p.estado === 'EN_CAMINO' ? `<div class="receipt-alert" style="border-color:#f59e0b;background:rgba(245,158,11,0.08);"><div class="alert-title">Pedido en camino</div><div class="alert-msg">Una vez despachado y en camino, no se aceptan cancelaciones ni reembolsos.</div></div>` : ''}
+        ${p.estado === 'ENTREGADO' ? `<div class="receipt-alert" style="border-color:#3b82f6;background:rgba(59,130,246,0.08);"><div class="alert-title">Postventa / Devolución</div><div class="alert-msg">Este pedido fue entregado. Si necesitás una devolución o postventa, comunicate con el local.</div></div>` : ''}
 
         <div class="receipt-section">
           <h3 class="section-title">Detalle de Productos</h3>
@@ -330,6 +413,7 @@ const verDetalle = async (p) => {
               return dir ? `<p><strong>Destino:</strong> ${dir}</p>` : ''
             })()}
             ${p.datos_entrega_interna ? `<p><strong>Repartidor:</strong> ${p.datos_entrega_interna}</p>` : ''}
+            ${p.observaciones_entrega ? `<p><strong>Observaciones:</strong> ${p.observaciones_entrega}</p>` : ''}
           </div>
         </div>
 
@@ -534,6 +618,7 @@ const verDetalle = async (p) => {
 .bg-green { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
 .bg-red { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
 .bg-orange { background: rgba(249, 115, 22, 0.15); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.3); }
+.bg-incidencia { background: rgba(234, 179, 8, 0.15); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.35); }
 .bg-gray { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
 
 /* CUERPO DE LA TARJETA */
@@ -606,6 +691,18 @@ const verDetalle = async (p) => {
   transition: 0.2s;
 }
 .btn-cancelar:hover { background: rgba(239, 68, 68, 0.1); }
+
+.btn-incidencia {
+  background: transparent;
+  border: 1px solid #eab308;
+  color: #fde047;
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+.btn-incidencia:hover { background: rgba(234, 179, 8, 0.1); }
 
 /* ============================================
    MODAL SWEETALERT: TICKET PREMIUM

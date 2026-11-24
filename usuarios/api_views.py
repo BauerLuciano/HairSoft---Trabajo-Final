@@ -584,30 +584,524 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
         # dentro de create(), pero no molesta dejarlo.
         serializer.save(cliente=self.request.user)
 
-    # ✅ NUEVO ENDPOINT: Para que el cliente solicite la cancelación
-    @action(detail=True, methods=['post'])
-    def solicitar_cancelacion(self, request, pk=None):
-        pedido = self.get_object() # Seguro porque get_queryset ya filtra por cliente
-        motivo = request.data.get('motivo', 'Sin motivo especificado')
+    # =========================
+    # Cancelaciones / incidencias
+    # =========================
 
-        estados_validos = [
-            PedidoWeb.ESTADO_PENDIENTE_PAGO, 
-            PedidoWeb.ESTADO_PAGADO, 
-            PedidoWeb.ESTADO_PREPARACION
-        ]
-        
-        if pedido.estado not in estados_validos:
-            return Response(
-                {"error": "El pedido ya está procesado y no se puede solicitar su cancelación."}, 
-                status=status.HTTP_400_BAD_REQUEST
+    TRANSICIONES_PEDIDO_WEB = {
+        PedidoWeb.ESTADO_PENDIENTE_PAGO: {PedidoWeb.ESTADO_PAGADO, PedidoWeb.ESTADO_CANCELADO, PedidoWeb.ESTADO_SOLICITA_CANCELACION},
+        PedidoWeb.ESTADO_PAGADO: {PedidoWeb.ESTADO_PREPARACION, PedidoWeb.ESTADO_CANCELADO, PedidoWeb.ESTADO_SOLICITA_CANCELACION},
+        PedidoWeb.ESTADO_PREPARACION: {PedidoWeb.ESTADO_LISTO_RETIRO, PedidoWeb.ESTADO_EN_CAMINO, PedidoWeb.ESTADO_CANCELADO, PedidoWeb.ESTADO_SOLICITA_CANCELACION},
+        PedidoWeb.ESTADO_LISTO_RETIRO: {PedidoWeb.ESTADO_ENTREGADO, PedidoWeb.ESTADO_CANCELADO, PedidoWeb.ESTADO_INCIDENCIA},
+        PedidoWeb.ESTADO_EN_CAMINO: {PedidoWeb.ESTADO_ENTREGADO, PedidoWeb.ESTADO_INCIDENCIA},
+        PedidoWeb.ESTADO_ENTREGADO: set(),
+        PedidoWeb.ESTADO_SOLICITA_CANCELACION: {PedidoWeb.ESTADO_CANCELADO, PedidoWeb.ESTADO_PAGADO, PedidoWeb.ESTADO_PREPARACION, PedidoWeb.ESTADO_PENDIENTE_PAGO},
+        PedidoWeb.ESTADO_INCIDENCIA: {PedidoWeb.ESTADO_LISTO_RETIRO, PedidoWeb.ESTADO_EN_CAMINO, PedidoWeb.ESTADO_CANCELADO, PedidoWeb.ESTADO_ENTREGADO},
+        PedidoWeb.ESTADO_CANCELADO: set(),
+    }
+
+    ESTADOS_CANCELABLES_CLIENTE_DIRECTO = {PedidoWeb.ESTADO_PENDIENTE_PAGO}
+    ESTADOS_SOLICITABLES_CANCELACION_CLIENTE = {PedidoWeb.ESTADO_PAGADO, PedidoWeb.ESTADO_PREPARACION}
+    ESTADOS_NO_CANCELABLES = {PedidoWeb.ESTADO_EN_CAMINO, PedidoWeb.ESTADO_ENTREGADO, PedidoWeb.ESTADO_CANCELADO}
+
+    MOTIVOS_CANCELACION_CLIENTE = {
+        'Ya no necesito el pedido.',
+        'Realicé la compra por error.',
+        'Seleccioné productos incorrectos.',
+        'El importe total no era el esperado.',
+        'Problemas con el medio de pago.',
+        'Encontré otra alternativa.',
+        'Otro motivo.',
+    }
+    MOTIVO_CANCELACION_OTRO = 'Otro motivo.'
+
+    def _normalizar_motivo_cancelacion_cliente(self, request_data):
+        motivo = (request_data.get('motivo') or '').strip()
+        observacion = (request_data.get('observacion') or '').strip()
+
+        if not motivo:
+            return None, None, 'Seleccioná un motivo de cancelación.'
+        if motivo not in self.MOTIVOS_CANCELACION_CLIENTE:
+            return None, None, 'El motivo de cancelación seleccionado no es válido.'
+        if motivo == self.MOTIVO_CANCELACION_OTRO and not observacion:
+            return None, None, 'Indicá una observación para explicar el motivo.'
+
+        return motivo, observacion, None
+
+    def _formatear_motivo_cancelacion(self, motivo, observacion='', prefijo=''):
+        motivo = (motivo or '').strip()
+        observacion = (observacion or '').strip()
+        base = motivo
+        if observacion:
+            base = f"{motivo}\nObservación: {observacion}" if motivo else observacion
+        if prefijo:
+            return f"{prefijo}: {base}" if base else prefijo
+        return base
+
+    def _rol_usuario(self, user):
+        return getattr(getattr(user, 'rol', None), 'nombre', '')
+
+    def _es_admin(self, user):
+        return self._rol_usuario(user) == 'Administrador'
+
+    def _es_recepcion_o_admin(self, user):
+        return self._rol_usuario(user) in ['Administrador', 'Recepcionista']
+
+    def _registrar_auditoria_pedido(self, pedido, request, accion, mensaje, detalles=None, resultado='EXITO'):
+        try:
+            from .auditoria_service import AuditoriaService
+            AuditoriaService.registrar(
+                accion=accion,
+                modelo_afectado='PedidoWeb',
+                objeto_id=pedido.id,
+                detalles=detalles or {},
+                mensaje=mensaje,
+                resultado=resultado,
+                usuario=request.user if getattr(request.user, 'is_authenticated', False) else None,
             )
+        except Exception:
+            pass
 
-        pedido.estado = PedidoWeb.ESTADO_SOLICITA_CANCELACION
-        pedido.obs_cancelacion = f"SOLICITUD DE CLIENTE: {motivo}"
+    def _devolver_stock_pedido(self, pedido, usuario, motivo):
+        from .models import HistorialStock
+        if pedido.stock_devuelto:
+            return False, 'El stock de este pedido ya fue devuelto.'
+
+        with transaction.atomic():
+            pedido_locked = PedidoWeb.objects.select_for_update().get(pk=pedido.pk)
+            if pedido_locked.stock_devuelto:
+                return False, 'El stock de este pedido ya fue devuelto.'
+
+            for detalle in pedido_locked.detalles.select_related('producto').all():
+                producto = detalle.producto
+                if not producto:
+                    continue
+                stock_anterior = producto.stock_actual
+                producto.stock_actual += detalle.cantidad
+                producto.save(update_fields=['stock_actual'])
+                HistorialStock.objects.create(
+                    producto=producto,
+                    cantidad_anterior=stock_anterior,
+                    cantidad_nueva=producto.stock_actual,
+                    motivo=motivo,
+                    usuario=usuario,
+                    tipo_ajuste='DEVOLUCION'
+                )
+
+            pedido_locked.stock_devuelto = True
+            pedido_locked.stock_devuelto_fecha = timezone.now()
+            pedido_locked.stock_devuelto_por = usuario if getattr(usuario, 'is_authenticated', False) else None
+            pedido_locked.save(update_fields=['stock_devuelto', 'stock_devuelto_fecha', 'stock_devuelto_por'])
+            pedido.refresh_from_db()
+            return True, None
+
+    def _preparar_reembolso_manual(self, pedido, usuario):
+        """Marca el reembolso como pendiente de devolución manual en Mercado Pago.
+
+        IMPORTANTE: no se llama a la API de reembolsos de MP. El cobro original
+        se mantiene intacto; la devolución la realiza el administrador desde su
+        cuenta de Mercado Pago usando el mp_payment_id original.
+        """
+        from django.utils import timezone as dj_timezone
+
+        if not pedido.mp_payment_id:
+            pedido.reembolso_estado = PedidoWeb.REEMBOLSO_NO_APLICA
+            pedido.reembolso_error = ''
+            pedido.reembolso_fecha = dj_timezone.now()
+            pedido.reembolso_monto = None
+            pedido.save(update_fields=['reembolso_estado', 'reembolso_error', 'reembolso_fecha', 'reembolso_monto'])
+            return {'estado': pedido.reembolso_estado, 'ok': True, 'mensaje': 'No aplica reembolso.'}
+
+        if pedido.reembolso_estado == PedidoWeb.REEMBOLSO_MANUAL:
+            return {'estado': pedido.reembolso_estado, 'ok': True, 'mensaje': 'La devolución manual ya fue confirmada.'}
+
+        if pedido.reembolso_estado == PedidoWeb.REEMBOLSO_PENDIENTE and pedido.reembolso_monto:
+            return {'estado': pedido.reembolso_estado, 'ok': True, 'mensaje': 'La devolución manual ya está pendiente de confirmación.'}
+
+        pedido.reembolso_estado = PedidoWeb.REEMBOLSO_PENDIENTE
+        pedido.reembolso_monto = pedido.total
+        pedido.reembolso_fecha = None
+        pedido.reembolso_error = ''
+        pedido.save(update_fields=['reembolso_estado', 'reembolso_monto', 'reembolso_fecha', 'reembolso_error'])
+        return {
+            'estado': pedido.reembolso_estado,
+            'ok': True,
+            'mensaje': 'Reembolso pendiente de devolución manual en Mercado Pago.',
+        }
+
+    def _cancelar_pedido(self, pedido, request, motivo, obs='', devolver_stock=False, origen='ADMIN'):
+        from django.utils import timezone as dj_timezone
+
+        if pedido.estado == PedidoWeb.ESTADO_CANCELADO:
+            return Response({'error': 'El pedido ya está cancelado.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pedido.estado == PedidoWeb.ESTADO_ENTREGADO:
+            return Response({'error': 'Un pedido entregado no puede cancelarse. Debe gestionarse como devolución/postventa.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not motivo or not str(motivo).strip():
+            return Response({'error': 'Debe indicar un motivo de cancelación.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        estado_anterior = pedido.estado
+        es_admin = self._es_admin(request.user)
+        if not es_admin:
+            # Solo cliente puede cancelar directo PENDIENTE_PAGO sin intervención administrativa
+            if not (origen == 'CLIENTE_DIRECTO' and estado_anterior == PedidoWeb.ESTADO_PENDIENTE_PAGO and pedido.cliente_id == request.user.id):
+                return Response({'error': 'No tiene permisos para cancelar este pedido.'}, status=status.HTTP_403_FORBIDDEN)
+
+        # Validar transición / política
+        estado_origen_real = pedido.estado_antes_solicitud if estado_anterior in [PedidoWeb.ESTADO_SOLICITA_CANCELACION, PedidoWeb.ESTADO_INCIDENCIA] else estado_anterior
+        if estado_origen_real in {PedidoWeb.ESTADO_EN_CAMINO, PedidoWeb.ESTADO_ENTREGADO}:
+            return Response({'error': 'No se pueden aprobar ni ejecutar cancelaciones para pedidos despachados/en camino o entregados.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        permitidos = self.TRANSICIONES_PEDIDO_WEB.get(estado_anterior, set())
+        if PedidoWeb.ESTADO_CANCELADO not in permitidos and not (es_admin and origen == 'ADMIN'):
+            return Response({'error': f'No se puede cancelar un pedido en estado {estado_anterior}.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Política definitiva: devolución automática de stock en cancelaciones válidas (no entregadas/en camino).
+        debe_devolver_stock = not bool(pedido.stock_devuelto)
+
+        # Reembolso: se prepara como MANUAL pendiente (sin API de MP). El cobro original no se modifica.
+        resultado_reembolso = {'estado': pedido.reembolso_estado or PedidoWeb.REEMBOLSO_NO_APLICA, 'ok': True, 'mensaje': 'No aplica.'}
+        pago_confirmado = bool(pedido.mp_payment_id) or estado_anterior not in [PedidoWeb.ESTADO_PENDIENTE_PAGO]
+
+        if pago_confirmado and pedido.mp_payment_id:
+            if not es_admin:
+                return Response({'error': 'La cancelación con reembolso debe ser gestionada por un administrador.'}, status=status.HTTP_403_FORBIDDEN)
+            resultado_reembolso = self._preparar_reembolso_manual(pedido, request.user)
+        else:
+            pedido.reembolso_estado = PedidoWeb.REEMBOLSO_NO_APLICA
+            pedido.reembolso_error = ''
+            pedido.reembolso_fecha = dj_timezone.now()
+            pedido.reembolso_monto = None
+            pedido.save(update_fields=['reembolso_estado', 'reembolso_error', 'reembolso_fecha', 'reembolso_monto'])
+
+        if debe_devolver_stock:
+            ok_stock, err_stock = self._devolver_stock_pedido(pedido, request.user, f"Reingreso por Pedido Web Cancelado (#{pedido.id})")
+            if not ok_stock and err_stock and 'ya fue devuelto' not in err_stock:
+                return Response({'error': err_stock}, status=status.HTTP_400_BAD_REQUEST)
+
+        pedido.estado = PedidoWeb.ESTADO_CANCELADO
+        pedido.motivo_cancelacion = str(motivo).strip()[:100]
+        pedido.obs_cancelacion = obs or pedido.obs_cancelacion
+        pedido.solicitud_resuelta_fecha = dj_timezone.now()
+        pedido.solicitud_resuelta_por = request.user if getattr(request.user, 'is_authenticated', False) else None
+        pedido.solicitud_resuelta_estado = 'APROBADA' if estado_anterior in [PedidoWeb.ESTADO_SOLICITA_CANCELACION, PedidoWeb.ESTADO_INCIDENCIA] else 'CANCELADA'
         pedido.save()
 
-        print(f"⚠️ El cliente ID {request.user.id} solicitó cancelar el pedido #{pedido.id}")
-        return Response({"mensaje": "Solicitud de cancelación enviada correctamente."})
+        self._registrar_auditoria_pedido(
+            pedido, request, 'CANCELAR',
+            f"Pedido Web #{pedido.id} cancelado: {estado_anterior} -> CANCELADO",
+            detalles={
+                'estado': {'anterior': estado_anterior, 'nuevo': PedidoWeb.ESTADO_CANCELADO},
+                'motivo': {'anterior': None, 'nuevo': pedido.motivo_cancelacion},
+                'obs': {'anterior': None, 'nuevo': pedido.obs_cancelacion},
+                'devolver_stock': {'anterior': None, 'nuevo': bool(debe_devolver_stock)},
+                'stock_devuelto': {'anterior': None, 'nuevo': bool(pedido.stock_devuelto)},
+                'reembolso_estado': {'anterior': None, 'nuevo': pedido.reembolso_estado},
+                'reembolso_mp_id': {'anterior': None, 'nuevo': pedido.reembolso_mp_id},
+                'reembolso_error': {'anterior': None, 'nuevo': pedido.reembolso_error},
+                'origen': {'anterior': None, 'nuevo': origen},
+            },
+            resultado='EXITO'
+        )
+
+        return Response({
+            'message': 'Pedido cancelado correctamente.',
+            'reembolso_estado': pedido.reembolso_estado,
+            'reembolso_error': pedido.reembolso_error,
+            'reembolso_monto': str(pedido.reembolso_monto) if pedido.reembolso_monto is not None else None,
+            'mp_payment_id': pedido.mp_payment_id,
+            'stock_devuelto': pedido.stock_devuelto,
+            'estado': pedido.estado,
+        })
+
+    @action(detail=True, methods=['post'])
+    def solicitar_cancelacion(self, request, pk=None):
+        pedido = self.get_object()
+        motivo, observacion, error = self._normalizar_motivo_cancelacion_cliente(request.data)
+        if error:
+            return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
+        detalle_motivo = self._formatear_motivo_cancelacion(motivo, observacion)
+
+        if pedido.estado == PedidoWeb.ESTADO_CANCELADO:
+            return Response({'error': 'El pedido ya está cancelado.'}, status=status.HTTP_400_BAD_REQUEST)
+        if pedido.estado == PedidoWeb.ESTADO_ENTREGADO:
+            return Response({'error': 'El pedido ya fue entregado. Debe gestionarse por postventa/devolución.'}, status=status.HTTP_400_BAD_REQUEST)
+        if pedido.estado in [PedidoWeb.ESTADO_SOLICITA_CANCELACION, PedidoWeb.ESTADO_INCIDENCIA]:
+            return Response({'error': 'El pedido ya tiene una solicitud o incidencia pendiente.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # PENDIENTE_PAGO: cancelación directa del cliente (sin pago)
+        if pedido.estado == PedidoWeb.ESTADO_PENDIENTE_PAGO:
+            if pedido.cliente_id != request.user.id and not self._es_admin(request.user):
+                return Response({'error': 'No puede cancelar este pedido.'}, status=status.HTTP_403_FORBIDDEN)
+            return self._cancelar_pedido(
+                pedido, request,
+                motivo=detalle_motivo,
+                obs=self._formatear_motivo_cancelacion(motivo, observacion, 'Cancelación directa del cliente'),
+                devolver_stock=True,
+                origen='CLIENTE_DIRECTO'
+            )
+
+        # PAGADO / EN_PREPARACION: solicitud de cancelación (requiere aprobación admin)
+        if pedido.estado in [PedidoWeb.ESTADO_PAGADO, PedidoWeb.ESTADO_PREPARACION]:
+            estado_anterior = pedido.estado
+            pedido.estado_antes_solicitud = estado_anterior
+            pedido.estado = PedidoWeb.ESTADO_SOLICITA_CANCELACION
+            pedido.solicitud_cancelacion_motivo = detalle_motivo
+            pedido.solicitud_cancelacion_fecha = timezone.now()
+            pedido.solicitud_cancelacion_usuario = request.user
+            pedido.obs_cancelacion = self._formatear_motivo_cancelacion(motivo, observacion, 'SOLICITUD DE CLIENTE')
+            pedido.solicitud_resuelta_estado = ''
+            pedido.solicitud_resuelta_fecha = None
+            pedido.solicitud_resuelta_por = None
+            pedido.save()
+
+            self._registrar_auditoria_pedido(
+                pedido, request, 'EDITAR',
+                f"Solicitud de cancelación Pedido Web #{pedido.id}: {estado_anterior} -> SOLICITA_CANCELACION",
+                detalles={
+                    'estado': {'anterior': estado_anterior, 'nuevo': PedidoWeb.ESTADO_SOLICITA_CANCELACION},
+                    'motivo': {'anterior': None, 'nuevo': motivo},
+                    'observacion': {'anterior': None, 'nuevo': observacion},
+                }
+            )
+            return Response({'message': 'Solicitud de cancelación enviada correctamente. Está sujeta a aprobación del administrador.'})
+
+        # EN_CAMINO / ENTREGADO: no se aceptan cancelaciones ni reembolsos
+        if pedido.estado in [PedidoWeb.ESTADO_EN_CAMINO, PedidoWeb.ESTADO_ENTREGADO]:
+            return Response({'error': 'Una vez que el pedido fue despachado y está en camino, o ya fue entregado, no se aceptan cancelaciones ni reembolsos.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({'error': 'No se puede solicitar cancelación en el estado actual.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def reportar_incidencia(self, request, pk=None):
+        pedido = self.get_object()
+        motivo = (request.data.get('motivo') or '').strip()
+        if not motivo:
+            return Response({'error': 'Debe indicar un motivo.'}, status=status.HTTP_400_BAD_REQUEST)
+        if pedido.estado in [PedidoWeb.ESTADO_EN_CAMINO, PedidoWeb.ESTADO_ENTREGADO]:
+            return Response({'error': 'Una vez que el pedido fue despachado/en camino o entregado, no se aceptan cancelaciones ni reembolsos desde este flujo.'}, status=status.HTTP_400_BAD_REQUEST)
+        if pedido.estado != PedidoWeb.ESTADO_LISTO_RETIRO:
+            return Response({'error': 'Solo se pueden reportar incidencias en pedidos listos para retirar.'}, status=status.HTTP_400_BAD_REQUEST)
+        request.data['motivo'] = motivo
+        # reutiliza la lógica
+        pedido.estado_antes_solicitud = pedido.estado
+        pedido.estado = PedidoWeb.ESTADO_INCIDENCIA
+        pedido.incidencia_motivo = motivo
+        pedido.incidencia_fecha = timezone.now()
+        pedido.incidencia_usuario = request.user
+        pedido.obs_cancelacion = f"INCIDENCIA DE CLIENTE: {motivo}"
+        pedido.save()
+        self._registrar_auditoria_pedido(pedido, request, 'EDITAR', f"Incidencia Pedido Web #{pedido.id}", detalles={'estado': {'anterior': pedido.estado_antes_solicitud, 'nuevo': PedidoWeb.ESTADO_INCIDENCIA}, 'motivo': {'anterior': None, 'nuevo': motivo}})
+        return Response({'message': 'Incidencia registrada correctamente.'})
+
+    @action(detail=True, methods=['post'])
+    def registrar_gestion_cliente(self, request, pk=None):
+        """Permite a Recepción/Admin registrar solicitud o incidencia comunicada por el cliente."""
+        if not self._es_recepcion_o_admin(request.user):
+            return Response({'error': 'No tiene permisos para esta acción.'}, status=status.HTTP_403_FORBIDDEN)
+
+        pedido = self.get_object()
+        tipo = (request.data.get('tipo') or '').upper().strip()  # SOLICITUD_CANCELACION / INCIDENCIA
+        motivo = (request.data.get('motivo') or '').strip()
+        observacion = (request.data.get('observacion') or '').strip()
+        if not motivo:
+            return Response({'error': 'Debe indicar un motivo.'}, status=status.HTTP_400_BAD_REQUEST)
+        if motivo == self.MOTIVO_CANCELACION_OTRO and not observacion:
+            return Response({'error': 'Indicá una observación para explicar el motivo.'}, status=status.HTTP_400_BAD_REQUEST)
+        detalle_motivo = self._formatear_motivo_cancelacion(motivo, observacion)
+
+        if pedido.estado in [PedidoWeb.ESTADO_CANCELADO, PedidoWeb.ESTADO_ENTREGADO]:
+            return Response({'error': 'No se puede registrar una gestión sobre un pedido cancelado o entregado.'}, status=status.HTTP_400_BAD_REQUEST)
+        if pedido.estado in [PedidoWeb.ESTADO_SOLICITA_CANCELACION, PedidoWeb.ESTADO_INCIDENCIA]:
+            return Response({'error': 'El pedido ya tiene una solicitud o incidencia pendiente.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        estado_anterior = pedido.estado
+        if tipo == 'INCIDENCIA':
+            if estado_anterior in [PedidoWeb.ESTADO_EN_CAMINO, PedidoWeb.ESTADO_ENTREGADO]:
+                return Response({'error': 'No se pueden registrar incidencias de cancelación/reembolso para pedidos en camino o entregados.'}, status=status.HTTP_400_BAD_REQUEST)
+            if estado_anterior != PedidoWeb.ESTADO_LISTO_RETIRO:
+                return Response({'error': 'Las incidencias solo aplican a pedidos listos para retirar.'}, status=status.HTTP_400_BAD_REQUEST)
+            pedido.estado_antes_solicitud = estado_anterior
+            pedido.estado = PedidoWeb.ESTADO_INCIDENCIA
+            pedido.incidencia_motivo = detalle_motivo
+            pedido.incidencia_fecha = timezone.now()
+            pedido.incidencia_usuario = request.user
+            pedido.obs_cancelacion = self._formatear_motivo_cancelacion(motivo, observacion, f"INCIDENCIA REGISTRADA POR {self._rol_usuario(request.user)}")
+            nuevo = PedidoWeb.ESTADO_INCIDENCIA
+        else:
+            if estado_anterior in [PedidoWeb.ESTADO_EN_CAMINO, PedidoWeb.ESTADO_ENTREGADO]:
+                return Response({'error': 'No se puede solicitar cancelación para pedidos en camino o entregados.'}, status=status.HTTP_400_BAD_REQUEST)
+            if estado_anterior not in [PedidoWeb.ESTADO_PENDIENTE_PAGO, PedidoWeb.ESTADO_PAGADO, PedidoWeb.ESTADO_PREPARACION]:
+                return Response({'error': 'La solicitud de cancelación solo aplica a pedidos pendientes de pago, pagados o en preparación.'}, status=status.HTTP_400_BAD_REQUEST)
+            pedido.estado_antes_solicitud = estado_anterior
+            pedido.estado = PedidoWeb.ESTADO_SOLICITA_CANCELACION
+            pedido.solicitud_cancelacion_motivo = detalle_motivo
+            pedido.solicitud_cancelacion_fecha = timezone.now()
+            pedido.solicitud_cancelacion_usuario = request.user
+            pedido.obs_cancelacion = self._formatear_motivo_cancelacion(motivo, observacion, f"SOLICITUD REGISTRADA POR {self._rol_usuario(request.user)}")
+            nuevo = PedidoWeb.ESTADO_SOLICITA_CANCELACION
+
+        pedido.save()
+        self._registrar_auditoria_pedido(pedido, request, 'EDITAR', f"Gestión cliente registrada en Pedido Web #{pedido.id}", detalles={'estado': {'anterior': estado_anterior, 'nuevo': nuevo}, 'motivo': {'anterior': None, 'nuevo': motivo}, 'observacion': {'anterior': None, 'nuevo': observacion}, 'tipo': {'anterior': None, 'nuevo': tipo}})
+        return Response({'message': 'Gestión registrada correctamente.', 'estado': pedido.estado})
+
+    @action(detail=True, methods=['post'])
+    def aprobar_cancelacion(self, request, pk=None):
+        if not self._es_admin(request.user):
+            return Response({'error': 'Solo un administrador puede aprobar cancelaciones y reembolsos.'}, status=status.HTTP_403_FORBIDDEN)
+        pedido = self.get_object()
+        if pedido.estado not in [PedidoWeb.ESTADO_SOLICITA_CANCELACION, PedidoWeb.ESTADO_INCIDENCIA]:
+            return Response({'error': 'El pedido no tiene una solicitud/incidencia pendiente de aprobación.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        estado_origen = pedido.estado_antes_solicitud or pedido.estado
+        if estado_origen in {PedidoWeb.ESTADO_EN_CAMINO, PedidoWeb.ESTADO_ENTREGADO}:
+            return Response({'error': 'No se puede aprobar una solicitud de cancelación para pedidos en camino o entregados.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        motivo_cliente = (pedido.solicitud_cancelacion_motivo or pedido.incidencia_motivo or 'Solicitud aprobada').strip()
+        obs_admin = (request.data.get('obs_cancelacion') or '').strip()
+        obs = motivo_cliente
+        if obs_admin:
+            obs = f"{motivo_cliente}\nObservación del administrador: {obs_admin}" if motivo_cliente else f"Observación del administrador: {obs_admin}"
+        # Política definitiva: el stock se devuelve automáticamente al aprobar una cancelación válida.
+        return self._cancelar_pedido(pedido, request, motivo=motivo_cliente, obs=obs, devolver_stock=True, origen='ADMIN_APROBACION')
+
+    @action(detail=True, methods=['post'])
+    def confirmar_devolucion_manual(self, request, pk=None):
+        """Confirma que el administrador realizó la devolución manual en Mercado Pago.
+
+        No llama a la API de MP. Registra trazabilidad, reembolso MANUAL y egreso en caja
+        (solo si hay caja abierta). Es idempotente: no permite confirmar dos veces.
+        """
+        from django.utils import timezone as dj_timezone
+        from .models import MovimientoCaja, SesionCaja
+
+        if not self._es_admin(request.user):
+            return Response({'error': 'Solo un administrador puede confirmar devoluciones manuales.'}, status=status.HTTP_403_FORBIDDEN)
+
+        pedido = self.get_object()
+
+        if not pedido.mp_payment_id:
+            return Response({'error': 'Este pedido no tiene un pago de Mercado Pago asociado.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pedido.reembolso_estado == PedidoWeb.REEMBOLSO_MANUAL:
+            return Response({
+                'error': 'Esta devolución ya fue confirmada anteriormente.',
+                'reembolso_estado': pedido.reembolso_estado,
+                'reembolso_fecha': pedido.reembolso_fecha.isoformat() if pedido.reembolso_fecha else None,
+            }, status=status.HTTP_409_CONFLICT)
+
+        if pedido.reembolso_estado != PedidoWeb.REEMBOLSO_PENDIENTE:
+            return Response({'error': 'El pedido no tiene una devolución manual pendiente de confirmación.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pedido.estado != PedidoWeb.ESTADO_CANCELADO:
+            return Response({'error': 'Solo se puede confirmar la devolución de un pedido cancelado.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
+        if not sesion_abierta:
+            return Response({
+                'error': 'No hay una caja abierta. Abrí una caja antes de confirmar la devolución para poder registrar el egreso.',
+                'codigo': 'CAJA_CERRADA',
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        egreso_existente = MovimientoCaja.objects.filter(
+            tipo='EGRESO', concepto='DEVOLUCION', descripcion__contains=f'Pedido Web #{pedido.id}'
+        ).exists()
+        if egreso_existente and pedido.reembolso_estado == PedidoWeb.REEMBOLSO_MANUAL:
+            return Response({'error': 'Esta devolución ya fue confirmada anteriormente.'}, status=status.HTTP_409_CONFLICT)
+
+        monto = pedido.reembolso_monto or pedido.total
+        ahora = dj_timezone.now()
+        estado_reembolso_anterior = pedido.reembolso_estado
+
+        with transaction.atomic():
+            pedido_locked = PedidoWeb.objects.select_for_update().get(pk=pedido.pk)
+            if pedido_locked.reembolso_estado == PedidoWeb.REEMBOLSO_MANUAL:
+                return Response({
+                    'error': 'Esta devolución ya fue confirmada anteriormente.',
+                    'reembolso_estado': pedido_locked.reembolso_estado,
+                }, status=status.HTTP_409_CONFLICT)
+            if pedido_locked.reembolso_estado != PedidoWeb.REEMBOLSO_PENDIENTE:
+                return Response({'error': 'El pedido no tiene una devolución manual pendiente de confirmación.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            pedido_locked.reembolso_estado = PedidoWeb.REEMBOLSO_MANUAL
+            pedido_locked.reembolso_fecha = ahora
+            pedido_locked.reembolso_monto = monto
+            pedido_locked.reembolso_error = ''
+            pedido_locked.save(update_fields=['reembolso_estado', 'reembolso_fecha', 'reembolso_monto', 'reembolso_error'])
+
+            egreso_ya = MovimientoCaja.objects.filter(
+                tipo='EGRESO', concepto='DEVOLUCION', descripcion__contains=f'Pedido Web #{pedido_locked.id}'
+            ).exists()
+            if not egreso_ya:
+                MovimientoCaja.objects.create(
+                    sesion_caja=sesion_abierta,
+                    tipo='EGRESO',
+                    metodo_pago='MERCADO_PAGO',
+                    concepto='DEVOLUCION',
+                    monto=monto,
+                    descripcion=f"Devolución manual Pedido Web #{pedido_locked.id} ({getattr(pedido_locked.cliente, 'nombre', 'Cliente Web')}) - MP payment {pedido_locked.mp_payment_id} - confirmado por {getattr(request.user, 'nombre', '')} {getattr(request.user, 'apellido', '')}".strip(),
+                )
+
+        pedido.refresh_from_db()
+        self._registrar_auditoria_pedido(
+            pedido, request, 'EDITAR',
+            f"Devolución manual confirmada Pedido Web #{pedido.id}",
+            detalles={
+                'reembolso_estado': {'anterior': estado_reembolso_anterior, 'nuevo': pedido.reembolso_estado},
+                'reembolso_monto': {'anterior': None, 'nuevo': str(pedido.reembolso_monto)},
+                'reembolso_fecha': {'anterior': None, 'nuevo': pedido.reembolso_fecha.isoformat() if pedido.reembolso_fecha else None},
+                'mp_payment_id': {'anterior': pedido.mp_payment_id, 'nuevo': pedido.mp_payment_id},
+                'confirmado_por': {'anterior': None, 'nuevo': str(request.user.id)},
+            },
+            resultado='EXITO'
+        )
+
+        return Response({
+            'message': 'Devolución manual confirmada correctamente.',
+            'reembolso_estado': pedido.reembolso_estado,
+            'reembolso_fecha': pedido.reembolso_fecha.isoformat() if pedido.reembolso_fecha else None,
+            'reembolso_monto': str(pedido.reembolso_monto) if pedido.reembolso_monto is not None else None,
+            'mp_payment_id': pedido.mp_payment_id,
+        })
+
+    @action(detail=True, methods=['post'])
+    def rechazar_cancelacion(self, request, pk=None):
+        if not self._es_admin(request.user):
+            return Response({'error': 'Solo un administrador puede rechazar solicitudes.'}, status=status.HTTP_403_FORBIDDEN)
+        pedido = self.get_object()
+        if pedido.estado not in [PedidoWeb.ESTADO_SOLICITA_CANCELACION, PedidoWeb.ESTADO_INCIDENCIA]:
+            return Response({'error': 'El pedido no tiene una solicitud/incidencia pendiente.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        motivo = (request.data.get('motivo') or request.data.get('obs') or '').strip()
+        if not motivo:
+            return Response({'error': 'Debe indicar un motivo de rechazo.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        estado_anterior = pedido.estado
+        estado_restaurar = pedido.estado_antes_solicitud or (PedidoWeb.ESTADO_PAGADO if estado_anterior == PedidoWeb.ESTADO_SOLICITA_CANCELACION else PedidoWeb.ESTADO_LISTO_RETIRO)
+        if estado_restaurar == PedidoWeb.ESTADO_CANCELADO or estado_restaurar == PedidoWeb.ESTADO_ENTREGADO:
+            estado_restaurar = PedidoWeb.ESTADO_PAGADO
+
+        pedido.estado = estado_restaurar
+        pedido.solicitud_resuelta_estado = 'RECHAZADA'
+        pedido.solicitud_resuelta_fecha = timezone.now()
+        pedido.solicitud_resuelta_por = request.user
+        motivo_original = (pedido.solicitud_cancelacion_motivo or pedido.incidencia_motivo or '').strip()
+        pedido.obs_cancelacion = motivo_original
+        if motivo:
+            pedido.obs_cancelacion = f"{motivo_original}\nObservación del administrador: Solicitud/incidencia rechazada: {motivo}" if motivo_original else f"Solicitud/incidencia rechazada: {motivo}"
+        pedido.save()
+
+        self._registrar_auditoria_pedido(
+            pedido, request, 'EDITAR',
+            f"Solicitud/incidencia rechazada Pedido Web #{pedido.id}: {estado_anterior} -> {estado_restaurar}",
+            detalles={
+                'estado': {'anterior': estado_anterior, 'nuevo': estado_restaurar},
+                'motivo': {'anterior': None, 'nuevo': motivo},
+                'resolucion': {'anterior': None, 'nuevo': 'RECHAZADA'},
+            }
+        )
+        return Response({'message': 'Solicitud/incidencia rechazada.', 'estado': pedido.estado})
 
     @action(detail=True, methods=['post'])
     def cambiar_estado(self, request, pk=None):
@@ -616,91 +1110,35 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
         repartidor = request.data.get('repartidor')
         motivo_cancelacion = request.data.get('motivo_cancelacion')
         obs_cancelacion = request.data.get('obs_cancelacion')
+        devolver_stock = bool(request.data.get('devolver_stock'))
 
         if not nuevo_estado:
             return Response({"error": "Estado no proporcionado"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 🔥 LÓGICA DE CANCELACIÓN Y REEMBOLSO 🔥
-        if nuevo_estado == 'CANCELADO':
-            if pedido.estado == 'CANCELADO':
-                return Response({"error": "El pedido ya está cancelado."}, status=status.HTTP_400_BAD_REQUEST)
+        estado_anterior = pedido.estado
+        if nuevo_estado == estado_anterior:
+            return Response({'message': 'El pedido ya se encuentra en ese estado.'})
 
-            from .models import SesionCaja, MovimientoCaja
-            sesion_abierta = SesionCaja.objects.filter(fecha_cierre__isnull=True).first()
-            if not sesion_abierta:
-                return Response(
-                    {"error": "Debe abrir una caja antes de procesar una cancelación y un reembolso."}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        # Cancelación
+        if nuevo_estado == PedidoWeb.ESTADO_CANCELADO:
+            return self._cancelar_pedido(pedido, request, motivo=motivo_cancelacion or 'Cancelación administrativa', obs=obs_cancelacion or '', devolver_stock=True, origen='ADMIN')
 
-            reembolso_exitoso = False
-            mensaje_obs_final = obs_cancelacion or 'Cancelación aprobada por administrador'
+        # Transiciones normales
+        permitidos = self.TRANSICIONES_PEDIDO_WEB.get(estado_anterior, set())
+        if nuevo_estado not in permitidos:
+            return Response({'error': f'Transición no permitida: {estado_anterior} -> {nuevo_estado}.'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # 1. Intentar hacer el reembolso en Mercado Pago
-            if pedido.mp_payment_id:
-                try:
-                    from .mercadopago_service import MercadoPagoService
-                    mp_service = MercadoPagoService()
-                    respuesta_mp = mp_service.reembolsar_pago(pedido.mp_payment_id)
-                    
-                    if respuesta_mp.get("status") in ["approved", "refunded", "pending"]:
-                        mensaje_obs_final = "Reembolso automático realizado con éxito en Mercado Pago."
-                        reembolso_exitoso = True
-                    else:
-                        mensaje_obs_final = f"Reembolso automático omitido (Sandbox/Credenciales). Se requiere devolución manual."
-                        
-                except Exception as e:
-                    mensaje_obs_final = f"Entorno de Prueba: Reembolso omitido. Se requiere devolución manual."
+        if nuevo_estado == PedidoWeb.ESTADO_ENTREGADO and estado_anterior not in [PedidoWeb.ESTADO_LISTO_RETIRO, PedidoWeb.ESTADO_EN_CAMINO]:
+            return Response({'error': 'Solo se puede marcar entregado desde Listo para retiro o En camino.'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # 2. Cancelamos, devolvemos stock y egresamos de caja
-            with transaction.atomic():
-                for detalle in pedido.detalles.all():
-                    producto = detalle.producto
-                    if producto:
-                        from .models import HistorialStock
-                        stock_anterior = producto.stock_actual
-                        producto.stock_actual += detalle.cantidad
-                        producto.save()
+        if nuevo_estado == PedidoWeb.ESTADO_EN_CAMINO and pedido.tipo_entrega != PedidoWeb.ENTREGA_MOTO:
+            # permitir por si hay otros envíos, pero normalmente moto
+            pass
 
-                        HistorialStock.objects.create(
-                            producto=producto,
-                            cantidad_anterior=stock_anterior,
-                            cantidad_nueva=producto.stock_actual,
-                            motivo=f"Reingreso por Pedido Web Cancelado (#{pedido.id})",
-                            usuario=request.user,
-                            tipo_ajuste='DEVOLUCION'
-                        )
-
-                # 💵 REGISTRAR EGRESO DE CAJA
-                # 🔥 CORREGIDO: pedido.cliente.nombre en lugar de pedido.cliente_nombre
-                nombre_cliente = pedido.cliente.nombre if pedido.cliente else "Cliente Web"
-                
-                MovimientoCaja.objects.create(
-                    sesion_caja=sesion_abierta,
-                    tipo='EGRESO',
-                    metodo_pago='MERCADO_PAGO' if pedido.mp_payment_id else 'EFECTIVO',
-                    concepto='DEVOLUCION',
-                    monto=pedido.total,
-                    descripcion=f"Devolución Pedido Web #{pedido.id} ({nombre_cliente})"
-                )
-
-                pedido.estado = 'CANCELADO'
-                pedido.motivo_cancelacion = motivo_cancelacion or 'Solicitud de Cliente'
-                pedido.obs_cancelacion = mensaje_obs_final
-                pedido.save()
-
-            return Response({
-                "message": "Pedido cancelado.", 
-                "reembolso_exitoso": reembolso_exitoso
-            })
-
-        # --- Lógica para el resto de los estados ---
         whatsapp_enviado = False
-        if nuevo_estado == 'EN_CAMINO':
+        if nuevo_estado == PedidoWeb.ESTADO_EN_CAMINO:
             pedido.datos_entrega_interna = repartidor
-
-            # WhatsApp al cliente + tiempo estimado por OSRM
-            if pedido.tipo_entrega == 'MOTO' and pedido.latitud_entrega and pedido.longitud_entrega:
+            if pedido.tipo_entrega == PedidoWeb.ENTREGA_MOTO and pedido.latitud_entrega and pedido.longitud_entrega:
                 try:
                     from .envio_service import distancia_por_ruta
                     from .models import ConfiguracionLocal
@@ -713,22 +1151,56 @@ class PedidoWebViewSet(viewsets.ModelViewSet):
                     )
                     tiempo_estimado = round(duracion_segundos / 60) if duracion_segundos > 0 else 0
                     if tiempo_estimado > 0:
-                        pedido.datos_entrega_interna = repartidor
                         pedido.tiempo_estimado_minutos = tiempo_estimado
                         from .tasks import enviar_whatsapp_pedido_en_camino
                         enviar_whatsapp_pedido_en_camino.delay(pedido.id, repartidor, tiempo_estimado)
                         whatsapp_enviado = True
                 except Exception as e:
                     logger = logging.getLogger(__name__)
-                    logger.error(f"❌ Error al calcular OSRM/encolar WhatsApp EN_CAMINO #{pedido.id}: {e}")
+                    logger.error(f"Error al calcular OSRM/encolar WhatsApp EN_CAMINO #{pedido.id}: {e}")
 
         pedido.estado = nuevo_estado
         pedido.save()
+
+        self._registrar_auditoria_pedido(
+            pedido, request, 'EDITAR',
+            f"Cambio de estado Pedido Web #{pedido.id}: {estado_anterior} -> {nuevo_estado}",
+            detalles={
+                'estado': {'anterior': estado_anterior, 'nuevo': nuevo_estado},
+                'repartidor': {'anterior': None, 'nuevo': repartidor} if repartidor else None,
+            }
+        )
 
         return Response({
             "message": f"Estado actualizado a {nuevo_estado}",
             "whatsapp_enviado": whatsapp_enviado,
         })
+
+    @action(detail=True, methods=['get'])
+    def historial(self, request, pk=None):
+        pedido = self.get_object()
+        from .models import Auditoria
+
+        registros = Auditoria.objects.filter(
+            modelo_afectado='PedidoWeb',
+            objeto_id=str(pedido.id),
+        ).order_by('-fecha')
+
+        historial = []
+        for reg in registros:
+            detalles = reg.detalles or {}
+            cambio_estado = detalles.get('estado') if isinstance(detalles, dict) else None
+            historial.append({
+                'fecha': reg.fecha.isoformat() if reg.fecha else None,
+                'usuario': reg.usuario_nombre or 'Sistema',
+                'accion': reg.accion,
+                'estado_anterior': cambio_estado.get('anterior') if isinstance(cambio_estado, dict) else None,
+                'estado_nuevo': cambio_estado.get('nuevo') if isinstance(cambio_estado, dict) else None,
+                'mensaje': reg.mensaje or '',
+                'detalles': detalles,
+            })
+
+        return Response(historial)
     
 class SillaViewSet(viewsets.ModelViewSet):
     queryset = Silla.objects.all().order_by('orden')

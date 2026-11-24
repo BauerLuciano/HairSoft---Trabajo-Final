@@ -772,13 +772,31 @@ class PedidoWebSerializer(serializers.ModelSerializer):
             'mp_payment_id',
             'motivo_cancelacion',
             'obs_cancelacion',
+            'solicitud_cancelacion_motivo', 'solicitud_cancelacion_fecha',
+            'solicitud_cancelacion_usuario', 'estado_antes_solicitud',
+            'solicitud_resuelta_fecha', 'solicitud_resuelta_por', 'solicitud_resuelta_estado',
+            'incidencia_motivo', 'incidencia_fecha', 'incidencia_usuario',
+            'reembolso_estado', 'reembolso_mp_id', 'reembolso_fecha',
+            'reembolso_monto', 'reembolso_error',
+            'stock_devuelto', 'stock_devuelto_fecha', 'stock_devuelto_por',
             'latitud_entrega', 'longitud_entrega',
             'calle_entrega', 'altura_entrega',
             'ciudad_entrega', 'provincia_entrega',
             'observaciones_entrega',
             'frontend_origen',
         ]
-        read_only_fields = ['cliente', 'fecha_creacion', 'estado', 'total', 'mp_payment_id', 'motivo_cancelacion', 'obs_cancelacion', 'frontend_origen']
+        read_only_fields = [
+            'cliente', 'fecha_creacion', 'estado', 'total', 'mp_payment_id',
+            'motivo_cancelacion', 'obs_cancelacion',
+            'solicitud_cancelacion_motivo', 'solicitud_cancelacion_fecha',
+            'solicitud_cancelacion_usuario', 'estado_antes_solicitud',
+            'solicitud_resuelta_fecha', 'solicitud_resuelta_por', 'solicitud_resuelta_estado',
+            'incidencia_motivo', 'incidencia_fecha', 'incidencia_usuario',
+            'reembolso_estado', 'reembolso_mp_id', 'reembolso_fecha',
+            'reembolso_monto', 'reembolso_error',
+            'stock_devuelto', 'stock_devuelto_fecha', 'stock_devuelto_por',
+            'frontend_origen',
+        ]
 
     def get_cliente_nombre(self, obj):
         if obj.cliente:
