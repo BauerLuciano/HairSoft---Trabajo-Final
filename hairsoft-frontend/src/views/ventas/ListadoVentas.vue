@@ -300,7 +300,6 @@ const cargando = ref(false)
 const generandoPDF = ref(null)
 const ventaRecienCreada = ref(null)
 const loadingPdf = ref(false)
-const usuarioEmisor = ref('')
 
 // Estados Anulación
 const mostrarModalAnular = ref(false)
@@ -324,13 +323,6 @@ const cargarConfiguracionEmpresa = async () => {
     } catch (e) { console.error("Error cargando config empresa", e); }
 }
 
-const obtenerUsuarioLogueado = () => {
-  const n = localStorage.getItem('user_nombre');
-  const a = localStorage.getItem('user_apellido');
-  if(n || a) usuarioEmisor.value = `${n} ${a}`.trim();
-  else usuarioEmisor.value = 'Administrador';
-}
-
 const cargarVentas = async () => {
   cargando.value = true
   try {
@@ -349,7 +341,6 @@ const cargarVentas = async () => {
 }
 
 onMounted(() => {
-  obtenerUsuarioLogueado() 
   cargarVentas()
   cargarConfiguracionEmpresa()
 
@@ -465,35 +456,49 @@ const confirmarAnulacion = async () => {
 };
 
 
-const generarComprobantePDF = (venta) => {
-  generandoPDF.value = venta.id
-  const baseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
-  const quienImprime = encodeURIComponent(usuarioEmisor.value || 'Caja Principal');
-  setTimeout(() => {
-      window.open(`${baseUrl}/api/ventas/${venta.id}/comprobante-pdf/?impreso_por=${quienImprime}`, '_blank')
-      generandoPDF.value = null
-  }, 500)
-}
+const descargarPdf = async (url, params, nombrePorDefecto) => {
+  const response = await axios.get(url, { params, responseType: 'blob' });
+  const disposicion = response.headers['content-disposition'] || '';
+  const coincidencia = disposicion.match(/filename="?([^";]+)"?/i);
+  const blob = new Blob([response.data], { type: 'application/pdf' });
+  const urlBlob = URL.createObjectURL(blob);
+  const enlace = document.createElement('a');
+  enlace.href = urlBlob;
+  enlace.download = coincidencia ? coincidencia[1] : nombrePorDefecto;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  URL.revokeObjectURL(urlBlob);
+};
+
+const generarComprobantePDF = async (venta) => {
+  generandoPDF.value = venta.id;
+  try {
+    await descargarPdf(
+      `/api/ventas/${venta.id}/comprobante-pdf/`,
+      undefined,
+      `Comprobante_Venta_${venta.id}.pdf`
+    );
+  } catch (error) {
+    console.error('Error generando comprobante:', error);
+    Swal.fire('Error', 'No se pudo generar el comprobante.', 'error');
+  } finally {
+    generandoPDF.value = null;
+  }
+};
 
 const generarReporteListado = async () => {
   loadingPdf.value = true;
   try {
-    const params = new URLSearchParams();
-    if (filtros.value.fechaDesde) params.append('fecha_desde', filtros.value.fechaDesde);
-    if (filtros.value.fechaHasta) params.append('fecha_hasta', filtros.value.fechaHasta);
-    if (filtros.value.metodoPago) params.append('metodo_pago', filtros.value.metodoPago);
-    if (filtros.value.estado) params.append('estado', filtros.value.estado);
-    // Para el backend, forzamos que no traiga los turnos
-    params.append('tipo', 'PRODUCTO,VENTA');
-    
-    if (usuarioEmisor.value) {
-      params.append('impreso_por', usuarioEmisor.value);
-    }
+    const params = {
+      tipo: 'PRODUCTO,VENTA',
+    };
+    if (filtros.value.fechaDesde) params.fecha_desde = filtros.value.fechaDesde;
+    if (filtros.value.fechaHasta) params.fecha_hasta = filtros.value.fechaHasta;
+    if (filtros.value.metodoPago) params.metodo_pago = filtros.value.metodoPago;
+    if (filtros.value.estado) params.estado = filtros.value.estado;
 
-    const baseUrl = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
-    const url = `${baseUrl}/ventas/exportar-listado-pdf/?${params.toString()}`;
-
-    window.open(url, '_blank');
+    await descargarPdf('/ventas/exportar-listado-pdf/', params, 'reporte_ventas.pdf');
   } catch (error) {
     console.error('Error generando reporte:', error);
     Swal.fire('Error', 'No se pudo generar el reporte.', 'error');

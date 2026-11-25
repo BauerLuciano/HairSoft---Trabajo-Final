@@ -254,11 +254,10 @@ body {
   opacity: 0.12;
 }
 
-/* Nombre de marca */
+/* Nombre de marca: el tamano lo define el componente en ambos temas */
 :root.light-theme .brand-name {
   color: #0f172a !important;
   font-weight: 800;
-  font-size: 1.25rem;
 }
 
 :root.light-theme .brand-subtitle {
@@ -384,7 +383,6 @@ body {
 :root.light-theme .app-title {
   color: #0f172a !important;
   font-weight: 800;
-  font-size: 1.5rem;
 }
 
 /* ============================================
