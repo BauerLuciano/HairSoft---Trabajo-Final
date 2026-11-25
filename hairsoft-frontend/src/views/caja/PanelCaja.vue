@@ -1072,8 +1072,51 @@ onUnmounted(() => detenerRadar());
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 @media (max-width: 768px) {
+  .list-container { padding: 16px; }
   .list-card { padding: 20px; }
+  .header-content h1 { font-size: 1.8rem; }
   .status-bar-caja { flex-direction: column; align-items: stretch; gap: 15px; }
   .btn-arqueo { width: 100%; }
+
+  .caja-cerrada-wrapper { padding: 20px 0; }
+  .caja-cerrada-card { padding: 24px 20px; }
+  .icono-bloqueo i { font-size: 4rem; }
+  .caja-cerrada-card h2 { font-size: 1.5rem; }
+  .alerta-huerfanos { padding: 14px; }
+  .btn-full { font-size: 0.95rem; padding: 14px; letter-spacing: 0.5px; }
+
+  .balance-card { padding: 20px; gap: 14px; }
+  .balance-card.total-general { align-items: flex-start; }
+  .balance-card.total-general .b-icon { width: 46px !important; height: 46px !important; min-width: 46px; font-size: 1.6rem !important; }
+  .balance-card.total-general .b-data { flex: 1; min-width: 0; }
+  .balance-card.total-general .b-data p { font-size: 0.8rem !important; line-height: 1.3; }
+  .balance-card.total-general .b-data h3 { font-size: 1.7rem !important; line-height: 1.15; overflow-wrap: anywhere; }
+  .b-data h3 { font-size: 1.5rem; }
+  .balances-grid { grid-template-columns: 1fr !important; gap: 14px; margin-bottom: 24px; }
+  .fondo-fila { flex-wrap: wrap; gap: 4px 10px; }
+  .fondo-fila strong { margin-left: auto; font-size: 1rem; }
+  .fondo-fila .fondo-etiqueta { font-size: 0.85rem; }
+}
+
+@media (max-width: 480px) {
+  .list-container { padding: 12px; }
+  .list-card { padding: 16px; border-radius: 18px; }
+  .header-content h1 { font-size: 1.5rem; }
+  .caja-cerrada-wrapper { padding: 12px 0; }
+  .caja-cerrada-card { padding: 20px 16px; border-radius: 16px; }
+  .icono-bloqueo i { font-size: 3.5rem; }
+  .caja-cerrada-card h2 { font-size: 1.35rem; }
+  .caja-cerrada-card p { font-size: 0.9rem; }
+  .form-apertura .filter-group label { font-size: 0.7rem; letter-spacing: 0.6px; }
+  .input-money { font-size: 1rem; }
+  .btn-full { font-size: 0.85rem; letter-spacing: 0.3px; }
+
+  .balance-card { padding: 18px; gap: 12px; }
+  .balance-card.total-general .b-icon { width: 40px !important; height: 40px !important; min-width: 40px; font-size: 1.4rem !important; }
+  .balance-card.total-general .b-data h3 { font-size: 1.35rem !important; }
+  .b-data h3 { font-size: 1.3rem; }
+  .balances-grid { gap: 12px; }
+  .fondo-fila strong { font-size: 0.95rem; }
+  .fondo-fila .fondo-etiqueta { font-size: 0.8rem; }
 }
 </style>
