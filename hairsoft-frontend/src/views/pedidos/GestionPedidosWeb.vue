@@ -118,6 +118,16 @@
                     <button @click="verDetalle(pedido)" class="action-button detail" title="Ver detalle completo">
                       Ver detalle
                     </button>
+
+                    <button @click="abrirComprobantePdf(pedido)" class="action-button pdf" :title="`Ver comprobante PDF del pedido #${pedido.id}`" :aria-label="`Ver comprobante PDF del pedido #${pedido.id}`">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                      </svg>
+                    </button>
                   </div>
 
                   <div v-if="(esAdmin && ['SOLICITA_CANCELACION', 'INCIDENCIA'].includes(pedido.estado)) || (esAdmin && ['PENDIENTE_PAGO','PAGADO','EN_PREPARACION'].includes(pedido.estado))" class="action-group action-group-admin">
@@ -198,6 +208,30 @@ const cargarPedidos = async () => {
     console.error(error);
   } finally {
     loading.value = false;
+  }
+};
+
+const abrirComprobantePdf = async (pedido) => {
+  const ventana = window.open('', '_blank');
+  if (!ventana) {
+    Swal.fire('Error', 'Permití ventanas emergentes para ver el comprobante.', 'warning');
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem('token');
+    const response = await axios.get(`${API_URL}${pedido.id}/comprobante-pdf/`, {
+      headers: { 'Authorization': `Token ${token}` },
+      responseType: 'blob'
+    });
+
+    const fileURL = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    ventana.location.href = fileURL;
+    window.setTimeout(() => window.URL.revokeObjectURL(fileURL), 60000);
+  } catch (error) {
+    ventana.close();
+    console.error('Error al abrir comprobante PDF:', error);
+    Swal.fire('Error', 'No se pudo generar el comprobante PDF.', 'error');
   }
 };
 
@@ -1479,6 +1513,9 @@ onMounted(cargarPedidos);
 
 .action-button.detail { background: var(--hover-bg); border: 1px solid var(--border-color) !important; color: var(--text-secondary) !important; }
 .action-button.detail:hover { background: var(--text-secondary); color: var(--bg-primary) !important; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2); }
+
+.action-button.pdf { padding: 8px; border: 1px solid #ef4444; color: #ef4444; }
+.action-button.pdf:hover { background: #ef4444; color: white; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3); }
 
 .action-button.delete { border: 1px solid var(--error-color); color: var(--error-color); }
 .action-button.delete:hover { background: var(--error-color); color: white; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3); }
