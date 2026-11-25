@@ -2,9 +2,9 @@
   <div class="app-layout">
     
     <template v-if="esLayoutAdmin">
-      <Sidebar />
+      <Sidebar :mobile-open="sidebarOpen" @close="sidebarOpen = false" />
       <div class="main-content-wrapper">
-        <Header />
+        <Header :sidebar-open="sidebarOpen" @toggle-sidebar="sidebarOpen = !sidebarOpen" />
         <main class="page-content">
           <router-view />
         </main>
@@ -33,7 +33,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import Sidebar from './components/Sidebar.vue';
 import Header from './components/Header.vue';
@@ -41,6 +41,11 @@ import ClientNavbar from './components/ClientNavbar.vue';
 import CartSidebar from '@/components/CartSidebar.vue';
 
 const route = useRoute();
+const sidebarOpen = ref(false);
+
+watch(() => route.fullPath, () => {
+  sidebarOpen.value = false;
+});
 
 const esLayoutAdmin = computed(() => {
   return !route.meta.hideNavbar && (!route.meta.layout || route.meta.layout === 'admin');

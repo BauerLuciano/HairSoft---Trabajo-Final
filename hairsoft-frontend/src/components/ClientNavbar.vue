@@ -1,5 +1,5 @@
 <template>
-  <nav class="client-nav">
+  <nav class="client-nav" :class="{ 'mobile-open': mobileMenuOpen }">
     <div class="nav-content">
       
       <div class="logo-section">
@@ -15,8 +15,22 @@
           </router-link>
         </div>
       </div>
-      
-      <div class="nav-links-section">
+
+      <button
+        class="mobile-menu-button"
+        type="button"
+        aria-controls="client-nav-panel"
+        :aria-expanded="mobileMenuOpen"
+        :aria-label="mobileMenuOpen ? 'Cerrar menú de navegación' : 'Abrir menú de navegación'"
+        @click="toggleMobileMenu"
+      >
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+
+      <div id="client-nav-panel" class="nav-panel" @click="handleNavPanelClick">
+        <div class="nav-links-section">
         <div class="links-container">
           <button 
             @click="irAInicio" 
@@ -154,13 +168,16 @@
           <router-link to="/web/registro" class="auth-btn register-btn">Registrarse</router-link>
         </div>
       </div>
+      </div>
 
     </div>
+
+    <div v-if="mobileMenuOpen" class="mobile-nav-backdrop" @click="closeMobileMenu"></div>
   </nav>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import Swal from 'sweetalert2';
 import { ShoppingBag } from 'lucide-vue-next';
@@ -177,6 +194,7 @@ const usuarioLogueado = ref(false);
 const usuarioNombre = ref('');
 const usuarioApellido = ref('');
 const dropdownOpen = ref(false);
+const mobileMenuOpen = ref(false);
 const profileRef = ref(null);
 const isDarkTheme = ref(true);
 
@@ -251,8 +269,23 @@ const checkAuth = () => {
 };
 
 const toggleDropdown = () => dropdownOpen.value = !dropdownOpen.value;
+
+const toggleMobileMenu = () => {
+  mobileMenuOpen.value = !mobileMenuOpen.value;
+  if (mobileMenuOpen.value) dropdownOpen.value = false;
+};
+
+const closeMobileMenu = () => {
+  mobileMenuOpen.value = false;
+};
+
+const handleNavPanelClick = (event) => {
+  if (event.target.closest('a, button')) closeMobileMenu();
+};
+
 const handleClickOutside = (e) => {
   if (profileRef.value && !profileRef.value.contains(e.target)) dropdownOpen.value = false;
+  if (mobileMenuOpen.value && !e.target.closest('.client-nav')) closeMobileMenu();
 };
 
 // --- TEMA ---
@@ -281,6 +314,7 @@ const loadSavedTheme = () => {
 // --- NAVEGACIÓN ---
 const irAInicio = () => {
   dropdownOpen.value = false;
+  closeMobileMenu();
   if (usuarioLogueado.value) {
     router.push({ name: 'DashboardCliente', query: { ver: 'resumen' } });
   } else {
@@ -290,6 +324,7 @@ const irAInicio = () => {
 
 const irAPedidos = () => {
   dropdownOpen.value = false;
+  closeMobileMenu();
   router.push({ name: 'MisPedidos' });
 };
 
@@ -341,6 +376,8 @@ const logout = async () => {
   });
 };
 
+watch(() => route.fullPath, closeMobileMenu);
+
 onMounted(() => {
   checkAuth();
   loadSavedTheme();
@@ -360,11 +397,12 @@ onUnmounted(() => {
    NAVBAR PRINCIPAL - MODO OSCURO
    ============================================ */
 .client-nav {
+  --nav-height: 75px;
   background: linear-gradient(135deg, #0f172a 0%, #111827 100%);
   backdrop-filter: blur(20px);
   border-bottom: 1px solid rgba(59, 130, 246, 0.15);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  height: 75px;
+  height: var(--nav-height);
   position: sticky;
   top: 0;
   z-index: 1000;
@@ -1347,81 +1385,288 @@ onUnmounted(() => {
 /* ============================================
    RESPONSIVE
    ============================================ */
+.nav-panel {
+  display: contents;
+}
+
+.mobile-menu-button {
+  display: none;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5px;
+  background: rgba(30, 41, 59, 0.75);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.mobile-menu-button span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  border-radius: 2px;
+  background: #cbd5e1;
+  transition: all 0.25s ease;
+}
+
+.mobile-menu-button:hover {
+  background: rgba(31, 41, 55, 0.95);
+  border-color: #3b82f6;
+}
+
+.client-nav.mobile-open .mobile-menu-button span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+.client-nav.mobile-open .mobile-menu-button span:nth-child(2) {
+  opacity: 0;
+}
+.client-nav.mobile-open .mobile-menu-button span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+.mobile-nav-backdrop {
+  display: none;
+}
+
 @media (max-width: 1024px) {
-  .nav-links-section {
-    display: none;
+  .nav-content {
+    gap: 12px;
   }
+
+  .logo-section {
+    min-width: 0;
+    flex-shrink: 1;
+  }
+
+  .logo-wrapper {
+    padding: 6px 4px;
+  }
+
+  .brand-name {
+    max-width: min(48vw, 260px);
+  }
+
+  .mobile-menu-button {
+    display: flex;
+  }
+
+  .nav-panel {
+    display: flex;
+    position: fixed;
+    top: var(--nav-height);
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 12px 16px 18px;
+    background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+    border-bottom: 1px solid rgba(59, 130, 246, 0.25);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.45);
+    max-height: calc(100vh - var(--nav-height));
+    max-height: calc(100dvh - var(--nav-height));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    opacity: 0;
+    transform: translateY(-8px);
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  .client-nav.mobile-open .nav-panel {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  .nav-links-section {
+    display: block;
+    flex: 0 0 auto;
+    padding: 0;
+  }
+
+  .links-container {
+    flex-direction: column;
+    gap: 4px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  .nav-link {
+    width: 100%;
+    justify-content: flex-start;
+    padding: 12px 14px;
+  }
+
+  .user-actions-section {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(59, 130, 246, 0.15);
+  }
+
+  .theme-switch-modern {
+    margin-right: 0;
+  }
+
+  .auth-buttons {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .auth-btn {
+    justify-content: center;
+  }
+
+  .user-profile {
+    justify-content: space-between;
+  }
+
+  .user-info {
+    display: flex;
+    text-align: left;
+    align-items: flex-start;
+  }
+
+  .profile-dropdown {
+    position: static;
+    top: auto;
+    right: auto;
+    width: 100%;
+    min-width: 0;
+    margin-top: 8px;
+  }
+
+  .mobile-nav-backdrop {
+    display: block;
+    position: fixed;
+    top: var(--nav-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(2, 6, 23, 0.55);
+    z-index: 999;
+  }
+
+  .client-nav::after {
+    left: 16px;
+    right: 16px;
+  }
+}
+
+:root.light-theme .nav-panel {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: #e2e8f0;
+  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.12);
+}
+
+:root.light-theme .links-container {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+:root.light-theme .user-actions-section {
+  border-top-color: #e2e8f0;
+}
+
+:root.light-theme .mobile-menu-button {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+:root.light-theme .mobile-menu-button span {
+  background: #475569;
+}
+
+:root.light-theme .mobile-nav-backdrop {
+  background: rgba(15, 23, 42, 0.35);
 }
 
 @media (max-width: 768px) {
   .nav-content {
-    padding: 0 20px;
+    padding: 0 16px;
   }
-  
-  .user-info {
-    display: none;
-  }
-  
+
   .theme-switch-modern .switch-background {
     width: 60px;
     height: 30px;
   }
-  
+
   .sun-icon,
   .moon-icon {
     width: 16px;
     height: 16px;
   }
-  
+
   .switch-background::before {
     width: 22px;
     height: 22px;
   }
-  
+
   .theme-switch-modern input:checked + .switch-background::before {
     left: calc(100% - 26px);
   }
-  
+
   .profile-dropdown {
     min-width: 260px;
     right: -8px;
   }
 
-  .auth-btn span {
-    display: none;
-  }
-
   .auth-btn {
-    padding: 10px 14px;
+    padding: 11px 14px;
   }
 }
 
 @media (max-width: 480px) {
   .client-nav {
-    height: 68px;
+    --nav-height: 68px;
   }
-  
+
   .nav-content {
-    padding: 0 16px;
+    padding: 0 12px;
+    gap: 8px;
   }
-  
+
   .brand-name {
-    font-size: 1.2rem;
+    font-size: 1.12rem;
+    letter-spacing: 0.5px;
   }
-  
+
   .logo-container {
     width: 38px;
     height: 38px;
     font-size: 1.1rem;
   }
-  
+
+  .mobile-menu-button {
+    width: 38px;
+    height: 38px;
+  }
+
+  .nav-panel {
+    padding: 10px 12px 16px;
+  }
+
   .user-avatar {
     width: 38px;
     height: 38px;
   }
-  
+
   .profile-dropdown {
-    min-width: 240px;
+    min-width: 0;
   }
 }
 </style>

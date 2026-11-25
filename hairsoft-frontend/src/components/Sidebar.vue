@@ -1,5 +1,14 @@
 <template>
-  <nav class="sidebar">
+  <nav id="admin-sidebar" class="sidebar" :class="{ active: mobileOpen }">
+    <button
+      class="sidebar-close-button"
+      type="button"
+      aria-label="Cerrar menú"
+      @click="$emit('close')"
+    >
+      <i class="ri-close-line"></i>
+    </button>
+
     <div class="sidebar-header">
       <div class="logo-wrapper">
         <div class="logo-container">
@@ -65,6 +74,8 @@
       </button>
     </div>
   </nav>
+
+  <div v-if="mobileOpen" class="sidebar-backdrop" @click="$emit('close')"></div>
 </template>
 
 <script setup>
@@ -74,6 +85,11 @@ import axios from '@/utils/axiosConfig';
 import logoEstatico from '@/assets/logo.jpg';
 import Swal from 'sweetalert2';
 import { API_BASE_URL, getApiUrl } from '@/config/api'
+
+defineProps({
+  mobileOpen: { type: Boolean, default: false }
+});
+defineEmits(['close']);
 
 const router = useRouter();
 const openSection = ref('comercial'); 
@@ -204,6 +220,28 @@ onMounted(cargarBranding);
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
   z-index: 100;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-close-button {
+  display: none;
+  position: absolute;
+  top: 18px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 10px;
+  color: #cbd5e1;
+  font-size: 1.4rem;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.sidebar-backdrop {
+  display: none;
 }
 
 .sidebar-header {
@@ -631,7 +669,51 @@ onMounted(cargarBranding);
   background: linear-gradient(180deg, transparent 0%, rgba(230, 235, 242, 0.8) 100%);
 }
 
+:global(:root.light-theme) .sidebar-close-button {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
 @media (max-width: 1024px) { .sidebar { width: 270px; } }
 @media (max-height: 800px) { .sidebar-header { padding: 24px 20px 20px; } .logo-container { width: 75px; height: 75px; } }
-@media (max-width: 768px) { .sidebar { position: fixed; left: -290px; width: 290px; z-index: 1001; } .sidebar.active { left: 0; } }
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(290px, calc(100vw - 56px));
+    height: 100vh;
+    height: 100dvh;
+    z-index: 1101;
+    transform: translateX(-100%);
+    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.45);
+  }
+
+  .sidebar.active {
+    transform: translateX(0);
+  }
+
+  .sidebar-close-button {
+    display: flex;
+  }
+
+  .sidebar-header {
+    padding-right: 64px;
+  }
+
+  .sidebar-footer {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 6, 23, 0.55);
+    z-index: 1100;
+  }
+}
 </style>

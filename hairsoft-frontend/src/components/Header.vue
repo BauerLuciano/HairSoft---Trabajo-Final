@@ -1,6 +1,20 @@
 <template>
   <header class="app-header">
     <div class="header-content">
+      <button
+        class="sidebar-toggle-button"
+        :class="{ open: sidebarOpen }"
+        type="button"
+        aria-controls="admin-sidebar"
+        :aria-expanded="sidebarOpen"
+        :aria-label="sidebarOpen ? 'Cerrar menú principal' : 'Abrir menú principal'"
+        @click="$emit('toggle-sidebar')"
+      >
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+
       <div class="brand-section">
         <h1 class="app-title">Los Ultimos Serán los primeros</h1>
         <div class="title-underline"></div>
@@ -132,6 +146,11 @@ import Swal from 'sweetalert2';
 import api from '../services/api';
 // Importamos los íconos de lucide-vue-next
 import { Bell, BellOff, CheckCheck, ShoppingCart, Calendar, Truck, Info } from 'lucide-vue-next';
+
+defineProps({
+  sidebarOpen: { type: Boolean, default: false }
+});
+defineEmits(['toggle-sidebar']);
 
 const router = useRouter();
 const route = useRoute(); // 🔥 Agregado para detectar cambios de página
@@ -386,6 +405,46 @@ onUnmounted(() => {
   margin: 0 auto;
   padding: 18px 36px;
   height: 75px;
+}
+
+.sidebar-toggle-button {
+  display: none;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5px;
+  background: rgba(30, 41, 59, 0.75);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.sidebar-toggle-button span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  border-radius: 2px;
+  background: #cbd5e1;
+  transition: all 0.25s ease;
+}
+
+.sidebar-toggle-button:hover {
+  background: rgba(31, 41, 55, 0.95);
+  border-color: #3b82f6;
+}
+
+.sidebar-toggle-button.open span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+.sidebar-toggle-button.open span:nth-child(2) {
+  opacity: 0;
+}
+.sidebar-toggle-button.open span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
 }
 
 .brand-section {
@@ -778,6 +837,12 @@ onUnmounted(() => {
 :root.light-theme .notif-msg { color: #475569; }
 :root.light-theme .unread .notif-msg { color: #0f172a; }
 
+:root.light-theme .sidebar-toggle-button {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+:root.light-theme .sidebar-toggle-button span { background: #475569; }
+
 /* Animaciones */
 .dropdown-enter-active { animation: dropdown-in 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
 .dropdown-leave-active { animation: dropdown-out 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
@@ -787,10 +852,12 @@ onUnmounted(() => {
 
 /* Responsive */
 @media (max-width: 768px) {
+  .sidebar-toggle-button { display: flex; margin-right: -6px; }
+  .brand-section { min-width: 0; }
   .user-info { display: none; }
-  .header-content { padding: 14px 20px; height: 68px; }
-  .app-title { font-size: 1.5rem; }
-  .header-actions { gap: 16px; }
+  .header-content { padding: 14px 16px; height: 68px; gap: 10px; }
+  .app-title { font-size: 1.25rem; line-height: 1.15; }
+  .header-actions { gap: 10px; flex-shrink: 0; }
   .theme-switch-modern .switch-background { width: 60px; height: 30px; }
   .sun-icon, .moon-icon { width: 16px; height: 16px; }
   .switch-background::before { width: 22px; height: 22px; }
@@ -800,10 +867,12 @@ onUnmounted(() => {
 }
 
 @media (max-width: 480px) {
-  .header-actions { gap: 12px; }
-  .app-title { font-size: 1.2rem; }
-  .header-content { padding: 12px 16px; }
-  .user-profile { padding: 6px 10px; }
+  .header-actions { gap: 8px; }
+  .app-title { font-size: 0.8rem; line-height: 1.1; }
+  .header-content { padding: 10px 12px; gap: 8px; }
+  .sidebar-toggle-button { width: 38px; height: 38px; margin-right: 0; }
+  .btn-bell { width: 36px; height: 36px; }
+  .user-profile { padding: 6px 8px; }
   .user-avatar { width: 38px; height: 38px; }
   .profile-dropdown { min-width: 240px; right: -8px; }
 }
