@@ -372,7 +372,7 @@ const formatPrice = (value) => {
 
 const cargarDatosConfiguracion = async () => {
   try {
-    const res = await axios.get('/api/web/configuracion/');
+    const res = await axios.get(getApiUrl('/api/web/configuracion/'));
     configLocal.value = { ...configLocal.value, ...res.data };
   } catch (error) {
     console.error('No se pudo cargar la configuración de la peluquería', error);
