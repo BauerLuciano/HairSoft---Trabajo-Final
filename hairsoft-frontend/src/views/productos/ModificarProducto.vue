@@ -309,6 +309,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 import { 
   Package, ArrowLeft, ClipboardList, Tag, Award, Layers, 
   Barcode, FileText, DollarSign, Truck, Check, CheckCircle2, 
@@ -460,7 +461,7 @@ const cargarProducto = async () => {
     if (data.imagen) {
         const imgUrl = data.imagen.startsWith('http') 
             ? data.imagen 
-            : `http://127.0.0.1:8000${data.imagen}`
+            : `${API_BASE_URL}${data.imagen}`
         imagenPreview.value = imgUrl
     }
 

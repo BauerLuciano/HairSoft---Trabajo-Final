@@ -173,12 +173,13 @@ import axios from 'axios'
 import Swal from 'sweetalert2' 
 import RegistrarUsuario from './RegistrarUsuario.vue'
 import ModificarUsuario from './ModificarUsuario.vue'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 import { 
   Users, UserPlus, Filter, List, Hash, Edit3, UserX, SearchX,
   ChevronLeft, ChevronRight, Trash2, X
 } from 'lucide-vue-next'
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = API_BASE_URL;
 
 const usuarios = ref([])
 const roles = ref([])

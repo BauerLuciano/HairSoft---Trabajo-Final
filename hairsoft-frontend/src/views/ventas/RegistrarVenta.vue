@@ -685,11 +685,11 @@ import AsignarEnvio from '@/components/AsignarEnvio.vue';
 import PagoQrModal from '@/components/PagoQrModal.vue';
 import { envioService } from '@/services/envioService';
 import QrcodeVue from 'qrcode.vue'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 // 🔥 El z-index del modal de SweetAlert se sube por CSS global (base.css):
 //    .swal2-container { z-index: 100000 !important; }
 //    (SweetAlert2 v11.26+ ya no acepta el parámetro zIndex, por eso va por CSS)
-const API_BASE_URL = 'http://127.0.0.1:8000';
 
 export default {
     name: 'RegistrarVenta',

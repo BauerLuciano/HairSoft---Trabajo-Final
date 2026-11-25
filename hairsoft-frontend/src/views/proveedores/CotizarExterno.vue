@@ -134,11 +134,12 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import Swal from 'sweetalert2'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const route = useRoute()
 const token = route.params.token
-const API_URL = 'http://127.0.0.1:8000/api/cotizacion-externa' 
-const API_RUTA_EN_CAMINO = 'http://127.0.0.1:8000/api/externo/pedido' // Ruta para marcar en camino
+const API_URL = `${API_BASE_URL}/api/cotizacion-externa` 
+const API_RUTA_EN_CAMINO = `${API_BASE_URL}/api/externo/pedido` // Ruta para marcar en camino
 
 const cargando = ref(true)
 const error = ref(false)

@@ -226,10 +226,11 @@ import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
 import { useRouter, useRoute } from 'vue-router'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const router = useRouter()
 const route = useRoute()
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+const API_BASE = API_BASE_URL
 
 const cargando = ref(false)
 const mostrarContrasena = ref(false)

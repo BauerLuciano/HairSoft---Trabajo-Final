@@ -1,20 +1,20 @@
 import axios from 'axios';
+import { API_BASE_URL } from '@/config/api';
 
-// --- CÓDIGO INTELIGENTE ---
-// Si la web es "vercel.app", usa la Nube. Si no, usa tu PC.
-const isProduction = window.location.hostname.includes('vercel.app');
-const BASE = isProduction 
-  ? 'https://web-production-ac47c.up.railway.app' 
-  : 'http://127.0.0.1:8000'; // <--- ¡TU LOCAL SIGUE ACÁ!
+const BASE = API_BASE_URL;
 
-const API_URL = `${BASE}/usuarios/api/clientes/`;
-
-export const obtenerClientes = async () => {
-    try {
-        const response = await axios.get(API_URL);
-        return response.data;
-    } catch (error) {
-        console.error('Error al obtener clientes:', error);
-        return [];
-    }
+const authAxios = () => {
+    const token = localStorage.getItem('token');
+    return axios.create({
+        baseURL: BASE,
+        headers: { 
+            Authorization: token ? `Token ${token}` : '',
+            'Content-Type': 'application/json'
+        }
+    });
 };
+
+export const obtenerClientes = () => authAxios().get('/api/clientes/');
+export const crearCliente = (cliente) => authAxios().post('/api/clientes/', cliente);
+export const eliminarCliente = (id) => authAxios().delete(`/api/clientes/${id}/`);
+export const actualizarCliente = (id, cliente) => authAxios().put(`/api/clientes/${id}/`, cliente);

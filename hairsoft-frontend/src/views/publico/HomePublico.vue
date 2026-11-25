@@ -270,13 +270,14 @@ import {
 } from 'lucide-vue-next';
 import { useCartStore } from '@/stores/cart';
 import { requireAuth, sesionValida } from '@/utils/authPrompt';
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const router = useRouter();
 const cartStore = useCartStore();
 
 const MEDIA_BASE = window.location.hostname.includes('vercel.app')
-  ? 'https://web-production-ac47c.up.railway.app'
-  : 'http://127.0.0.1:8000';
+  ? API_BASE_URL
+  : API_BASE_URL;
 
 const getImageUrl = (img) => {
   if (!img) return null;

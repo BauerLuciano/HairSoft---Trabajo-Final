@@ -288,13 +288,14 @@
 import { ref, computed, onMounted } from 'vue';
 import axios from '@/utils/axiosConfig';
 import Swal from 'sweetalert2';
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 import { 
   Calculator, History, Search, DollarSign, Store, Scissors, 
   ChevronDown, ChevronUp, CheckCircle, FileText, CalendarCheck, 
   Printer, ChevronLeft, ChevronRight 
 } from 'lucide-vue-next';
 
-const API_URL = "http://localhost:8000/api";
+const API_URL = getApiUrl('/api');
 
 const tabActiva = ref('calcular');
 const fechaInicio = ref("");

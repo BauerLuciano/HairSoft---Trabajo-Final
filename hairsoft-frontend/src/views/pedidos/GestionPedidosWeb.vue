@@ -161,8 +161,9 @@
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios'; 
 import Swal from 'sweetalert2';
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
-const API_URL = 'http://127.0.0.1:8000/api/web/pedidos/';
+const API_URL = `${API_BASE_URL}/api/web/pedidos/`;
 const pedidos = ref([]);
 const loading = ref(false);
 const filtroActual = ref('ACTIVOS');

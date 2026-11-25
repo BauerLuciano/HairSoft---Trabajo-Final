@@ -159,11 +159,12 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
 import { Edit3, Trash2, CheckCircle } from 'lucide-vue-next'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const isProduction = window.location.hostname.includes('vercel.app');
 const API_BASE = isProduction 
-  ? 'https://web-production-ac47c.up.railway.app' 
-  : 'http://127.0.0.1:8000';
+  ? API_BASE_URL 
+  : API_BASE_URL;
 
 const categorias = ref([])
 const filtros = ref({ busqueda: '', tipo: '', estado: 'todos' }) 

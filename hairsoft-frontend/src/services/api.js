@@ -1,14 +1,8 @@
 import axios from 'axios';
-
-const isProduction = window.location.hostname.includes('vercel.app');
-
-// 💡 DEJAMOS LA URL LIMPIA (Sin el /usuarios/api al final)
-const CURRENT_URL = isProduction 
-  ? 'https://web-production-ac47c.up.railway.app' 
-  : 'http://localhost:8000';
+import { API_BASE_URL } from '@/config/api';
 
 const api = axios.create({
-  baseURL: CURRENT_URL,
+  baseURL: API_BASE_URL,
   timeout: 15000,
   withCredentials: true, // Para que el Admin local funcione con cookies
   headers: { 'Content-Type': 'application/json' }

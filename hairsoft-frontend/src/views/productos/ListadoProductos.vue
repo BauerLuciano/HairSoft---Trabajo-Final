@@ -319,6 +319,7 @@ import Swal from 'sweetalert2'
 import RegistrarProducto from './RegistrarProducto.vue'
 import ModificarProducto from './ModificarProducto.vue'
 import RegistrarMarca from './RegistrarMarca.vue'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 import { 
   Package, PackageX, Plus, Tag, Edit3, Power, CheckCircle, PowerOff,
   ChevronLeft, ChevronRight, Trash2, X, AlertTriangle, Loader2, PackagePlus, ClipboardList
@@ -327,7 +328,7 @@ import {
 const route = useRoute()
 
 // CONSTANTES API
-const API_BASE = 'http://127.0.0.1:8000'; 
+const API_BASE = API_BASE_URL; 
 
 const productos = ref([])
 const categorias = ref([])

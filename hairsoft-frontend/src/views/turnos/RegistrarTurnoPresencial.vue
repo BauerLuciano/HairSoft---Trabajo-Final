@@ -578,9 +578,9 @@ import Swal from 'sweetalert2'
 import axios from '@/utils/axiosConfig'
 import PagoQrModal from '@/components/PagoQrModal.vue'
 import { obtenerErrorDisponibilidad } from '@/utils/disponibilidadErrores'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const router = useRouter()
-const API_BASE_URL = 'http://127.0.0.1:8000'; 
 const API_URL = `${API_BASE_URL}/api`;
 
 const getAuthHeaders = () => {

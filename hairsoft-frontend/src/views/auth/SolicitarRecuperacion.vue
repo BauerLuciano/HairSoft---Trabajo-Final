@@ -48,6 +48,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const email = ref('')
 const cargando = ref(false)
@@ -55,8 +56,8 @@ const focusedField = ref('')
 
 const isProduction = window.location.hostname.includes('vercel.app');
 const API_BASE = isProduction 
-  ? 'https://web-production-ac47c.up.railway.app' 
-  : 'http://127.0.0.1:8000';
+  ? API_BASE_URL 
+  : API_BASE_URL;
 
 const enviarSolicitud = async () => {
   if (!email.value) return

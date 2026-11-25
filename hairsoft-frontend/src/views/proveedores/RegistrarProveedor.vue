@@ -152,9 +152,10 @@
 import { ref, reactive, onMounted } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const emit = defineEmits(['proveedor-registrado', 'cancelar'])
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = API_BASE_URL
 
 const proveedor = reactive({
   nombre: '',

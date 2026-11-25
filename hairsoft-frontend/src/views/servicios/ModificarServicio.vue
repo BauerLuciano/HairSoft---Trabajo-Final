@@ -175,6 +175,7 @@ import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
 import Swal from 'sweetalert2'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 import { 
   Scissors, ArrowLeft, ClipboardList, Tag, DollarSign, Clock,
   Layers, FileText, CheckCircle2, Loader2, X,
@@ -184,7 +185,7 @@ import {
 const router = useRouter()
 const route = useRoute()
 const servicioId = route.params.id
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = API_BASE_URL
 
 const form = reactive({
   nombre: '',

@@ -30,8 +30,9 @@ import { reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import Swal from 'sweetalert2' // ✅ NUEVO: Importamos SweetAlert
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = API_BASE_URL
 const route = useRoute()
 const router = useRouter()
 

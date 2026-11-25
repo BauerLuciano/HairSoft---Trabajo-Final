@@ -129,10 +129,11 @@ import { ref, onMounted, computed } from 'vue' // 🔥 Agregamos computed
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { ChevronLeft, Truck, Calendar, Package, MessageSquare, X, Clock } from 'lucide-vue-next' // 🔥 Agregamos Clock
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const route = useRoute()
 const router = useRouter()
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = API_BASE_URL
 
 const pedidoId = route.params.id
 const pedido = ref(null)

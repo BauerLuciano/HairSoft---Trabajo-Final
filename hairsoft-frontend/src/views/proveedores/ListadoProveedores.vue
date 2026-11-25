@@ -207,12 +207,13 @@ import axios from 'axios'
 import Swal from 'sweetalert2'
 import RegistrarProveedor from './RegistrarProveedor.vue'
 import ModificarProveedor from './ModificarProveedor.vue'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 import { 
   Truck, Plus, Edit3, Power, CheckCircle, PowerOff, DollarSign,
   ChevronLeft, ChevronRight, Trash2, X
 } from 'lucide-vue-next'
 
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = API_BASE_URL
 const router = useRouter()
 
 const proveedores = ref([])

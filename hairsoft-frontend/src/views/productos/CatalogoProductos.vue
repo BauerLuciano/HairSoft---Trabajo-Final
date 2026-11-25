@@ -351,6 +351,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/services/api' 
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 import { 
   Package, PackageSearch, Search, X, 
   ChevronLeft, ChevronRight, Trash2, Tag,
@@ -411,7 +412,7 @@ const cargarMarcas = async () => {
 const getImageUrl = (img) => {
   if (!img) return '/placeholder.png'; 
   if (img.startsWith('http')) return img;
-  return `http://127.0.0.1:8000${img}`; 
+  return `${API_BASE_URL}${img}`; 
 }
 
 const getCategoriaNombre = (producto) => {

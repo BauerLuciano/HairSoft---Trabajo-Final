@@ -255,10 +255,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const router = useRouter()
 const route = useRoute()
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = API_BASE_URL
 
 const pedidoId = route.params.id
 

@@ -189,6 +189,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 import { 
   FileText, Loader, ChevronLeft, RefreshCw, AlertTriangle,
   Calendar, User, UserCheck, DollarSign, MessageSquare, Trash2, Info, Package
@@ -196,7 +197,7 @@ import {
 
 const route = useRoute()
 const router = useRouter()
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = API_BASE_URL
 
 const ventaId = route.params.id
 const venta = ref(null)

@@ -132,15 +132,14 @@ import axios from 'axios';
 import Swal from 'sweetalert2';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-vue-next';
 import { GoogleLogin } from 'vue3-google-login'; // Importamos el componente de Google
+import { getApiUrl } from '@/config/api';
 
 const router = useRouter();
 const route = useRoute();
 
-const isProduction = window.location.hostname.includes('vercel.app');
-const DOMAIN = isProduction ? 'https://web-production-ac47c.up.railway.app' : 'http://127.0.0.1:8000';
-const API_URL = `${DOMAIN}/api/auth/login/`;
+const API_URL = getApiUrl('/api/auth/login/');
 // Configuración pública (endpoint sin autenticación) — branding + imagen del Login
-const WEB_CONFIG_URL = `${DOMAIN}/api/web/configuracion/`;
+const WEB_CONFIG_URL = getApiUrl('/api/web/configuracion/');
 
 const credentials = ref({
   username: '',

@@ -1,16 +1,10 @@
 import axios from 'axios';
+import { API_BASE_URL } from '@/config/api';
 
-// 1. Detección automática (No más URLs fijas)
-const isProduction = window.location.hostname.includes('vercel.app');
-
-const baseURL = isProduction 
-  ? 'https://web-production-ac47c.up.railway.app' 
-  : 'http://localhost:8000';
-
-console.log('📡 Axios configurado en:', baseURL);
+console.log('📡 Axios configurado en:', API_BASE_URL);
 
 const axiosInstance = axios.create({
-  baseURL: baseURL,
+  baseURL: API_BASE_URL,
   timeout: 15000,
   withCredentials: true, // Crucial para que el Admin local use Cookies
   headers: {

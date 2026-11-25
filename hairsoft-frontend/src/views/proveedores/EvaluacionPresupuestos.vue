@@ -365,12 +365,13 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 import { 
   RefreshCw, Search, Box, FileText, CheckCircle, XCircle, Award, 
   Trash2, X, Eye, Clock, ChevronLeft, ChevronRight
 } from 'lucide-vue-next'
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = API_BASE_URL;
 
 const solicitudes = ref([])
 const cargando = ref(true)

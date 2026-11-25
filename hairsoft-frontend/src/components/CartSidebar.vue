@@ -107,6 +107,7 @@ import { useRouter } from 'vue-router';
 import api from '@/services/api';
 import { X, ShoppingCart, Trash2, ArrowRight, ShieldCheck, CheckCircle } from 'lucide-vue-next';
 import { requireAuth, sesionValida } from '@/utils/authPrompt';
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const cartStore = useCartStore();
 const router = useRouter();
@@ -114,7 +115,7 @@ const router = useRouter();
 const getImageUrl = (img) => {
   if (!img) return '/placeholder.png';
   if (img.startsWith('http')) return img;
-  return `http://127.0.0.1:8000${img}`;
+  return `${API_BASE_URL}${img}`;
 };
 
 const irAlCheckout = async () => {

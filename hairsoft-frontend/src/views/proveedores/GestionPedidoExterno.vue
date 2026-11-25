@@ -171,10 +171,11 @@ import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
 import Swal from 'sweetalert2';
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const route = useRoute();
 const token = route.params.token;
-const API_URL = 'http://127.0.0.1:8000/api'; 
+const API_URL = getApiUrl('/api'); 
 
 const pedido = ref(null);
 const loading = ref(true);

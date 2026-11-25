@@ -282,6 +282,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from '@/utils/axiosConfig' 
 import Swal from 'sweetalert2'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 import { 
   Plus, Trash2, Eye, FileText, Loader, PackageX,
   ChevronLeft, ChevronRight, RefreshCw, AlertTriangle, CheckCircle,
@@ -467,7 +468,7 @@ const confirmarAnulacion = async () => {
 
 const generarComprobantePDF = (venta) => {
   generandoPDF.value = venta.id
-  const baseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+  const baseUrl = API_BASE_URL
   const quienImprime = encodeURIComponent(usuarioEmisor.value || 'Caja Principal');
   setTimeout(() => {
       window.open(`${baseUrl}/api/ventas/${venta.id}/comprobante-pdf/?impreso_por=${quienImprime}`, '_blank')
@@ -490,7 +491,7 @@ const generarReporteListado = async () => {
       params.append('impreso_por', usuarioEmisor.value);
     }
 
-    const baseUrl = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+    const baseUrl = API_BASE_URL;
     const url = `${baseUrl}/ventas/exportar-listado-pdf/?${params.toString()}`;
 
     window.open(url, '_blank');

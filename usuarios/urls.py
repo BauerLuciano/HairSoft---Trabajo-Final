@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from django.conf import settings 
 from django.conf.urls.static import static 
+import os 
 
 from . import views as func_views
 from . import api_views
@@ -340,5 +341,5 @@ urlpatterns = [
     path('api/backups/<path:ruta>/verificar/', api_views.verificar_un_backup, name='verificar_backup'),
     path('api/backups/<path:ruta>/descargar/', api_views.descargar_un_backup, name='descargar_backup'),
     ]
-if settings.DEBUG:
+if settings.DEBUG and not os.environ.get('CLOUDINARY_CLOUD_NAME'):
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

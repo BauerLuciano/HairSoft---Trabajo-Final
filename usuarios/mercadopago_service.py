@@ -7,21 +7,21 @@ class MercadoPagoService:
         self.sdk = mercadopago.SDK(settings.MERCADO_PAGO['ACCESS_TOKEN'])
         self.config = settings.MERCADO_PAGO 
         self.statement_descriptor = "HAIRSOFT"
+        self.base_url = getattr(settings, 'PUBLIC_BACKEND_URL', 'https://brandi-palmar-pickily.ngrok-free.dev').rstrip('/')
+
+    def _back_urls(self):
+        retorno = f"{self.base_url}/api/mercadopago/retorno/"
+        return {
+            "success": retorno,
+            "failure": retorno,
+            "pending": retorno,
+        }
 
     def crear_preferencia_seña(self, turno_data):
         """
         CREA PAGO PARA SEÑA DE TURNOS - 100% MODO SANDBOX
         """
-        base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
-
-        # 🔥 FIX DEFINITIVO: Usamos la URL de ngrok (HTTPS) para engañar a MP.
-        # Esto va a golpear la ruta que agregaste en urls.py y la función en views.py,
-        # la cual te va a redirigir automáticamente a Vue.
-        back_urls_dict = {
-            "success": f"{base_url}/api/mercadopago/retorno/", 
-            "failure": f"{base_url}/api/mercadopago/retorno/",
-            "pending": f"{base_url}/api/mercadopago/retorno/"
-        }
+        back_urls_dict = self._back_urls()
 
         monto = turno_data.get("monto_pago") or turno_data.get("monto_seña")
         monto_pago = round(float(monto), 2) if monto else 0.1
@@ -47,7 +47,7 @@ class MercadoPagoService:
             "external_reference": f"TURNO_{turno_id}",
             "binary_mode": True,
             "statement_descriptor": self.statement_descriptor,
-            "notification_url": f"{base_url}/api/mercadopago/webhook/"
+            "notification_url": f"{self.base_url}/api/mercadopago/webhook/"
         }
 
         try:
@@ -67,12 +67,7 @@ class MercadoPagoService:
             return {"success": False, "error": str(e)}
 
     def crear_preferencia_temporal(self, monto, uid_str, title="Pago en HairSoft"):
-        base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
-        back_urls_dict = {
-            "success": f"{base_url}/api/mercadopago/retorno/",
-            "failure": f"{base_url}/api/mercadopago/retorno/",
-            "pending": f"{base_url}/api/mercadopago/retorno/"
-        }
+        back_urls_dict = self._back_urls()
         monto_pago = round(float(monto), 2) if monto else 0.1
         email_comprador_prueba = "test_user_1860959446082982366@testuser.com"
 
@@ -91,7 +86,7 @@ class MercadoPagoService:
             "external_reference": f"TEMP_{uid_str}",
             "binary_mode": True,
             "statement_descriptor": self.statement_descriptor,
-            "notification_url": f"{base_url}/api/mercadopago/webhook/"
+            "notification_url": f"{self.base_url}/api/mercadopago/webhook/"
         }
         try:
             result = self.sdk.preference().create(preference_data)
@@ -110,14 +105,7 @@ class MercadoPagoService:
         """
         CREA PAGO PARA CARRITO - 100% MODO SANDBOX
         """
-        base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
-
-        # 🔥 FIX: Aplicar el mismo puente de ngrok acá
-        back_urls_dict = {
-            "success": f"{base_url}/api/mercadopago/retorno/", 
-            "failure": f"{base_url}/api/mercadopago/retorno/",
-            "pending": f"{base_url}/api/mercadopago/retorno/"
-        }
+        back_urls_dict = self._back_urls()
 
         items_mp = []
         for detalle in items_pedido:
@@ -149,7 +137,7 @@ class MercadoPagoService:
             "external_reference": f"PEDIDO_{pedido.id}",
             "binary_mode": True,
             "statement_descriptor": self.statement_descriptor,
-            "notification_url": f"{base_url}/api/mercadopago/webhook/"
+            "notification_url": f"{self.base_url}/api/mercadopago/webhook/"
         }
 
         try:
@@ -171,13 +159,7 @@ class MercadoPagoService:
         """
         CREA PAGO PARA SALDO PENDIENTE DE TURNO
         """
-        base_url = "https://brandi-palmar-pickily.ngrok-free.dev"
-
-        back_urls_dict = {
-            "success": f"{base_url}/api/mercadopago/retorno/",
-            "failure": f"{base_url}/api/mercadopago/retorno/",
-            "pending": f"{base_url}/api/mercadopago/retorno/"
-        }
+        back_urls_dict = self._back_urls()
 
         nombre_cliente = turno.cliente.nombre if turno.cliente else "Cliente"
         servicios_nombres = ", ".join(s.nombre for s in turno.servicios.all())
@@ -202,7 +184,7 @@ class MercadoPagoService:
             "external_reference": f"TURNO_SALDO_{turno.id}",
             "binary_mode": True,
             "statement_descriptor": self.statement_descriptor,
-            "notification_url": f"{base_url}/api/mercadopago/webhook/"
+            "notification_url": f"{self.base_url}/api/mercadopago/webhook/"
         }
 
         try:

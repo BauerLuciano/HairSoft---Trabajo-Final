@@ -80,6 +80,7 @@
 import { ref, onMounted } from 'vue';
 import cajaService from '@/services/cajaService'; 
 import Swal from 'sweetalert2';
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const cajas = ref([]);
 const cargando = ref(true);
@@ -134,13 +135,13 @@ const guardarCaja = async () => {
     let response;
     
     if (modoEdicion.value) {
-      response = await fetch(`http://localhost:8000/api/cajas/${formCaja.value.id}/`, {
+      response = await fetch(`${API_BASE_URL}/api/cajas/${formCaja.value.id}/`, {
         method: 'PUT',
         headers: headers,
         body: JSON.stringify(formCaja.value)
       });
     } else {
-      response = await fetch(`http://localhost:8000/api/cajas/`, {
+      response = await fetch(`${API_BASE_URL}/api/cajas/`, {
         method: 'POST',
         headers: headers,
         body: JSON.stringify(formCaja.value)
@@ -204,7 +205,7 @@ const toggleEstado = async (caja) => {
 
   try {
     const token = localStorage.getItem('token');
-    await fetch(`http://localhost:8000/api/cajas/${caja.id}/`, {
+    await fetch(`${API_BASE_URL}/api/cajas/${caja.id}/`, {
         method: 'PATCH',
         headers: { 
           'Authorization': `Token ${token}`,

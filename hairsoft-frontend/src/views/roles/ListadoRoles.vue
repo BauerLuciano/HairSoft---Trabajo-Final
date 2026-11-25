@@ -151,6 +151,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import axios from '@/utils/axiosConfig' // Usamos tu config para mantener sesión
 import Swal from 'sweetalert2'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 import { 
   Shield, Plus, Edit3, Power, CheckCircle, PowerOff,
   ChevronLeft, ChevronRight, Trash2, Search, User
@@ -158,7 +159,7 @@ import {
 
 const router = useRouter()
 const route = useRoute()
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = API_BASE_URL
 
 const roles = ref([])
 const filtros = ref({ busqueda: '', estado: 'todos' })

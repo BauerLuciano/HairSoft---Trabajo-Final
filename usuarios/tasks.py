@@ -538,6 +538,17 @@ def limpiar_tokens_expirados():
 
 @shared_task
 @_tarea_sistema
+def verificar_ofertas_expiradas():
+    """
+    Compatibilidad: tarea programada en celery beat.
+    No-op para evitar errores por tarea no registrada; no modifica lógica de negocio.
+    """
+    logger.info("ℹ️ verificar_ofertas_expiradas: sin acciones pendientes (no-op de compatibilidad).")
+    return {"status": "noop"}
+
+
+@shared_task
+@_tarea_sistema
 def expirar_pedidos_web_pendientes():
     """Cancela pedidos web impagos vencidos y libera stock reservado."""
     try:

@@ -236,6 +236,7 @@ import { ref, onMounted, computed } from 'vue'
 import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2'
 import { useRouter, useRoute } from 'vue-router'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const router = useRouter()
 const route = useRoute()
@@ -293,7 +294,7 @@ onMounted(async () => {
 // Cargar Roles
 const cargarRoles = async () => {
   try {
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+    const API_BASE = API_BASE_URL
     const res = await axios.get(`${API_BASE}/api/roles/`)
     
     if (Array.isArray(res.data)) {
@@ -311,7 +312,7 @@ const cargarRoles = async () => {
 // 🔥 ARREGLO CLAVE 1: Extraer bien el array bancando paginación de Django y forzando límite alto
 const cargarUsuariosExistentes = async () => {
   try {
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+    const API_BASE = API_BASE_URL
     // Le metemos un limite alto para que traiga todos a la vista de una vez
     const res = await axios.get(`${API_BASE}/api/usuarios/?limit=1000`)
     
@@ -519,7 +520,7 @@ const crearUsuario = async () => {
       estado: 'ACTIVO'
     }
 
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+    const API_BASE = API_BASE_URL
     const response = await axios.post(`${API_BASE}/api/usuarios/crear/`, payload)
     
     if (vieneDeTurnos.value) {

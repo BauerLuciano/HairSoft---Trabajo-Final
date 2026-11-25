@@ -230,9 +230,10 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import api from '@/services/api'
 import Swal from 'sweetalert2'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const isProduction = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('railway.app')
-const DOMAIN = isProduction ? 'https://web-production-ac47c.up.railway.app' : 'http://127.0.0.1:8000'
+const DOMAIN = isProduction ? API_BASE_URL : API_BASE_URL
 
 // ---------- ESTADOS ----------
 const form = ref({

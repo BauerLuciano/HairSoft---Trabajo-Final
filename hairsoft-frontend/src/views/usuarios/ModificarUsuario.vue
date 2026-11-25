@@ -303,8 +303,9 @@
 import { ref, computed, onMounted } from 'vue'
 import axios from '@/utils/axiosConfig'
 import Swal from 'sweetalert2'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+const API_BASE = API_BASE_URL
 
 const props = defineProps({
   usuarioId: { type: [String, Number], required: true }

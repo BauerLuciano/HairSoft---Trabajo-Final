@@ -73,6 +73,7 @@ import { useRouter } from 'vue-router';
 import axios from '@/utils/axiosConfig';
 import logoEstatico from '@/assets/logo.jpg';
 import Swal from 'sweetalert2';
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const router = useRouter();
 const openSection = ref('comercial'); 
@@ -89,7 +90,7 @@ const cargarBranding = async () => {
     const data = res.data;
     
     if (data.logo && !data.logo.startsWith('http')) {
-        const API_BASE = 'http://127.0.0.1:8000'; 
+        const API_BASE = API_BASE_URL;
         data.logo = `${API_BASE}${data.logo}`;
     }
     

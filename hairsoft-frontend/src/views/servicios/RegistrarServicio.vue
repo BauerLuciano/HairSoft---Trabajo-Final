@@ -229,6 +229,7 @@ import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import Swal from 'sweetalert2'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 import { 
   Scissors, ArrowLeft, ClipboardList, Tag, DollarSign, Clock,
   Layers, FileText, CheckCircle, CheckCircle2, Loader2, X,
@@ -236,7 +237,7 @@ import {
 } from 'lucide-vue-next'
 
 const router = useRouter()
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = API_BASE_URL
 
 const props = defineProps({
   servicioEditar: Object

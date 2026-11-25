@@ -8,15 +8,62 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def _load_env_file(path):
+    """Carga un archivo .env simple sin dependencias externas.
+    No sobreescribe variables de entorno ya definidas."""
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding='utf-8').splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+# En Render/producción se usan variables de entorno reales; .env es solo para desarrollo local.
+if not (os.environ.get('RENDER') or os.environ.get('RENDER_EXTERNAL_HOSTNAME')):
+    _load_env_file(BASE_DIR / '.env')
+
 # ================================
 # CONFIGURACIÓN GENERAL
 # ================================
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-ip8)+yuz^y06zqgl-%w%05^vjroio(3@@4qo(tz_0ssvtpe@3(')
-DEBUG = 'RAILWAY_ENVIRONMENT' not in os.environ
+_INSECURE_SECRET_KEY_DEFAULT = 'django-insecure-ip8)+yuz^y06zqgl-%w%05^vjroio(3@@4qo(tz_0ssvtpe@3('
+SECRET_KEY = os.environ.get('SECRET_KEY', _INSECURE_SECRET_KEY_DEFAULT)
 
-ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1', '.ngrok-free.dev', '.loca.lt']
+# Producción: DEBUG=False incluso si falta configuración.
+# Desarrollo local: conserva DEBUG=True por defecto (sin RENDER).
+_PRODUCTION_ENV = bool(
+    os.environ.get('RENDER')
+    or os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+)
+DEBUG = os.environ.get('DEBUG', 'False' if _PRODUCTION_ENV else 'True').lower() in ('true', '1', 'yes')
+
+if not DEBUG and SECRET_KEY == _INSECURE_SECRET_KEY_DEFAULT:
+    raise RuntimeError(
+        'SECRET_KEY insegura o no configurada. Definí la variable de entorno SECRET_KEY en producción.'
+    )
+
+_DEFAULT_DEV_ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.ngrok-free.dev', '.loca.lt']
+_env_allowed_hosts = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', '').split(',') if h.strip()]
+_render_external_host = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip()
+
+if DEBUG:
+    ALLOWED_HOSTS = list(_DEFAULT_DEV_ALLOWED_HOSTS)
+    for _host in _env_allowed_hosts:
+        if _host not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(_host)
+else:
+    ALLOWED_HOSTS = [h for h in _env_allowed_hosts if h != '*']
+    if _render_external_host and _render_external_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_render_external_host)
 
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+PUBLIC_BACKEND_URL = os.environ.get('PUBLIC_BACKEND_URL', 'https://brandi-palmar-pickily.ngrok-free.dev').rstrip('/')
 
 # ================================
 # APLICACIONES INSTALADAS
@@ -134,7 +181,6 @@ USE_TZ = True
 # ================================
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 CLOUDINARY_STORAGE = {
     'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
@@ -143,37 +189,82 @@ CLOUDINARY_STORAGE = {
 }
 
 MEDIA_URL = '/media/'
-if os.environ.get('CLOUDINARY_CLOUD_NAME'):
-    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-else:
-    MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
+
+_USE_CLOUDINARY_STORAGE = bool(os.environ.get('CLOUDINARY_CLOUD_NAME'))
+
+STORAGES = {
+    'default': {
+        'BACKEND': (
+            'cloudinary_storage.storage.MediaCloudinaryStorage'
+            if _USE_CLOUDINARY_STORAGE
+            else 'django.core.files.storage.FileSystemStorage'
+        ),
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ================================
 # CONFIGURACIÓN CORS / CSRF
 # ================================
-CORS_ALLOW_ALL_ORIGINS = True 
-CORS_ALLOW_CREDENTIALS = True
-
-CSRF_TRUSTED_ORIGINS = [
+_DEFAULT_DEV_CORS_ORIGINS = [
     "http://localhost:5173",
-    "http://127.0.0.1:5173", 
+    "http://127.0.0.1:5173",
+]
+_DEFAULT_DEV_CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
     "http://localhost:8000",
-    "https://*.railway.app", 
-    "https://*.vercel.app",
     "https://*.ngrok-free.dev",
     "https://*.loca.lt",
 ]
 
+_env_cors_origins = [o.strip() for o in os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',') if o.strip()]
+_env_csrf_trusted_origins = [o.strip() for o in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',') if o.strip()]
+
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOWED_ORIGINS = []
+    CORS_ALLOW_CREDENTIALS = True
+
+    CSRF_TRUSTED_ORIGINS = list(_DEFAULT_DEV_CSRF_TRUSTED_ORIGINS)
+    for _origin in _env_csrf_trusted_origins:
+        if _origin not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(_origin)
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = list(_env_cors_origins)
+    if not CORS_ALLOWED_ORIGINS and FRONTEND_URL:
+        CORS_ALLOWED_ORIGINS = [FRONTEND_URL.strip()]
+    CORS_ALLOW_CREDENTIALS = True
+
+    CSRF_TRUSTED_ORIGINS = [o for o in _env_csrf_trusted_origins if '*' not in o]
+    if not CSRF_TRUSTED_ORIGINS and FRONTEND_URL:
+        CSRF_TRUSTED_ORIGINS = [FRONTEND_URL.strip()]
+    if _render_external_host:
+        _render_origin = f"https://{_render_external_host}"
+        if _render_origin not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(_render_origin)
+
 CSRF_USE_SESSIONS = False
-CSRF_COOKIE_SECURE = not DEBUG 
+CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = 'Lax'
 
 SESSION_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
+
+# ================================
+# SEGURIDAD / HTTPS
+# ================================
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = 'same-origin'
 
 CORS_ALLOW_HEADERS = [
     'accept',
@@ -204,15 +295,28 @@ AUTH_USER_MODEL = 'usuarios.Usuario'
 # ================================
 # MERCADO PAGO
 # ================================
-TUNNEL_URL = "https://hairsoft-pago.loca.lt"
+TUNNEL_URL = PUBLIC_BACKEND_URL
 
 MERCADO_PAGO = {
-    'ACCESS_TOKEN': os.environ.get('MP_ACCESS_TOKEN', 'APP_USR-7404896415144376-102322-584184e7db9ca5b628be4d7e21763ae3-2943677918'),
-    'PUBLIC_KEY': os.environ.get('MP_PUBLIC_KEY', 'APP_USR-4e145215-f26e-4c2d-8be7-a557300a9154'),
-    'WEBHOOK_URL': f"{TUNNEL_URL}/mercadopago/webhook/",
+    'ACCESS_TOKEN': os.environ.get('MP_ACCESS_TOKEN', '').strip(),
+    'PUBLIC_KEY': os.environ.get('MP_PUBLIC_KEY', '').strip(),
+    'WEBHOOK_URL': f"{PUBLIC_BACKEND_URL}/api/mercadopago/webhook/",
     'BINARY_MODE': True,
     'SANDBOX': True
 }
+
+if not DEBUG:
+    _missing_mp = [
+        name for name, value in (
+            ('MP_ACCESS_TOKEN', MERCADO_PAGO['ACCESS_TOKEN']),
+            ('MP_PUBLIC_KEY', MERCADO_PAGO['PUBLIC_KEY']),
+        ) if not value
+    ]
+    if _missing_mp:
+        raise RuntimeError(
+            f"Faltan credenciales de Mercado Pago en producción: {', '.join(_missing_mp)}. "
+            "Definí estas variables de entorno en Render."
+        )
 
 # ================================
 # REST FRAMEWORK
@@ -234,8 +338,8 @@ REST_FRAMEWORK = {
 # ================================
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 
-CELERY_BROKER_URL = REDIS_URL
-CELERY_RESULT_BACKEND = REDIS_URL
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', REDIS_URL)
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', REDIS_URL)
 CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -263,22 +367,48 @@ CELERY_TASK_ANNOTATIONS = {
 # ================================
 # EMAIL (MAILTRAP)
 # ================================
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'sandbox.smtp.mailtrap.io'
-EMAIL_PORT = 2525
-EMAIL_USE_TLS = True
-EMAIL_USE_SSL = False
-EMAIL_HOST_USER = 'd78727b2cf71b8'
-EMAIL_HOST_PASSWORD = '1c4217870802e9'
-DEFAULT_FROM_EMAIL = 'HairSoft <no-reply@hairsoft.com>'
-EMAIL_FAIL_SILENTLY = False
+EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend').strip()
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'sandbox.smtp.mailtrap.io').strip()
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '2525'))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
+EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'False').lower() in ('true', '1', 'yes')
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '').strip()
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '').strip()
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'HairSoft <no-reply@hairsoft.com>').strip()
+EMAIL_FAIL_SILENTLY = os.environ.get('EMAIL_FAIL_SILENTLY', 'False').lower() in ('true', '1', 'yes')
+
+if not DEBUG:
+    _missing_email = [
+        name for name, value in (
+            ('EMAIL_HOST_USER', EMAIL_HOST_USER),
+            ('EMAIL_HOST_PASSWORD', EMAIL_HOST_PASSWORD),
+        ) if not value
+    ]
+    if _missing_email:
+        raise RuntimeError(
+            f"Faltan credenciales de correo en producción: {', '.join(_missing_email)}. "
+            "Definí estas variables de entorno en Render."
+        )
 
 # ================================
 # TWILIO WHATSAPP
 # ================================
-TWILIO_ACCOUNT_SID = 'ACb3de53c73913d7ec07a5c253ab2ca97f'
-TWILIO_AUTH_TOKEN = '0f70fae6755002f66c23c4a50aff0400'
-TWILIO_WHATSAPP_NUMBER = 'whatsapp:+14155238886'
+TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '').strip()
+TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '').strip()
+TWILIO_WHATSAPP_NUMBER = os.environ.get('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+14155238886').strip()
+
+if not DEBUG:
+    _missing_twilio = [
+        name for name, value in (
+            ('TWILIO_ACCOUNT_SID', TWILIO_ACCOUNT_SID),
+            ('TWILIO_AUTH_TOKEN', TWILIO_AUTH_TOKEN),
+        ) if not value
+    ]
+    if _missing_twilio:
+        raise RuntimeError(
+            f"Faltan credenciales Twilio en producción: {', '.join(_missing_twilio)}. "
+            "Definí estas variables de entorno en Render."
+        )
 
 # CONFIGURACIÓN DE GOOGLE LOGIN
 GOOGLE_CLIENT_ID = "537753408019-uhdhpoqgkqtbkaj25d90601n1f3qguth.apps.googleusercontent.com"

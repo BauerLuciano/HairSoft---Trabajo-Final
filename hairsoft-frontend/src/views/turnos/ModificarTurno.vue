@@ -786,11 +786,12 @@ import {
 } from "lucide-vue-next";
 import Swal from "sweetalert2";
 import PagoQrModal from "@/components/PagoQrModal.vue";
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 
 const route = useRoute();
 const router = useRouter();
 const turnoId = route.params.id;
-const API_URL = "http://localhost:8000/api";
+const API_URL = getApiUrl('/api');
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem("token");

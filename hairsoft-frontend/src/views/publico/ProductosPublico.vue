@@ -294,6 +294,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/services/api'
 import { useCartStore } from '@/stores/cart'
+import { API_BASE_URL, getApiUrl } from '@/config/api'
 import { 
   Package, PackageSearch, Search, X, 
   ChevronLeft, ChevronRight, Trash2, Tag, ShoppingCart 
@@ -313,8 +314,8 @@ const productoSeleccionado = ref(null)
 // --- CONFIGURACIÓN DE RUTAS ---
 const isProduction = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('railway.app');
 const MEDIA_BASE = isProduction 
-  ? 'https://web-production-ac47c.up.railway.app' 
-  : 'http://127.0.0.1:8000';
+  ? API_BASE_URL 
+  : API_BASE_URL;
 
 const getImageUrl = (img) => {
   if (!img) return '/placeholder.png'; 
