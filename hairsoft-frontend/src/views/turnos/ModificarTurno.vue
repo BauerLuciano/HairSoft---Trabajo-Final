@@ -3183,6 +3183,11 @@ onMounted(() => {
     justify-content: center;
     padding: 12px;
   }
+
+  .calendar-wrapper { padding: 14px; }
+  .mes-titulo { font-size: 1em; }
+  .calendar-days-header { font-size: 0.75em; }
+  .day-btn { font-size: 0.85rem; }
 }
 
 @media (max-width: 480px) {
@@ -3221,5 +3226,24 @@ onMounted(() => {
     bottom: 15px;
     min-width: auto;
   }
+
+  .calendar-wrapper { padding: 12px; }
+  .calendar-header { margin-bottom: 12px; }
+  .btn-nav-cal { width: 36px; height: 36px; min-width: 36px; }
+  .mes-titulo { font-size: 0.95em; min-width: 0; text-align: center; }
+  .calendar-days-header { font-size: 0.7em; gap: 2px; }
+  .calendar-grid { gap: 4px; }
+  .day-btn { font-size: 0.8rem; border-radius: 6px; }
+  .badge-today { font-size: 0.45em; bottom: 1px; }
+}
+
+@media (max-width: 360px) {
+  .calendar-wrapper { padding: 10px; }
+  .mes-titulo { font-size: 0.9em; }
+  .btn-nav-cal { width: 32px; height: 32px; min-width: 32px; }
+  .calendar-days-header { font-size: 0.65em; }
+  .calendar-grid { gap: 3px; }
+  .day-btn { font-size: 0.75rem; min-height: 32px; }
+  .badge-today { display: none; }
 }
 </style>
