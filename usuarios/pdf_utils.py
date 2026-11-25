@@ -746,47 +746,6 @@ def generar_balance_operativo_pdf(datos, config=None, datos_emision=None, filtro
         elementos.append(t_medios)
     else:
         elementos.append(Paragraph('No se registraron cobros en el período.', estilos['TD']))
-    elementos.append(Spacer(1, 0.3 * cm))
-
-    elementos.append(Paragraph('4. Resultado y Comparación', estilos['Seccion']))
-    comparacion = [
-        ('Ingresos anteriores', f"$ {_formato_numero(datos.get('ingresosAnteriores'))}"),
-        ('Egresos anteriores', f"$ {_formato_numero(datos.get('egresosAnteriores'))}"),
-        ('Resultado neto', f"$ {_formato_numero(datos.get('resultadoNeto'))}"),
-        ('Resultado neto anterior', f"$ {_formato_numero(datos.get('resultadoNetoAnterior'))}"),
-        ('Variación de ingresos', f"{datos.get('variacionIngresos')} %" if datos.get('variacionIngresos') is not None else '-'),
-        ('Variación del resultado neto', f"{datos.get('variacionResultadoNeto')} %" if datos.get('variacionResultadoNeto') is not None else '-'),
-        ('Período anterior', str(datos.get('periodoAnterior') or '-')),
-    ]
-    elementos.append(crear_tabla_datos(
-        [[clave, valor] for clave, valor in comparacion], [9 * cm, 10 * cm],
-        estilos, cabecera=False,
-    ))
-    elementos.append(Spacer(1, 0.3 * cm))
-
-    cobros = datos.get('cobrosPendientes') or {}
-    detalle_cobros = cobros.get('detalle') or []
-    cantidad_cobros = int(cobros.get('turnos') or 0)
-    if cantidad_cobros > 0 or detalle_cobros:
-        elementos.append(Paragraph('5. Cobros Pendientes', estilos['Seccion']))
-        elementos.append(Paragraph(
-            f"<b>Turnos pendientes:</b> {cantidad_cobros} · "
-            f"<b>Total a cobrar:</b> $ {_formato_numero(cobros.get('total'))}",
-            estilos['TD'],
-        ))
-        elementos.append(Spacer(1, 0.15 * cm))
-        filas_cobros = [[Paragraph(x, estilos['TH']) for x in ('ID', 'FECHA', 'HORA', 'CLIENTE', 'SALDO')]]
-        for item in detalle_cobros:
-            filas_cobros.append([
-                Paragraph(escapar(item.get('id', '-')), estilos['TD']),
-                Paragraph(escapar(item.get('fecha', '-')), estilos['TD']),
-                Paragraph(escapar(item.get('hora', '-')), estilos['TD']),
-                Paragraph(escapar(item.get('cliente', '-')), estilos['TD']),
-                Paragraph(f"$ {_formato_numero(item.get('saldo'))}", estilos['TD_Right']),
-            ])
-        elementos.append(crear_tabla_datos(
-            filas_cobros, [2 * cm, 3 * cm, 2.5 * cm, 7.5 * cm, 4 * cm], estilos
-        ))
 
     construir_documento(crear_documento(buffer), elementos)
     return buffer.getvalue()
