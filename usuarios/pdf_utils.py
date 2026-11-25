@@ -679,7 +679,7 @@ def generar_balance_operativo_pdf(datos, config=None, datos_emision=None, filtro
             ('PERÍODO', formatear_periodo_balance(filtros)),
             ('FECHA EMISIÓN', datos_emision['fecha_emision']),
         ], estilos),
-        Spacer(1, 0.8 * cm),
+        Spacer(1, 0.3 * cm),
         Paragraph('1. Resultados del Período', estilos['Seccion']),
     ]
 
@@ -712,86 +712,81 @@ def generar_balance_operativo_pdf(datos, config=None, datos_emision=None, filtro
         ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 14),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 14),
-    ]))
-    elementos.extend([t_kpis, Spacer(1, 0.8 * cm)])
-
-    elementos.append(Paragraph('2. Evolución de Ingresos', estilos['Seccion']))
-    elementos.append(crear_grafico_lineas(datos.get('labelsDias') or [], datos.get('ventasPorDia') or []))
-    elementos.append(Spacer(1, 0.5 * cm))
-
-    elementos.append(Paragraph('3. Análisis de Medios de Pago', estilos['Seccion']))
-    paleta = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899']
-    filas_medios = []
-    for indice, medio in enumerate(datos.get('ingresosPorMedio') or []):
-        color = paleta[indice % len(paleta)]
-        nombre = escapar(medio.get('medio') or '-')
-        filas_medios.append([
-            Paragraph(f'<font color="{color}">●</font> {nombre}', estilos['TD']),
-            Paragraph(f"$ {_formato_numero(medio.get('total'))}", estilos['TD_Right']),
-        ])
-    if not filas_medios:
-        filas_medios = [[Paragraph('No hay cobros registrados.', estilos['TD']), Paragraph('', estilos['TD'])]]
-    t_medios = Table(filas_medios, colWidths=[12 * cm, 7 * cm])
-    t_medios.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
         ('TOPPADDING', (0, 0), (-1, -1), 8),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
     ]))
-    elementos.extend([t_medios, Spacer(1, 0.8 * cm)])
+    elementos.extend([t_kpis, Spacer(1, 0.3 * cm)])
 
-    elementos.append(Paragraph('4. Contexto y Resultados', estilos['Seccion']))
-    pendientes = datos.get('pendientesInfo') or {}
-    cobros = datos.get('cobrosPendientes') or {}
-    contexto = [
+    elementos.append(Paragraph('2. Evolución de Ingresos', estilos['Seccion']))
+    elementos.append(crear_grafico_lineas(
+        datos.get('labelsDias') or [], datos.get('ventasPorDia') or [],
+        ancho=17 * cm, alto=3.8 * cm,
+    ))
+    elementos.append(Spacer(1, 0.3 * cm))
+
+    elementos.append(Paragraph('3. Análisis de Medios de Pago', estilos['Seccion']))
+    medios = datos.get('ingresosPorMedio') or []
+    if medios:
+        paleta = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899']
+        filas_medios = []
+        for indice, medio in enumerate(medios):
+            color = paleta[indice % len(paleta)]
+            nombre = escapar(medio.get('medio') or '-')
+            filas_medios.append([
+                Paragraph(f'<font color="{color}">●</font> {nombre}', estilos['TD']),
+                Paragraph(f"$ {_formato_numero(medio.get('total'))}", estilos['TD_Right']),
+            ])
+        t_medios = Table(filas_medios, colWidths=[12 * cm, 7 * cm])
+        t_medios.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        elementos.append(t_medios)
+    else:
+        elementos.append(Paragraph('No se registraron cobros en el período.', estilos['TD']))
+    elementos.append(Spacer(1, 0.3 * cm))
+
+    elementos.append(Paragraph('4. Resultado y Comparación', estilos['Seccion']))
+    comparacion = [
         ('Ingresos anteriores', f"$ {_formato_numero(datos.get('ingresosAnteriores'))}"),
         ('Egresos anteriores', f"$ {_formato_numero(datos.get('egresosAnteriores'))}"),
         ('Resultado neto', f"$ {_formato_numero(datos.get('resultadoNeto'))}"),
         ('Resultado neto anterior', f"$ {_formato_numero(datos.get('resultadoNetoAnterior'))}"),
-        ('Variación de ingresos', f"{datos.get('variacionIngresos') if datos.get('variacionIngresos') is not None else '-'} %" if datos.get('variacionIngresos') is not None else '-'),
-        ('Variación del resultado neto', f"{datos.get('variacionResultadoNeto') if datos.get('variacionResultadoNeto') is not None else '-'} %" if datos.get('variacionResultadoNeto') is not None else '-'),
+        ('Variación de ingresos', f"{datos.get('variacionIngresos')} %" if datos.get('variacionIngresos') is not None else '-'),
+        ('Variación del resultado neto', f"{datos.get('variacionResultadoNeto')} %" if datos.get('variacionResultadoNeto') is not None else '-'),
         ('Período anterior', str(datos.get('periodoAnterior') or '-')),
-        ('Caja abierta', 'Sí' if datos.get('cajaAbierta') else 'No'),
-        ('Pendientes de imputar', f"{pendientes.get('cantidad', 0)} movimiento(s) · $ {_formato_numero(pendientes.get('total_dinero'))}"),
-        ('Cobros pendientes', f"{cobros.get('turnos', 0)} turno(s) · $ {_formato_numero(cobros.get('total'))}"),
     ]
     elementos.append(crear_tabla_datos(
-        [[clave, valor] for clave, valor in contexto], [9 * cm, 10 * cm],
+        [[clave, valor] for clave, valor in comparacion], [9 * cm, 10 * cm],
         estilos, cabecera=False,
     ))
-    elementos.append(Spacer(1, 0.8 * cm))
+    elementos.append(Spacer(1, 0.3 * cm))
 
-    def tabla_simple(titulo, items, columnas, claves, anchos):
-        elementos.append(Paragraph(titulo, estilos['Subtitulo']))
-        filas = [list(columnas)]
-        for item in items or []:
-            fila = []
-            for clave in claves:
-                if isinstance(item, dict):
-                    valor = item.get(clave, '-')
-                else:
-                    valor = getattr(item, clave, '-')
-                fila.append('-' if valor in (None, '') else str(valor))
-            filas.append(fila)
-        if len(filas) == 1:
-            filas.append(['Sin datos'] + [''] * (len(columnas) - 1))
-        elementos.append(crear_tabla_datos(filas, anchos, estilos))
-        elementos.append(Spacer(1, 0.6 * cm))
-
-    tabla_simple('5. Pedidos Próximos', datos.get('pedidosProximos'),
-                 ['ID', 'Proveedor', 'Fecha llegada', 'Días restantes'],
-                 ['id', 'proveedor', 'fecha_llegada', 'dias_restantes'],
-                 [2 * cm, 8 * cm, 5 * cm, 4 * cm])
-    tabla_simple('6. Cobros Pendientes (Detalle)', (cobros.get('detalle') or []),
-                 ['ID', 'Fecha', 'Hora', 'Cliente', 'Saldo'],
-                 ['id', 'fecha', 'hora', 'cliente', 'saldo'],
-                 [2 * cm, 3 * cm, 2.5 * cm, 7.5 * cm, 4 * cm])
-    tabla_simple('7. Próximos Turnos', datos.get('proximosTurnos'),
-                 ['ID', 'Fecha', 'Hora', 'Cliente', 'Servicios'],
-                 ['id', 'fecha', 'hora', 'cliente', 'servicios'],
-                 [2 * cm, 3 * cm, 2.5 * cm, 5.5 * cm, 6 * cm])
+    cobros = datos.get('cobrosPendientes') or {}
+    detalle_cobros = cobros.get('detalle') or []
+    cantidad_cobros = int(cobros.get('turnos') or 0)
+    if cantidad_cobros > 0 or detalle_cobros:
+        elementos.append(Paragraph('5. Cobros Pendientes', estilos['Seccion']))
+        elementos.append(Paragraph(
+            f"<b>Turnos pendientes:</b> {cantidad_cobros} · "
+            f"<b>Total a cobrar:</b> $ {_formato_numero(cobros.get('total'))}",
+            estilos['TD'],
+        ))
+        elementos.append(Spacer(1, 0.15 * cm))
+        filas_cobros = [[Paragraph(x, estilos['TH']) for x in ('ID', 'FECHA', 'HORA', 'CLIENTE', 'SALDO')]]
+        for item in detalle_cobros:
+            filas_cobros.append([
+                Paragraph(escapar(item.get('id', '-')), estilos['TD']),
+                Paragraph(escapar(item.get('fecha', '-')), estilos['TD']),
+                Paragraph(escapar(item.get('hora', '-')), estilos['TD']),
+                Paragraph(escapar(item.get('cliente', '-')), estilos['TD']),
+                Paragraph(f"$ {_formato_numero(item.get('saldo'))}", estilos['TD_Right']),
+            ])
+        elementos.append(crear_tabla_datos(
+            filas_cobros, [2 * cm, 3 * cm, 2.5 * cm, 7.5 * cm, 4 * cm], estilos
+        ))
 
     construir_documento(crear_documento(buffer), elementos)
     return buffer.getvalue()
