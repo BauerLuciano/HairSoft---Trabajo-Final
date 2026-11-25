@@ -1085,4 +1085,26 @@ onMounted(() => fetchDashboardData())
 }
 :root.light-theme .badge-dias { background: #dbeafe; color: #1d4ed8; }
 :root.light-theme .badge-dias.critico { background: #fee2e2; color: #b91c1c; }
+
+/* FILTROS DE FECHA EN PANTALLAS PEQUEÑAS */
+@media (max-width: 768px) {
+  .dashboard-header { padding: 1rem; gap: 1rem; }
+  .header-right { width: 100%; gap: 0.75rem; }
+  .period-selector {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .period-selector button {
+    flex: 1 1 45%;
+    justify-content: center;
+    white-space: nowrap;
+    padding: 9px 10px;
+    gap: 6px;
+    font-size: 0.85rem;
+  }
+}
+@media (max-width: 480px) {
+  .dashboard-wrapper { padding: 1rem; }
+  .period-selector button { font-size: 0.8rem; padding: 8px; }
+}
 </style>
