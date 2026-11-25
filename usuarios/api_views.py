@@ -9,6 +9,7 @@ import django_filters
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Sum, Count, F, Value, DecimalField, ExpressionWrapper, FloatField, Q, Avg, OuterRef, Subquery, IntegerField
@@ -35,7 +36,8 @@ import io
 import datetime
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
-from .pdf_utils import generar_liquidacion_pdf
+from .pdf_utils import generar_liquidacion_pdf, generar_pdf_error
+from .pdf_institucional import obtener_datos_emision, es_admin_o_recepcion
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.platypus import Image as ImageRL 
@@ -313,6 +315,8 @@ class ReporteLiquidacionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        if not es_admin_o_recepcion(request.user):
+            raise PermissionDenied('No tiene permiso para consultar liquidaciones.')
         inicio = request.query_params.get('fecha_inicio')
         fin = request.query_params.get('fecha_fin')
         peluquero_id = request.query_params.get('peluquero_id')
@@ -473,11 +477,13 @@ class ReporteLiquidacionPDFView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        if not es_admin_o_recepcion(request.user):
+            raise PermissionDenied('No tiene permiso para descargar liquidaciones.')
         inicio = request.query_params.get('fecha_inicio')
         fin = request.query_params.get('fecha_fin')
         peluquero_id = request.query_params.get('peluquero_id')
         
-        usuario_impresor = f"{request.user.nombre} {request.user.apellido}"
+        datos_emision = obtener_datos_emision(request)
         es_historial = request.query_params.get('origen') == 'historial'
 
         empleados = Usuario.objects.filter(is_active=True, rol__nombre='Peluquero')
@@ -530,7 +536,15 @@ class ReporteLiquidacionPDFView(APIView):
                 'turnos': lista_turnos 
             })
 
-        pdf_bytes = generar_liquidacion_pdf(data_empleados, inicio, fin, usuario_impresor, es_pagado=es_historial)
+        try:
+            pdf_bytes = generar_liquidacion_pdf(
+                data_empleados, inicio, fin, datos_emision, es_pagado=es_historial
+            )
+        except Exception as e:
+            pdf_bytes = generar_pdf_error(
+                f"ERROR al generar reporte:\n{str(e)}", datos_emision=datos_emision
+            )
+            return HttpResponse(pdf_bytes, content_type='application/pdf', status=500)
 
         return HttpResponse(pdf_bytes, content_type='application/pdf')
     

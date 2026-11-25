@@ -284,6 +284,7 @@ urlpatterns = [
     path('api/turnos/<int:turno_id>/oferta-info/<str:token>/', func_views.obtener_info_oferta, name='oferta_info_api'),
     #Dashboard
     path('api/dashboard/', func_views.dashboard_data, name='dashboard_data'),
+    path('api/dashboard/pdf/', func_views.descargar_balance_operativo_pdf, name='dashboard_pdf'),
 
     # Solicitudes Presupuesto
     path('api/solicitudes-presupuesto/', SolicitudPresupuestoViewSet.as_view({'get': 'list'}), name='solicitudes-list'),
@@ -322,6 +323,7 @@ urlpatterns = [
     path('api/web/configuracion/', ConfigWebView.as_view(), name='configuracion-web'),
     
     path('api/estadisticas/', EstadisticasDashboardAPIView.as_view(), name='estadisticas'),
+    path('api/estadisticas/pdf/', func_views.descargar_reporte_estrategico_pdf, name='estadisticas_pdf'),
     
     path('api/estado-caja/', verificar_estado_caja, name='estado_caja'),    
 

@@ -375,8 +375,6 @@
 import { ref, onMounted, computed, nextTick } from 'vue';
 import axios from '@/utils/axiosConfig'; 
 import Chart from 'chart.js/auto';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 import { Scissors, ShoppingBag, CircleDollarSign, Boxes, CalendarCheck, CreditCard } from 'lucide-vue-next';
 
 const filtros = ref({ fecha_inicio: '', fecha_fin: '', periodo: 'month' });
@@ -706,82 +704,39 @@ const cargarEstadisticas = async () => {
   }
 };
 
+const descargarBlob = (blob, filename) => {
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement('a');
+  enlace.href = url;
+  enlace.download = filename;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  URL.revokeObjectURL(url);
+};
+
 const generatePDF = async () => {
   isGeneratingPDF.value = true;
-  
+  error.value = null;
+
   try {
-    if (turnosChartInstance) {
-      document.getElementById('pdf-chart-torta').src = turnosChartInstance.toBase64Image();
-    }
-    if (pagosChartInstance) {
-      document.getElementById('pdf-chart-barras').src = pagosChartInstance.toBase64Image();
-    }
-    const imgServ = document.getElementById('pdf-chart-servicios');
-    if (serviciosChartInstance && imgServ) {
-      imgServ.src = serviciosChartInstance.toBase64Image();
-    }
-    const imgProd = document.getElementById('pdf-chart-productos');
-    if (productosChartInstance && imgProd) {
-      imgProd.src = productosChartInstance.toBase64Image();
-    }
-
-    const el = document.getElementById('print-template');
-    if (!el) throw new Error('No se encontró el template del PDF');
-
-    el.style.display = 'block';
-    el.style.position = 'absolute';
-    el.style.top = '-9999px';
-    el.style.left = '-9999px';
-
-    await new Promise(r => setTimeout(r, 500));
-
-    const canvas = await html2canvas(el, {
-      scale: 5,
-      useCORS: true,
-      backgroundColor: '#ffffff',
+    const response = await axios.get('/api/estadisticas/pdf/', {
+      params: {
+        fecha_inicio: filtros.value.fecha_inicio,
+        fecha_fin: filtros.value.fecha_fin,
+      },
+      responseType: 'blob',
     });
 
-    el.style.display = 'none';
-    el.style.position = 'relative';
-    el.style.top = '0';
-    el.style.left = '0';
-
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
-    
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
-    const imgProps = pdf.getImageProperties(imgData);
-    const totalImgHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-    let heightLeft = totalImgHeight;
-    let position = 0;
-    let pageNumber = 1;
-    const pageHeight = pdfHeight - 10; 
-    const totalPages = Math.ceil(totalImgHeight / pageHeight) || 1;
-
-    pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, totalImgHeight);
-    heightLeft -= pageHeight;
-    pdf.setFontSize(8);
-    pdf.setTextColor(100, 116, 139);
-    pdf.text(`Reporte Administrativo - Página ${pageNumber} de ${totalPages}`, pdfWidth - 65, pdfHeight - 5);
-
-    while (heightLeft > 0) {
-      position = heightLeft - totalImgHeight; 
-      pdf.addPage();
-      pageNumber++;
-      pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, totalImgHeight);
-      heightLeft -= pageHeight;
-      
-      pdf.setFontSize(8);
-      pdf.setTextColor(100, 116, 139);
-      pdf.text(`Reporte Administrativo - Página ${pageNumber} de ${totalPages}`, pdfWidth - 65, pdfHeight - 5);
-    }
-
-    pdf.save(`Reporte_Estrategico_${filtros.value.fecha_inicio}_al_${filtros.value.fecha_fin}.pdf`);
-    
+    const disposicion = response.headers['content-disposition'] || '';
+    const coincidencia = disposicion.match(/filename="?([^";]+)"?/i);
+    const filename = coincidencia
+      ? coincidencia[1]
+      : `Reporte_Estrategico_${filtros.value.fecha_inicio}_al_${filtros.value.fecha_fin}.pdf`;
+    descargarBlob(new Blob([response.data], { type: 'application/pdf' }), filename);
   } catch (err) {
     console.error('Error generando PDF:', err);
+    error.value = 'No se pudo generar el reporte administrativo.';
   } finally {
     isGeneratingPDF.value = false;
   }

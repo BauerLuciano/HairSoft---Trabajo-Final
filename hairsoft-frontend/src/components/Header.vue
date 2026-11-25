@@ -449,6 +449,7 @@ onUnmounted(() => {
 
 .brand-section {
   flex: 1;
+  min-width: 0;
   position: relative;
 }
 
@@ -463,6 +464,10 @@ onUnmounted(() => {
   text-transform: uppercase;
   margin: 0;
   line-height: 1.2;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
 }
 

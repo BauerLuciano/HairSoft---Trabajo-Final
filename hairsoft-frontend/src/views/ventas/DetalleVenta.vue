@@ -302,8 +302,18 @@ const generarComprobantePDF = async () => {
   if (generandoPDF.value || !venta.value) return
   generandoPDF.value = true
   try {
-    const url = `${API_BASE}/usuarios/api/ventas/${venta.value.id}/comprobante-pdf/`
-    window.open(url, '_blank')
+    const response = await axios.get(
+      `/api/ventas/${venta.value.id}/comprobante-pdf/`,
+      { responseType: 'blob' }
+    )
+    const urlBlob = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+    const enlace = document.createElement('a')
+    enlace.href = urlBlob
+    enlace.download = `Comprobante_Venta_${venta.value.id}.pdf`
+    document.body.appendChild(enlace)
+    enlace.click()
+    enlace.remove()
+    URL.revokeObjectURL(urlBlob)
   } catch (e) {
     Swal.fire('Error', 'No se pudo generar el PDF', 'error')
   } finally {

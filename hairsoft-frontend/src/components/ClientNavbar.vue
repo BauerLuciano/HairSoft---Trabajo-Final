@@ -10,7 +10,7 @@
               <span v-else class="logo-icon">✂️</span>
             </div>
             <div class="brand-info">
-              <span class="brand-name">Hairsoft</span>
+              <span class="brand-name" :title="brandNombre">{{ brandNombre }}</span>
             </div>
           </router-link>
         </div>
@@ -548,6 +548,11 @@ onUnmounted(() => {
 /* ============================================
    LOGO
    ============================================ */
+.logo-section {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .logo-wrapper {
   display: flex;
   align-items: center;
@@ -576,10 +581,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
   text-decoration: none;
 }
 
 .logo-container {
+  flex: 0 0 auto;
   width: 46px;
   height: 46px;
   background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
@@ -625,11 +632,15 @@ onUnmounted(() => {
 .brand-info {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 
 .brand-name {
   font-size: 1.35rem;
+  line-height: 1.2;
   font-weight: 800;
   background: linear-gradient(135deg, #fff 0%, #e0e7ff 100%);
   -webkit-background-clip: text;
@@ -638,7 +649,7 @@ onUnmounted(() => {
   letter-spacing: 1px;
   text-transform: uppercase;
   text-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
-  max-width: 260px;
+  max-width: min(260px, 100%);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

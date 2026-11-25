@@ -27,9 +27,9 @@
           </button>
         </div>
 
-        <button @click="generatePDF" class="pdf-btn" :disabled="loading">
+        <button @click="generatePDF" class="pdf-btn" :disabled="loading || generandoPDF">
           <i class="fas fa-file-invoice-dollar"></i>
-          Exportar Balance
+          {{ generandoPDF ? 'Exportando...' : 'Exportar Balance' }}
         </button>
       </div>
     </header>
@@ -362,16 +362,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from '@/utils/axiosConfig'
-import html2canvas from 'html2canvas'
-import jsPDF from 'jspdf'
 
 const router = useRouter()
 const logoBase64 = ref(null) 
 const selectedPeriod = ref('semana')
 const loading = ref(true)
+const generandoPDF = ref(false)
 const error = ref(null)
 const customDateRange = ref(false)
 const dateFrom = ref('')
@@ -548,42 +547,39 @@ const showTooltip = (i, v, e) => {
 }
 const hideTooltip = () => tooltip.value.visible = false
 
+const descargarBlob = (blob, filename) => {
+  const url = URL.createObjectURL(blob)
+  const enlace = document.createElement('a')
+  enlace.href = url
+  enlace.download = filename
+  document.body.appendChild(enlace)
+  enlace.click()
+  enlace.remove()
+  URL.revokeObjectURL(url)
+}
+
 const generatePDF = async () => {
-  loading.value = true
+  generandoPDF.value = true
+  error.value = null
   try {
-    if (dashboardData.value.empresa?.logo && !logoBase64.value) {
-      logoBase64.value = await convertToBase64(dashboardData.value.empresa.logo)
-    }
+    const params = customDateRange.value && dateFrom.value && dateTo.value
+      ? { date_from: dateFrom.value, date_to: dateTo.value }
+      : { period: selectedPeriod.value }
 
-    await nextTick()
-    const el = document.getElementById('print-template')
-    if (!el) throw new Error('No se encontró el elemento #print-template')
-    
-    el.style.display = 'block'
-    await new Promise(r => setTimeout(r, 500))
-
-    const canvas = await html2canvas(el, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: '#ffffff',
-      allowTaint: false,
-      foreignObjectRendering: false,
+    const response = await axios.get('/api/dashboard/pdf/', {
+      params,
+      responseType: 'blob',
     })
 
-    el.style.display = 'none'
-
-    const pdf = new jsPDF('p', 'mm', 'a4')
-    const imgData = canvas.toDataURL('image/jpeg', 0.95)
-    const pdfWidth = pdf.internal.pageSize.getWidth()
-    const imgProps = pdf.getImageProperties(imgData)
-    const imgHeight = (imgProps.height * pdfWidth) / imgProps.width
-
-    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, imgHeight)
-    pdf.save(`Balance_Operativo.pdf`)
+    const disposicion = response.headers['content-disposition'] || ''
+    const coincidencia = disposicion.match(/filename="?([^";]+)"?/i)
+    const filename = coincidencia ? coincidencia[1] : 'Balance_Operativo.pdf'
+    descargarBlob(new Blob([response.data], { type: 'application/pdf' }), filename)
   } catch (err) {
     console.error('🔴 generatePDF - Error:', err)
+    error.value = 'No se pudo generar el balance operativo.'
   } finally {
-    loading.value = false
+    generandoPDF.value = false
   }
 }
 

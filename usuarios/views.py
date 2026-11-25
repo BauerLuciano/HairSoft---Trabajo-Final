@@ -37,6 +37,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import api_view, permission_classes, authentication_classes, action
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly, IsAdminUser
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response 
 
 # 4. Local App Imports
@@ -62,7 +63,14 @@ from .serializers import (
 )
 from .forms import UsuarioForm 
 from .mercadopago_service import MercadoPagoService
-from .pdf_utils import generar_comprobante_venta, generar_reporte_ventas, generar_comprobante_turno, generar_comprobante_pedido_web, generar_cierre_caja_pdf
+from .pdf_utils import (
+    generar_comprobante_venta, generar_reporte_ventas, generar_comprobante_turno,
+    generar_comprobante_pedido_web, generar_cierre_caja_pdf,
+    generar_balance_operativo_pdf, generar_reporte_estrategico_pdf, generar_pdf_error,
+)
+from .pdf_institucional import (
+    obtener_datos_emision, puede_descargar_comprobante, es_admin_o_recepcion,
+)
 from .turno_service import TurnoService
 
 # Configuración del logger
@@ -4288,39 +4296,28 @@ def debug_ventas(request):
     })
 
 @api_view(['GET'])
-@permission_classes([AllowAny]) 
+@permission_classes([IsAuthenticated])
 def generar_comprobante_pdf(request, venta_id):
+    datos_emision = obtener_datos_emision(request)
+    venta = get_object_or_404(Venta, id=venta_id)
+    # Solo administración/recepción pueden descargar comprobantes de venta.
+    if not es_admin_o_recepcion(request.user):
+        raise PermissionDenied('No tiene permiso para descargar este comprobante.')
     try:
-        # 1. Obtener datos de la venta
-        venta = get_object_or_404(Venta, id=venta_id)
         detalles = DetalleVenta.objects.filter(venta=venta)
         venta_data = VentaSerializer(venta).data
-        
-        # 3. DETERMINAR EL NOMBRE DEL EMISOR (LÓGICA CORREGIDA)
-        # Prioridad 1: Lo que manda el Frontend por URL (Ej: ?impreso_por=Lionel Messi)
-        usuario_impresor = request.query_params.get('impreso_por')
 
-        # Prioridad 2: Si por milagro hay usuario autenticado (difícil en PDF/NewTab)
-        if not usuario_impresor and request.user and request.user.is_authenticated:
-            n = getattr(request.user, 'nombre', '')
-            a = getattr(request.user, 'apellido', '')
-            usuario_impresor = f"{n} {a}".strip()
+        pdf_content = generar_comprobante_venta(venta_data, detalles, datos_emision)
 
-        # Prioridad 3: Fallback si no hay nada
-        if not usuario_impresor:
-            usuario_impresor = "Caja Principal"
-
-        # 4. Generar PDF pasando el usuario forzado
-        pdf_content = generar_comprobante_venta(venta_data, detalles, usuario_impresor)
-        
         response = HttpResponse(pdf_content, content_type='application/pdf')
         filename = f"Comprobante_Venta_{venta.id}.pdf"
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        
         return response
 
     except Exception as e:
-        return HttpResponse(f"Error generando comprobante: {str(e)}", status=500)
+        mensaje = f"Error generando comprobante: {str(e)}"
+        pdf_error = generar_pdf_error(mensaje, datos_emision=datos_emision)
+        return HttpResponse(pdf_error, content_type='application/pdf', status=500)
     
 # ================================
 # PEDIDOS
@@ -7585,20 +7582,21 @@ def aceptar_oferta_turno(request, turno_id, token):
         return Response({'error': str(e)}, status=500)
 
 def exportar_listado_ventas_pdf(request):
+    if not getattr(request.user, 'is_authenticated', False):
+        return JsonResponse({'error': 'Autenticación requerida.'}, status=401)
+    if not es_admin_o_recepcion(request.user):
+        return JsonResponse({'error': 'No tiene permiso para exportar el listado de ventas.'}, status=403)
+    datos_emision = obtener_datos_emision(request)
+    config = None
     try:
-        from .pdf_utils import generar_reporte_ventas
         from .models import Venta, ConfiguracionSistema
         from datetime import datetime
-        from io import BytesIO
-        from django.http import HttpResponse
 
-        # Obtener filtros
         fecha_desde = request.GET.get('fecha_desde')
         fecha_hasta = request.GET.get('fecha_hasta')
         metodo_pago = request.GET.get('metodo_pago')
         tipo = request.GET.get('tipo')
         estado = request.GET.get('estado')
-        nombre_impresor = request.GET.get('impreso_por')
 
         queryset = Venta.objects.all().order_by('-fecha')
 
@@ -7606,18 +7604,17 @@ def exportar_listado_ventas_pdf(request):
             queryset = queryset.filter(fecha__date__gte=fecha_desde)
         if fecha_hasta:
             queryset = queryset.filter(fecha__date__lte=fecha_hasta)
-            
+
         if metodo_pago:
             if 'MERCADO' in metodo_pago.upper():
                 queryset = queryset.filter(medio_pago__tipo__icontains='MERCADO')
             else:
                 queryset = queryset.filter(medio_pago__tipo=metodo_pago)
-                
+
         if tipo:
-            # ✅ SOPORTE PARA MÚLTIPLES TIPOS (PRODUCTO,VENTA)
             tipos_list = [t.strip() for t in tipo.split(',')]
             queryset = queryset.filter(tipo__in=tipos_list)
-            
+
         if estado == 'activa':
             queryset = queryset.filter(anulada=False)
         elif estado == 'anulada':
@@ -7626,50 +7623,29 @@ def exportar_listado_ventas_pdf(request):
         ventas = list(queryset)
         config = ConfiguracionSistema.get_solo()
 
-        # Determinar nombre del impresor
-        if nombre_impresor:
-            usuario_impresor = nombre_impresor
-        else:
-            user = request.user
-            if user.is_authenticated:
-                if hasattr(user, 'get_full_name') and callable(user.get_full_name):
-                    nombre_completo = user.get_full_name().strip()
-                elif hasattr(user, 'nombre') and hasattr(user, 'apellido'):
-                    nombre_completo = f"{user.nombre or ''} {user.apellido or ''}".strip()
-                else:
-                    nombre_completo = getattr(user, 'username', '')
-                usuario_impresor = nombre_completo if nombre_completo else "Sistema"
-            else:
-                usuario_impresor = "Sistema"
-
-        # ✅ DICCIONARIO DE FILTROS SIN EL 'TIPO' PARA EL ENCABEZADO
         filtros_dict = {
             'fecha_desde': fecha_desde,
             'fecha_hasta': fecha_hasta,
             'metodo_pago': metodo_pago,
+            'tipo': tipo,
             'estado': estado,
         }
 
-        pdf_bytes = generar_reporte_ventas(ventas, filtros_dict, usuario_impresor, config)
+        pdf_bytes = generar_reporte_ventas(ventas, filtros_dict, datos_emision, config)
 
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="reporte_ventas_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf"'
+        fecha_archivo = datetime.strptime(
+            datos_emision['fecha_emision'], '%d/%m/%Y %H:%M:%S'
+        ).strftime('%Y%m%d_%H%M%S')
+        response['Content-Disposition'] = f'attachment; filename="reporte_ventas_{fecha_archivo}.pdf"'
         return response
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.pagesizes import letter
-        error_buffer = BytesIO()
-        c = canvas.Canvas(error_buffer, pagesize=letter)
-        y = 750
-        c.drawString(50, y, "ERROR al generar reporte:")
-        y -= 20
-        c.drawString(50, y, str(e))
-        c.save()
-        error_buffer.seek(0)
-        return HttpResponse(error_buffer, content_type='application/pdf', status=500)
+        mensaje = f"ERROR al generar reporte:\n{str(e)}"
+        pdf_error = generar_pdf_error(mensaje, config, datos_emision)
+        return HttpResponse(pdf_error, content_type='application/pdf', status=500)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -7897,6 +7873,8 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['GET'])
     def reporte(self, request, pk=None):
         """Genera y descarga el reporte PDF Z de cualquier caja cerrada (Historial)"""
+        if not es_admin_o_recepcion(request.user):
+            raise PermissionDenied('No tiene permiso para descargar cierres de caja.')
         sesion = self.get_object()
         
         if sesion.esta_abierta:
@@ -7909,7 +7887,9 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         except:
             config = None
 
-        pdf_bytes = generar_cierre_caja_pdf(sesion, movimientos, config)
+        pdf_bytes = generar_cierre_caja_pdf(
+            sesion, movimientos, config, obtener_datos_emision(request)
+        )
 
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="Cierre_Caja_{sesion.id}.pdf"'
@@ -7934,6 +7914,8 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
     # 🔥 NUEVO ENDPOINT PARA DESCARGAR PDF
     @action(detail=True, methods=['GET'])
     def descargar_pdf(self, request, pk=None):
+        if not es_admin_o_recepcion(request.user):
+            raise PermissionDenied('No tiene permiso para descargar cierres de caja.')
         sesion = self.get_object()
         movimientos = sesion.movimientos.all().order_by('fecha')
         
@@ -7942,7 +7924,9 @@ class SesionCajaViewSet(viewsets.ModelViewSet):
         except:
             config = None
 
-        pdf_bytes = generar_cierre_caja_pdf(sesion, movimientos, config)
+        pdf_bytes = generar_cierre_caja_pdf(
+            sesion, movimientos, config, obtener_datos_emision(request)
+        )
 
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="Cierre_Caja_{sesion.id}.pdf"'
@@ -8006,36 +7990,127 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
         # El registro de auditoría lo genera automáticamente la señal post_save
         # de MovimientoCaja (INGRESO_MANUAL / EGRESO_MANUAL), evitando duplicados.
 
-#reportes de turnos y pedidos web
+# reportes de turnos y pedidos web
 @api_view(['GET'])
-@permission_classes([AllowAny]) # Lo dejamos AllowAny porque un cliente en la web podría no estar logueado (depende de tu flujo)
+@permission_classes([IsAuthenticated])
 def descargar_comprobante_turno(request, turno_id):
+    datos_emision = obtener_datos_emision(request)
+    turno = get_object_or_404(Turno, id=turno_id)
+    if not puede_descargar_comprobante(request.user, turno.cliente_id):
+        raise PermissionDenied('No tiene permiso para descargar este comprobante.')
     try:
-        turno = get_object_or_404(Turno, id=turno_id)
-        
-        pdf_content = generar_comprobante_turno(turno)
-        
+        pdf_content = generar_comprobante_turno(turno, datos_emision)
+
         response = HttpResponse(pdf_content, content_type='application/pdf')
         filename = f"Comprobante_Turno_{turno.id}.pdf"
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        
         return response
     except Exception as e:
-        return HttpResponse(f"Error generando comprobante de turno: {str(e)}", status=500)
+        mensaje = f"Error generando comprobante de turno: {str(e)}"
+        pdf_error = generar_pdf_error(mensaje, datos_emision=datos_emision)
+        return HttpResponse(pdf_error, content_type='application/pdf', status=500)
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def descargar_comprobante_pedido_web(request, pedido_id):
+    datos_emision = obtener_datos_emision(request)
+    pedido = get_object_or_404(PedidoWeb, id=pedido_id)
+    if not puede_descargar_comprobante(request.user, pedido.cliente_id):
+        raise PermissionDenied('No tiene permiso para descargar este comprobante.')
     try:
-        pedido = get_object_or_404(PedidoWeb, id=pedido_id)
-        pdf_content = generar_comprobante_pedido_web(pedido)
-        
+        pdf_content = generar_comprobante_pedido_web(pedido, datos_emision)
+
         response = HttpResponse(pdf_content, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="Comprobante_Compra_{pedido.id}.pdf"'
         return response
     except Exception as e:
-        return HttpResponse(f"Error generando comprobante: {str(e)}", status=500)
+        mensaje = f"Error generando comprobante: {str(e)}"
+        pdf_error = generar_pdf_error(mensaje, datos_emision=datos_emision)
+        return HttpResponse(pdf_error, content_type='application/pdf', status=500)
+
+
+# ====================================================================
+# PDFs institucionales que reemplazan a los generados en el navegador
+# ====================================================================
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def descargar_balance_operativo_pdf(request):
+    """Genera el Balance Operativo usando exactamente los datos de /api/dashboard/."""
+    if not es_admin_o_recepcion(request.user):
+        raise PermissionDenied('No tiene permiso para descargar el balance operativo.')
+    from rest_framework.test import APIRequestFactory, force_authenticate
+
+    datos_emision = obtener_datos_emision(request)
+    config = None
+    try:
+        fabrica = APIRequestFactory()
+        params = request.query_params.dict()
+        interna = fabrica.get('/api/dashboard/', data=params)
+        force_authenticate(interna, user=request.user)
+        respuesta = dashboard_data(interna)
+        if getattr(respuesta, 'status_code', 200) != 200:
+            raise RuntimeError(f"El servicio de dashboard devolvió {respuesta.status_code}")
+        config = ConfiguracionSistema.get_solo()
+        pdf_bytes = generar_balance_operativo_pdf(
+            respuesta.data, config, datos_emision, params
+        )
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        fecha_archivo = datetime.strptime(
+            datos_emision['fecha_emision'], '%d/%m/%Y %H:%M:%S'
+        ).strftime('%Y%m%d_%H%M%S')
+        response['Content-Disposition'] = (
+            f'attachment; filename="Balance_Operativo_{fecha_archivo}.pdf"'
+        )
+        return response
+    except Exception as e:
+        traceback.print_exc()
+        pdf_error = generar_pdf_error(f"ERROR al generar reporte:\n{str(e)}", config, datos_emision)
+        return HttpResponse(pdf_error, content_type='application/pdf', status=500)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def descargar_reporte_estrategico_pdf(request):
+    """Genera el Reporte Estratégico usando exactamente los datos de /api/estadisticas/."""
+    if not es_admin_o_recepcion(request.user):
+        raise PermissionDenied('No tiene permiso para descargar el reporte estratégico.')
+    from rest_framework.test import APIRequestFactory, force_authenticate
+    from .api_views import EstadisticasDashboardAPIView
+
+    datos_emision = obtener_datos_emision(request)
+    config = None
+    try:
+        fecha_inicio = request.query_params.get('fecha_inicio')
+        fecha_fin = request.query_params.get('fecha_fin')
+        fabrica = APIRequestFactory()
+        parametros = {
+            clave: valor for clave, valor in (
+                ('fecha_inicio', fecha_inicio), ('fecha_fin', fecha_fin)
+            ) if valor
+        }
+        interna = fabrica.get('/api/estadisticas/', data=parametros)
+        force_authenticate(interna, user=request.user)
+        respuesta = EstadisticasDashboardAPIView.as_view()(interna)
+        if respuesta.status_code != 200:
+            detalle = respuesta.data.get('error', 'No se pudieron obtener las estadísticas.')
+            pdf_error = generar_pdf_error(
+                f"ERROR al generar reporte:\n{detalle}", config, datos_emision
+            )
+            return HttpResponse(pdf_error, content_type='application/pdf', status=respuesta.status_code)
+        config = ConfiguracionSistema.get_solo()
+        pdf_bytes = generar_reporte_estrategico_pdf(
+            respuesta.data, config, datos_emision, fecha_inicio, fecha_fin
+        )
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="Reporte_Estrategico_{fecha_inicio}_al_{fecha_fin}.pdf"'
+        )
+        return response
+    except Exception as e:
+        traceback.print_exc()
+        pdf_error = generar_pdf_error(f"ERROR al generar reporte:\n{str(e)}", config, datos_emision)
+        return HttpResponse(pdf_error, content_type='application/pdf', status=500)
 
 def retorno_mercadopago(request):
     """

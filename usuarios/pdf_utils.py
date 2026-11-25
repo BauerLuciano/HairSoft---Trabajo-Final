@@ -1,162 +1,134 @@
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
-from reportlab.lib.units import cm, mm
-from io import BytesIO
+"""Generadores PDF de HairSoft.
+
+Todos los documentos usan los helpers institucionales de `pdf_institucional`:
+la empresa se lee siempre de ConfiguracionSistema, la emisión se registra una
+sola vez y el pie.numera "Página X de Y" con el total real de páginas.
+"""
+import re
 from datetime import datetime
-import os
-import requests
-from django.conf import settings
+from io import BytesIO
+
 from django.db.models import Sum
-from .models import ConfiguracionSistema
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
-# --- CONFIGURACIÓN DE ESTILOS GLOBALES ---
-AZUL_HEADER = colors.HexColor('#0f172a') 
-GRIS_TEXTO = colors.HexColor('#334155')
-GRIS_CLARO = colors.HexColor('#64748b')
-FONDO_ZEBRA = colors.HexColor('#f8fafc')
-BLANCO = colors.HexColor('#ffffff')
-VERDE_EXITO = colors.HexColor('#10b981')
+from .pdf_institucional import (
+    AZUL_CLARO,
+    AZUL_HEADER,
+    BLANCO,
+    FONDO_ZEBRA,
+    GENERACION_AUTOMATICA,
+    GRIS_CLARO,
+    GRIS_TEXTO,
+    NARANJA,
+    ROJO,
+    VERDE_EXITO,
+    construir_documento,
+    construir_encabezado,
+    crear_documento,
+    crear_grafico_barras,
+    crear_grafico_dona,
+    crear_grafico_lineas,
+    crear_tabla_datos,
+    dibujar_pie,
+    escapar,
+    formato_moneda_arg,
+    formato_moneda_compacta_arg,
+    formato_numero_arg,
+    formatear_fecha_filtro,
+    formatear_fecha_operacion,
+    generar_pdf_error as _generar_pdf_error_institucional,
+    get_estilos as _get_estilos,
+    obtener_configuracion,
+    obtener_datos_emision,
+    obtener_logo_reporte as _obtener_logo_reporte,
+    sello_pagado as _sello_pagado,
+    solicitante_emision,
+)
 
-def get_estilos():
-    styles = getSampleStyleSheet()
-    return {
-        'Empresa': ParagraphStyle('Empresa', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, textColor=AZUL_HEADER, textTransform='uppercase', leading=13),
-        'DatosEmpresa': ParagraphStyle('DatosEmpresa', parent=styles['Normal'], fontName='Helvetica', fontSize=10, textColor=GRIS_TEXTO, leading=12),
-        'TituloDer': ParagraphStyle('TituloDer', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=14, textColor=AZUL_HEADER, alignment=TA_RIGHT, textTransform='uppercase', spaceAfter=5),
-        'DatoDerL': ParagraphStyle('DatoDerL', parent=styles['Normal'], fontName='Helvetica', fontSize=9, textColor=GRIS_CLARO, alignment=TA_RIGHT, textTransform='uppercase'),
-        'DatoDerV': ParagraphStyle('DatoDerV', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, textColor=AZUL_HEADER, alignment=TA_RIGHT),
-        'TH': ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=9, textColor=BLANCO),
-        'TD': ParagraphStyle('TD', fontName='Helvetica', fontSize=9, textColor=GRIS_TEXTO),
-        'TD_Right': ParagraphStyle('TD_Right', parent=styles['Normal'], fontName='Helvetica', fontSize=9, textColor=GRIS_TEXTO, alignment=TA_RIGHT),
-    }
+# Re-exportados para compatibilidad con código existente.
+get_estilos = _get_estilos
+obtener_logo_reporte = _obtener_logo_reporte
 
-def obtener_logo_reporte(config):
-    try:
-        if config.logo:
-            if hasattr(config.logo, 'url'):
-                try:
-                    response = requests.get(config.logo.url, timeout=5)
-                    if response.status_code == 200:
-                        img_data = BytesIO(response.content)
-                        return Image(img_data, width=2.2*cm, height=2.2*cm)
-                except:
-                    pass 
-            
-            return Image(config.logo.path, width=2.2*cm, height=2.2*cm)
-    except Exception as e:
-        print(f"Error cargando logo dinámico: {e}")
-    
-    logo_path = os.path.join(settings.BASE_DIR, 'logo_barberia.jpg')
-    if os.path.exists(logo_path):
-        return Image(logo_path, width=2.2*cm, height=2.2*cm)
-    return None
 
-def footer(canvas, doc):
-    canvas.saveState()
-    canvas.setFont('Helvetica', 8)
-    canvas.setFillColor(GRIS_CLARO)
-    width, height = A4
-    canvas.drawCentredString(width / 2, 1.5 * cm, "HairSoft - Sistema de Gestión Integral")
-    canvas.drawRightString(width - 2 * cm, 1.5 * cm, f"Página {canvas.getPageNumber()}")
-    canvas.restoreState()
+def footer(canvas_obj, doc):
+    """Pie institucional simple (compatibilidad)."""
+    dibujar_pie(canvas_obj, doc, 1)
 
-def sello_pagado(canvas, doc):
-    footer(canvas, doc)
-    canvas.saveState()
-    canvas.translate(300, 400) 
-    canvas.rotate(25) 
-    c_rojo = colors.Color(0.8, 0, 0, alpha=0.3)
-    canvas.setStrokeColor(c_rojo)
-    canvas.setFillColor(c_rojo)
-    canvas.setLineWidth(5)
-    canvas.roundRect(-100, -40, 200, 80, 10, stroke=1, fill=0)
-    canvas.setFont("Helvetica-Bold", 40)
-    canvas.drawCentredString(0, -10, "PAGADO")
-    canvas.setFont("Helvetica-Bold", 10)
-    canvas.drawCentredString(0, -30, f"LIQUIDADO: {datetime.now().strftime('%d/%m/%Y')}")
-    canvas.restoreState()
+
+def sello_pagado(canvas_obj, doc, fecha_liquidacion=None):
+    """Sello PAGADO usando la fecha de emisión ya capturada."""
+    _sello_pagado(canvas_obj, doc, fecha_liquidacion)
+
+
+def limpiar_texto(texto):
+    if texto is None:
+        return ""
+    texto = str(texto)
+    texto = re.sub(r'[^\x20-\x7EáéíóúÁÉÍÓÚñÑ\s]', '', texto)
+    return texto.strip()
+
+
+def _formato_numero(valor):
+    return formato_numero_arg(valor)
+
+
+def _formato_moneda(valor):
+    return formato_moneda_arg(valor)
+
+
+def formatear_periodo_balance(filtros=None):
+    filtros = filtros or {}
+    if filtros.get('date_from') and filtros.get('date_to'):
+        return (
+            f"{formatear_fecha_filtro(filtros['date_from'])} al "
+            f"{formatear_fecha_filtro(filtros['date_to'])}"
+        )
+    etiquetas = {'hoy': 'Hoy', 'semana': '7 Días', 'mes': 'Este Mes'}
+    periodo = filtros.get('period') or 'semana'
+    return etiquetas.get(periodo, '7 Días')
+
 
 # ====================================================================
-#  1. GENERAR COMPROBANTE DE VENTA
+#  1. COMPROBANTE DE VENTA
 # ====================================================================
-def generar_comprobante_venta(venta_data, detalles, usuario_impresor):
-    config = ConfiguracionSistema.get_solo()
+def generar_comprobante_venta(venta_data, detalles, datos_emision=None):
+    config = obtener_configuracion()
+    datos_emision = datos_emision or obtener_datos_emision(None)
     buffer = BytesIO()
     estilos = get_estilos()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=50)
-    elements = []
 
-    logo_img = obtener_logo_reporte(config)
+    fecha_operacion = formatear_fecha_operacion(
+        venta_data.get('fecha') or datetime.now(), con_hora=True
+    )
+    encabezado = construir_encabezado(config, 'COMPROBANTE DE VENTA', [
+        ('SOLICITADO POR', solicitante_emision(datos_emision)),
+        ('NRO. COMPROBANTE', f"#{venta_data.get('id', 0):06d}"),
+        ('FECHA OPERACIÓN', fecha_operacion),
+        ('FECHA EMISIÓN', datos_emision['fecha_emision']),
+    ], estilos)
 
-    col_izq = [
-        Paragraph(config.razon_social, estilos['Empresa']),
-        Spacer(1, 4),
-        Paragraph(f"<b>CUIT:</b> {config.cuil_cuit}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>DIRECCIÓN:</b> {config.direccion}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>TELÉFONO:</b> {config.telefono}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>EMAIL:</b> {config.email}", estilos['DatosEmpresa']),
-    ]
-
-    if logo_img:
-        bloque_izquierda = Table([[logo_img, col_izq]], colWidths=[2.5*cm, 9.5*cm])
-        bloque_izquierda.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 0)]))
-    else:
-        bloque_izquierda = col_izq
-
-    fecha_dt = datetime.now()
-    if venta_data.get('fecha'):
-        try:
-            val = str(venta_data['fecha'])
-            if 'T' in val: fecha_dt = datetime.fromisoformat(val.replace('Z', '+00:00'))
-            elif isinstance(venta_data['fecha'], datetime): fecha_dt = venta_data['fecha']
-        except: pass
-    
-    emisor_nombre = usuario_impresor if usuario_impresor else "Sistema"
-
-    col_der = [
-        Paragraph("COMPROBANTE DE VENTA", estilos['TituloDer']),
-        Spacer(1, 6),
-        Paragraph("EMITIDO POR", estilos['DatoDerL']),
-        Paragraph(emisor_nombre, estilos['DatoDerV']),
-        Spacer(1, 3),
-        Paragraph("NRO. COMPROBANTE", estilos['DatoDerL']),
-        Paragraph(f"#{venta_data.get('id', 0):06d}", estilos['DatoDerV']),
-        Spacer(1, 3),
-        Paragraph("FECHA", estilos['DatoDerL']),
-        Paragraph(fecha_dt.strftime("%d/%m/%Y"), estilos['DatoDerV']),
-    ]
-
-    tabla_header = Table([[bloque_izquierda, col_der]], colWidths=[12*cm, 7*cm])
-    tabla_header.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('LEFTPADDING', (0,0), (-1,-1), 0),
-        ('RIGHTPADDING', (0,0), (-1,-1), 0),
-        ('LINEBELOW', (0,0), (-1,-1), 2, AZUL_HEADER),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 15),
-    ]))
-    elements.append(tabla_header)
-    elements.append(Spacer(1, 1*cm))
+    elementos = [encabezado, Spacer(1, 1 * cm)]
 
     cliente = venta_data.get('cliente_nombre') or "Consumidor Final"
     lbl_style = ParagraphStyle('L', fontSize=8, textColor=GRIS_CLARO, textTransform='uppercase')
     val_style = ParagraphStyle('V', fontName='Helvetica-Bold', fontSize=10, textColor=AZUL_HEADER)
 
     t_cliente = Table([[
-        [Paragraph("CLIENTE", lbl_style), Paragraph(cliente, val_style)],
-        [Paragraph("MEDIO DE PAGO", lbl_style), Paragraph(venta_data.get('medio_pago_nombre', 'Efectivo'), val_style)],
-        [Paragraph("TIPO", lbl_style), Paragraph(venta_data.get('tipo', 'VENTA'), val_style)],
-    ]], colWidths=[8*cm, 6*cm, 5*cm])
-    
+        [Paragraph("CLIENTE", lbl_style), Paragraph(escapar(cliente), val_style)],
+        [Paragraph("MEDIO DE PAGO", lbl_style), Paragraph(escapar(venta_data.get('medio_pago_nombre', 'Efectivo')), val_style)],
+        [Paragraph("TIPO", lbl_style), Paragraph(escapar(venta_data.get('tipo', 'VENTA')), val_style)],
+    ]], colWidths=[8 * cm, 6 * cm, 5 * cm])
     t_cliente.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), FONDO_ZEBRA),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('LEFTPADDING', (0,0), (-1,-1), 10),
+        ('BACKGROUND', (0, 0), (-1, -1), FONDO_ZEBRA),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
     ]))
-    elements.append(t_cliente)
-    elements.append(Spacer(1, 1*cm))
+    elementos.append(t_cliente)
+    elementos.append(Spacer(1, 1 * cm))
 
     rows = [[
         Paragraph("DESCRIPCIÓN", estilos['TH']),
@@ -164,256 +136,173 @@ def generar_comprobante_venta(venta_data, detalles, usuario_impresor):
         Paragraph("PRECIO UNIT.", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)),
         Paragraph("SUBTOTAL", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)),
     ]]
-    
+
     for d in detalles:
         desc = "Item"
-        if hasattr(d, 'producto') and d.producto: desc = d.producto.nombre
-        elif hasattr(d, 'servicio') and d.servicio: desc = d.servicio.nombre
-        elif hasattr(d, 'turno') and d.turno: desc = f"Servicio Turno #{d.turno.id}"
-        
+        if hasattr(d, 'producto') and d.producto:
+            desc = d.producto.nombre
+        elif hasattr(d, 'servicio') and d.servicio:
+            desc = d.servicio.nombre
+        elif hasattr(d, 'turno') and d.turno:
+            desc = f"Servicio Turno #{d.turno.id}"
+
         rows.append([
-            Paragraph(desc, estilos['TD']),
+            Paragraph(escapar(desc), estilos['TD']),
             Paragraph(str(int(d.cantidad)), estilos['TD']),
             Paragraph(f"${d.precio_unitario:,.2f}", estilos['TD_Right']),
             Paragraph(f"${d.subtotal:,.2f}", ParagraphStyle('TDB', parent=estilos['TD_Right'], fontName='Helvetica-Bold')),
         ])
 
-    t_items = Table(rows, colWidths=[9*cm, 2*cm, 4*cm, 4*cm])
+    t_items = Table(rows, colWidths=[9 * cm, 2 * cm, 4 * cm, 4 * cm])
     t_items.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), AZUL_HEADER),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('GRID', (0,1), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('BACKGROUND', (0, 0), (-1, 0), AZUL_HEADER),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 1), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
     ]))
-    elements.append(t_items)
-    
-    total_val = float(venta_data.get('total', 0))
-    t_total = Table([[Paragraph("TOTAL A PAGAR", estilos['TD_Right']), Paragraph(f"${total_val:,.2f}", estilos['DatoDerV'])]], colWidths=[14*cm, 5*cm])
-    elements.append(t_total)
+    elementos.append(t_items)
 
-    doc.build(elements, onFirstPage=footer, onLaterPages=footer)
+    total_val = float(venta_data.get('total', 0))
+    t_total = Table(
+        [[Paragraph("TOTAL A PAGAR", estilos['TD_Right']), Paragraph(f"${total_val:,.2f}", estilos['DatoDerV'])]],
+        colWidths=[14 * cm, 5 * cm],
+    )
+    elementos.append(t_total)
+
+    construir_documento(crear_documento(buffer), elementos)
     return buffer.getvalue()
 
+
 # ====================================================================
-#  2. GENERAR LIQUIDACIÓN DE SUELDOS
+#  2. LIQUIDACIÓN DE SUELDOS
 # ====================================================================
-def generar_liquidacion_pdf(data_empleados, fecha_inicio, fecha_fin, usuario_impresor, es_pagado=False):
-    config = ConfiguracionSistema.get_solo()
+def generar_liquidacion_pdf(data_empleados, fecha_inicio, fecha_fin, datos_emision=None, es_pagado=False):
+    config = obtener_configuracion()
+    datos_emision = datos_emision or obtener_datos_emision(None)
     buffer = BytesIO()
     estilos = get_estilos()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=50)
-    elements = []
 
-    logo_img = obtener_logo_reporte(config)
-
-    col_izq = [
-        Paragraph(config.razon_social, estilos['Empresa']),
-        Spacer(1, 4),
-        Paragraph(f"<b>CUIT:</b> {config.cuil_cuit}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>DIRECCIÓN:</b> {config.direccion}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>TELÉFONO:</b> {config.telefono}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>EMAIL:</b> {config.email}", estilos['DatosEmpresa']),
+    periodo_texto = f"{formatear_fecha_filtro(fecha_inicio)} al {formatear_fecha_filtro(fecha_fin)}"
+    elementos = [
+        construir_encabezado(
+            config,
+            'COMPROBANTE DE PAGO' if es_pagado else 'LIQUIDACIÓN PRELIMINAR',
+            [
+                ('SOLICITADO POR', solicitante_emision(datos_emision)),
+                ('PERÍODO', periodo_texto),
+                ('FECHA EMISIÓN', datos_emision['fecha_emision']),
+            ],
+            estilos,
+        ),
+        Spacer(1, 1 * cm),
     ]
 
-    if logo_img:
-        bloque_izquierda = Table([[logo_img, col_izq]], colWidths=[2.5*cm, 9.5*cm])
-        bloque_izquierda.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 0)]))
-    else:
-        bloque_izquierda = col_izq
-
-    titulo_texto = "COMPROBANTE DE PAGO" if es_pagado else "LIQUIDACIÓN PRELIMINAR"
-    emisor_nombre = usuario_impresor if usuario_impresor else "Sistema"
-    
-    # 🔥 MAGIA: Convertimos el formato de base de datos (YYYY-MM-DD) a formato latino (DD/MM/YYYY)
-    try:
-        f_inicio_str = datetime.strptime(str(fecha_inicio), '%Y-%m-%d').strftime('%d/%m/%Y')
-        f_fin_str = datetime.strptime(str(fecha_fin), '%Y-%m-%d').strftime('%d/%m/%Y')
-        periodo_texto = f"{f_inicio_str} al {f_fin_str}"
-    except:
-        periodo_texto = f"{fecha_inicio} al {fecha_fin}"
-    
-    col_der = [
-        Paragraph(titulo_texto, estilos['TituloDer']),
-        Spacer(1, 6),
-        Paragraph("EMITIDO POR", estilos['DatoDerL']),
-        Paragraph(emisor_nombre, estilos['DatoDerV']),
-        Spacer(1, 3),
-        Paragraph("PERÍODO", estilos['DatoDerL']),
-        Paragraph(periodo_texto, estilos['DatoDerV']),
-        Spacer(1, 3),
-        Paragraph("FECHA EMISIÓN", estilos['DatoDerL']),
-        Paragraph(datetime.now().strftime("%d/%m/%Y"), estilos['DatoDerV']),
-    ]
-
-    tabla_header = Table([[bloque_izquierda, col_der]], colWidths=[12*cm, 7*cm])
-    tabla_header.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('LINEBELOW', (0,0), (-1,-1), 2, AZUL_HEADER),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 15),
-    ]))
-    elements.append(tabla_header)
-    elements.append(Spacer(1, 1*cm))
-
-    grand_total = 0
     for emp in data_empleados:
-        grand_total += emp['total']
-        elements.append(Paragraph(f"PROFESIONAL: {emp['nombre']}", estilos['Empresa']))
-        
-        # --- TABLA DE RESUMEN ---
-        resumen_data = [
-            [Paragraph("CONCEPTO", estilos['TH']), Paragraph("MONTO", estilos['TH'])],
-        ]
-        if emp['sueldo_fijo'] > 0:
-            resumen_data.append([Paragraph("Sueldo Fijo", estilos['TD']), Paragraph(f"${emp['sueldo_fijo']:,.2f}", estilos['TD_Right'])])
-        
-        resumen_data.append([Paragraph("Comisiones Generadas", estilos['TD']), Paragraph(f"${emp['comisiones']:,.2f}", estilos['TD_Right'])])
-        resumen_data.append([Paragraph("TOTAL A PAGAR", estilos['DatoDerV']), Paragraph(f"${emp['total']:,.2f}", estilos['DatoDerV'])])
-        
-        t_res = Table(resumen_data, colWidths=[12*cm, 7*cm])
-        t_res.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), AZUL_HEADER),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE')
-        ]))
-        elements.append(t_res)
-        elements.append(Spacer(1, 15))
+        elementos.append(Paragraph(f"PROFESIONAL: {escapar(emp['nombre'])}", estilos['Empresa']))
 
-        # --- TABLA DE DETALLE DE TURNOS ---
+        resumen_data = [[Paragraph("CONCEPTO", estilos['TH']), Paragraph("MONTO", estilos['TH'])]]
+        if emp['sueldo_fijo'] > 0:
+            resumen_data.append([
+                Paragraph("Sueldo Fijo", estilos['TD']),
+                Paragraph(f"${emp['sueldo_fijo']:,.2f}", estilos['TD_Right']),
+            ])
+        resumen_data.append([
+            Paragraph("Comisiones Generadas", estilos['TD']),
+            Paragraph(f"${emp['comisiones']:,.2f}", estilos['TD_Right']),
+        ])
+        resumen_data.append([
+            Paragraph("TOTAL A PAGAR", estilos['DatoDerV']),
+            Paragraph(f"${emp['total']:,.2f}", estilos['DatoDerV']),
+        ])
+
+        t_res = Table(resumen_data, colWidths=[12 * cm, 7 * cm])
+        t_res.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), AZUL_HEADER),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        elementos.append(t_res)
+        elementos.append(Spacer(1, 15))
+
         if emp.get('turnos'):
-            elements.append(Paragraph("DETALLE DE SERVICIOS Y COMISIONES", ParagraphStyle('Subtit', fontName='Helvetica-Bold', fontSize=10, textColor=GRIS_TEXTO, spaceAfter=5)))
-            
+            elementos.append(Paragraph(
+                "DETALLE DE SERVICIOS Y COMISIONES",
+                ParagraphStyle('Subtit', fontName='Helvetica-Bold', fontSize=10, textColor=GRIS_TEXTO, spaceAfter=5),
+            ))
             detalles_data = [[
                 Paragraph("FECHA", estilos['TH']),
                 Paragraph("CLIENTE", estilos['TH']),
                 Paragraph("SERVICIOS", estilos['TH']),
-                Paragraph("COMISIÓN", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT))
+                Paragraph("COMISIÓN", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)),
             ]]
-            
             for t in emp['turnos']:
+                servicios = escapar(t['servicios']).replace('&lt;br/&gt;', '<br/>')
                 detalles_data.append([
-                    Paragraph(t['fecha'], estilos['TD']),
-                    Paragraph(t['cliente'], estilos['TD']),
-                    Paragraph(t['servicios'], estilos['TD']),
-                    Paragraph(f"${t['monto']:,.2f}", estilos['TD_Right'])
+                    Paragraph(escapar(t['fecha']), estilos['TD']),
+                    Paragraph(escapar(t['cliente']), estilos['TD']),
+                    Paragraph(servicios, estilos['TD']),
+                    Paragraph(f"${t['monto']:,.2f}", estilos['TD_Right']),
                 ])
-            
-            t_det = Table(detalles_data, colWidths=[2.5*cm, 5.5*cm, 8*cm, 3*cm])
+            t_det = Table(detalles_data, colWidths=[2.5 * cm, 5.5 * cm, 8 * cm, 3 * cm])
             t_det.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), GRIS_CLARO),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('GRID', (0,1), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
-                ('BOTTOMPADDING', (0,0), (-1,0), 6),
-                ('TOPPADDING', (0,0), (-1,0), 6),
+                ('BACKGROUND', (0, 0), (-1, 0), GRIS_CLARO),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('GRID', (0, 1), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                ('TOPPADDING', (0, 0), (-1, 0), 6),
             ]))
-            elements.append(t_det)
-            
-        elements.append(Spacer(1, 30))
+            elementos.append(t_det)
 
-    funcion_cierre = sello_pagado if es_pagado else footer
-    doc.build(elements, onFirstPage=funcion_cierre, onLaterPages=funcion_cierre)
+        elementos.append(Spacer(1, 30))
+
+    construir_documento(
+        crear_documento(buffer),
+        elementos,
+        sello_liquidado=datos_emision['fecha_emision'] if es_pagado else None,
+    )
     return buffer.getvalue()
 
-# ====================================================================
-#  3. GENERAR REPORTE DE VENTAS (LISTADO)
-# ====================================================================
-def generar_reporte_ventas(ventas, filtros, usuario_impresor, config):
-    import re
-    from reportlab.lib.pagesizes import A4
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
-    from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.enums import TA_RIGHT
-    from reportlab.lib import colors
-    from reportlab.lib.units import cm
-    from io import BytesIO
-    from datetime import datetime
 
+# ====================================================================
+#  3. REPORTE / LISTADO DE VENTAS
+# ====================================================================
+def generar_reporte_ventas(ventas, filtros, datos_emision=None, config=None):
+    config = obtener_configuracion(config)
+    datos_emision = datos_emision or obtener_datos_emision(None)
     buffer = BytesIO()
     estilos = get_estilos()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=50)
-    elements = []
-
-    def limpiar_texto(texto):
-        if texto is None:
-            return ""
-        texto = str(texto)
-        texto = re.sub(r'[^\x20-\x7EáéíóúÁÉÍÓÚñÑ\s]', '', texto)
-        return texto.strip()
-
-    def formatear_fecha_filtro(fecha_str):
-        if not fecha_str: return ""
-        try:
-            return datetime.strptime(fecha_str, '%Y-%m-%d').strftime('%d/%m/%Y')
-        except:
-            return fecha_str
-
-    logo_img = obtener_logo_reporte(config)
-
-    col_izq = [
-        Paragraph(limpiar_texto(config.razon_social), estilos['Empresa']),
-        Spacer(1, 4),
-        Paragraph(f"<b>CUIT:</b> {limpiar_texto(config.cuil_cuit)}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>DIRECCIÓN:</b> {limpiar_texto(config.direccion)}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>TELÉFONO:</b> {limpiar_texto(config.telefono)}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>EMAIL:</b> {limpiar_texto(config.email)}", estilos['DatosEmpresa']),
-    ]
-
-    if logo_img:
-        bloque_izquierda = Table([[logo_img, col_izq]], colWidths=[2.5*cm, 9.5*cm])
-        bloque_izquierda.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 0)]))
-    else:
-        bloque_izquierda = col_izq
 
     filtros_str = ""
     if filtros:
-        f_list = []
-        # ✅ AHORA FORMATEAMOS LAS FECHAS ANTES DE AGREGARLAS
-        if filtros.get('fecha_desde'): 
-            f_list.append(f"Desde: {formatear_fecha_filtro(filtros['fecha_desde'])}")
-        if filtros.get('fecha_hasta'): 
-            f_list.append(f"Hasta: {formatear_fecha_filtro(filtros['fecha_hasta'])}")
-            
-        if filtros.get('metodo_pago'): f_list.append(f"Método: {filtros['metodo_pago']}")
-        if filtros.get('estado'): f_list.append(f"Estado: {filtros['estado']}")
-        if f_list:
-            filtros_str = " | ".join(f_list)
+        partes = []
+        if filtros.get('fecha_desde'):
+            partes.append(f"Desde: {formatear_fecha_filtro(filtros['fecha_desde'])}")
+        if filtros.get('fecha_hasta'):
+            partes.append(f"Hasta: {formatear_fecha_filtro(filtros['fecha_hasta'])}")
+        if filtros.get('metodo_pago'):
+            partes.append(f"Método: {filtros['metodo_pago']}")
+        if filtros.get('tipo'):
+            partes.append(f"Tipo: {filtros['tipo']}")
+        if filtros.get('estado'):
+            partes.append(f"Estado: {filtros['estado']}")
+        filtros_str = " | ".join(partes)
 
-    col_der = [
-        Paragraph("REPORTE DE VENTAS", estilos['TituloDer']),
-        Spacer(1, 6),
-        Paragraph("EMITIDO POR", estilos['DatoDerL']),
-        Paragraph(limpiar_texto(usuario_impresor), estilos['DatoDerV']),
-        Spacer(1, 3),
-        Paragraph("FECHA EMISIÓN", estilos['DatoDerL']),
-        Paragraph(datetime.now().strftime("%d/%m/%Y"), estilos['DatoDerV']),
+    pares = [
+        ('SOLICITADO POR', solicitante_emision(datos_emision)),
+        ('FECHA EMISIÓN', datos_emision['fecha_emision']),
     ]
     if filtros_str:
-        col_der.extend([
-            Spacer(1, 3),
-            Paragraph("FILTROS APLICADOS", estilos['DatoDerL']),
-            Paragraph(limpiar_texto(filtros_str), estilos['DatoDerV']),
-        ])
+        pares.append(('FILTROS APLICADOS', filtros_str))
 
-    tabla_header = Table([[bloque_izquierda, col_der]], colWidths=[12*cm, 7*cm])
-    tabla_header.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('LINEBELOW', (0,0), (-1,-1), 2, AZUL_HEADER),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 15),
-    ]))
-    elements.append(tabla_header)
-    elements.append(Spacer(1, 1*cm))
-
-    col_widths = [
-        2.5*cm,  # FECHA
-        4.8*cm,  # CLIENTE
-        4.0*cm,  # USUARIO
-        3.0*cm,  # MÉTODO
-        2.0*cm,  # ESTADO
-        2.7*cm,  # TOTAL
+    elementos = [
+        construir_encabezado(config, 'REPORTE DE VENTAS', pares, estilos),
+        Spacer(1, 1 * cm),
     ]
 
+    col_widths = [2.5 * cm, 4.8 * cm, 4.0 * cm, 3.0 * cm, 2.0 * cm, 2.7 * cm]
     rows = [[
         Paragraph("FECHA", estilos['TH']),
         Paragraph("CLIENTE", estilos['TH']),
-        Paragraph("USUARIO", estilos['TH']),
+        Paragraph("OPERADOR", estilos['TH']),
         Paragraph("MÉTODO", estilos['TH']),
         Paragraph("ESTADO", estilos['TH']),
         Paragraph("TOTAL", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)),
@@ -421,53 +310,36 @@ def generar_reporte_ventas(ventas, filtros, usuario_impresor, config):
 
     total_general = 0
     filas_con_error = 0
-
     for v in ventas:
         try:
-            fecha_str = v.fecha.strftime("%d/%m/%Y %H:%M") if v.fecha else "-"
-            
+            fecha_str = formatear_fecha_operacion(v.fecha, con_hora=True) if v.fecha else "-"
             if v.cliente:
                 nombre = limpiar_texto(v.cliente.nombre)
                 apellido = limpiar_texto(v.cliente.apellido)
-                cliente = f"{nombre} {apellido}".strip()
-                if not cliente:
-                    cliente = "Cliente sin nombre"
+                cliente = f"{nombre} {apellido}".strip() or "Cliente sin nombre"
             else:
                 cliente = "Venta Rápida"
-            
             if v.usuario:
                 nombre_u = limpiar_texto(v.usuario.nombre)
                 apellido_u = limpiar_texto(v.usuario.apellido)
-                usuario = f"{nombre_u} {apellido_u}".strip()
-                if not usuario:
-                    usuario = limpiar_texto(v.usuario.username) or "-"
+                usuario = f"{nombre_u} {apellido_u}".strip() or limpiar_texto(getattr(v.usuario, 'username', '')) or "-"
             else:
                 usuario = "-"
-            
             metodo = limpiar_texto(v.medio_pago.nombre) if v.medio_pago else "-"
             estado = "ANULADA" if v.anulada else "ACTIVA"
             total = float(v.total) if v.total else 0
             total_general += total
-
             rows.append([
-                Paragraph(fecha_str, estilos['TD']),
-                Paragraph(cliente, estilos['TD']),
-                Paragraph(usuario, estilos['TD']),
-                Paragraph(metodo, estilos['TD']),
-                Paragraph(estado, estilos['TD']),
+                Paragraph(escapar(fecha_str), estilos['TD']),
+                Paragraph(escapar(cliente), estilos['TD']),
+                Paragraph(escapar(usuario), estilos['TD']),
+                Paragraph(escapar(metodo), estilos['TD']),
+                Paragraph(escapar(estado), estilos['TD']),
                 Paragraph(f"${total:,.2f}", estilos['TD_Right']),
             ])
-        except Exception as e:
+        except Exception:
             filas_con_error += 1
-            rows.append([
-                Paragraph("ERROR", estilos['TD']),
-                Paragraph("", estilos['TD']),
-                Paragraph("", estilos['TD']),
-                Paragraph("", estilos['TD']),
-                Paragraph("", estilos['TD']),
-                Paragraph("", estilos['TD']),
-            ])
-            continue
+            rows.append([Paragraph("ERROR", estilos['TD'])] + [Paragraph("", estilos['TD'])] * 5)
 
     rows.append([
         Paragraph("", estilos['TD']),
@@ -479,194 +351,164 @@ def generar_reporte_ventas(ventas, filtros, usuario_impresor, config):
     ])
 
     if filas_con_error > 0:
-        elements.append(Spacer(1, 0.5*cm))
-        elements.append(Paragraph(f"Nota: {filas_con_error} fila(s) no pudieron procesarse correctamente.", 
-                                   ParagraphStyle('Nota', parent=estilos['TD'], textColor=colors.red)))
+        elementos.append(Spacer(1, 0.5 * cm))
+        elementos.append(Paragraph(
+            f"Nota: {filas_con_error} fila(s) no pudieron procesarse correctamente.",
+            ParagraphStyle('Nota', parent=estilos['TD'], textColor=colors.red),
+        ))
 
-    t_ventas = Table(rows, colWidths=col_widths)
+    t_ventas = Table(rows, colWidths=col_widths, repeatRows=1)
     t_ventas.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), AZUL_HEADER),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('GRID', (0,0), (-1,-2), 0.5, colors.HexColor('#e2e8f0')),
-        ('LINEABOVE', (0,-1), (-1,-1), 1, AZUL_HEADER),
-        ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, 0), (-1, 0), AZUL_HEADER),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -2), 0.5, colors.HexColor('#e2e8f0')),
+        ('LINEABOVE', (0, -1), (-1, -1), 1, AZUL_HEADER),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
     ]))
-    elements.append(t_ventas)
+    elementos.append(t_ventas)
 
     try:
-        doc.build(elements, onFirstPage=footer, onLaterPages=footer)
-    except Exception as e:
-        error_buffer = BytesIO()
-        from reportlab.pdfgen import canvas
-        c = canvas.Canvas(error_buffer, pagesize=A4)
-        c.drawString(50, 800, f"Error al generar el reporte: {str(e)}")
-        c.save()
-        error_buffer.seek(0)
-        return error_buffer.getvalue()
-
-    buffer.seek(0)
+        construir_documento(crear_documento(buffer), elementos)
+    except Exception as exc:
+        return _generar_pdf_error_institucional(
+            f"Error al generar el reporte: {str(exc)}", config, datos_emision
+        )
     return buffer.getvalue()
 
-def generar_comprobante_turno(turno):
-    config = ConfiguracionSistema.get_solo()
+
+# ====================================================================
+#  4. COMPROBANTE DE TURNO
+# ====================================================================
+def generar_comprobante_turno(turno, datos_emision=None):
+    config = obtener_configuracion()
+    # Sin solicitud HTTP, el documento se genera como proceso automático.
+    datos_emision = datos_emision or obtener_datos_emision(None)
     buffer = BytesIO()
     estilos = get_estilos()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=50)
-    elements = []
 
-    logo_img = obtener_logo_reporte(config)
-    col_izq = [
-        Paragraph(config.razon_social, estilos['Empresa']),
-        Spacer(1, 4),
-        Paragraph(f"<b>CUIT:</b> {config.cuil_cuit}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>DIRECCIÓN:</b> {config.direccion}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>TELÉFONO:</b> {config.telefono}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>EMAIL:</b> {config.email}", estilos['DatosEmpresa']),
+    fecha_turno = (
+        f"{formatear_fecha_operacion(turno.fecha, con_hora=False)} "
+        f"{formatear_fecha_operacion(turno.hora, con_hora=False)}"
+        if turno.fecha and turno.hora else '-'
+    )
+    elementos = [
+        construir_encabezado(config, 'COMPROBANTE DE TURNO', [
+            ('NRO. TURNO', f"#{turno.id:06d}"),
+            ('FECHA DEL TURNO', fecha_turno),
+            ('CANAL', turno.get_canal_display()),
+            ('FECHA EMISIÓN', datos_emision['fecha_emision']),
+            ('SOLICITADO POR', solicitante_emision(datos_emision)),
+        ], estilos),
+        Spacer(1, 1 * cm),
     ]
-
-    if logo_img:
-        bloque_izquierda = Table([[logo_img, col_izq]], colWidths=[2.5*cm, 9.5*cm])
-        bloque_izquierda.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (0,0), (-1,-1), 0)]))
-    else:
-        bloque_izquierda = col_izq
-
-    col_der = [
-        Paragraph("COMPROBANTE DE TURNO", estilos['TituloDer']),
-        Spacer(1, 6),
-        Paragraph("NRO. TURNO", estilos['DatoDerL']),
-        Paragraph(f"#{turno.id:06d}", estilos['DatoDerV']),
-        Spacer(1, 3),
-        Paragraph("FECHA DEL TURNO", estilos['DatoDerL']),
-        Paragraph(f"{turno.fecha.strftime('%d/%m/%Y')} {turno.hora.strftime('%H:%M')}", estilos['DatoDerV']),
-        Spacer(1, 3),
-        Paragraph("CANAL", estilos['DatoDerL']),
-        Paragraph(turno.get_canal_display(), estilos['DatoDerV']),
-    ]
-
-    tabla_header = Table([[bloque_izquierda, col_der]], colWidths=[12*cm, 7*cm])
-    tabla_header.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('LINEBELOW', (0,0), (-1,-1), 2, AZUL_HEADER),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 15),
-    ]))
-    elements.append(tabla_header)
-    elements.append(Spacer(1, 1*cm))
 
     cliente_nombre = f"{turno.cliente.nombre} {turno.cliente.apellido}" if turno.cliente else "Consumidor Final"
     peluquero_nombre = f"{turno.peluquero.nombre} {turno.peluquero.apellido}" if turno.peluquero else "-"
-    
     lbl_style = ParagraphStyle('L', fontSize=8, textColor=GRIS_CLARO, textTransform='uppercase')
     val_style = ParagraphStyle('V', fontName='Helvetica-Bold', fontSize=10, textColor=AZUL_HEADER)
 
     t_info = Table([[
-        [Paragraph("CLIENTE", lbl_style), Paragraph(cliente_nombre, val_style)],
-        [Paragraph("PELUQUERO", lbl_style), Paragraph(peluquero_nombre, val_style)],
-        [Paragraph("ESTADO", lbl_style), Paragraph(turno.get_estado_display(), val_style)],
-    ]], colWidths=[7*cm, 7*cm, 5*cm])
-    
+        [Paragraph("CLIENTE", lbl_style), Paragraph(escapar(cliente_nombre), val_style)],
+        [Paragraph("PROFESIONAL", lbl_style), Paragraph(escapar(peluquero_nombre), val_style)],
+        [Paragraph("ESTADO", lbl_style), Paragraph(escapar(turno.get_estado_display()), val_style)],
+    ]], colWidths=[7 * cm, 7 * cm, 5 * cm])
     t_info.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), FONDO_ZEBRA),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('LEFTPADDING', (0,0), (-1,-1), 10),
+        ('BACKGROUND', (0, 0), (-1, -1), FONDO_ZEBRA),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
     ]))
-    elements.append(t_info)
-    elements.append(Spacer(1, 1*cm))
+    elementos.append(t_info)
+    elementos.append(Spacer(1, 1 * cm))
 
     rows = [[
         Paragraph("SERVICIO", estilos['TH']),
         Paragraph("DURACIÓN", estilos['TH']),
         Paragraph("PRECIO", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)),
     ]]
-    
     for s in turno.servicios.all():
         rows.append([
-            Paragraph(s.nombre, estilos['TD']),
+            Paragraph(escapar(s.nombre), estilos['TD']),
             Paragraph(f"{s.duracion} min", estilos['TD']),
             Paragraph(f"${s.precio:,.2f}", estilos['TD_Right']),
         ])
-
-    t_items = Table(rows, colWidths=[11*cm, 4*cm, 4*cm])
+    t_items = Table(rows, colWidths=[11 * cm, 4 * cm, 4 * cm])
     t_items.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), AZUL_HEADER),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('GRID', (0,1), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('BACKGROUND', (0, 0), (-1, 0), AZUL_HEADER),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 1), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
     ]))
-    elements.append(t_items)
-    
+    elementos.append(t_items)
+
     total_val = float(turno.monto_total) if turno.monto_total else sum(s.precio for s in turno.servicios.all())
     es_sena = turno.tipo_pago == 'SENA_50'
     seña_val = float(turno.monto_seña) if turno.monto_seña else 0
     saldo_val = total_val - seña_val if es_sena else 0
-    
     if es_sena and seña_val > 0:
         t_resumen = Table([
             [Paragraph("SUBTOTAL", estilos['TD_Right']), Paragraph(f"${total_val:,.2f}", estilos['TD_Right'])],
             [Paragraph("SEÑA ABONADA (50%)", ParagraphStyle('TR', parent=estilos['TD_Right'], textColor=colors.HexColor('#059669'))), Paragraph(f"${seña_val:,.2f}", ParagraphStyle('TRV', parent=estilos['DatoDerV'], textColor=colors.HexColor('#059669')))],
             [Paragraph("SALDO PENDIENTE", ParagraphStyle('TR', parent=estilos['TD_Right'], textColor=colors.HexColor('#dc2626'))), Paragraph(f"${saldo_val:,.2f}", ParagraphStyle('TRV', parent=estilos['DatoDerV'], textColor=colors.HexColor('#dc2626')))],
-        ], colWidths=[14*cm, 5*cm])
+        ], colWidths=[14 * cm, 5 * cm])
         t_resumen.setStyle(TableStyle([
-            ('LINEBELOW', (0,0), (-1,0), 0.5, colors.HexColor('#e2e8f0')),
-            ('LINEBELOW', (0,1), (-1,1), 0.5, colors.HexColor('#e2e8f0')),
-            ('TOPPADDING', (0,0), (-1,-1), 4),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('LINEBELOW', (0, 0), (-1, 0), 0.5, colors.HexColor('#e2e8f0')),
+            ('LINEBELOW', (0, 1), (-1, 1), 0.5, colors.HexColor('#e2e8f0')),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ]))
-        elements.append(t_resumen)
+        elementos.append(t_resumen)
 
-    t_total = Table([
+    elementos.append(Table([
         [Paragraph("TOTAL DEL TURNO", estilos['TD_Right']), Paragraph(f"${total_val:,.2f}", estilos['DatoDerV'])]
-    ], colWidths=[14*cm, 5*cm])
-    elements.append(t_total)
+    ], colWidths=[14 * cm, 5 * cm]))
 
-    doc.build(elements, onFirstPage=footer, onLaterPages=footer)
+    construir_documento(crear_documento(buffer), elementos)
     return buffer.getvalue()
 
-def generar_comprobante_pedido_web(pedido):
-    config = ConfiguracionSistema.get_solo()
+
+# ====================================================================
+#  5. COMPROBANTE DE PEDIDO WEB
+# ====================================================================
+def generar_comprobante_pedido_web(pedido, datos_emision=None):
+    config = obtener_configuracion()
+    # Sin solicitud HTTP, el documento se genera como proceso automático.
+    datos_emision = datos_emision or obtener_datos_emision(None)
     buffer = BytesIO()
     estilos = get_estilos()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=50)
-    elements = []
 
-    logo_img = obtener_logo_reporte(config)
-    col_izq = [
-        Paragraph(config.razon_social, estilos['Empresa']),
-        Spacer(1, 4),
-        Paragraph(f"<b>CUIT:</b> {config.cuil_cuit}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>TELÉFONO:</b> {config.telefono}", estilos['DatosEmpresa']),
+    fecha_operacion = formatear_fecha_operacion(pedido.fecha_creacion, con_hora=True)
+    tipo_entrega = (
+        pedido.get_tipo_entrega_display() if hasattr(pedido, 'get_tipo_entrega_display')
+        else getattr(pedido, 'tipo_entrega', '-')
+    )
+    estado = (
+        pedido.get_estado_display() if hasattr(pedido, 'get_estado_display')
+        else getattr(pedido, 'estado', '-')
+    )
+    elementos = [
+        construir_encabezado(config, 'COMPROBANTE DE COMPRA', [
+            ('NRO. PEDIDO WEB', f"#{pedido.id:06d}"),
+            ('FECHA OPERACIÓN', fecha_operacion),
+            ('FECHA EMISIÓN', datos_emision['fecha_emision']),
+            ('SOLICITADO POR', solicitante_emision(datos_emision)),
+        ], estilos),
+        Spacer(1, 1 * cm),
     ]
-    bloque_izquierda = Table([[logo_img, col_izq]], colWidths=[2.5*cm, 9.5*cm]) if logo_img else col_izq
-
-    fecha_str = pedido.fecha_creacion.strftime("%d/%m/%Y %H:%M") if pedido.fecha_creacion else datetime.now().strftime("%d/%m/%Y")
-
-    col_der = [
-        Paragraph("COMPROBANTE DE COMPRA", estilos['TituloDer']),
-        Spacer(1, 6),
-        Paragraph("NRO. PEDIDO WEB", estilos['DatoDerL']),
-        Paragraph(f"#{pedido.id:06d}", estilos['DatoDerV']),
-        Spacer(1, 3),
-        Paragraph("FECHA", estilos['DatoDerL']),
-        Paragraph(fecha_str, estilos['DatoDerV']),
-    ]
-
-    tabla_header = Table([[bloque_izquierda, col_der]], colWidths=[12*cm, 7*cm])
-    tabla_header.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LINEBELOW', (0,0), (-1,-1), 2, AZUL_HEADER), ('BOTTOMPADDING', (0,0), (-1,-1), 15)]))
-    elements.append(tabla_header)
-    elements.append(Spacer(1, 1*cm))
 
     cliente_nombre = f"{pedido.cliente.nombre} {pedido.cliente.apellido}" if hasattr(pedido, 'cliente') and pedido.cliente else "Consumidor Final"
-    tipo_entrega = getattr(pedido, 'tipo_entrega', 'RETIRO')
-    
     lbl_style = ParagraphStyle('L', fontSize=8, textColor=GRIS_CLARO, textTransform='uppercase')
     val_style = ParagraphStyle('V', fontName='Helvetica-Bold', fontSize=10, textColor=AZUL_HEADER)
-
     t_info = Table([[
-        [Paragraph("CLIENTE", lbl_style), Paragraph(cliente_nombre, val_style)],
-        [Paragraph("ENTREGA", lbl_style), Paragraph(tipo_entrega, val_style)],
-        [Paragraph("ESTADO", lbl_style), Paragraph(pedido.estado, val_style)],
-    ]], colWidths=[7*cm, 7*cm, 5*cm])
-    t_info.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), FONDO_ZEBRA), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('LEFTPADDING', (0,0), (-1,-1), 10)]))
-    elements.append(t_info)
-    elements.append(Spacer(1, 1*cm))
+        [Paragraph("CLIENTE", lbl_style), Paragraph(escapar(cliente_nombre), val_style)],
+        [Paragraph("ENTREGA", lbl_style), Paragraph(escapar(tipo_entrega), val_style)],
+        [Paragraph("ESTADO", lbl_style), Paragraph(escapar(estado), val_style)],
+    ]], colWidths=[7 * cm, 7 * cm, 5 * cm])
+    t_info.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), FONDO_ZEBRA),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+    ]))
+    elementos.append(t_info)
+    elementos.append(Spacer(1, 1 * cm))
 
     rows = [[
         Paragraph("PRODUCTO", estilos['TH']),
@@ -674,182 +516,447 @@ def generar_comprobante_pedido_web(pedido):
         Paragraph("PRECIO", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)),
         Paragraph("SUBTOTAL", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)),
     ]]
-    
     for d in pedido.detalles.all():
         nombre_prod = getattr(d, 'nombre_producto', '') or (d.producto.nombre if hasattr(d, 'producto') and d.producto else 'Producto')
         rows.append([
-            Paragraph(nombre_prod, estilos['TD']),
+            Paragraph(escapar(nombre_prod), estilos['TD']),
             Paragraph(str(d.cantidad), estilos['TD']),
             Paragraph(f"${d.precio_unitario:,.2f}", estilos['TD_Right']),
             Paragraph(f"${(d.cantidad * d.precio_unitario):,.2f}", estilos['TD_Right']),
         ])
+    t_items = Table(rows, colWidths=[9 * cm, 2 * cm, 4 * cm, 4 * cm])
+    t_items.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), AZUL_HEADER),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 1), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+    ]))
+    elementos.append(t_items)
 
-    t_items = Table(rows, colWidths=[9*cm, 2*cm, 4*cm, 4*cm])
-    t_items.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), AZUL_HEADER), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('GRID', (0,1), (-1,-1), 0.5, colors.HexColor('#e2e8f0'))]))
-    elements.append(t_items)
-    
-    costo_envio = float(getattr(pedido, 'costo_envio', 0))
+    costo_envio = float(getattr(pedido, 'costo_envio', 0) or 0)
     if costo_envio > 0:
-        elements.append(Table([[Paragraph("COSTO DE ENVÍO", estilos['TD_Right']), Paragraph(f"${costo_envio:,.2f}", estilos['DatoDerV'])]], colWidths=[14*cm, 5*cm]))
-    
-    elements.append(Table([[Paragraph("TOTAL", estilos['TD_Right']), Paragraph(f"${pedido.total:,.2f}", estilos['DatoDerV'])]], colWidths=[14*cm, 5*cm]))
+        elementos.append(Table([
+            [Paragraph("COSTO DE ENVÍO", estilos['TD_Right']), Paragraph(f"${costo_envio:,.2f}", estilos['DatoDerV'])]
+        ], colWidths=[14 * cm, 5 * cm]))
+    elementos.append(Table([
+        [Paragraph("TOTAL", estilos['TD_Right']), Paragraph(f"${pedido.total:,.2f}", estilos['DatoDerV'])]
+    ], colWidths=[14 * cm, 5 * cm]))
 
-    doc.build(elements, onFirstPage=footer, onLaterPages=footer)
+    construir_documento(crear_documento(buffer), elementos)
     return buffer.getvalue()
 
+
 # ====================================================================
-#  🔥 GENERAR CIERRE DE CAJA 🔥
+#  6. ARQUEO / CIERRE DE CAJA
 # ====================================================================
-def generar_cierre_caja_pdf(sesion, movimientos, config):
+def generar_cierre_caja_pdf(sesion, movimientos, config=None, datos_emision=None):
+    config = obtener_configuracion(config)
+    datos_emision = datos_emision or obtener_datos_emision(None)
     buffer = BytesIO()
     estilos = get_estilos()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=50)
-    elements = []
 
-    logo_img = obtener_logo_reporte(config)
-
-    # --- HEADER EMPRESA ---
-    col_izq = [
-        Paragraph(config.razon_social, estilos['Empresa']),
-        Spacer(1, 4),
-        Paragraph(f"<b>CUIT:</b> {config.cuil_cuit}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>DIRECCIÓN:</b> {config.direccion}", estilos['DatosEmpresa']),
-        Paragraph(f"<b>TELÉFONO:</b> {config.telefono}", estilos['DatosEmpresa']),
-    ]
-    bloque_izquierda = Table([[logo_img, col_izq]], colWidths=[2.5*cm, 9.5*cm]) if logo_img else col_izq
-
-    # --- HEADER DATOS CAJA ---
-    from django.utils import timezone
-    
-    fecha_apertura = sesion.fecha_apertura.strftime("%d/%m/%Y %H:%M")
-    fecha_cierre = sesion.fecha_cierre.strftime("%d/%m/%Y %H:%M") if sesion.fecha_cierre else "Sin cerrar"
-    # Capturamos la hora exacta de emisión del reporte
-    fecha_emision = timezone.localtime(timezone.now()).strftime("%d/%m/%Y %H:%M")
-    
-    col_der = [
-        Paragraph("PLANILLA DE ARQUEO", estilos['TituloDer']),
-        Spacer(1, 6),
-        Paragraph("SESIÓN NRO.", estilos['DatoDerL']),
-        Paragraph(f"#{sesion.id:06d}", estilos['DatoDerV']),
-        Spacer(1, 3),
-        Paragraph("APERTURA", estilos['DatoDerL']),
-        Paragraph(fecha_apertura, estilos['DatoDerV']),
-        Spacer(1, 3),
-        Paragraph("CIERRE", estilos['DatoDerL']),
-        Paragraph(fecha_cierre, estilos['DatoDerV']),
-        Spacer(1, 3),
-        Paragraph("FECHA EMISIÓN", estilos['DatoDerL']),
-        Paragraph(fecha_emision, estilos['DatoDerV']),
+    elementos = [
+        construir_encabezado(config, 'PLANILLA DE ARQUEO', [
+            ('SESIÓN NRO.', f"#{sesion.id:06d}"),
+            ('APERTURA', formatear_fecha_operacion(sesion.fecha_apertura, con_hora=True)),
+            ('CIERRE', formatear_fecha_operacion(sesion.fecha_cierre, con_hora=True) if sesion.fecha_cierre else 'Sin cerrar'),
+            ('FECHA EMISIÓN', datos_emision['fecha_emision']),
+            ('SOLICITADO POR', solicitante_emision(datos_emision)),
+        ], estilos),
+        Spacer(1, 0.5 * cm),
     ]
 
-    tabla_header = Table([[bloque_izquierda, col_der]], colWidths=[12*cm, 7*cm])
-    tabla_header.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LINEBELOW', (0,0), (-1,-1), 2, AZUL_HEADER), ('BOTTOMPADDING', (0,0), (-1,-1), 15)]))
-    elements.append(tabla_header)
-    elements.append(Spacer(1, 0.5*cm))
-
-    # --- INFO DE USUARIOS ---
     lbl_style = ParagraphStyle('L', fontSize=8, textColor=GRIS_CLARO, textTransform='uppercase')
     val_style = ParagraphStyle('V', fontName='Helvetica-Bold', fontSize=10, textColor=AZUL_HEADER)
-
     usuario_apertura = f"{sesion.usuario_apertura.nombre} {sesion.usuario_apertura.apellido}" if sesion.usuario_apertura else "Sistema"
     usuario_cierre = f"{sesion.usuario_cierre.nombre} {sesion.usuario_cierre.apellido}" if sesion.usuario_cierre else "Pendiente"
-
     t_usuarios = Table([[
-        [Paragraph("CAJA", lbl_style), Paragraph(sesion.caja.nombre, val_style)],
-        [Paragraph("USUARIO APERTURA", lbl_style), Paragraph(usuario_apertura, val_style)],
-        [Paragraph("USUARIO CIERRE", lbl_style), Paragraph(usuario_cierre, val_style)],
-    ]], colWidths=[6*cm, 7*cm, 6*cm])
-    t_usuarios.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), FONDO_ZEBRA), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('LEFTPADDING', (0,0), (-1,-1), 10)]))
-    elements.append(t_usuarios)
-    elements.append(Spacer(1, 0.5*cm))
+        [Paragraph("CAJA", lbl_style), Paragraph(escapar(sesion.caja.nombre), val_style)],
+        [Paragraph("OPERADOR APERTURA", lbl_style), Paragraph(escapar(usuario_apertura), val_style)],
+        [Paragraph("OPERADOR CIERRE", lbl_style), Paragraph(escapar(usuario_cierre), val_style)],
+    ]], colWidths=[6 * cm, 7 * cm, 6 * cm])
+    t_usuarios.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), FONDO_ZEBRA),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+    ]))
+    elementos.append(t_usuarios)
+    elementos.append(Spacer(1, 0.5 * cm))
 
-    # --- CÁLCULO DE BALANCE ---
-    def sum_m(metodo, tipo): return movimientos.filter(metodo_pago=metodo, tipo=tipo).aggregate(t=Sum('monto'))['t'] or 0
-    
+    def sum_m(metodo, tipo):
+        return movimientos.filter(metodo_pago=metodo, tipo=tipo).aggregate(t=Sum('monto'))['t'] or 0
+
     ing_ef = sum_m('EFECTIVO', 'INGRESO')
     egr_ef = sum_m('EFECTIVO', 'EGRESO')
     esp_ef = float(sesion.saldo_inicial_efectivo) + float(ing_ef) - float(egr_ef)
-    real_ef = float(sesion.saldo_final_efectivo_real)
-
+    real_ef = float(sesion.saldo_final_efectivo_real or 0)
     ing_mp = sum_m('MERCADO_PAGO', 'INGRESO')
     egr_mp = sum_m('MERCADO_PAGO', 'EGRESO')
     esp_mp = float(sesion.saldo_inicial_mp) + float(ing_mp) - float(egr_mp)
-    real_mp = float(sesion.saldo_final_mp_real)
-
-    # Totales generales (NUEVO)
+    real_mp = float(sesion.saldo_final_mp_real or 0)
     total_esp = esp_ef + esp_mp
     total_real = real_ef + real_mp
     dif_total = total_real - total_esp
 
-    # --- ESTILOS FIXEADOS (NO HEREDAN DE 'NORMAL') ---
     estilo_subtit = ParagraphStyle('Subtit', fontName='Helvetica-Bold', fontSize=12, textColor=AZUL_HEADER, spaceAfter=10)
-
-    # --- RESUMEN DE SALDOS ---
-    elements.append(Paragraph("RESUMEN CONTABLE", estilo_subtit))
-    
+    elementos.append(Paragraph("RESUMEN CONTABLE", estilo_subtit))
     t_saldos = Table([
         [Paragraph("MEDIO", estilos['TH']), Paragraph("SISTEMA (ESPERADO)", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)), Paragraph("CAJERO (DECLARADO)", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)), Paragraph("DIFERENCIA", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT))],
         [Paragraph("Físico (Efectivo)", estilos['TD']), Paragraph(f"${esp_ef:,.2f}", estilos['TD_Right']), Paragraph(f"${real_ef:,.2f}", estilos['TD_Right']), Paragraph(f"${(real_ef - esp_ef):,.2f}", estilos['TD_Right'])],
         [Paragraph("Mercado Pago", estilos['TD']), Paragraph(f"${esp_mp:,.2f}", estilos['TD_Right']), Paragraph(f"${real_mp:,.2f}", estilos['TD_Right']), Paragraph(f"${(real_mp - esp_mp):,.2f}", estilos['TD_Right'])],
-        
-        # 🔥 NUEVA FILA DE TOTAL GENERAL
         [Paragraph("<b>TOTAL GENERAL</b>", estilos['TD']), Paragraph(f"<b>${total_esp:,.2f}</b>", estilos['TD_Right']), Paragraph(f"<b>${total_real:,.2f}</b>", estilos['TD_Right']), Paragraph(f"<b>${dif_total:,.2f}</b>", estilos['TD_Right'])],
-    ], colWidths=[5*cm, 4.5*cm, 4.5*cm, 5*cm])
-    
-    # Le agregamos una línea gris arriba de la fila de total general para separarla
+    ], colWidths=[5 * cm, 4.5 * cm, 4.5 * cm, 5 * cm])
     t_saldos.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), AZUL_HEADER), 
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
-        ('LINEABOVE', (0,3), (-1,3), 1, colors.HexColor('#94a3b8')) # Línea separadora del Total
+        ('BACKGROUND', (0, 0), (-1, 0), AZUL_HEADER),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('LINEABOVE', (0, 3), (-1, 3), 1, colors.HexColor('#94a3b8')),
     ]))
-    elements.append(t_saldos)
-    
-    # Diferencia total y Observaciones (Lo dejamos por si las moscas, aunque ya está en la tabla)
+    elementos.append(t_saldos)
+
     if dif_total != 0:
-        elements.append(Spacer(1, 0.3*cm))
+        elementos.append(Spacer(1, 0.3 * cm))
         color_dif = colors.red if dif_total < 0 else colors.green
-        estilo_dif = ParagraphStyle('Dif', fontName='Helvetica-Bold', textColor=color_dif)
-        elements.append(Paragraph(f"DIFERENCIA TOTAL: ${dif_total:,.2f}", estilo_dif))
-        
+        elementos.append(Paragraph(
+            f"DIFERENCIA TOTAL: ${dif_total:,.2f}",
+            ParagraphStyle('Dif', fontName='Helvetica-Bold', textColor=color_dif),
+        ))
         if sesion.observaciones:
-            elements.append(Paragraph(f"Justificación: {sesion.observaciones}", estilos['DatosEmpresa']))
+            elementos.append(Paragraph(f"Justificación: {escapar(sesion.observaciones)}", estilos['DatosEmpresa']))
 
-    elements.append(Spacer(1, 0.8*cm))
-
-    # --- MOVIMIENTOS ---
-    elements.append(Paragraph("DETALLE DE MOVIMIENTOS", estilo_subtit))
-    
-    rows = [[Paragraph("HORA", estilos['TH']), Paragraph("TIPO", estilos['TH']), Paragraph("CONCEPTO Y DESCRIPCIÓN", estilos['TH']), Paragraph("MÉTODO", estilos['TH']), Paragraph("MONTO", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT))]]
-    
+    elementos.append(Spacer(1, 0.8 * cm))
+    elementos.append(Paragraph("DETALLE DE MOVIMIENTOS", estilo_subtit))
+    rows = [[
+        Paragraph("FECHA Y HORA", estilos['TH']),
+        Paragraph("TIPO", estilos['TH']),
+        Paragraph("CONCEPTO Y DESCRIPCIÓN", estilos['TH']),
+        Paragraph("MÉTODO", estilos['TH']),
+        Paragraph("MONTO", ParagraphStyle('THR', parent=estilos['TH'], alignment=TA_RIGHT)),
+    ]]
     for mov in movimientos:
         signo = "+" if mov.tipo == "INGRESO" else "-"
-        
-        # 🔥 NUEVO: Unificamos Concepto y Descripción en una sola celda
-        texto_concepto = f"<b>{mov.get_concepto_display()}</b>"
+        texto_concepto = f"<b>{escapar(mov.get_concepto_display())}</b>"
         if mov.descripcion:
-            texto_concepto += f"<br/><font color='#64748b' size='7'>{mov.descripcion}</font>"
-            
+            texto_concepto += f"<br/><font color='#64748b' size='7'>{escapar(mov.descripcion)}</font>"
         rows.append([
-            Paragraph(mov.fecha.strftime("%H:%M"), estilos['TD']),
-            Paragraph(mov.tipo, estilos['TD']),
-            Paragraph(texto_concepto, estilos['TD']), # Acá mandamos el texto unificado
-            Paragraph(mov.get_metodo_pago_display(), estilos['TD']),
+            Paragraph(formatear_fecha_operacion(mov.fecha, con_hora=True), estilos['TD']),
+            Paragraph(escapar(mov.tipo), estilos['TD']),
+            Paragraph(texto_concepto, estilos['TD']),
+            Paragraph(escapar(mov.get_metodo_pago_display()), estilos['TD']),
             Paragraph(f"{signo}${mov.monto:,.2f}", estilos['TD_Right']),
         ])
-    
-    t_movs = Table(rows, colWidths=[2.5*cm, 2.5*cm, 7.5*cm, 3*cm, 3.5*cm])
-    t_movs.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), AZUL_HEADER), ('GRID', (0,1), (-1,-1), 0.5, colors.HexColor('#e2e8f0')), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
-    elements.append(t_movs)
+    t_movs = Table(rows, colWidths=[3 * cm, 2.2 * cm, 7 * cm, 3 * cm, 3.8 * cm], repeatRows=1)
+    t_movs.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), AZUL_HEADER),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    elementos.append(t_movs)
+    elementos.append(Spacer(1, 2 * cm))
 
-    elements.append(Spacer(1, 2*cm))
-
-    # --- FIRMAS ---
     t_firmas = Table([
         [Paragraph("________________________________", ParagraphStyle('Firma', alignment=TA_CENTER)), Paragraph("________________________________", ParagraphStyle('Firma', alignment=TA_CENTER))],
-        [Paragraph(f"Firma Usuario caja: {usuario_cierre}", ParagraphStyle('FirmaT', alignment=TA_CENTER, fontName='Helvetica-Bold', fontSize=9, textColor=GRIS_TEXTO)), Paragraph("Firma Administrador", ParagraphStyle('FirmaT', alignment=TA_CENTER, fontName='Helvetica-Bold', fontSize=9, textColor=GRIS_TEXTO))],
-    ], colWidths=[9.5*cm, 9.5*cm])
-    elements.append(t_firmas)
+        [Paragraph(f"Firma Usuario caja: {escapar(usuario_cierre)}", ParagraphStyle('FirmaT', alignment=TA_CENTER, fontName='Helvetica-Bold', fontSize=9, textColor=GRIS_TEXTO)), Paragraph("Firma Administrador", ParagraphStyle('FirmaT', alignment=TA_CENTER, fontName='Helvetica-Bold', fontSize=9, textColor=GRIS_TEXTO))],
+    ], colWidths=[9.5 * cm, 9.5 * cm])
+    elementos.append(t_firmas)
 
-    doc.build(elements, onFirstPage=footer, onLaterPages=footer)
+    construir_documento(crear_documento(buffer), elementos)
     return buffer.getvalue()
+
+
+# ====================================================================
+#  7. BALANCE OPERATIVO (antes generado en Dashboard.vue)
+# ====================================================================
+def generar_balance_operativo_pdf(datos, config=None, datos_emision=None, filtros=None):
+    datos = datos or {}
+    datos_emision = datos_emision or obtener_datos_emision(None)
+    config = obtener_configuracion(config)
+    buffer = BytesIO()
+    estilos = get_estilos()
+
+    elementos = [
+        construir_encabezado(config, 'BALANCE DE RENDIMIENTO', [
+            ('SOLICITADO POR', solicitante_emision(datos_emision)),
+            ('PERÍODO', formatear_periodo_balance(filtros)),
+            ('FECHA EMISIÓN', datos_emision['fecha_emision']),
+        ], estilos),
+        Spacer(1, 0.8 * cm),
+        Paragraph('1. Resultados del Período', estilos['Seccion']),
+    ]
+
+    ingresos = float(datos.get('ingresosTotales') or 0)
+    egresos = float(datos.get('egresosTotales') or 0)
+    servicios = float(datos.get('serviciosRealizados') or 0)
+    productos = float(datos.get('productosVendidos') or 0)
+    operaciones = servicios + productos
+    ticket = ingresos / operaciones if operaciones else 0
+
+    def tarjeta(etiqueta, valor, color):
+        estilo_valor = ParagraphStyle(f"Valor_{etiqueta}", fontName='Helvetica-Bold', fontSize=18,
+                                      textColor=color, alignment=TA_CENTER)
+        return [
+            Paragraph(escapar(etiqueta.upper()), ParagraphStyle(f"Etq_{etiqueta}", fontName='Helvetica-Bold',
+                                                               fontSize=9, textColor=GRIS_CLARO, alignment=TA_CENTER)),
+            Spacer(1, 8),
+            Paragraph(escapar(valor), estilo_valor),
+        ]
+
+    t_kpis = Table([[
+        tarjeta('Ingresos', f"$ {_formato_numero(ingresos)}", VERDE_EXITO),
+        tarjeta('Egresos', f"$ {_formato_numero(egresos)}", ROJO),
+        tarjeta('Ticket Promedio', f"$ {_formato_numero(ticket)}", AZUL_CLARO),
+        tarjeta('Operaciones', str(int(operaciones)), AZUL_HEADER),
+    ]], colWidths=[4.25 * cm] * 4)
+    t_kpis.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, 0), FONDO_ZEBRA),
+        ('BACKGROUND', (1, 0), (1, 0), colors.HexColor('#fffcfc')),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 14),
+    ]))
+    elementos.extend([t_kpis, Spacer(1, 0.8 * cm)])
+
+    elementos.append(Paragraph('2. Evolución de Ingresos', estilos['Seccion']))
+    elementos.append(crear_grafico_lineas(datos.get('labelsDias') or [], datos.get('ventasPorDia') or []))
+    elementos.append(Spacer(1, 0.5 * cm))
+
+    elementos.append(Paragraph('3. Análisis de Medios de Pago', estilos['Seccion']))
+    paleta = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899']
+    filas_medios = []
+    for indice, medio in enumerate(datos.get('ingresosPorMedio') or []):
+        color = paleta[indice % len(paleta)]
+        nombre = escapar(medio.get('medio') or '-')
+        filas_medios.append([
+            Paragraph(f'<font color="{color}">●</font> {nombre}', estilos['TD']),
+            Paragraph(f"$ {_formato_numero(medio.get('total'))}", estilos['TD_Right']),
+        ])
+    if not filas_medios:
+        filas_medios = [[Paragraph('No hay cobros registrados.', estilos['TD']), Paragraph('', estilos['TD'])]]
+    t_medios = Table(filas_medios, colWidths=[12 * cm, 7 * cm])
+    t_medios.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#f1f5f9')),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elementos.extend([t_medios, Spacer(1, 0.8 * cm)])
+
+    elementos.append(Paragraph('4. Contexto y Resultados', estilos['Seccion']))
+    pendientes = datos.get('pendientesInfo') or {}
+    cobros = datos.get('cobrosPendientes') or {}
+    contexto = [
+        ('Ingresos anteriores', f"$ {_formato_numero(datos.get('ingresosAnteriores'))}"),
+        ('Egresos anteriores', f"$ {_formato_numero(datos.get('egresosAnteriores'))}"),
+        ('Resultado neto', f"$ {_formato_numero(datos.get('resultadoNeto'))}"),
+        ('Resultado neto anterior', f"$ {_formato_numero(datos.get('resultadoNetoAnterior'))}"),
+        ('Variación de ingresos', f"{datos.get('variacionIngresos') if datos.get('variacionIngresos') is not None else '-'} %" if datos.get('variacionIngresos') is not None else '-'),
+        ('Variación del resultado neto', f"{datos.get('variacionResultadoNeto') if datos.get('variacionResultadoNeto') is not None else '-'} %" if datos.get('variacionResultadoNeto') is not None else '-'),
+        ('Período anterior', str(datos.get('periodoAnterior') or '-')),
+        ('Caja abierta', 'Sí' if datos.get('cajaAbierta') else 'No'),
+        ('Pendientes de imputar', f"{pendientes.get('cantidad', 0)} movimiento(s) · $ {_formato_numero(pendientes.get('total_dinero'))}"),
+        ('Cobros pendientes', f"{cobros.get('turnos', 0)} turno(s) · $ {_formato_numero(cobros.get('total'))}"),
+    ]
+    elementos.append(crear_tabla_datos(
+        [[clave, valor] for clave, valor in contexto], [9 * cm, 10 * cm],
+        estilos, cabecera=False,
+    ))
+    elementos.append(Spacer(1, 0.8 * cm))
+
+    def tabla_simple(titulo, items, columnas, claves, anchos):
+        elementos.append(Paragraph(titulo, estilos['Subtitulo']))
+        filas = [list(columnas)]
+        for item in items or []:
+            fila = []
+            for clave in claves:
+                if isinstance(item, dict):
+                    valor = item.get(clave, '-')
+                else:
+                    valor = getattr(item, clave, '-')
+                fila.append('-' if valor in (None, '') else str(valor))
+            filas.append(fila)
+        if len(filas) == 1:
+            filas.append(['Sin datos'] + [''] * (len(columnas) - 1))
+        elementos.append(crear_tabla_datos(filas, anchos, estilos))
+        elementos.append(Spacer(1, 0.6 * cm))
+
+    tabla_simple('5. Pedidos Próximos', datos.get('pedidosProximos'),
+                 ['ID', 'Proveedor', 'Fecha llegada', 'Días restantes'],
+                 ['id', 'proveedor', 'fecha_llegada', 'dias_restantes'],
+                 [2 * cm, 8 * cm, 5 * cm, 4 * cm])
+    tabla_simple('6. Cobros Pendientes (Detalle)', (cobros.get('detalle') or []),
+                 ['ID', 'Fecha', 'Hora', 'Cliente', 'Saldo'],
+                 ['id', 'fecha', 'hora', 'cliente', 'saldo'],
+                 [2 * cm, 3 * cm, 2.5 * cm, 7.5 * cm, 4 * cm])
+    tabla_simple('7. Próximos Turnos', datos.get('proximosTurnos'),
+                 ['ID', 'Fecha', 'Hora', 'Cliente', 'Servicios'],
+                 ['id', 'fecha', 'hora', 'cliente', 'servicios'],
+                 [2 * cm, 3 * cm, 2.5 * cm, 5.5 * cm, 6 * cm])
+
+    construir_documento(crear_documento(buffer), elementos)
+    return buffer.getvalue()
+
+
+# ====================================================================
+#  8. REPORTE ESTRATÉGICO (antes generado en EstadisticasDashboard.vue)
+# ====================================================================
+def generar_reporte_estrategico_pdf(datos, config=None, datos_emision=None,
+                                    fecha_inicio=None, fecha_fin=None):
+    datos = datos or {}
+    datos_emision = datos_emision or obtener_datos_emision(None)
+    config = obtener_configuracion(config)
+    buffer = BytesIO()
+    estilos = get_estilos()
+    kpis = datos.get('kpis') or {}
+    graficos = datos.get('graficos') or {}
+    tablas = datos.get('tablas') or {}
+
+    periodo = f"{formatear_fecha_filtro(fecha_inicio)} al {formatear_fecha_filtro(fecha_fin)}"
+    elementos = [
+        construir_encabezado(config, 'REPORTE ADMINISTRATIVO', [
+            ('SOLICITADO POR', solicitante_emision(datos_emision)),
+            ('PERÍODO', periodo),
+            ('FECHA EMISIÓN', datos_emision['fecha_emision']),
+        ], estilos),
+        Spacer(1, 0.8 * cm),
+        Paragraph('1. Indicadores Clave', estilos['Seccion']),
+    ]
+
+    fidelidad = kpis.get('fidelidad') or {}
+    servicio_estrella = kpis.get('servicio_estrella') or {}
+    producto_estrella = kpis.get('producto_estrella') or {}
+    indicadores = [
+        ('Facturación Bruta', _formato_moneda(kpis.get('ingreso_total')),
+         f"Ticket Prom: {_formato_moneda(kpis.get('ticket_promedio'))}"),
+        ('Clientes Recurrentes', f"{fidelidad.get('tasa', 0)}%",
+         f"Recurrentes: {fidelidad.get('recurrentes', 0)} | Nuevos: {fidelidad.get('nuevos', 0)}"),
+        ('Ingreso de Operaciones', _formato_moneda(kpis.get('ingreso_operaciones')),
+         'Ventas, turnos y pedidos web'),
+        ('Ingreso por Cancelaciones', _formato_moneda(kpis.get('ingreso_penalizaciones')),
+         'Señas retenidas'),
+        ('Servicio Estrella', str(servicio_estrella.get('nombre') or 'Ninguno'),
+         f"{servicio_estrella.get('cantidad', 0)} usos · {_formato_moneda(servicio_estrella.get('ingreso'))}"),
+        ('Producto Estrella', str(producto_estrella.get('nombre') or 'Ninguno'),
+         f"{producto_estrella.get('cantidad', 0)} unidades · {_formato_moneda(producto_estrella.get('ingreso'))}"),
+    ]
+    tarjetas = []
+    for etiqueta, valor, detalle in indicadores:
+        tarjetas.append([
+            Paragraph(escapar(etiqueta.upper()), ParagraphStyle(f"Etq_{etiqueta}", fontName='Helvetica-Bold', fontSize=9, textColor=GRIS_CLARO)),
+            Spacer(1, 4),
+            Paragraph(escapar(valor), ParagraphStyle(f"Val_{etiqueta}", fontName='Helvetica-Bold', fontSize=14, textColor=AZUL_HEADER)),
+            Spacer(1, 3),
+            Paragraph(escapar(detalle), ParagraphStyle(f"Det_{etiqueta}", fontName='Helvetica', fontSize=8, textColor=GRIS_CLARO)),
+        ])
+    t_indicadores = Table([tarjetas[:2], tarjetas[2:4], tarjetas[4:6]], colWidths=[9.5 * cm, 9.5 * cm])
+    t_indicadores.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('BACKGROUND', (0, 0), (-1, -1), FONDO_ZEBRA),
+        ('TOPPADDING', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+    ]))
+    elementos.extend([t_indicadores, Spacer(1, 0.8 * cm)])
+
+    turnos_ingresos = graficos.get('turnos_ingresos') or []
+    ingresos_turnos = next((i.get('total', 0) for i in turnos_ingresos if i.get('label') == 'Turnos Completados'), 0)
+    ingresos_senas = next((i.get('total', 0) for i in turnos_ingresos if i.get('label') == 'Señas Retenidas'), 0)
+    elementos.append(Paragraph('2. Ingresos por Turnos', estilos['Seccion']))
+    texto_turnos = [
+        Paragraph(f"<b>Turnos Completados:</b> {_formato_moneda(ingresos_turnos)}", estilos['TD']),
+        Paragraph(f"<b>Señas Retenidas:</b> {_formato_moneda(ingresos_senas)}", estilos['TD']),
+        Spacer(1, 5),
+        Paragraph(f"<b>TOTAL INGRESOS POR TURNOS: {_formato_moneda(ingresos_turnos + ingresos_senas)}</b>",
+                  ParagraphStyle('TotalTurnos', fontName='Helvetica-Bold', fontSize=11, textColor=AZUL_HEADER)),
+    ]
+    t_turnos = Table([[
+        crear_grafico_dona(turnos_ingresos, texto_centro=formato_moneda_compacta_arg(ingresos_turnos + ingresos_senas)),
+        texto_turnos,
+    ]], colWidths=[6 * cm, 13 * cm])
+    t_turnos.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]))
+    elementos.extend([t_turnos, Spacer(1, 0.8 * cm)])
+
+    medios_pago = graficos.get('medios_pago') or []
+    total_medios = sum(float(m.get('total') or 0) for m in medios_pago)
+    elementos.append(Paragraph('3. Medios de Pago', estilos['Seccion']))
+    texto_medios = [
+        Paragraph(f"<b>{escapar(m.get('medio'))}:</b> {_formato_moneda(m.get('total'))}", estilos['TD'])
+        for m in medios_pago
+    ] or [Paragraph('Sin datos.', estilos['TD'])]
+    texto_medios += [
+        Spacer(1, 5),
+        Paragraph(f"<b>TOTAL PAGOS: {_formato_moneda(total_medios)}</b>",
+                  ParagraphStyle('TotalPagos', fontName='Helvetica-Bold', fontSize=11, textColor=AZUL_HEADER)),
+    ]
+    t_medios = Table([[
+        crear_grafico_dona([
+            {'total': m.get('total'), 'color': ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899'][i % 5]}
+            for i, m in enumerate(medios_pago)
+        ], texto_centro=formato_moneda_compacta_arg(total_medios)),
+        texto_medios,
+    ]], colWidths=[6 * cm, 13 * cm])
+    t_medios.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]))
+    elementos.extend([t_medios, Spacer(1, 0.8 * cm)])
+
+    servicios = graficos.get('servicios_mas_elegidos') or []
+    productos = graficos.get('productos_mas_vendidos') or []
+    if servicios or productos:
+        def bloque_ranking(titulo, items, unidad):
+            lineas = []
+            for item in items:
+                cantidad = int(item.get('cantidad') or 0)
+                etiqueta = unidad if cantidad == 1 else unidad + 's'
+                lineas.append(Paragraph(
+                    f"<b>{escapar(item.get('nombre'))}:</b> {cantidad} {etiqueta} · {_formato_moneda(item.get('ingreso'))}",
+                    estilos['TD'],
+                ))
+            if not lineas:
+                lineas = [Paragraph('Sin datos.', estilos['TD'])]
+            return [
+                Paragraph(titulo, estilos['Subtitulo']),
+                crear_grafico_barras(items, ancho=8 * cm, alto=5.5 * cm),
+                *lineas,
+            ]
+
+        t_rankings = Table([[
+            bloque_ranking('4. Servicios Más Elegidos', servicios, 'uso'),
+            bloque_ranking('5. Productos Más Vendidos', productos, 'unidad'),
+        ]], colWidths=[9.5 * cm, 9.5 * cm])
+        t_rankings.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP')]))
+        elementos.extend([t_rankings, Spacer(1, 0.8 * cm)])
+
+    elementos.append(Paragraph('6. Stock Estancado (Top 5)', estilos['Seccion']))
+    filas_stock = [[Paragraph(x, estilos['TH']) for x in ('PRODUCTO', 'MARCA', 'STOCK', 'CAPITAL PARADO')]]
+    for item in tablas.get('stock_estancado') or []:
+        filas_stock.append([
+            Paragraph(escapar(item.get('producto')), estilos['TD']),
+            Paragraph(escapar(item.get('marca') or 'Sin Marca'), estilos['TD']),
+            Paragraph(str(item.get('stock', 0)), ParagraphStyle('StockC', parent=estilos['TD'], alignment=TA_CENTER, fontName='Helvetica-Bold')),
+            Paragraph(_formato_moneda(item.get('capital')), ParagraphStyle('Capital', parent=estilos['TD_Right'], fontName='Helvetica-Bold', textColor=ROJO)),
+        ])
+    if len(filas_stock) == 1:
+        filas_stock.append([Paragraph('Excelente rotación. Todos los productos se movieron.', estilos['TD'])] + [Paragraph('', estilos['TD'])] * 3)
+    elementos.append(crear_tabla_datos(filas_stock, [6 * cm, 4 * cm, 3 * cm, 6 * cm], estilos))
+    elementos.append(Spacer(1, 0.8 * cm))
+
+    elementos.append(Paragraph('7. Señas Retenidas (Cancelaciones)', estilos['Seccion']))
+    filas_senas = [[Paragraph(x, estilos['TH']) for x in ('FECHA', 'CLIENTE', 'SERVICIO', 'MONTO')]]
+    for item in tablas.get('penalizaciones') or []:
+        filas_senas.append([
+            Paragraph(escapar(formatear_fecha_operacion(item.get('fecha'), con_hora=False)), estilos['TD']),
+            Paragraph(escapar(item.get('cliente')), estilos['TD']),
+            Paragraph(escapar(item.get('servicio')), estilos['TD']),
+            Paragraph(f"+ {_formato_moneda(item.get('monto_retenido'))}", ParagraphStyle('Senna', parent=estilos['TD_Right'], fontName='Helvetica-Bold', textColor=VERDE_EXITO)),
+        ])
+    if len(filas_senas) == 1:
+        filas_senas.append([Paragraph('No hubo cancelaciones con retención de seña en este período.', estilos['TD'])] + [Paragraph('', estilos['TD'])] * 3)
+    elementos.append(crear_tabla_datos(filas_senas, [3 * cm, 5 * cm, 7 * cm, 4 * cm], estilos))
+
+    construir_documento(crear_documento(buffer), elementos)
+    return buffer.getvalue()
+
+
+def generar_pdf_error(mensaje, config=None, datos_emision=None, titulo='ERROR AL GENERAR REPORTE'):
+    """PDF de error con encabezado, pie y trazabilidad institucionales."""
+    return _generar_pdf_error_institucional(mensaje, config, datos_emision, titulo)

@@ -189,6 +189,10 @@
                   <button @click="verDetalleTurno(turno)" class="action-button view" title="Ver Detalle">
                     <Eye :size="14"/>
                   </button>
+
+                  <button @click="descargarComprobanteTurno(turno)" class="action-button pdf" title="Descargar comprobante PDF">
+                    <FileText :size="14"/>
+                  </button>
                   
                   <button v-if="esAdminORecep && puedeEditarTurno(turno)" 
                           @click="editarTurno(turno)" 
@@ -274,7 +278,7 @@ import { useRouter, useRoute } from 'vue-router'
 import axios from '../../utils/axiosConfig'
 import { 
   Plus, Trash2, Eye, CreditCard, ArrowRightLeft, Check, 
-  ArrowLeft, ArrowRight, Edit
+  ArrowLeft, ArrowRight, Edit, FileText
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2'
 import PagoQrModal from '@/components/PagoQrModal.vue'
@@ -1421,6 +1425,26 @@ didOpen: () => {
   });
 };
 
+const descargarComprobanteTurno = async (turno) => {
+  try {
+    const response = await axios.get(`/api/turnos/${turno.id}/comprobante-pdf/`, { responseType: 'blob' });
+    const disposicion = response.headers['content-disposition'] || '';
+    const coincidencia = disposicion.match(/filename="?([^";]+)"?/i);
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const urlBlob = URL.createObjectURL(blob);
+    const enlace = document.createElement('a');
+    enlace.href = urlBlob;
+    enlace.download = coincidencia ? coincidencia[1] : `Comprobante_Turno_${turno.id}.pdf`;
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    URL.revokeObjectURL(urlBlob);
+  } catch (error) {
+    console.error('Error descargando comprobante de turno:', error);
+    Swal.fire('Error', 'No se pudo descargar el comprobante del turno.', 'error');
+  }
+};
+
 const verDetalleTurno = async (turno) => {
   try {
     const response = await axios.get(`/api/turnos/${turno.id}/`);
@@ -2552,6 +2576,9 @@ watch(totalPaginas, (total) => {
 
 .action-button.view { background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary); }
 .action-button.view:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+
+.action-button.pdf { background: var(--bg-tertiary); border: 1px solid #ef4444; color: #ef4444; }
+.action-button.pdf:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4); border-color: #ef4444; }
 
 .action-button.reembolso { background: var(--bg-tertiary); border: 1px solid #f59e0b; color: #f59e0b; }
 .action-button.reembolso:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4); border-color: #f59e0b; }
